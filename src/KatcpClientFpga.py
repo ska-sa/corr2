@@ -37,7 +37,15 @@ class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackCl
         self._timeout = timeout
         if connect: self.start(daemon = True)
 
-        logger.info('%s:%i created & daemon started.' % (host, katcp_port))
+        logger.info('%s:%i created%s.' % (host, katcp_port, ' & daemon started' if connect else ''))
+
+    def connect(self):
+        logger.info('%s: daemon started' % self.host)
+        self.start(daemon = True)
+
+    def disconnect(self):
+        logger.info('%s: daemon stopped' % self.host)
+        self.stop()
 
     def process_xml_config(self, design_info):
         # does the file exists
@@ -45,12 +53,12 @@ class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackCl
         try:
             open(design_info)
         except:
-            log_runtime_error(logger, 'Cannot open .design_info file %s' % design_info)
+            log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
         import xml.etree.ElementTree as ET
         try:
             doc = ET.parse(design_info)
         except:
-            log_runtime_error(logger, '.design_info file %s does not seem to be valid XML?' % design_info)
+            log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
         rnode = doc.getroot()
         self.build_date = rnode.attrib['datestr']
         self.sysname = rnode.attrib['sysname']

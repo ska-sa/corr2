@@ -64,9 +64,10 @@ class Snap(Bitfield):
             for f in extra_fields.itervalues(): self.extra_value.add_field(field=f)
         logging.info('Done parsing XML for snap.')
 
-    def read(self, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False):
-        #read the data
-        raw = self._read_raw(man_trig, man_valid, wait_period, offset, circular_capture, get_extra_val)
+    def read(self, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False, arm=True):
+        # read the data raw
+        raw = self._read_raw(man_trig=man_trig, man_valid=man_valid, wait_period=wait_period, offset=offset, circular_capture=circular_capture, 
+                             get_extra_val=get_extra_val, arm=arm)
         # and convert using the bitstruct
         unp_rpt = construct.GreedyRange(self.bitstruct)
         data = unp_rpt.parse(raw['data'])
@@ -74,26 +75,25 @@ class Snap(Bitfield):
         for d in data:
             d = d.__dict__
             for f in self.fields.itervalues():
-                if f.numtype == 0:
+                if f.numtype == 'ufix':
                     d[f.name] = bin2fp(d[f.name], f.width, f.binary_pt, False)
-                elif f.numtype == 1:
+                elif f.numtype == 'fix':
                     d[f.name] = bin2fp(d[f.name], f.width, f.binary_pt, True)
             processed.append(d)
-            
-        raise RuntimeError('extra val if supported? also compare sbram from corr to corr2 - why the brams in scratchpad regsnap reading zero or 4 values instead of one?')
-            
-        return processed
-    
-    def _read_raw(self, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False):
-        import time
-        
+        return {'data': processed, 'extra_value': self.extra_value.read() if self.options['extra_value'] else None}
+
+    def _arm(self, man_trig=False, man_valid=False, offset=-1, circular_capture=False):
         if offset >=0:
             self.parent.write_int(self.name + '_trig_offset', offset)
-    
         self.parent.write_int(self.name + '_ctrl',(0 + (man_trig<<1) + (man_valid<<2) + (circular_capture<<3)))
         self.parent.write_int(self.name + '_ctrl',(1 + (man_trig<<1) + (man_valid<<2) + (circular_capture<<3)))
-
-        done=False
+    
+    def _read_raw(self, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False, arm=True):
+        import time
+        # trigger
+        if arm: self._arm(man_trig=man_trig, man_valid=man_valid, offset=offset, circular_capture=circular_capture)
+        # wait
+        done = False
         start_time = time.time()
         while not done and ((time.time()-start_time)<wait_period or (wait_period < 0)): 
             addr = self.parent.read_uint(self.name + '_status')

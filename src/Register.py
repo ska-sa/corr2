@@ -56,7 +56,7 @@ class Register(Bitfield):
     def _read_raw(self):
         return self.parent.read_uint(self.name)
     
-    def _write_raw(self, uintvalue):
+    def write_raw(self, uintvalue):
         self.parent.write_int(self.name, uintvalue)
 
     def read(self):
@@ -84,6 +84,6 @@ class Register(Bitfield):
                 current_values['values'][k] = kwargs[k]
                 logger.info('%s: writing %i to field %s' % (self.name, kwargs[k], k))
         unpacked = struct.unpack('>I', self.bitstruct.build(construct.Container(**current_values['values'])))
-        self._write_raw(unpacked[0])
+        self.write_raw(unpacked[0])
         if len(pulse) > 0:
             self.write(**pulse)
