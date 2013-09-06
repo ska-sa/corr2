@@ -5,10 +5,13 @@ Created on Feb 28, 2013
 '''
 
 import logging, katcp, struct
-import Node, AsyncRequester, Register, Snap
+import Node, AsyncRequester, Register, Snap, Memory
 from Misc import log_runtime_error
 
 logger = logging.getLogger(__name__)
+
+# if __name__ == '__main__':
+#     print 'Hello World'
 
 class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackClient):
     '''
@@ -23,13 +26,15 @@ class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackCl
         
         # registers and snap blocks
         self.registers = {}
-        self.snaps = {}
+        self.snapshots = {}
+        self.memory = {}
         
         # ten gbe ports
         self.tengbes = {}
         
         # process the auto-generated XML configuration
-        self.process_xml_config(design_xml)
+        #self.process_xml_config(design_xml)
+        self.process_new_core_info(design_xml)
         self.design_xml = design_xml
         self.running_bof = ''
         
@@ -47,41 +52,9 @@ class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackCl
         logger.info('%s: daemon stopped' % self.host)
         self.stop()
 
-    def process_xml_config(self, design_info):
-        # does the file exists
-        if not isinstance(design_info, str): return
-        try:
-            open(design_info)
-        except:
-            log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
-        import xml.etree.ElementTree as ET
-        try:
-            doc = ET.parse(design_info)
-        except:
-            log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
-        rnode = doc.getroot()
-        self.build_date = rnode.attrib['datestr']
-        self.sysname = rnode.attrib['sysname']
-        self.version = rnode.attrib['version']
-        from os import path
-        self.bofname = path.basename(design_info).replace('.xml','.bof')
-        def process_object(doc_node, objclass, storage):
-            nodes = doc_node.getchildren()
-            for node in nodes:
-                obj = objclass(parent=self, xml_node=node)
-                storage[obj.name] = obj
-        rnode_children = rnode.getchildren()
-        for c in rnode_children:
-            if c.attrib['class'] == 'register':
-                process_object(c, Register.Register, self.registers)
-            elif c.attrib['class'] == 'snapshot':
-                process_object(c, Snap.Snap, self.snaps)
-            else:
-                log_runtime_error(logger, 'Unknown node class %s in XML?' % c['class'])
-
     def __str__(self):
-        return 'KatcpFpga(%s) ip(%s) port(%i) regs(%i) snaps(%i) - %s' % (self.host, self.ip, self.katcp_port, len(self.registers),
-                                                                       len(self.snaps), 'connected' if self.is_connected() else 'disconnected')
+        return 'KatcpFpga(%s)@%s:%i engines(%i) regs(%i) snaps(%i) - %s' % (self.host, self.ip, self.port, len(self.engines), len(self.registers),
+                                                                       len(self.snapshots), 'connected' if self.is_connected() else 'disconnected')
 
     def _request(self, name, request_timeout = -1, *args):
         """Make a blocking request and check the result.
@@ -164,8 +137,12 @@ class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackCl
            @return  boolean: ping result.
            """
         reply, informs = self._request("watchdog", self._timeout)
-        if reply.arguments[0]=='ok': return True
-        else: return False
+        if reply.arguments[0] == 'ok':
+            logger.info('katcp ping okay')
+            return True
+        else:
+            logger.error('katcp connection failed')
+            return False
     
     def read(self, device_name, size, offset=0):
         """Return size_bytes of binary data with carriage-return
@@ -491,5 +468,180 @@ class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackCl
 
     def _snapshot_get(self, dev_name, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False):
         raise NotImplementedError
+
+    def process_xml_config(self, design_info):
+        # does the file exists
+        if not isinstance(design_info, str): return
+        try:
+            open(design_info)
+        except:
+            log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
+        import xml.etree.ElementTree as ElementTree
+        try:
+            doc = ElementTree.parse(design_info)
+        except:
+            log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
+        rootnode = doc.getroot()
+        self.build_date = rootnode.attrib['datestr']
+        self.sysname = rootnode.attrib['system']
+        self.version = rootnode.attrib['version']
+        from os import path
+        self.bofname = path.basename(design_info).replace('.xml','.bof')
+        def process_object(doc_node, objclass, storage):
+            for node in list(doc_node):
+                obj = objclass(parent=self, xml_node=node)
+                storage[obj.name] = obj
+        # iterate through the tags in the root node
+        design_info_node = None;
+        for node in list(rootnode):
+            if node.tag == 'memory':
+                process_object(node, Memory.Memory, self.memory)
+            elif node.tag == 'device_class':
+                if node.attrib['class'] == 'register':
+                    process_object(node, Register.Register, self.registers)
+                elif node.attrib['class'] == 'snapshot':
+                    process_object(node, Snap.Snap, self.snapshots)
+                else:
+                    log_runtime_error(logger, 'Unknown node class %s in XML?' % node['class'])
+            elif node.tag == 'design_info':
+                design_info_node = node;
+            else:
+                log_runtime_error(logger, 'Unknown XML tag in design file?')
+        if (design_info_node == None) and (len(self.snapshots) > 0):
+            log_runtime_error(logger, 'Snapshots found, but not design info to complete them?')
+        # put the extra info into a dictionary
+        self.design_info = {}
+        for n in list(design_info_node):
+            self.design_info[n.attrib['name']] = n.attrib['info']
+        # reconcile snap info blocks with their snap blocks
+        for s in self.snapshots.values():
+            print s.name, s.blockpath
+            info_dict = {key.replace(s.blockpath + '/', ''):value for key,value in self.design_info.iteritems() if key.startswith(s.blockpath + '/')};
+            try:
+                extra_reg = self.registers[s.name + '_val']
+            except KeyError:
+                extra_reg = None
+            s.add_snap_info(info_dict, extra_reg);
+
+    def process_new_core_info(self, design_info):
+        # does the file exists
+        if not isinstance(design_info, str): return
+        try:
+            open(design_info)
+        except:
+            log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
+        import xml.etree.ElementTree as ElementTree
+        try:
+            doc = ElementTree.parse(design_info)
+        except:
+            log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
+        rootnode = doc.getroot()
+        self.build_date = rootnode.attrib['datestr']
+        self.sysname = rootnode.attrib['system']
+        self.version = rootnode.attrib['version']
+        from os import path
+        self.bofname = path.basename(design_info).replace('.xml','.bof')
+        # get registers, snapblocks, brams, etc from the XML file
+        register_paths = []
+        snapshot_paths = []
+        sbram_names = []
+        info_nodes = []
+        for node in list(rootnode):
+            if node.tag == 'design_info':
+                for infonode in list(node):
+                    if infonode.attrib['owner'] == "":
+                        if infonode.attrib['param'] == "registers":
+                            register_paths = infonode.attrib['value'].split(',')
+                        if infonode.attrib['param'] == "snapshots":
+                            snapshot_paths = infonode.attrib['value'].split(',')
+                    elif infonode.attrib['owner'] == self.sysname:
+                        info_nodes.append(infonode)
+        self.registers = {}
+        for reg_path in register_paths:
+            reg_name = reg_path.replace('/','_')
+            register = Register.Register(parent=self, name=reg_name)
+            register._update_from_new_coreinfo_xml(xml_root_node = rootnode)
+            self.registers[register.name] = register
+        self.snapshots = {}
+        for snap_path in snapshot_paths:
+            snap_name = snap_path.replace('/','_')
+            snap = Snap.Snap(parent=self, name=snap_name)
+            snap._update_from_new_coreinfo_xml(xml_root_node = rootnode)
+            snap._update_control_registers(self.registers)
+            self.snapshots[snap.name] = snap
+#         for b in sbram_names:
+#             bram = Brams(parent = mock_fpga, name=s)
+#             bram._update_from_new_coreinfo_xml(xml_root_node = rootnode)
+        self.design_info = {}
+        for n in info_nodes:
+            self.design_info[n.attrib['param']] = n.attrib['value']
+
+#     def process_new_core_info(self, design_info):
+#         # does the file exists
+#         if not isinstance(design_info, str): return
+#         try:
+#             open(design_info)
+#         except:
+#             log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
+#         import xml.etree.ElementTree as ElementTree
+#         try:
+#             doc = ElementTree.parse(design_info)
+#         except:
+#             log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
+#         rootnode = doc.getroot()
+#         self.build_date = rootnode.attrib['datestr']
+#         self.sysname = rootnode.attrib['system']
+#         self.version = rootnode.attrib['version']
+#         from os import path
+#         self.bofname = path.basename(design_info).replace('.xml','.bof')
+#         # get registers, snapblocks, brams, etc from the XML file
+#         register_paths = []
+#         snapshot_paths = []
+#         sbram_names = []
+#         for node in rootnode.getChildren():
+#             if node.tag == 'design_info':
+#                 for infonode in node.getChildren():
+#                     if infonode.attrib('owner') == "":
+#                         if infonode.attrib('param') == "registers":
+#                             register_paths = infonode.attrib('value').split(',')
+#                         if infonode.attrib('param') == "snapshots":
+#                             snapshot_paths = infonode.attrib('value').split(',')
+#         
+#         print register_paths
+#         print snapshot_paths
+#         
+#         return
+#         
+#         
+#         design_info_node = None;
+#         for node in rootnode.getChildren():
+#             if node.tag == 'memory':
+#                 process_object(node, Memory.Memory, self.memory)
+#             elif node.tag == 'device_class':
+#                 if node.attrib['class'] == 'register':
+#                     process_object(node, Register.Register, self.registers)
+#                 elif node.attrib['class'] == 'snapshot':
+#                     process_object(node, Snap.Snap, self.snaps)
+#                 else:
+#                     log_runtime_error(logger, 'Unknown node class %s in XML?' % node['class'])
+#             elif node.tag == 'design_info':
+#                 design_info_node = node;
+#             else:
+#                 log_runtime_error(logger, 'Unknown XML tag in design file?')
+#         if (design_info_node == None) and (len(self.snaps) > 0):
+#             log_runtime_error(logger, 'Snapshots found, but not design info to complete them?')
+#         # put the extra info into a dictionary
+#         self.design_info = {}
+#         for n in list(design_info_node):
+#             self.design_info[n.attrib['name']] = n.attrib['info']
+#         # reconcile snap info blocks with their snap blocks
+#         for s in self.snaps.values():
+#             print s.name, s.blockpath
+#             info_dict = {key.replace(s.blockpath + '/', ''):value for key,value in self.design_info.iteritems() if key.startswith(s.blockpath + '/')};
+#             try:
+#                 extra_reg = self.registers[s.name + '_val']
+#             except KeyError:
+#                 extra_reg = None
+#             s.add_snap_info(info_dict, extra_reg);
 
 # end
