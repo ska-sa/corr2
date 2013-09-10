@@ -4,15 +4,16 @@ Created on Feb 28, 2013
 @author: paulp
 '''
 
-import Instrument, Fengine, Xengine
+import logging, iniparse
 
-import logging
+import Instrument, KatcpClientFpga, Fengine, Xengine, Types
 from Misc import log_runtime_error
+
 logger = logging.getLogger(__name__)
 
 class FxCorrelator(Instrument.Instrument):
     '''
-    An FxCorrelator.
+    An FxCorrelator implemented using FPGAs running BOF files for processing hosts.
     '''
     def __init__(self, name, description, config_file, connect):
         '''
@@ -24,7 +25,7 @@ class FxCorrelator(Instrument.Instrument):
         '''
         super(FxCorrelator, self).__init__(name=name, description=description, config_file=config_file)
 
-        # process config
+        # process config - done in Super.__init__
         
         # set up loggers
         
@@ -60,15 +61,60 @@ class FxCorrelator(Instrument.Instrument):
         '''Parse an XML/YAML config file for this correlator.
         @param filename: The filename for the config file.
         '''
-        raise NotImplementedError
         if filename == '':
             log_runtime_error('No config file provided.')
             return
         try:
-            open(filename, 'r')
+            fptr = open(filename, 'r')
         except:
             raise IOError('Configuration file \'%s\' cannot be opened.' % filename)
-        raise NotImplementedError
+        self.config_file = filename
+        logger.info('Using config file %s.' % self.config_file)
+        config_parser = iniparse.INIConfig(fptr)
+        
+        # some helper functions
+        def cfg_set_string(section, param, overwrite = False):
+            if self.config.has_key(param) and (not overwrite):
+                log_runtime_error(logger, 'Attempting to overwrite config variable \'%s\'' % param)
+            try:
+                self.config[param] = config_parser[section][param];
+            except:
+                log_runtime_error(logger, 'Config asked for unknown param - %s/%s' % (section, param))
+            if isinstance(self.config[param], iniparse.config.Undefined):
+                log_runtime_error(logger, 'Config asked for unknown param - %s/%s' % (section, param))
+        def cfg_set_int(section, param, overwrite = False):
+            cfg_set_string(section, param, overwrite)
+            self.config[param] = int(self.config[param])
+        def cfg_set_float(section, param, overwrite = False):
+            cfg_set_string(section, param, overwrite)
+            self.config[param] = float(self.config[param])
+        
+        # check for bof names
+        cfg_set_string('files', 'bitstream_f')
+        cfg_set_string('files', 'bitstream_x')
+        logger.info('Using bof files F(%s) X(%s).' % (self.config['bitstream_f'], self.config['bitstream_x']))
+        
+        # read f and x host lists and create the basic FPGA hosts
+        cfg_set_string('katcp', 'hosts_f')
+        cfg_set_string('katcp', 'hosts_x')
+        cfg_set_string('katcp', 'katcp_port')
+        self.create_hosts()
+    
+        print self.config
+    
+    def create_hosts(self):
+        '''Create the Hosts that make up this FX correlator.
+        '''
+        logger.info('Creating hosts.')
+        if (self.config['hosts_f'] == None) or (self.config['hosts_x'] == None):
+            log_runtime_error(logger, 'Must have string describing F and X nodes.')
+        self.config['hosts_f'] = self.config['hosts_f'].split(Types.LISTDELIMIT)
+        self.config['hosts_x'] = self.config['hosts_x'].split(Types.LISTDELIMIT)
+        for h in self.config['hosts_f']:
+            fhost = KatcpClientFpga.KatcpClientFpga(h, h, self.config['katcp_port'])
+            self.host_add(fhost)
+        
+        print self.hosts
         
     def connect(self):
         '''Connect to the correlator and test connections to all the nodes.

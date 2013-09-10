@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 import struct
 import construct
 
-from Misc import log_runtime_error, bin2fp
+from Misc import log_runtime_error
 from Memory import Memory
 import Types
 
@@ -78,8 +78,6 @@ class Register(Memory):
         if changes:
             unpacked = struct.unpack('>I', self.bitstruct.build(construct.Container(**current_values['data'])))
             self.write_raw(unpacked[0])
-        else:
-            print 'skipping'
         if len(pulse) > 0:
             self.write(**pulse)
 

@@ -7,9 +7,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 import numpy
-import construct
 
-from Misc import log_runtime_error, bin2fp
+from Misc import log_runtime_error
 from Memory import Memory
 import Register
 import Types
@@ -86,8 +85,7 @@ class Snap(Memory):
             bram_dmp['offset'] = 0
     
         if bram_dmp['length'] != self.length * (self.width / 8):
-            log_runtime_error(logger, '%s.read_uint() - expected %i bytes, got %i' % (self.name, self.length, bram_dmp['length'] / (self.width / 8)))
-    
+            log_runtime_error(logger, '%s.read_uint() - expected %i bytes, got %i' % (self.name, self.length, bram_dmp['length'] / (self.width / 8)))    
         return bram_dmp
 
     def __str__(self):

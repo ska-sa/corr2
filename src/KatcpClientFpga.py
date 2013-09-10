@@ -5,7 +5,7 @@ Created on Feb 28, 2013
 '''
 
 import logging, katcp, struct
-import Node, AsyncRequester, Register, Snap, Memory
+import Host, AsyncRequester, Register, Snap, Memory
 from Misc import log_runtime_error
 
 logger = logging.getLogger(__name__)
@@ -13,14 +13,14 @@ logger = logging.getLogger(__name__)
 # if __name__ == '__main__':
 #     print 'Hello World'
 
-class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackClient):
+class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackClient):
     '''
     A Roach(2) board - there is a KATCP client running on the PowerPC on the board.
     '''
     def __init__(self, host, ip, katcp_port=7147, timeout=5.0, connect=True, design_xml=None):
         '''Constructor.
         '''
-        Node.Node.__init__(self, host, ip, katcp_port)
+        Host.Host.__init__(self, host, ip, katcp_port)
         AsyncRequester.AsyncRequester.__init__(self, self.callback_request, max_requests=100)
         katcp.CallbackClient.__init__(self, host, katcp_port, tb_limit=20, timeout=timeout, logger=logger, auto_reconnect=True)
         
@@ -42,7 +42,7 @@ class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackCl
         self._timeout = timeout
         if connect: self.start(daemon = True)
 
-        logger.info('%s:%i created%s.' % (host, katcp_port, ' & daemon started' if connect else ''))
+        logger.info('%s:%s created%s.' % (host, katcp_port, ' & daemon started' if connect else ''))
 
     def connect(self):
         logger.info('%s: daemon started' % self.host)
@@ -260,20 +260,20 @@ class KatcpClientFpga(Node.Node, AsyncRequester.AsyncRequester, katcp.CallbackCl
 
         dram_indirect_page_size=(64*1024*1024)
         #read_chunk_size=(1024*1024)
-        if verbose: print 'Reading a total of %8i bytes from offset %8i...'%(size,offset)
+        if verbose: print 'Reading a total of %8i bytes from offset %8i...' % (size, offset)
 
         while n_reads < size:
             dram_page=(offset+n_reads)/dram_indirect_page_size
             local_offset = (offset+n_reads)%(dram_indirect_page_size)
             #local_reads = min(read_chunk_size,size-n_reads,dram_indirect_page_size-(offset%dram_indirect_page_size))
             local_reads = min(size-n_reads,dram_indirect_page_size-(offset%dram_indirect_page_size))
-            if verbose: print 'Reading %8i bytes from indirect address %4i at local offset %8i...'%(local_reads,dram_page,local_offset)
+            if verbose: print 'Reading %8i bytes from indirect address %4i at local offset %8i...' % (local_reads, dram_page, local_offset),
             if last_dram_page != dram_page: 
                 self.write_int('dram_controller',dram_page)
                 last_dram_page = dram_page
             local_data=(self.bulkread('dram_memory',local_reads,local_offset))
             data.append(local_data)
-            #print 'done'
+            if verbose: print 'done.'
             n_reads += local_reads
         return ''.join(data)
 

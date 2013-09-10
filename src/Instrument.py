@@ -5,9 +5,10 @@ Created on Feb 28, 2013
 '''
 
 import logging
-logger = logging.getLogger(__name__)
 
-import Node
+import Host
+
+logger = logging.getLogger(__name__)
 
 class Instrument(object):
     '''
@@ -23,10 +24,12 @@ class Instrument(object):
         '''
         self.name = name
         self.description = description
-        self.nodes = {}
+        self.hosts = {}
+        self.config_file = config_file
+        self.config = {}
         if config_file != None:
             self.parse_config(config_file)
-        print 'Instrument %s created.' % name
+        logger.info('Instrument %s created.' % name)
     
     def parse_config(self):
         '''Stub method - must be implemented in child class.
@@ -38,22 +41,22 @@ class Instrument(object):
         """
         raise NotImplementedError
     
-    def node_add(self, node):
-        """Add a Node object to the dictionary of nodes that make up this instrument.
-        @param node: a Node object
+    def host_add(self, host):
+        """Add a Host object to the dictionary of hosts that make up this instrument.
+        @param host: a Host object
         """
-        if not isinstance(node, Node.Node):
-            raise RuntimeError('Object provided is not a Node.')
-        if self.nodes.has_key(node.host):
-            raise RuntimeError('Node host %s already exists on this Instrument.' % node.host)
-        self.nodes[node.host] = node
+        if not isinstance(host, Host.Host):
+            raise RuntimeError('Object provided is not a Host.')
+        if self.hosts.has_key(host.host):
+            raise RuntimeError('Host host %s already exists on this Instrument.' % host.host)
+        self.hosts[host.host] = host
     
-    def node_ping(self, node_to_ping = None):
-        '''Ping nodes, or a single node, if provided.
-        @param node_to_ping: If None, all nodes will be pinged.
-        @return: dictionary with node ids as key and ping result (True/False) as value.
+    def host_ping(self, host_to_ping = None):
+        '''Ping hosts, or a single host, if provided.
+        @param host_to_ping: If None, all hosts will be pinged.
+        @return: dictionary with host ids as key and ping result (True/False) as value.
         '''
-        ntp = {node_to_ping: self.nodes[node_to_ping]} if (node_to_ping != None) else self.nodes.items() 
+        ntp = {host_to_ping: self.hosts[host_to_ping]} if (host_to_ping != None) else self.hosts.items() 
         rv = {}
         for k, n in ntp:
             rv[k] = n.ping()
@@ -63,13 +66,13 @@ class Instrument(object):
         '''Get a specific engine based on id or all instances of an engine class.
         ''' 
         engines = {}
-        for n in self.nodes.values():
+        for n in self.hosts.values():
             engines.update(n.engine_get(engine_id, engine_class))
         return engines
 
     def __str__(self):
         s = '%s: %s\n' % (self.name, self.description)
-        for n in self.nodes.itervalues():
+        for n in self.hosts.itervalues():
             s += '\t%s\n' % n
         return s
 
