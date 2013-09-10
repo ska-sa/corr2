@@ -5,7 +5,7 @@ Created on Feb 28, 2013
 '''
 
 import logging, katcp, struct
-import Host, AsyncRequester, Register, Snap, Memory
+import Host, AsyncRequester, Fpga
 from Misc import log_runtime_error
 
 logger = logging.getLogger(__name__)
@@ -495,12 +495,12 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         design_info_node = None;
         for node in list(rootnode):
             if node.tag == 'memory':
-                process_object(node, Memory.Memory, self.memory)
+                process_object(node, Fpga.Memory, self.memory)
             elif node.tag == 'device_class':
                 if node.attrib['class'] == 'register':
-                    process_object(node, Register.Register, self.registers)
+                    process_object(node, Fpga.Register, self.registers)
                 elif node.attrib['class'] == 'snapshot':
-                    process_object(node, Snap.Snap, self.snapshots)
+                    process_object(node, Fpga.Snap, self.snapshots)
                 else:
                     log_runtime_error(logger, 'Unknown node class %s in XML?' % node['class'])
             elif node.tag == 'design_info':
@@ -559,24 +559,24 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         self.registers = {}
         for reg_path in register_paths:
             reg_name = reg_path.replace('/','_')
-            register = Register.Register(parent=self, name=reg_name)
+            register = Fpga.Register(parent=self, name=reg_name)
             register._update_from_new_coreinfo_xml(xml_root_node = rootnode)
             self.registers[register.name] = register
         self.snapshots = {}
         for snap_path in snapshot_paths:
             snap_name = snap_path.replace('/','_')
-            snap = Snap.Snap(parent=self, name=snap_name)
+            snap = Fpga.Snap(parent=self, name=snap_name)
             snap._update_from_new_coreinfo_xml(xml_root_node = rootnode)
             snap._update_control_registers(self.registers)
             self.snapshots[snap.name] = snap
         for b in sbram_names:
-            bram = Brams(parent = mock_fpga, name=s)
+            bram = Fpga.Sbram(parent = self, name=b)
             bram._update_from_new_coreinfo_xml(xml_root_node = rootnode)
         self.design_info = {}
         for n in info_nodes:
             self.design_info[n.attrib['param']] = n.attrib['value']
 
-    def probe_design(self):
+    def probe_running_design(self):
         # Probe the running bof file for info on ADCs, 10Gbes, etc
         raise NotImplementedError
 

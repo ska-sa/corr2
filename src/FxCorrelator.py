@@ -4,7 +4,7 @@ Created on Feb 28, 2013
 @author: paulp
 '''
 
-import logging, iniparse, struct, socket
+import logging, struct, socket, iniparse
 
 import Instrument, KatcpClientFpga, Fengine, Xengine, Types
 from Misc import log_runtime_error
