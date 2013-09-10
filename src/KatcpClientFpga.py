@@ -569,12 +569,16 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
             snap._update_from_new_coreinfo_xml(xml_root_node = rootnode)
             snap._update_control_registers(self.registers)
             self.snapshots[snap.name] = snap
-#         for b in sbram_names:
-#             bram = Brams(parent = mock_fpga, name=s)
-#             bram._update_from_new_coreinfo_xml(xml_root_node = rootnode)
+        for b in sbram_names:
+            bram = Brams(parent = mock_fpga, name=s)
+            bram._update_from_new_coreinfo_xml(xml_root_node = rootnode)
         self.design_info = {}
         for n in info_nodes:
             self.design_info[n.attrib['param']] = n.attrib['value']
+
+    def probe_design(self):
+        # Probe the running bof file for info on ADCs, 10Gbes, etc
+        raise NotImplementedError
 
 #     def process_new_core_info(self, design_info):
 #         # does the file exists

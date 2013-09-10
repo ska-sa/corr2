@@ -4,7 +4,7 @@ Created on Feb 28, 2013
 @author: paulp
 '''
 
-import logging, iniparse
+import logging, iniparse, struct, socket
 
 import Instrument, KatcpClientFpga, Fengine, Xengine, Types
 from Misc import log_runtime_error
@@ -89,17 +89,59 @@ class FxCorrelator(Instrument.Instrument):
             cfg_set_string(section, param, overwrite)
             self.config[param] = float(self.config[param])
         
+        # some constants
+        self.config['pol_map'] = {'x':0, 'y':1}
+        self.config['rev_pol_map'] = {0:'x', 1:'y'}
+        self.config['pols'] = ['x', 'y']
+        
         # check for bof names
         cfg_set_string('files', 'bitstream_f')
         cfg_set_string('files', 'bitstream_x')
         logger.info('Using bof files F(%s) X(%s).' % (self.config['bitstream_f'], self.config['bitstream_x']))
-        
+
         # read f and x host lists and create the basic FPGA hosts
         cfg_set_string('katcp', 'hosts_f')
         cfg_set_string('katcp', 'hosts_x')
         cfg_set_string('katcp', 'katcp_port')
         self.create_hosts()
-    
+
+        # other common correlator parameters
+        cfg_set_int('correlator','pcnt_bits')
+        cfg_set_int('correlator','mcnt_bits')
+
+        # f-engine
+        cfg_set_int('correlator','adc_levels_acc_len')
+        cfg_set_int('correlator','adc_bits')                    # READ FROM F
+        cfg_set_int('correlator','n_ants')
+        cfg_set_int('correlator','adc_clk')                     # READ FROM F
+        cfg_set_int('correlator','n_ants_per_xaui')
+        cfg_set_float('correlator','ddc_mix_freq')
+        cfg_set_int('correlator','ddc_decimation')
+        cfg_set_int('correlator','feng_bits')                   # READ FROM F
+        cfg_set_int('correlator','feng_fix_pnt_pos')            # READ FROM F
+        cfg_set_string('correlator','feng_out_type')            # READ FROM F
+        cfg_set_int('correlator','n_xaui_ports_per_ffpga')
+        cfg_set_int('correlator','feng_sync_period')            # READ FROM F
+        cfg_set_int('correlator','feng_sync_delay')             # READ FROM F
+        
+        # x-engine
+        cfg_set_int('correlator','x_per_fpga')                  # READ FROM X
+        cfg_set_int('correlator','acc_len')                     # READ FROM X
+        cfg_set_int('correlator','xeng_acc_len')                # READ FROM X
+        cfg_set_int('correlator','xeng_clk')                    # READ FROM X
+        cfg_set_string('correlator','xeng_format')              # READ FROM X
+        cfg_set_int('correlator','n_xaui_ports_per_xfpga')
+        
+        #cfg_set_int('correlator','sync_time') #moved to /var/run/...
+        
+        # 10gbe ports
+        if self.config['feng_out_type'] == '10gbe':
+            cfg_set_int('correlator','10gbe_port')
+            cfg_set_int('correlator','10gbe_pkt_len')
+            cfg_set_string('correlator','10gbe_ip')
+            self.config['10gbe_ip_int'] = struct.unpack('>I', socket.inet_aton(self.config['10gbe_ip']))[0]
+            logger.info('10GbE IP address is %s, %i' % (self.config['10gbe_ip'], self.config['10gbe_ip_int']))
+        
         print self.config
     
     def create_hosts(self):
