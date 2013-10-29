@@ -15,13 +15,36 @@ class Memory(Bitfield):
     def __init__(self, name, address, width, length, direction, blockpath):
         '''Constructor.
         '''
+        
         self.name = name
         self.address = address
+        if not isinstance(direction, int):
+            raise RuntimeError 
         self.direction = direction;
         self.length = length;
         self.blockpath = blockpath;
+        self.options = {}
         Bitfield.__init__(self, name=name, width=width, fields={})
         logger.debug('New CASPER memory block - %s' % self.name)
+
+    def update_info(self, info):
+        '''Set this memory's extra information.
+        '''
+        log_runtime_error(logger, 'Child must implement this.')
+
+    def update_memory(self, memory):
+        '''Add information from a dictionary describing memory fields.
+        '''
+        self.direction = memory[memory.keys()[0]]['direction']
+        if not isinstance(self.direction, int):
+            self.direction = Types.direction_from_string(self.direction)
+        self.address = memory[memory.keys()[0]]['address']
+        self.length = int(memory[memory.keys()[0]]['length'])
+        self.width = int(memory[memory.keys()[0]]['owner_width'])
+        self.stride_bytes = self.width / 8;
+        for field in memory.values():
+            f = Field(field['name'], field['type'], int(field['width']), int(field['bin_pt']), int(field['offset']), None)
+            self.add_field(f)
 
     def _parse_xml(self, xml_node):
         '''Parse the XML node describing a register. Versions?
@@ -30,7 +53,7 @@ class Memory(Bitfield):
             log_runtime_error(logger, 'XML design_info file %s not in correct format?' % xml_node)
         self.name = xml_node.attrib['name']
         self.width = int(xml_node.attrib['width'])
-        self.direction = Types.TO_PROCESSOR if xml_node.attrib['name'] == 'To Processor' else Types.FROM_PROCESSOR
+        self.direction = Types.direction_from_string(xml_node.attrib['direction'])
         self.length = int(xml_node.attrib['length'])
         self.blockpath = xml_node.attrib['path']
         self.fields = {}
@@ -39,43 +62,8 @@ class Memory(Bitfield):
                 d = fnode.attrib
                 self.add_field(Field(name=d['name'], numtype=d['type'], width=int(d['width']), binary_pt=int(d['binpt']), lsb_offset=int(d['lsb_offset']), value=None))
 
-    def _update_from_new_coreinfo_xml(self, xml_root_node):
-        if not isinstance(xml_root_node, ET.Element):
-            print type(xml_root_node)
-            log_runtime_error(logger, 'Supplied xml node is not an xml node Element')
-        for node in list(xml_root_node):
-            if node.tag == 'design_info':
-                for infonode in list(node):
-                    if infonode.attrib['owner'].replace('/', '_') == self.name:
-                        try:
-                            val = int(infonode.attrib['value']);
-                        except ValueError:
-                            if infonode.attrib['value'] == 'on':
-                                val = True
-                            elif infonode.attrib['value'] == 'off':
-                                val = False
-                            else:
-                                val = infonode.attrib['value'];
-                        self.options[infonode.attrib['param']] = val;
-            elif node.tag == 'memory':
-                memnodes = []
-                for memnode in list(node):
-                    if memnode.attrib['owner'].replace('/', '_') == self.name:
-                        memnodes.append(memnode)
-                if len(memnodes) <= 0:
-                    raise RuntimeError('%s %s must have at least one memory node?' % (type(self), self.name))
-                self.direction = memnodes[0].attrib['direction']
-                self.address = memnodes[0].attrib['address']
-                self.length = int(memnodes[0].attrib['length'])
-                self.width = int(memnodes[0].attrib['owner_width'])
-                self.stride_bytes = self.width / 8;
-                for memnode in memnodes:
-                    if memnode.attrib['owner'].replace('/', '_') == self.name:
-                        f = Field(memnode.attrib['name'], memnode.attrib['type'], int(memnode.attrib['width']), int(memnode.attrib['bin_pt']), int(memnode.attrib['offset']), None)
-                        self.add_field(f)
-
     def __str__(self):
-        rv = '%s, %i * %i, %s, fields[%s]' % (self.name, self.width, self.length, 'TO_PROCESSOR' if self.direction == Types.TO_PROCESSOR else 'FROM_PROCESSOR', self.fields)
+        rv = '%s, %i * %i, %s, fields[%s]' % (self.name, self.width, self.length, Types.direction_string(self.direction), self.fields)
         return rv
 
     def read(self, **kwargs):

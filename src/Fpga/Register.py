@@ -1,28 +1,27 @@
 import logging
 logger = logging.getLogger(__name__)
 
+import construct
+
 import struct
 
-import Memory, Types
+from Fpga import Memory
+import Types
 from Misc import log_runtime_error
 
 class Register(Memory.Memory):
+    '''A CASPER register on an FPGA. 
     '''
-    A CASPER register on an FPGA. 
-    '''
-    def __init__(self, parent, name=None, address=-1, width=32, direction=Types.TO_PROCESSOR, xml_node=None):
+    def __init__(self, parent, name=None, address=-1, width=32, direction=Types.TO_PROCESSOR, info=None):
         '''Constructor.
         '''
-        if (xml_node == None) and (name == None):
-            log_runtime_error(logger, 'Cannot make an entirely empty Register.')
-        self.parent = parent
         Memory.Memory.__init__(self, name=name, address=address, width=width, length=1, direction=direction, blockpath='')
-        if xml_node != None:
-            self._parse_xml(xml_node)
-        logger.info('New register - %s' % self.__str__())
+        self.parent = parent
+        self.update_info(info)
+        logger.info('New register - %s' % self)
 
     def __str__(self):
-        rv = '%s, %i, %s, fields[%s]' % (self.name, self.width, 'TO_PROCESSOR' if self.direction == Types.TO_PROCESSOR else 'FROM_PROCESSOR', self.get_fields_string())
+        rv = '%s, %i, %s, fields[%s]' % (self.name, self.width, Types.direction_string(self.direction), self.get_fields_string())
         return rv
     
 #     def __repr__(self):
@@ -74,9 +73,20 @@ class Register(Memory.Memory):
         if len(pulse) > 0:
             self.write(**pulse)
 
-    def _parse_xml(self, xml_node):
-        raise NotImplementedError
-    
+    def update_info(self, info):
+        '''Set this Register's extra information.
+        '''
+        self.options = info
+        if self.options.has_key('name'):
+            self.add_field(Memory.Field('', 'Unsigned', 32, 0, 0, None))
+        else:
+            numios = int(info['numios'])
+            offset = 0
+            for ctr in range(numios,0,-1):
+                f = Memory.Field(info['name%i'%ctr], info['arith_type%i'%ctr], int(info['bitwidth%i'%ctr]), int(info['bin_pt%i'%ctr]), offset, None)
+                offset = offset + int(info['bitwidth%i'%ctr])
+                self.add_field(f)
+
 #     def _parse_xml(self, xml_node):
 #         '''Parse the XML node describing a register. Versions?
 #         '''

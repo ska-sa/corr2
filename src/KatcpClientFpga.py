@@ -5,7 +5,8 @@ Created on Feb 28, 2013
 '''
 
 import logging, katcp, struct
-import Host, AsyncRequester, Fpga
+from Fpga import Register, Sbram, Snap, KatAdc, TenGbe, Memory
+import Host, AsyncRequester
 from Misc import log_runtime_error
 
 logger = logging.getLogger(__name__)
@@ -15,34 +16,46 @@ logger = logging.getLogger(__name__)
 
 class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackClient):
     '''
-    A Roach(2) board - there is a KATCP client running on the PowerPC on the board.
+    A Roach(2) board - there is a KATCP server running on the PowerPC on the board.
     '''
-    def __init__(self, host, ip, katcp_port=7147, timeout=5.0, connect=True, design_xml=None):
+    def __init__(self, host, ip, katcp_port=7147, timeout=5.0, connect=True):
         '''Constructor.
         '''
         Host.Host.__init__(self, host, ip, katcp_port)
         AsyncRequester.AsyncRequester.__init__(self, self.callback_request, max_requests=100)
         katcp.CallbackClient.__init__(self, host, katcp_port, tb_limit=20, timeout=timeout, logger=logger, auto_reconnect=True)
-        
-        # registers and snap blocks
-        self.registers = {}
-        self.snapshots = {}
-        self.memory = {}
-        
-        # ten gbe ports
-        self.tengbes = {}
-        
-        # process the auto-generated XML configuration
-        #self.process_xml_config(design_xml)
-        self.process_new_core_info(design_xml)
-        self.design_xml = design_xml
+
+        # device lists
+        self.devices = {}
+        self.devices_by_tag = []
+        self.dev_registers = []
+        self.dev_snapshots = []
+        self.dev_sbrams = []
+        self.dev_tengbes = []
+        self.dev_adcs = []
+
+        self.system_info = {}
+
+        self.system_name = None
         self.running_bof = ''
-        
+        self.bofname = ''
+
         # start katcp daemon
         self._timeout = timeout
         if connect: self.start(daemon = True)
 
         logger.info('%s:%s created%s.' % (host, katcp_port, ' & daemon started' if connect else ''))
+
+    def __getattribute__(self, name):
+        if name == 'registers':
+            return {self.devices[r].name:self.devices[r] for r in self.dev_registers}
+        elif name == 'snapshots':
+            return {self.devices[r].name:self.devices[r] for r in self.dev_snapshots}
+        elif name == 'sbrams':
+            return {self.devices[r].name:self.devices[r] for r in self.dev_sbrams}
+        elif name == 'tengbes':
+            return {self.devices[r].name:self.devices[r] for r in self.dev_tengbes}
+        return object.__getattribute__(self, name)
 
     def connect(self):
         logger.info('%s: daemon started' % self.host)
@@ -53,8 +66,10 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         self.stop()
 
     def __str__(self):
-        return 'KatcpFpga(%s)@%s:%i engines(%i) regs(%i) snaps(%i) - %s' % (self.host, self.ip, self.port, len(self.engines), len(self.registers),
-                                                                       len(self.snapshots), 'connected' if self.is_connected() else 'disconnected')
+        return 'KatcpFpga(%s)@%s:%i engines(%i) regs(%i) snaps(%i) sbrams(%i) adcs(%i) tengbes(%i) - %s' % (self.host, self.ip, self.katcp_port,
+                                                                                                            len(self.engines), len(self.dev_registers), len(self.dev_snapshots),
+                                                                                                            len(self.dev_sbrams), len(self.dev_adcs), len(self.dev_tengbes), 
+                                                                                                            'connected' if self.is_connected() else 'disconnected')
 
     def _request(self, name, request_timeout = -1, *args):
         """Make a blocking request and check the result.
@@ -102,25 +117,27 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            """
         raise NotImplementedError("LISTCMD not implemented by client.")
 
-    def progdev(self, boffile):
+    def deprogdev(self):
+        reply, informs = self._request("progdev", self._timeout, '')
+        if reply.arguments[0] == 'ok':
+            self.running_bof = ''
+        logger.info("Deprogramming FPGA %s... %s." % (self.host, reply.arguments[0]))
+
+    def progdev(self, boffile=None):
         """Program the FPGA with the specified boffile.
 
            @param self  This object.
            @param boffile  String: name of the BOF file.
            @return  String: device status.
            """
-        if boffile=='' or boffile==None:
-            reply, informs = self._request("progdev", self._timeout, '')
-            if reply.arguments[0] == 'ok':
-                self.running_bof = ''
-            logger.info("Deprogramming FPGA %s... %s." % (self.host, reply.arguments[0]))
-        else:
-            if boffile != self.bofname:
-                logger.warning('Programming BOF file %s, config BOF file %s' % (boffile, self.bofname))
-            reply, informs = self._request("progdev", self._timeout, boffile)
-            if reply.arguments[0] == 'ok':
-                self.running_bof = boffile
-            logger.info("Programming FPGA %s with %s... %s."%(self.host, boffile, reply.arguments[0]))
+        if boffile == None:
+            boffile = self.bofname
+        elif boffile != self.bofname:
+            logger.warning('Programming BOF file %s, config BOF file %s' % (boffile, self.bofname))
+        reply, informs = self._request("progdev", self._timeout, boffile)
+        if reply.arguments[0] == 'ok':
+            self.running_bof = boffile
+        logger.info("Programming FPGA %s with %s... %s." % (self.host, boffile, reply.arguments[0]))
         return reply.arguments[0]
     
     def status(self):
@@ -469,116 +486,167 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
     def _snapshot_get(self, dev_name, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False):
         raise NotImplementedError
 
-    def process_xml_config(self, design_info):
-        # does the file exists
-        if not isinstance(design_info, str): return
-        try:
-            open(design_info)
-        except:
-            log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
-        import xml.etree.ElementTree as ElementTree
-        try:
-            doc = ElementTree.parse(design_info)
-        except:
-            log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
-        rootnode = doc.getroot()
-        self.build_date = rootnode.attrib['datestr']
-        self.sysname = rootnode.attrib['system']
-        self.version = rootnode.attrib['version']
-        from os import path
-        self.bofname = path.basename(design_info).replace('.xml','.bof')
-        def process_object(doc_node, objclass, storage):
-            for node in list(doc_node):
-                obj = objclass(parent=self, xml_node=node)
-                storage[obj.name] = obj
-        # iterate through the tags in the root node
-        design_info_node = None;
-        for node in list(rootnode):
-            if node.tag == 'memory':
-                process_object(node, Fpga.Memory, self.memory)
-            elif node.tag == 'device_class':
-                if node.attrib['class'] == 'register':
-                    process_object(node, Fpga.Register, self.registers)
-                elif node.attrib['class'] == 'snapshot':
-                    process_object(node, Fpga.Snap, self.snapshots)
+    def _read_system_info(self):
+        '''Katcp request for extra system information embedded in the boffile.
+        ''' 
+        return {}
+
+    def _read_system_info_FILE(self, filename):
+        '''Katcp request for extra system information embedded in the boffile.
+        '''
+        if filename != None:
+            fptr = open(filename, 'r')
+            lines = fptr.readlines()
+            fptr.close()
+        info_items = {}
+#         tags = []
+        for l in lines:
+            name, tag, param, value = l.replace('\n','').split('\t')
+            name = name.replace('/', '_')
+            if not info_items.has_key(name): info_items[name] = {}
+            try: info_items[name]['tag']
+            except KeyError: info_items[name]['tag'] = tag
+            if info_items[name]['tag'] != tag:
+                raise RuntimeError('Different tags - %s,%s - for the same item %s' % (info_items[name]['tag'], tag, name))
+            info_items[name][param] = value
+#             tags.append(tag)
+#         tags = list(set(tags))
+        return info_items
+
+    def get_system_information(self, filename):
+        '''Get and process the extra system information from the bof file.
+        '''
+        device_info = self._read_system_info_FILE(filename)
+        self.system_info = device_info['']
+        self.__create_devices(device_info)
+        self.__categorise_devices()
+        if self.is_connected():
+            listdev = self.listdev()
+            for k,d in self.devices.items():
+                if isinstance(d, Memory.Memory):
+                    try: listdev.index(k)
+                    except:
+                        print 'COULD NOT MATCH %s' % k
+#                         log_runtime_error(logger, 'Memory device %s is not found in listdev?' % k)
+        for s in self.dev_snapshots:
+            self.devices[s].link_control_registers(self.registers)
+
+    def __create_devices(self, devices):
+        '''Set up devices on this FPGA from a list of design information, from XML or from KATCP.
+        '''
+        self.devices_by_tag = {}
+        for dev_name, dev in devices.items():
+            if dev_name != '':
+                if self.devices.has_key(dev_name):
+                    log_runtime_error(logger, 'Already have device %s, trying to add another with the same name?' % dev_name)
+                if not self.devices_by_tag.has_key(dev['tag']):
+                    self.devices_by_tag[dev['tag']] = []
+                self.devices_by_tag[dev['tag']].append(dev_name)
+                obj_class = None
+                if dev['tag'] == 'xps:sw_reg':
+                    obj_class = Register.Register
+                elif dev['tag'] == 'casper:snapshot':
+                    obj_class = Snap.Snap
+                elif dev['tag'] == 'xps:bram':
+                    obj_class = Sbram.Sbram
+                elif dev['tag'] == 'xps:tengbe_v2':
+                    obj_class = TenGbe.TenGbe
+                elif dev['tag'] == 'xps:katadc':
+                    obj_class = KatAdc.KatAdc
                 else:
-                    log_runtime_error(logger, 'Unknown node class %s in XML?' % node['class'])
-            elif node.tag == 'design_info':
-                design_info_node = node;
+                    logger.info('Unhandled device %s of type %s' % (dev_name, dev['tag']))
+                if obj_class != None:
+                    # does this have a corresponding memory section?
+                    o = obj_class(parent=self, name=dev_name, info=dev)
+                    self.devices[o.name] = o
+
+    def __categorise_devices(self):
+        self.dev_registers = []
+        self.dev_snapshots = []
+        self.dev_sbrams = []
+        self.dev_tengbes = []
+        self.dev_adcs = []
+        for name, device in self.devices.items():
+            if isinstance(device, Register.Register):
+                self.dev_registers.append(name)
+            elif isinstance(device, Snap.Snap):
+                self.dev_snapshots.append(name)
+            elif isinstance(device, Sbram.Sbram):
+                self.dev_sbrams.append(name)
+            elif isinstance(device, TenGbe.TenGbe):
+                self.dev_tengbes.append(name)
+            elif isinstance(device, KatAdc.KatAdc):
+                self.dev_adcs.append(name)
             else:
-                log_runtime_error(logger, 'Unknown XML tag in design file?')
-        if (design_info_node == None) and (len(self.snapshots) > 0):
-            log_runtime_error(logger, 'Snapshots found, but not design info to complete them?')
-        # put the extra info into a dictionary
-        self.design_info = {}
-        for n in list(design_info_node):
-            self.design_info[n.attrib['name']] = n.attrib['info']
-        # reconcile snap info blocks with their snap blocks
-        for s in self.snapshots.values():
-            print s.name, s.blockpath
-            info_dict = {key.replace(s.blockpath + '/', ''):value for key,value in self.design_info.iteritems() if key.startswith(s.blockpath + '/')};
-            try:
-                extra_reg = self.registers[s.name + '_val']
-            except KeyError:
-                extra_reg = None
-            s.add_snap_info(info_dict, extra_reg);
+                log_runtime_error(logger, 'Unknown device %s of type %s' % (name, type(device))) 
 
-    def process_new_core_info(self, design_info):
-        # does the file exists
-        if not isinstance(design_info, str): return
-        try:
-            open(design_info)
-        except:
-            log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
-        import xml.etree.ElementTree as ElementTree
-        try:
-            doc = ElementTree.parse(design_info)
-        except:
-            log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
-        rootnode = doc.getroot()
-        self.build_date = rootnode.attrib['datestr']
-        self.sysname = rootnode.attrib['system']
-        self.version = rootnode.attrib['version']
-        from os import path
-        self.bofname = path.basename(design_info).replace('.xml','.bof')
-        # get registers, snapblocks, brams, etc from the XML file
-        register_paths = []
-        snapshot_paths = []
-        sbram_names = []
-        info_nodes = []
-        for node in list(rootnode):
-            if node.tag == 'design_info':
-                for infonode in list(node):
-                    if infonode.attrib['owner'] == "":
-                        if infonode.attrib['param'] == "registers":
-                            register_paths = infonode.attrib['value'].split(',')
-                        if infonode.attrib['param'] == "snapshots":
-                            snapshot_paths = infonode.attrib['value'].split(',')
-                    elif infonode.attrib['owner'] == self.sysname:
-                        info_nodes.append(infonode)
-        self.registers = {}
-        for reg_path in register_paths:
-            reg_name = reg_path.replace('/','_')
-            register = Fpga.Register(parent=self, name=reg_name)
-            register._update_from_new_coreinfo_xml(xml_root_node = rootnode)
-            self.registers[register.name] = register
-        self.snapshots = {}
-        for snap_path in snapshot_paths:
-            snap_name = snap_path.replace('/','_')
-            snap = Fpga.Snap(parent=self, name=snap_name)
-            snap._update_from_new_coreinfo_xml(xml_root_node = rootnode)
-            snap._update_control_registers(self.registers)
-            self.snapshots[snap.name] = snap
-        for b in sbram_names:
-            bram = Fpga.Sbram(parent = self, name=b)
-            bram._update_from_new_coreinfo_xml(xml_root_node = rootnode)
-        self.design_info = {}
-        for n in info_nodes:
-            self.design_info[n.attrib['param']] = n.attrib['value']
+    def get_static_info(self, param):
+        '''Get an info item from this FPGA. One that was stored in the coreinfo.tab and accessed via KATCP on startup.
+        '''
+        if not self.design_info.has_key(param):
+            log_runtime_error(logger, 'Asking FPGA %s for design_info %s, which doesn\'t exist.' % (self.host, param))
+        return self.design_info[param]
 
-    def probe_running_design(self):
-        # Probe the running bof file for info on ADCs, 10Gbes, etc
-        raise NotImplementedError
+    def set_bof(self, bofname):
+        '''Set the name of the bof file that will be used on this FPGA host.
+        '''
+        self.bofname = bofname
+
+#     def process_xml_config(self, design_info):
+#         '''Read design information from an XML file generated during casper_xps.
+#         ''' 
+#         # does the file exists
+#         if not isinstance(design_info, str): return
+#         try:
+#             open(design_info)
+#         except:
+#             log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
+#         import xml.etree.ElementTree as ElementTree
+#         try:
+#             doc = ElementTree.parse(design_info)
+#         except:
+#             log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
+#         rootnode = doc.getroot()
+#         self.build_date = rootnode.attrib['datestr']
+#         self.system_name = rootnode.attrib['system']
+#         self.version = rootnode.attrib['version']
+#         from os import path
+#         self.bofname = path.basename(design_info).replace('.xml','.bof')
+#         def process_object(doc_node, objclass, storage):
+#             for node in list(doc_node):
+#                 obj = objclass(parent=self, xml_node=node)
+#                 storage[obj.name] = obj
+#         # iterate through the tags in the root node
+#         design_info_node = None;
+#         for node in list(rootnode):
+#             if node.tag == 'memory':
+#                 process_object(node, Memory.Memory, self.memory)
+#             elif node.tag == 'device_class':
+#                 if node.attrib['class'] == 'register':
+#                     process_object(node, Register.Register, self.registers)
+#                 elif node.attrib['class'] == 'snapshot':
+#                     process_object(node, Snap.Snap, self.dev_snapshots)
+#                 else:
+#                     log_runtime_error(logger, 'Unknown node class %s in XML?' % node['class'])
+#             elif node.tag == 'design_info':
+#                 design_info_node = node;
+#             else:
+#                 log_runtime_error(logger, 'Unknown XML tag in design file?')
+#         if (design_info_node == None) and (len(self.dev_snapshots) > 0):
+#             log_runtime_error(logger, 'Snapshots found, but not design info to complete them?')
+#         # put the extra info into a dictionary
+#         self.design_info = {}
+#         for n in list(design_info_node):
+#             self.design_info[n.attrib['name']] = n.attrib['info']
+#         # reconcile snap info blocks with their snap blocks
+#         for s in self.dev_snapshots.values():
+#             print s.name, s.blockpath
+#             info_dict = {key.replace(s.blockpath + '/', ''):value for key,value in self.design_info.iteritems() if key.startswith(s.blockpath + '/')};
+#             try:
+#                 extra_reg = self.registers[s.name + '_val']
+#             except KeyError:
+#                 extra_reg = None
+#             s.add_snap_info(info_dict, extra_reg)
 
 #     def process_new_core_info(self, design_info):
 #         # does the file exists
@@ -594,7 +662,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #             log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
 #         rootnode = doc.getroot()
 #         self.build_date = rootnode.attrib['datestr']
-#         self.sysname = rootnode.attrib['system']
+#         self.system_name = rootnode.attrib['system']
 #         self.version = rootnode.attrib['version']
 #         from os import path
 #         self.bofname = path.basename(design_info).replace('.xml','.bof')
@@ -647,5 +715,95 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #             except KeyError:
 #                 extra_reg = None
 #             s.add_snap_info(info_dict, extra_reg);
+
+#     def process_new_core_info_xml(self, design_info):
+#         '''Read design info from a XML file.
+#         This is be superceded by read_new_core_info, which will get it from a KATCP request.
+#         So this is only for development.
+#         @param design_info: The filename for the design information XML file, as generated by the casper_xps process.
+#         '''
+#         if not isinstance(design_info, str): return
+#         try:
+#             open(design_info)
+#         except:
+#             log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
+#         
+#         # set the bofname
+#         from os import path
+#         self.bofname = path.basename(design_info).replace('_info.xml','.bof')
+#         
+#         # open the XML file
+#         import xml.etree.ElementTree as ElementTree
+#         try:
+#             doc = ElementTree.parse(design_info)
+#         except:
+#             log_runtime_error(logger, 'design_info file %s does not seem to be valid XML?' % design_info)
+#         rootnode = doc.getroot()
+#         self.build_date = rootnode.attrib['datestr']
+#         self.system_name = rootnode.attrib['system']
+#         self.version = rootnode.attrib['version']
+#         
+#         # get the info node
+#         infonode = None
+#         for node in list(rootnode):
+#             if node.tag == 'design_info':
+#                 infonode = node
+#                 break
+#         memorynode = None
+#         for node in list(rootnode):
+#             if node.tag == 'memory':
+#                 memorynode = node
+#                 break
+# 
+#         # get simulink block info from the XML file
+#         tags = {}
+#         def __get_info_param(param):
+#             for inode in list(infonode):
+#                 if (inode.attrib['owner'] == "") and (inode.attrib['param'] == param):
+#                     return inode
+#             raise RuntimeError('No such parameter in info: %s' % param)
+#         
+#         def __build_device_by_owner(owner):
+#             d = {}
+#             for inode in list(infonode):
+#                 if inode.attrib['owner'] == owner:
+#                     d[inode.attrib['param']] = inode.attrib['value'] 
+#             return d
+#         tags_node = __get_info_param('tags')
+#         temptags = tags_node.attrib['value'].split(',')
+#         for t in temptags:
+#             tags[t] = {}
+#         if len(tags.keys()) == 0:
+#             log_runtime_error(logger, 'Could not find any tags in file info?')
+#         # make lists of tags
+#         for tag in tags.keys():
+#             tag_node = __get_info_param(tag)
+#             if tag_node.attrib['value'] == '':
+#                 tags[tag] = []
+#             else:
+#                 tags[tag] = tag_node.attrib['value'].split(',')
+# 
+#         # build the objects in the design from the info nodes, indexed by tag, then by name
+#         devices = {}
+#         for tag, item_list in tags.items():
+#             for item in item_list:
+#                 obj = __build_device_by_owner(item)
+#                 devices[item] = obj
+#                 devices[item]['tag'] = tag
+#         
+#         # now make a dictionary from the memory nodes, index by name
+#         memory_info = {}
+#         for mem in memorynode:
+#             mem_owner = mem.attrib['owner']
+#             if not memory_info.has_key(mem_owner):
+#                 memory_info[mem_owner] = {}
+#             memory_info[mem_owner][mem.attrib['name']] = mem.attrib
+#             try: devices[mem_owner]
+#             except Exception: raise
+#         
+#         # create devices found on this FPGA
+#         self.__create_devices(devices, memory_info)
+#         # now categorise the devices
+#         self.__categorise_devices()
 
 # end

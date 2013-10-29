@@ -1,33 +1,43 @@
 import logging
 logger = logging.getLogger(__name__)
 
-import numpy
-
-import Memory, Types, Register
+from Fpga import Memory, Register
+import Types
 from Misc import log_runtime_error
 
 class Snap(Memory.Memory):
-    '''Snap blocks are triggered blocks of RAM on FPGAs.
+    '''Snap blocks are triggered/controlled blocks of RAM on FPGAs.
     '''
-    def __init__(self, parent, name=None, address=-1, length=-1, width=-1, circular=False, start_offset=False, use_dsp48s=False,
-                 storage='bram', dram_dimm=0, dram_clock=200, fields={}, extra_value=None, xml_node=None):
-        if (xml_node == None) and (name == None):
-            log_runtime_error(logger, 'Cannot make an entirely empty Snap.')
-        self.parent = parent
-        self.options = {'circular_capture': circular, 'start_offset': start_offset, 'extra_value': (False if extra_value == None else True),
-                        'use_dsp48': use_dsp48s, 'storage': storage, 'dram_dimm': dram_dimm, 'dram_clock': dram_clock,
-                        'length': 0 if length <= 0 else numpy.log2(length), 'data_width': width}
+    def __init__(self, parent, name=None, address=-1, width=32, info=None):
         Memory.Memory.__init__(self, name=name, address=address, width=width, length=1, direction=Types.FROM_PROCESSOR, blockpath='')
-        if xml_node != None:
-            self._parse_xml(xml_node)
+        self.parent = parent
+        self.update_info(info)
         self.control_registers = {}
         self.control_registers['control'] = {'register': None, 'name': self.name + '_ctrl'}
         self.control_registers['status'] = {'register': None, 'name': self.name + '_status'}
         self.control_registers['trig_offset'] = {'register': None, 'name': self.name + '_trig_offset'}
         self.control_registers['extra_value'] = {'register': None, 'name': self.name + '_val'}
         self.control_registers['tr_en_cnt'] = {'register': None, 'name': self.name + '_tr_en_cnt'}
-        self._update_extra_value_register(extra_register=extra_value)
-        logger.info('New snapblock - %s' % self)
+        logger.info('New Snap - %s' % self)
+
+    def update_info(self, info):
+        '''Set this Snap's extra information.
+        '''
+        self.options = info
+        self.width = int(info['data_width'])
+        self.length = pow(2,int(info['nsamples']))
+        self.add_field(Memory.Field('data', 'Unsigned', self.width, 0, 0, None))
+
+    def link_control_registers(self, available_registers):
+        '''Link available registers to this snapshot block's control registers.
+        '''
+        for cr in self.control_registers.values():
+            for k,v in available_registers.items():
+                if k == cr['name']:
+                    cr['register'] = v
+                    break
+        if (self.control_registers['control']['register'] == None) or (self.control_registers['status']['register'] == None):
+            log_runtime_error(logger, 'Critical control registers for snap %s missing.' % self.name)
 
     def _arm(self, man_trig=False, man_valid=False, offset=-1, circular_capture=False):
         if offset >= 0:
@@ -82,13 +92,7 @@ class Snap(Memory.Memory):
         return bram_dmp
 
     def __str__(self):
-        return '%s: storage(%s) dram_dimm(%i) dram_clock(%i) length(%i) width(%i) support[circular(%s) start_offset(%s) extra_value(%s) use_dsp48s(%s)] fields[%s] extra_fields[%s]' % (
-                self.name, self.options['storage'],
-                self.options['dram_dimm'], self.options['dram_clock'],
-                self.length, self.width,
-                str(self.options['circular_capture']), str(self.options['start_offset']),
-                str(self.options['extra_value']), str(self.options['use_dsp48']),
-                self.get_fields_string(), 'None' if self.options['extra_value'] == None else self.control_registers['extra_value']['name'])
+        return '%s: %s' % (self.name, self.options)
 
 #     def __repr__(self):
 #         return '[' + self.__str__() + ']'
@@ -101,7 +105,7 @@ class Snap(Memory.Memory):
                 log_runtime_error(logger, 'extra_value register %s does not use naming etiquette - should be %s' % (extra_register.name, self.control_registers['extra_value']['name']))
             self.control_registers['extra_value']['register'] = extra_register
         else:
-            logging.info('Updating snapshot %s extra_value register with None - are you sure that is what you want?' % self.name)
+            logging.debug('Updating snapshot %s extra_value register with None - are you sure that is what you want?' % self.name)
 
     def _parse_xml(self, xml_node):
         raise NotImplementedError

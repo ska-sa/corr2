@@ -30,14 +30,20 @@ def ip2str(ip):
 class TenGbe(object):
     '''To do with the CASPER ten GBE yellow block implemented on FPGAs.
     '''
-    def __init__(self, parent, dev_name):
+    def __init__(self, parent, name, **kwargs):
         '''
         @param dev_name string: Name of the core.
         '''
         self.parent = parent
-        self.dev_name = dev_name
+        self.name = name
         self._device = None
         self.core_details = None
+        self.options = {}
+
+    def update_info(self, info):
+        '''Set this memory's extra information.
+        '''
+        self.options = info
 
     def tap_start(self, tap_dev, device, mac, ip, port):
         """Program a 10GbE device and start the TAP driver.

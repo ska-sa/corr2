@@ -16,7 +16,7 @@ class Instrument(object):
     Instruments are made of Nodes.
     These Nodes host processing Engines that do work.
     '''
-    def __init__(self, name, description, config_file):
+    def __init__(self, name, description, config_file = None):
         '''Constructor for the base Instrument class.
         @param name: The name by which this instrument is identified. i.e. kat7_beamformer_test_4_ant_13_March_2013
         @param description: More info about this instrument, if needed.
