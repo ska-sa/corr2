@@ -1,15 +1,19 @@
+# pylint: disable-msg=C0103
+# pylint: disable-msg=C0301
+
 import logging
 logger = logging.getLogger(__name__)
 
 from Fpga import Memory, Register
+from Bitfield import Field
 import Types
 from Misc import log_runtime_error
 
 class Snap(Memory.Memory):
     '''Snap blocks are triggered/controlled blocks of RAM on FPGAs.
     '''
-    def __init__(self, parent, name=None, address=-1, width=32, info=None):
-        Memory.Memory.__init__(self, name=name, address=address, width=width, length=1, direction=Types.FROM_PROCESSOR, blockpath='')
+    def __init__(self, parent, name, info, address=-1):
+        Memory.Memory.__init__(self, name=name, address=address, width=int(info['data_width']), length=1, direction=Types.FROM_PROCESSOR, blockpath='')
         self.parent = parent
         self.update_info(info)
         self.control_registers = {}
@@ -25,16 +29,17 @@ class Snap(Memory.Memory):
         '''
         self.options = info
         self.width = int(info['data_width'])
-        self.length = pow(2,int(info['nsamples']))
-        self.add_field(Memory.Field('data', 'Unsigned', self.width, 0, 0, None))
+        self.length = pow(2, int(info['nsamples']))
+        self.add_field(Field(name='data', numtype='Unsigned', width=self.width, binary_pt=0, lsb_offset=0, value=None))
 
     def link_control_registers(self, available_registers):
         '''Link available registers to this snapshot block's control registers.
         '''
-        for cr in self.control_registers.values():
-            for k,v in available_registers.items():
-                if k == cr['name']:
-                    cr['register'] = v
+        for controlreg in self.control_registers.values():
+            for key, value in available_registers.items():
+                assert(isinstance(value, Register.Register))
+                if key == controlreg['name']:
+                    controlreg['register'] = value
                     break
         if (self.control_registers['control']['register'] == None) or (self.control_registers['status']['register'] == None):
             log_runtime_error(logger, 'Critical control registers for snap %s missing.' % self.name)
@@ -44,51 +49,47 @@ class Snap(Memory.Memory):
             self.control_registers['trig_offset']['register'].write_int(offset)
         self.control_registers['control']['register'].write_int((0 + (man_trig << 1) + (man_valid << 2) + (circular_capture << 3)))
         self.control_registers['control']['register'].write_int((1 + (man_trig << 1) + (man_valid << 2) + (circular_capture << 3)))
-    
-    def _read_raw(self, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False, arm=True):
+
+    #return {'data': processed, 'extra_value': extra_value}
+    def read_raw(self, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False, arm=True):
+        # TODO - The extra value?
         import time
         # trigger
-        if arm: self._arm(man_trig=man_trig, man_valid=man_valid, offset=offset, circular_capture=circular_capture)
+        if arm:
+            self._arm(man_trig=man_trig, man_valid=man_valid, offset=offset, circular_capture=circular_capture)
         # wait
         done = False
         start_time = time.time()
-        while not done and ((time.time() - start_time) < wait_period or (wait_period < 0)): 
+        while not done and ((time.time() - start_time) < wait_period or (wait_period < 0)):
             addr = self.control_registers['status']['register'].read_uint()
             done = not bool(addr & 0x80000000)
-    
         bram_dmp = {}
         bram_dmp['data'] = []
         bram_dmp['length'] = addr & 0x7fffffff
         bram_dmp['offset'] = 0
-
         status_val = self.control_registers['status']['register'].read_uint()
         now_status = bool(status_val & 0x80000000)
         now_addr = status_val & 0x7fffffff
         if (bram_dmp['length'] != now_addr) or (bram_dmp['length'] == 0) or (now_status == True):
-            # if address is still changing, then the snap block didn't finish capturing. we return empty.  
-            log_runtime_error(logger, "A snap block logic error occurred. It reported capture complete but the address is either still changing, or it returned 0 bytes captured after the allotted %2.2f seconds. Addr at stop time: %i. Now: Still running :%s, addr: %i." % 
+            # if address is still changing, then the snap block didn't finish capturing. we return empty.
+            log_runtime_error(logger, "A snap block logic error occurred. It reported capture complete but the address is either still changing, or it returned 0 bytes captured after the allotted %2.2f seconds. Addr at stop time: %i. Now: Still running :%s, addr: %i." %
                               (wait_period, bram_dmp['length'], 'yes' if now_status else 'no', now_addr))
             bram_dmp['length'] = 0
             bram_dmp['offset'] = 0
-
         if circular_capture:
             val = self.control_registers['tr_en_cnt']['register'].read_uint()
             bram_dmp['offset'] = val - bram_dmp['length']
-        else: 
+        else:
             bram_dmp['offset'] = 0
-
         if bram_dmp['length'] == 0:
             bram_dmp['data'] = []
         else:
             bram_dmp['data'] = self.parent.read(self.name + '_bram', bram_dmp['length'])
-    
         bram_dmp['offset'] += offset
-        
-        if (bram_dmp['offset'] < 0): 
+        if (bram_dmp['offset'] < 0):
             bram_dmp['offset'] = 0
-    
         if bram_dmp['length'] != self.length * (self.width / 8):
-            log_runtime_error(logger, '%s.read_uint() - expected %i bytes, got %i' % (self.name, self.length, bram_dmp['length'] / (self.width / 8)))    
+            log_runtime_error(logger, '%s.read_uint() - expected %i bytes, got %i' % (self.name, self.length, bram_dmp['length'] / (self.width / 8)))
         return bram_dmp
 
     def __str__(self):
@@ -97,32 +98,33 @@ class Snap(Memory.Memory):
 #     def __repr__(self):
 #         return '[' + self.__str__() + ']'
 
-    def _update_extra_value_register(self, extra_register):
-        if extra_register != None:
-            if not isinstance(extra_register, Register.Register):
-                log_runtime_error(logger, 'extra_value can only be a Register.Register.')
-            if extra_register.name != self.control_registers['extra_value']['name']:
-                log_runtime_error(logger, 'extra_value register %s does not use naming etiquette - should be %s' % (extra_register.name, self.control_registers['extra_value']['name']))
-            self.control_registers['extra_value']['register'] = extra_register
-        else:
-            logging.debug('Updating snapshot %s extra_value register with None - are you sure that is what you want?' % self.name)
-
-    def _parse_xml(self, xml_node):
-        raise NotImplementedError
-
-    def _update_control_registers(self, available_registers):
-        # This is based on snap and register names unfortunately.
-        # The proper XML description doesn't need this farkelry.
-        for reg in available_registers.iterkeys():
-            for ctrl_reg in self.control_registers.itervalues():
-                if reg == ctrl_reg['name']:
-                    ctrl_reg['register'] = available_registers[reg]
-                    break
-        if (self.control_registers['control']['register'] == None) or (self.control_registers['status']['register'] == None):
-            log_runtime_error(logger, 'Snapshot blocks need at least internal control and status registers.')
-        if self.options['extra_value'] and (self.control_registers['extra_value']['register'] == None):
-            log_runtime_error(logger, 'Extra value option specified for snapshot %s, but no matching register found.' % self.name)
-
+#==============================================================================
+#     def _update_extra_value_register(self, extra_register):
+#         if extra_register != None:
+#             if not isinstance(extra_register, Register.Register):
+#                 log_runtime_error(logger, 'extra_value can only be a Register.Register.')
+#             if extra_register.name != self.control_registers['extra_value']['name']:
+#                 log_runtime_error(logger, 'extra_value register %s does not use naming etiquette - should be %s' % (extra_register.name, self.control_registers['extra_value']['name']))
+#             self.control_registers['extra_value']['register'] = extra_register
+#         else:
+#             logging.debug('Updating snapshot %s extra_value register with None - are you sure that is what you want?' % self.name)
+#
+#     def _parse_xml(self, xml_node):
+#         raise NotImplementedError
+#
+#     def _update_control_registers(self, available_registers):
+#         # This is based on snap and register names unfortunately.
+#         # The proper XML description doesn't need this farkelry.
+#         for reg in available_registers.iterkeys():
+#             for ctrl_reg in self.control_registers.itervalues():
+#                 if reg == ctrl_reg['name']:
+#                     ctrl_reg['register'] = available_registers[reg]
+#                     break
+#         if (self.control_registers['control']['register'] == None) or (self.control_registers['status']['register'] == None):
+#             log_runtime_error(logger, 'Snapshot blocks need at least internal control and status registers.')
+#         if self.options['extra_value'] and (self.control_registers['extra_value']['register'] == None):
+#             log_runtime_error(logger, 'Extra value option specified for snapshot %s, but no matching register found.' % self.name)
+#==============================================================================
 
 #     def _parse_xml(self, xml_node):
 #         '''Parse the XML node describing a snapblock. Versions?
@@ -132,7 +134,7 @@ class Snap(Memory.Memory):
 #         self.name = xml_node.attrib['name']
 #         self.width = int(xml_node.attrib['data_width'])
 #         self.length = pow(2,int(xml_node.attrib['nsamples']))
-#         self.options['circular'] = True if xml_node.attrib['circap'] == 'on' else False 
+#         self.options['circular'] = True if xml_node.attrib['circap'] == 'on' else False
 #         self.options['start_offset'] = True if xml_node.attrib['offset'] == 'on' else False
 #         self.options['extra_value'] = True if xml_node.attrib['value'] == 'on' else False
 #         self.options['use_dsp48s'] = True if xml_node.attrib['use_dsp48'] == 'on' else False

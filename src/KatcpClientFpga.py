@@ -1,3 +1,5 @@
+# pylint: disable-msg=C0301
+
 '''
 Created on Feb 28, 2013
 
@@ -16,18 +18,17 @@ logger = logging.getLogger(__name__)
 
 class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackClient):
     '''
-    A Roach(2) board - there is a KATCP server running on the PowerPC on the board.
+    A FPGA host board that has a KATCP server running on it.
     '''
-    def __init__(self, host, ip, katcp_port=7147, timeout=5.0, connect=True):
-        '''Constructor.
+    def __init__(self, host, ip, katcp_port = 7147, timeout = 5.0, connect = True):
+        '''
         '''
         Host.Host.__init__(self, host, ip, katcp_port)
-        AsyncRequester.AsyncRequester.__init__(self, self.callback_request, max_requests=100)
-        katcp.CallbackClient.__init__(self, host, katcp_port, tb_limit=20, timeout=timeout, logger=logger, auto_reconnect=True)
+        AsyncRequester.AsyncRequester.__init__(self, self.callback_request, max_requests = 100)
+        katcp.CallbackClient.__init__(self, host, katcp_port, tb_limit = 20, timeout = timeout, logger = logger, auto_reconnect = True)
 
         # device lists
         self.devices = {}
-        self.devices_by_tag = []
         self.dev_registers = []
         self.dev_snapshots = []
         self.dev_sbrams = []
@@ -40,11 +41,20 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         self.running_bof = ''
         self.bofname = ''
 
+        self.unhandled_inform_handler = None
+
         # start katcp daemon
         self._timeout = timeout
-        if connect: self.start(daemon = True)
+        if connect:
+            self.start(daemon = True)
 
         logger.info('%s:%s created%s.' % (host, katcp_port, ' & daemon started' if connect else ''))
+
+    def unhandled_inform(self, msg):
+        '''What do we do with unhandled KATCP inform messages that this device receives?
+        '''
+        if self.unhandled_inform_handler != None:
+            self.unhandled_inform_handler(msg)
 
     def __getattribute__(self, name):
         if name == 'registers':
@@ -68,12 +78,12 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
     def __str__(self):
         return 'KatcpFpga(%s)@%s:%i engines(%i) regs(%i) snaps(%i) sbrams(%i) adcs(%i) tengbes(%i) - %s' % (self.host, self.ip, self.katcp_port,
                                                                                                             len(self.engines), len(self.dev_registers), len(self.dev_snapshots),
-                                                                                                            len(self.dev_sbrams), len(self.dev_adcs), len(self.dev_tengbes), 
+                                                                                                            len(self.dev_sbrams), len(self.dev_adcs), len(self.dev_tengbes),
                                                                                                             'connected' if self.is_connected() else 'disconnected')
 
     def _request(self, name, request_timeout = -1, *args):
         """Make a blocking request and check the result.
-        
+
            Raise an error if the reply indicates a request failure.
 
            @param self  This object.
@@ -82,7 +92,8 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            @param args  List of strings: request arguments.
            @return  Tuple: containing the reply and a list of inform messages.
            """
-        if request_timeout == -1: request_timeout = self._timeout
+        if request_timeout == -1:
+            request_timeout = self._timeout
         request = katcp.Message.request(name, *args)
         reply, informs = self.blocking_request(request, timeout = request_timeout)
         if reply.arguments[0] != katcp.Message.OK:
@@ -108,7 +119,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         return [i.arguments[0] for i in informs]
 
     def listcmd(self):
-        """Return a list of available commands. this should not be made  
+        """Return a list of available commands. this should not be made
            available to the user, but can be used internally to query if a
            command is supported.
 
@@ -117,13 +128,15 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            """
         raise NotImplementedError("LISTCMD not implemented by client.")
 
-    def deprogdev(self):
-        reply, informs = self._request("progdev", self._timeout, '')
+    def deprogram(self):
+        '''Deprogram the FPGA.
+        '''
+        reply, informs = self._request("progdev", self._timeout)
         if reply.arguments[0] == 'ok':
             self.running_bof = ''
         logger.info("Deprogramming FPGA %s... %s." % (self.host, reply.arguments[0]))
 
-    def progdev(self, boffile=None):
+    def program(self, boffile = None):
         """Program the FPGA with the specified boffile.
 
            @param self  This object.
@@ -139,7 +152,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
             self.running_bof = boffile
         logger.info("Programming FPGA %s with %s... %s." % (self.host, boffile, reply.arguments[0]))
         return reply.arguments[0]
-    
+
     def status(self):
         """Return the status of the FPGA.
            @param self  This object.
@@ -147,7 +160,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            """
         reply, informs = self._request("status", self._timeout)
         return reply.arguments[1]
-    
+
     def ping(self):
         """Tries to ping the FPGA.
            @param self  This object.
@@ -160,8 +173,8 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         else:
             logger.error('katcp connection failed')
             return False
-    
-    def read(self, device_name, size, offset=0):
+
+    def read(self, device_name, size, offset = 0):
         """Return size_bytes of binary data with carriage-return
            escape-sequenced.
 
@@ -173,10 +186,10 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            """
         reply, informs = self._request("read", self._timeout, device_name, str(offset), str(size))
         return reply.arguments[1]
-    
-    def bulkread(self, device_name, size, offset=0):
+
+    def bulkread(self, device_name, size, offset = 0):
         """Return size_bytes of binary data with carriage-return escape-sequenced.
-           Uses much fast bulkread katcp command which returns data in pages 
+           Uses much fast bulkread katcp command which returns data in pages
            using informs rather than one read reply, which has significant buffering
            overhead on the ROACH.
 
@@ -188,9 +201,9 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            """
         reply, informs = self._request("bulkread", self._timeout, device_name, str(offset), str(size))
         return ''.join([i.arguments[0] for i in informs])
-    
-    def upload_bof(self, bof_file, port, force_upload=False, timeout=30):
-        """Upload a BORPH file to the ROACH board for execution. 
+
+    def upload_bof(self, bof_file, port, force_upload = False, timeout = 30):
+        """Upload a BORPH file to the ROACH board for execution.
            @param self  This object.
            @param bof_file  The path and/or filename of the bof file to upload.
            @param port  The port to use for uploading.
@@ -213,12 +226,12 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         import time, threading, socket, Queue
         def makerequest(result_queue):
             try:
-                result = self._request('uploadbof', timeout, port, filename)
+                result = self._request('upload', timeout, port, filename)
                 if(result[0].arguments[0] == katcp.Message.OK):
                     result_queue.put('')
                 else:
                     result_queue.put('Request to client returned, but not Message.OK.')
-            except:
+            except Exception:
                 result_queue.put('Request to client failed.')
         def uploadbof(filename, result_queue):
             upload_socket = socket.socket()
@@ -228,21 +241,21 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
                 try:
                     upload_socket.connect((self.host, port))
                     connected = True
-                except:
+                except Exception:
                     time.sleep(0.1)
             if not connected:
                 result_queue.put('Could not connect to upload port.')
             try:
                 upload_socket.send(open(filename).read())
-            except:
+            except Exception:
                 result_queue.put('Could not send file to upload port.')
             result_queue.put('')
         # request thread
         request_queue = Queue.Queue()
-        request_thread = threading.Thread(target = makerequest, args = (request_queue,))
+        request_thread = threading.Thread(target = makerequest, args = (request_queue, ))
         # upload thread
         upload_queue = Queue.Queue()
-        upload_thread = threading.Thread(target = uploadbof, args = (bof_file, upload_queue,))
+        upload_thread = threading.Thread(target = uploadbof, args = (bof_file, upload_queue, ))
         # start the threads and join
         old_timeout = self._timeout
         self._timeout = timeout
@@ -254,11 +267,10 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         upload_result = upload_queue.get()
         if (request_result != '') or (upload_result != ''):
             raise Exception('Error: request(%s), upload(%s)' %(request_result, upload_result))
-        debugstr = "Bof file upload for '", bof_file,"': request (", request_result, "), uploaded (", upload_result,")" 
-        self._logger.info(debugstr)
+        #self._logger.info("Bof file upload for '", bof_file, "': request (", request_result, "), uploaded (", upload_result, ")")
         return
 
-    def read_dram(self, size, offset=0,verbose=False):
+    def read_dram(self, size, offset = 0, verbose = False):
         """Reads data from a ROACH's DRAM. Reads are done up to 1MB at a time.
            The 64MB indirect address register is automatically incremented as necessary.
            It returns a string, as per the normal 'read' function.
@@ -271,30 +283,33 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            @return  Binary string: data read.
         """
         #Modified 2010-01-07 to use bulkread.
-        data=[]
-        n_reads=0
+        data = []
+        n_reads = 0
         last_dram_page = -1
 
-        dram_indirect_page_size=(64*1024*1024)
-        #read_chunk_size=(1024*1024)
-        if verbose: print 'Reading a total of %8i bytes from offset %8i...' % (size, offset)
+        dram_indirect_page_size = (64*1024*1024)
+        #read_chunk_size = (1024*1024)
+        if verbose:
+            print 'Reading a total of %8i bytes from offset %8i...' % (size, offset)
 
         while n_reads < size:
-            dram_page=(offset+n_reads)/dram_indirect_page_size
+            dram_page = (offset+n_reads)/dram_indirect_page_size
             local_offset = (offset+n_reads)%(dram_indirect_page_size)
-            #local_reads = min(read_chunk_size,size-n_reads,dram_indirect_page_size-(offset%dram_indirect_page_size))
-            local_reads = min(size-n_reads,dram_indirect_page_size-(offset%dram_indirect_page_size))
-            if verbose: print 'Reading %8i bytes from indirect address %4i at local offset %8i...' % (local_reads, dram_page, local_offset),
-            if last_dram_page != dram_page: 
-                self.write_int('dram_controller',dram_page)
+            #local_reads = min(read_chunk_size, size-n_reads, dram_indirect_page_size-(offset%dram_indirect_page_size))
+            local_reads = min(size-n_reads, dram_indirect_page_size-(offset%dram_indirect_page_size))
+            if verbose:
+                print 'Reading %8i bytes from indirect address %4i at local offset %8i...' % (local_reads, dram_page, local_offset),
+            if last_dram_page != dram_page:
+                self.write_int('dram_controller', dram_page)
                 last_dram_page = dram_page
-            local_data=(self.bulkread('dram_memory',local_reads,local_offset))
+            local_data = (self.bulkread('dram_memory', local_reads, local_offset))
             data.append(local_data)
-            if verbose: print 'done.'
+            if verbose:
+                print 'done.'
             n_reads += local_reads
         return ''.join(data)
 
-    def write_dram(self, data, offset=0,verbose=False):
+    def write_dram(self, data, offset = 0, verbose = False):
         """Writes data to a ROACH's DRAM. Writes are done up to 512KiB at a time.
            The 64MB indirect address register is automatically incremented as necessary.
            ROACH has a fixed device name for the DRAM (dram memory) and so the user does not need to specify the write register.
@@ -304,27 +319,29 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            @param offset  Integer: offset to read data from (in bytes).
            @return  Binary string: data read.
         """
-        size=len(data)
-        n_writes=0
+        size = len(data)
+        n_writes = 0
         last_dram_page = -1
 
-        dram_indirect_page_size=(64*1024*1024)
-        write_chunk_size=(1024*512)
-        if verbose: print 'writing a total of %8i bytes from offset %8i...'%(size,offset)
+        dram_indirect_page_size = (64*1024*1024)
+        write_chunk_size = (1024*512)
+        if verbose:
+            print 'writing a total of %8i bytes from offset %8i...' % (size, offset)
 
         while n_writes < size:
-            dram_page=(offset+n_writes)/dram_indirect_page_size
+            dram_page = (offset+n_writes)/dram_indirect_page_size
             local_offset = (offset+n_writes)%(dram_indirect_page_size)
-            local_writes = min(write_chunk_size,size-n_writes,dram_indirect_page_size-(offset%dram_indirect_page_size))
-            if verbose: print 'Writing %8i bytes from indirect address %4i at local offset %8i...'%(local_writes,dram_page,local_offset)
-            if last_dram_page != dram_page: 
-                self.write_int('dram_controller',dram_page)
+            local_writes = min(write_chunk_size, size-n_writes, dram_indirect_page_size-(offset % dram_indirect_page_size))
+            if verbose:
+                print 'Writing %8i bytes from indirect address %4i at local offset %8i...' % (local_writes, dram_page, local_offset)
+            if last_dram_page != dram_page:
+                self.write_int('dram_controller', dram_page)
                 last_dram_page = dram_page
 
-            self.blindwrite('dram_memory',data[n_writes:n_writes+local_writes],local_offset)
+            self.blindwrite('dram_memory', data[n_writes:n_writes+local_writes], local_offset)
             n_writes += local_writes
 
-    def write(self, device_name, data, offset=0):
+    def write(self, device_name, data, offset = 0):
         """Should issue a read command after the write and compare return to
            the string argument to confirm that data was successfully written.
 
@@ -341,15 +358,15 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         new_data = self.read(device_name, len(data), offset)
         if new_data != data:
 
-            unpacked_wrdata=struct.unpack('>L',data[0:4])[0]
-            unpacked_rddata=struct.unpack('>L',new_data[0:4])[0]
+            unpacked_wrdata = struct.unpack(' > L', data[0:4])[0]
+            unpacked_rddata = struct.unpack(' > L', new_data[0:4])[0]
 
             self._logger.error("Verification of write to %s at offset %d failed. Wrote 0x%08x... but got back 0x%08x..."
                 % (device_name, offset, unpacked_wrdata, unpacked_rddata))
             raise RuntimeError("Verification of write to %s at offset %d failed. Wrote 0x%08x... but got back 0x%08x..."
                 % (device_name, offset, unpacked_wrdata, unpacked_rddata))
 
-    def blindwrite(self, device_name, data, offset=0):
+    def blindwrite(self, device_name, data, offset = 0):
         """Unchecked data write.
 
            @see write
@@ -358,14 +375,14 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            @param data  Byte string: data to write.
            @param offset  Integer: offset to write data to (in bytes)
            """
-        assert (type(data)==str) , 'You need to supply binary packed string data!'
-        assert (len(data)%4) ==0 , 'You must write 32bit-bounded words!'
-        assert ((offset%4) ==0) , 'You must write 32bit-bounded words!'
+        assert (type(data) == str) , 'You need to supply binary packed string data!'
+        assert (len(data)%4) == 0 , 'You must write 32-bit-bounded words!'
+        assert ((offset%4) == 0) , 'You must write 32-bit-bounded words!'
         self._request("write", self._timeout, device_name, str(offset), data)
 
     def read_int(self, device_name):
-        """Calls .read() command with size=4, offset=0 and
-           unpacks returned four bytes into signed 32bit integer.
+        """Calls .read() command with size = 4, offset = 0 and
+           unpacks returned four bytes into signed 32-bit integer.
 
            @see read
            @param self  This object.
@@ -375,7 +392,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         data = self.read(device_name, 4, 0)
         return struct.unpack(">i", data)[0]
 
-    def write_int(self, device_name, integer, blindwrite=False, offset=0):
+    def write_int(self, device_name, integer, blindwrite = False, offset = 0):
         """Calls .write() with optional offset and integer packed into 4 bytes.
 
            @see write
@@ -383,7 +400,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
            @param device_name  String: name of device / register to write to.
            @param integer  Integer: value to write.
            @param blindwrite  Boolean: if true, don't verify the write (calls blindwrite instead of write function).
-           @param offset  Integer: position in 32-bit words where to write data. 
+           @param offset  Integer: position in 32-bit words where to write data.
            """
         # careful of packing input data into 32 bit - check range: if
         # negative, must be signed int; if positive over 2^16, must be unsigned
@@ -393,7 +410,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
         else:
             data = struct.pack(">I", integer)
         if blindwrite:
-            self.blindwrite(device_name,data,offset*4)
+            self.blindwrite(device_name, data, offset*4)
             self._logger.debug("Blindwrite %8x to register %s at offset %d done."
                 % (integer, device_name, offset))
         else:
@@ -401,7 +418,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
             self._logger.debug("Write %8x to register %s at offset %d ok."
                 % (integer, device_name, offset))
 
-    def read_uint(self, device_name,offset=0):
+    def read_uint(self, device_name, offset = 0):
         """As in .read_int(), but unpack into 32 bit unsigned int. Optionally read at an offset 32-bit register.
 
            @see read_int
@@ -417,79 +434,78 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 
            @param self  This object.
            """
-        super(KatcpClientFpga,self).stop()
-        self.join(timeout=self._timeout)
+        super(KatcpClientFpga, self).stop()
+        self.join(timeout = self._timeout)
 
     def est_brd_clk(self):
         """Returns the approximate clock rate of the FPGA in MHz."""
         import time
-        firstpass=self.read_uint('sys_clkcounter')
+        firstpass = self.read_uint('sys_clkcounter')
         time.sleep(2)
-        secondpass=self.read_uint('sys_clkcounter')
-        if firstpass>secondpass: secondpass=secondpass+(2**32)
+        secondpass = self.read_uint('sys_clkcounter')
+        if firstpass > secondpass:
+            secondpass = secondpass+(2**32)
         return (secondpass-firstpass)/2000000.
 
-    def qdr_status(self,qdr):
+    def qdr_status(self, qdr):
         """Checks QDR status (PHY ready and Calibration). NOT TESTED.
            @param qdr integer QDR controller to query.
            @return dictionary of calfail and phyrdy boolean responses."""
         #offset 0 is reset (write 0x111111... to reset). offset 4, bit 0 is phyrdy. bit 8 is calfail.
-        assert((type(qdr)==int))
-        qdr_ctrl = struct.unpack(">I",self.read('qdr%i_ctrl'%qdr, 4, 4))[0]
-        return {'phyrdy':bool(qdr_ctrl&0x01),'calfail':bool(qdr_ctrl&(1<<8))}
+        assert((type(qdr) == int))
+        qdr_ctrl = struct.unpack(">I", self.read('qdr%i_ctrl'%qdr, 4, 4))[0]
+        return {'phyrdy':bool(qdr_ctrl&0x01), 'calfail':bool(qdr_ctrl&(1<<8))}
 
-    def qdr_rst(self,qdr):
+    def qdr_rst(self, qdr):
         """Performs a reset of the given QDR controller (tries to re-calibrate). NOT TESTED.
            @param qdr integer QDR controller to query.
            @returns nothing."""
-        assert((type(qdr)==int))
-        self.write_int('qdr%i_ctrl'%qdr,0xffffffff,blindwrite=True)
+        assert((type(qdr) == int))
+        self.write_int('qdr%i_ctrl'%qdr, 0xffffffff, blindwrite = True)
 
-    def get_rcs(self, rcs_block_name='rcs'):
+    def get_rcs(self, rcs_block_name = 'rcs'):
         """Retrieves and decodes a revision control block."""
-        rv={}
-        rv['user']=self.read_uint(rcs_block_name+'_user')
-        app=self.read_uint(rcs_block_name+'_app')
-        lib=self.read_uint(rcs_block_name+'_lib')
-        if lib&(1<<31): 
-            rv['compile_timestamp']=lib&((2**31)-1)
-        else: 
+        rv = {}
+        rv['user'] = self.read_uint(rcs_block_name+'_user')
+        app = self.read_uint(rcs_block_name+'_app')
+        lib = self.read_uint(rcs_block_name+'_lib')
+        if lib&(1<<31):
+            rv['compile_timestamp'] = lib&((2**31)-1)
+        else:
             if lib&(1<<30):
                 #type is svn
-                rv['lib_rcs_type']='svn'
+                rv['lib_rcs_type'] = 'svn'
             else:
                 #type is git
-                rv['lib_rcs_type']='git'
+                rv['lib_rcs_type'] = 'git'
             if lib&(1<<28):
                 #dirty bit
-                rv['lib_dirty']=True
+                rv['lib_dirty'] = True
             else:
-                rv['lib_dirty']=False
-            rv['lib_rev']=lib&((2**28)-1)
-        if app&(1<<31): 
-            rv['app_last_modified']=app&((2**31)-1)
-        else: 
+                rv['lib_dirty'] = False
+            rv['lib_rev'] = lib&((2**28)-1)
+        if app&(1<<31):
+            rv['app_last_modified'] = app&((2**31)-1)
+        else:
             if app&(1<<30):
                 #type is svn
-                rv['app_rcs_type']='svn'
+                rv['app_rcs_type'] = 'svn'
             else:
                 #type is git
-                rv['app_rcs_type']='git'
+                rv['app_rcs_type'] = 'git'
             if app&(1<<28):
                 #dirty bit
-                rv['app_dirty']=True
+                rv['app_dirty'] = True
             else:
-                rv['lib_dirty']=False
-            rv['app_rev']=app&((2**28)-1)
+                rv['lib_dirty'] = False
+            rv['app_rev'] = app&((2**28)-1)
         return rv
-
-    def _snapshot_get(self, dev_name, man_trig=False, man_valid=False, wait_period=1, offset=-1, circular_capture=False, get_extra_val=False):
-        raise NotImplementedError
 
     def _read_system_info(self):
         '''Katcp request for extra system information embedded in the boffile.
-        ''' 
-        return {}
+        '''
+        # TODO - read the system info from the FPGA via KATCP
+        raise NotImplementedError
 
     def _read_system_info_FILE(self, filename):
         '''Katcp request for extra system information embedded in the boffile.
@@ -499,86 +515,119 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
             lines = fptr.readlines()
             fptr.close()
         info_items = {}
-#         tags = []
-        for l in lines:
-            name, tag, param, value = l.replace('\n','').split('\t')
+        for line in lines:
+            line = line.replace('\_', ' ')
+            name, tag, param, value = line.replace('\n', '').split('\t')
             name = name.replace('/', '_')
-            if not info_items.has_key(name): info_items[name] = {}
-            try: info_items[name]['tag']
-            except KeyError: info_items[name]['tag'] = tag
+            if not info_items.has_key(name):
+                info_items[name] = {}
+            try:
+                info_items[name]['tag']
+            except KeyError:
+                info_items[name]['tag'] = tag
             if info_items[name]['tag'] != tag:
-                raise RuntimeError('Different tags - %s,%s - for the same item %s' % (info_items[name]['tag'], tag, name))
+                raise RuntimeError('Different tags - %s, %s - for the same item %s' % (info_items[name]['tag'], tag, name))
             info_items[name][param] = value
-#             tags.append(tag)
-#         tags = list(set(tags))
         return info_items
 
     def get_system_information(self, filename):
         '''Get and process the extra system information from the bof file.
         '''
+        if False:
+        #if not self.is_running():
+            log_runtime_error(logger, 'This can only be run on a running device.')
+        ################
+        # TODO - This should be from the boffile, not from the file.
         device_info = self._read_system_info_FILE(filename)
+        ################
         self.system_info = device_info['']
-        self.__create_devices(device_info)
-        self.__categorise_devices()
-        if self.is_connected():
-            listdev = self.listdev()
-            for k,d in self.devices.items():
-                if isinstance(d, Memory.Memory):
-                    try: listdev.index(k)
-                    except:
-                        print 'COULD NOT MATCH %s' % k
-#                         log_runtime_error(logger, 'Memory device %s is not found in listdev?' % k)
-        for s in self.dev_snapshots:
-            self.devices[s].link_control_registers(self.registers)
 
-    def __create_devices(self, devices):
-        '''Set up devices on this FPGA from a list of design information, from XML or from KATCP.
-        '''
-        self.devices_by_tag = {}
-        for dev_name, dev in devices.items():
-            if dev_name != '':
-                if self.devices.has_key(dev_name):
-                    log_runtime_error(logger, 'Already have device %s, trying to add another with the same name?' % dev_name)
-                if not self.devices_by_tag.has_key(dev['tag']):
-                    self.devices_by_tag[dev['tag']] = []
-                self.devices_by_tag[dev['tag']].append(dev_name)
-                obj_class = None
-                if dev['tag'] == 'xps:sw_reg':
-                    obj_class = Register.Register
-                elif dev['tag'] == 'casper:snapshot':
-                    obj_class = Snap.Snap
-                elif dev['tag'] == 'xps:bram':
-                    obj_class = Sbram.Sbram
-                elif dev['tag'] == 'xps:tengbe_v2':
-                    obj_class = TenGbe.TenGbe
-                elif dev['tag'] == 'xps:katadc':
-                    obj_class = KatAdc.KatAdc
-                else:
-                    logger.info('Unhandled device %s of type %s' % (dev_name, dev['tag']))
-                if obj_class != None:
-                    # does this have a corresponding memory section?
-                    o = obj_class(parent=self, name=dev_name, info=dev)
-                    self.devices[o.name] = o
+        self.devices = {}
 
-    def __categorise_devices(self):
         self.dev_registers = []
         self.dev_snapshots = []
         self.dev_sbrams = []
         self.dev_tengbes = []
         self.dev_adcs = []
-        for name, device in self.devices.items():
-            if isinstance(device, Register.Register):
-                self.dev_registers.append(name)
-            elif isinstance(device, Snap.Snap):
-                self.dev_snapshots.append(name)
-            elif isinstance(device, Sbram.Sbram):
-                self.dev_sbrams.append(name)
-            elif isinstance(device, TenGbe.TenGbe):
-                self.dev_tengbes.append(name)
-            elif isinstance(device, KatAdc.KatAdc):
-                self.dev_adcs.append(name)
-            else:
-                log_runtime_error(logger, 'Unknown device %s of type %s' % (name, type(device))) 
+
+        self.__create_devices(device_info)
+        if self.is_connected():
+            listdev = self.listdev()
+            for dev_name, dev in self.devices.items():
+                if isinstance(dev, Memory.Memory) and not isinstance(dev, Snap.Snap):
+                    try:
+                        listdev.index(dev_name)
+                    except Exception:
+                        log_runtime_error(logger, 'Memory device %s could not be found on parent %s.' % (dev_name, self.parent.name))
+        # link snapshot control registers to the snapshots themselves
+        for snap in self.dev_snapshots:
+            self.devices[snap].link_control_registers(self.registers)
+
+    def remove_device(self, device_name):
+        '''
+        Remove a specified device from the list of devices present on this design.
+        '''
+        try:
+            self.devices.pop(device_name)
+        except:
+            log_runtime_error(logger, 'No such device to remove - %s.' % device_name)
+
+    def add_device(self, obj):
+        '''
+        Add an object to the device list, throwing an exception if it's not an object known to this version.
+        '''
+        if obj == None:
+            log_runtime_error(logger, 'Calling add_device on None type?')
+        if self.devices.has_key(obj.name):
+            log_runtime_error(logger, 'Device %s of type %s already exists in devices list.' % (obj.name, type(obj)))
+        self.devices[obj.name] = obj
+        # categorise it
+        if isinstance(obj, Register.Register):
+            self.dev_registers.append(obj.name)
+        elif isinstance(obj, Snap.Snap):
+            self.dev_snapshots.append(obj.name)
+        elif isinstance(obj, Sbram.Sbram):
+            self.dev_sbrams.append(obj.name)
+        elif isinstance(obj, TenGbe.TenGbe):
+            self.dev_tengbes.append(obj.name)
+        elif isinstance(obj, KatAdc.KatAdc):
+            self.dev_adcs.append(obj.name)
+        else:
+            log_runtime_error(logger, 'Unknown device %s of type %s' % (obj.name, type(obj)))
+
+    def __create_devices(self, devices):
+        '''Set up devices on this FPGA from a list of design information, from XML or from KATCP.
+        '''
+        for dev_name, dev_info in devices.items():
+            if dev_name != '':
+                if self.devices.has_key(dev_name):
+                    log_runtime_error(logger, 'Already have device %s, trying to add another with the same name?' % dev_name)
+                new_object = None
+                if dev_info['tag'] == 'xps:sw_reg':
+                    new_object = Register.Register(parent = self, name = dev_name, info = dev_info)
+                elif dev_info['tag'] == 'casper:snapshot':
+                    new_object = Snap.Snap(parent = self, name = dev_name, info = dev_info)
+                elif dev_info['tag'] == 'xps:bram':
+                    new_object = Sbram.Sbram(parent = self, name = dev_name, info = dev_info)
+                elif dev_info['tag'] == 'xps:tengbe_v2':
+                    fabric_ip = dev_info['fab_ip']
+                    if fabric_ip.find('(2^24) + ') != -1:
+                        dev_info['fab_ip'] = fabric_ip.replace('*(2^24) + ', '.').replace('*(2^16) + ', '.').replace('*(2^8) + ', '.').replace('*(2^0)', '')
+                    fabric_mac = dev_info['fab_mac']
+                    if fabric_mac.find('hex2dec') != -1:
+                        fabric_mac = fabric_mac.replace('hex2dec(\'', '').replace('\')', '')
+                        dev_info['fab_mac'] = fabric_mac[0:2] + ':' + fabric_mac[2:4] + ':' + fabric_mac[4:6] + ':' + fabric_mac[6:8] + ':' + fabric_mac[8:10] + ':' + fabric_mac[10:]
+                    new_object = TenGbe.TenGbe(parent = self, name = dev_name,
+                                               mac = dev_info['fab_mac'],
+                                               ip_address = dev_info['fab_ip'],
+                                               port = dev_info['fab_udp'])
+                elif dev_info['tag'] == 'xps:katadc':
+                    new_object = KatAdc.KatAdc(parent = self, name = dev_name, info = dev_info)
+                else:
+                    logger.info('Unhandled device %s of type %s' % (dev_name, dev_info['tag']))
+                # add it to the list of devices
+                if new_object != None:
+                    self.add_device(new_object)
 
     def get_static_info(self, param):
         '''Get an info item from this FPGA. One that was stored in the coreinfo.tab and accessed via KATCP on startup.
@@ -594,7 +643,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 
 #     def process_xml_config(self, design_info):
 #         '''Read design information from an XML file generated during casper_xps.
-#         ''' 
+#         '''
 #         # does the file exists
 #         if not isinstance(design_info, str): return
 #         try:
@@ -611,10 +660,10 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #         self.system_name = rootnode.attrib['system']
 #         self.version = rootnode.attrib['version']
 #         from os import path
-#         self.bofname = path.basename(design_info).replace('.xml','.bof')
+#         self.bofname = path.basename(design_info).replace('.xml', '.bof')
 #         def process_object(doc_node, objclass, storage):
 #             for node in list(doc_node):
-#                 obj = objclass(parent=self, xml_node=node)
+#                 obj = objclass(parent = self, xml_node = node)
 #                 storage[obj.name] = obj
 #         # iterate through the tags in the root node
 #         design_info_node = None;
@@ -632,7 +681,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #                 design_info_node = node;
 #             else:
 #                 log_runtime_error(logger, 'Unknown XML tag in design file?')
-#         if (design_info_node == None) and (len(self.dev_snapshots) > 0):
+#         if (design_info_node == None) and (len(self.dev_snapshots)  >  0):
 #             log_runtime_error(logger, 'Snapshots found, but not design info to complete them?')
 #         # put the extra info into a dictionary
 #         self.design_info = {}
@@ -641,7 +690,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #         # reconcile snap info blocks with their snap blocks
 #         for s in self.dev_snapshots.values():
 #             print s.name, s.blockpath
-#             info_dict = {key.replace(s.blockpath + '/', ''):value for key,value in self.design_info.iteritems() if key.startswith(s.blockpath + '/')};
+#             info_dict = {key.replace(s.blockpath + '/', ''):value for key, value in self.design_info.iteritems() if key.startswith(s.blockpath + '/')};
 #             try:
 #                 extra_reg = self.registers[s.name + '_val']
 #             except KeyError:
@@ -665,7 +714,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #         self.system_name = rootnode.attrib['system']
 #         self.version = rootnode.attrib['version']
 #         from os import path
-#         self.bofname = path.basename(design_info).replace('.xml','.bof')
+#         self.bofname = path.basename(design_info).replace('.xml', '.bof')
 #         # get registers, snapblocks, brams, etc from the XML file
 #         register_paths = []
 #         snapshot_paths = []
@@ -675,16 +724,16 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #                 for infonode in node.getChildren():
 #                     if infonode.attrib('owner') == "":
 #                         if infonode.attrib('param') == "registers":
-#                             register_paths = infonode.attrib('value').split(',')
+#                             register_paths = infonode.attrib('value').split(', ')
 #                         if infonode.attrib('param') == "snapshots":
-#                             snapshot_paths = infonode.attrib('value').split(',')
-#         
+#                             snapshot_paths = infonode.attrib('value').split(', ')
+#
 #         print register_paths
 #         print snapshot_paths
-#         
+#
 #         return
-#         
-#         
+#
+#
 #         design_info_node = None;
 #         for node in rootnode.getChildren():
 #             if node.tag == 'memory':
@@ -700,7 +749,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #                 design_info_node = node;
 #             else:
 #                 log_runtime_error(logger, 'Unknown XML tag in design file?')
-#         if (design_info_node == None) and (len(self.snaps) > 0):
+#         if (design_info_node == None) and (len(self.snaps)  >  0):
 #             log_runtime_error(logger, 'Snapshots found, but not design info to complete them?')
 #         # put the extra info into a dictionary
 #         self.design_info = {}
@@ -709,7 +758,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #         # reconcile snap info blocks with their snap blocks
 #         for s in self.snaps.values():
 #             print s.name, s.blockpath
-#             info_dict = {key.replace(s.blockpath + '/', ''):value for key,value in self.design_info.iteritems() if key.startswith(s.blockpath + '/')};
+#             info_dict = {key.replace(s.blockpath + '/', ''):value for key, value in self.design_info.iteritems() if key.startswith(s.blockpath + '/')};
 #             try:
 #                 extra_reg = self.registers[s.name + '_val']
 #             except KeyError:
@@ -727,11 +776,11 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #             open(design_info)
 #         except:
 #             log_runtime_error(logger, 'Cannot open design_info file %s' % design_info)
-#         
+#
 #         # set the bofname
 #         from os import path
-#         self.bofname = path.basename(design_info).replace('_info.xml','.bof')
-#         
+#         self.bofname = path.basename(design_info).replace('_info.xml', '.bof')
+#
 #         # open the XML file
 #         import xml.etree.ElementTree as ElementTree
 #         try:
@@ -742,7 +791,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #         self.build_date = rootnode.attrib['datestr']
 #         self.system_name = rootnode.attrib['system']
 #         self.version = rootnode.attrib['version']
-#         
+#
 #         # get the info node
 #         infonode = None
 #         for node in list(rootnode):
@@ -754,7 +803,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #             if node.tag == 'memory':
 #                 memorynode = node
 #                 break
-# 
+#
 #         # get simulink block info from the XML file
 #         tags = {}
 #         def __get_info_param(param):
@@ -762,15 +811,15 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #                 if (inode.attrib['owner'] == "") and (inode.attrib['param'] == param):
 #                     return inode
 #             raise RuntimeError('No such parameter in info: %s' % param)
-#         
+#
 #         def __build_device_by_owner(owner):
 #             d = {}
 #             for inode in list(infonode):
 #                 if inode.attrib['owner'] == owner:
-#                     d[inode.attrib['param']] = inode.attrib['value'] 
+#                     d[inode.attrib['param']] = inode.attrib['value']
 #             return d
 #         tags_node = __get_info_param('tags')
-#         temptags = tags_node.attrib['value'].split(',')
+#         temptags = tags_node.attrib['value'].split(', ')
 #         for t in temptags:
 #             tags[t] = {}
 #         if len(tags.keys()) == 0:
@@ -781,8 +830,8 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #             if tag_node.attrib['value'] == '':
 #                 tags[tag] = []
 #             else:
-#                 tags[tag] = tag_node.attrib['value'].split(',')
-# 
+#                 tags[tag] = tag_node.attrib['value'].split(', ')
+#
 #         # build the objects in the design from the info nodes, indexed by tag, then by name
 #         devices = {}
 #         for tag, item_list in tags.items():
@@ -790,7 +839,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #                 obj = __build_device_by_owner(item)
 #                 devices[item] = obj
 #                 devices[item]['tag'] = tag
-#         
+#
 #         # now make a dictionary from the memory nodes, index by name
 #         memory_info = {}
 #         for mem in memorynode:
@@ -800,7 +849,7 @@ class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackCl
 #             memory_info[mem_owner][mem.attrib['name']] = mem.attrib
 #             try: devices[mem_owner]
 #             except Exception: raise
-#         
+#
 #         # create devices found on this FPGA
 #         self.__create_devices(devices, memory_info)
 #         # now categorise the devices
