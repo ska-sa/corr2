@@ -4,7 +4,7 @@ Created on Feb 28, 2013
 @author: paulp
 '''
 
-import Engine
+import engine
 
 import logging
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class Host(object):
         '''Add an engine to this node.
         @param engine: the Engine object to add to this Host.
         '''
-        if not isinstance(engine, Engine.Engine):
+        if not isinstance(engine, engine.Engine):
             raise RuntimeError('Object provided is not an Engine.')
         if self.engines.has_key(engine.id):
             raise RuntimeError('Engine ID %s already exists on this Host.' % engine.id)
