@@ -1,0 +1,24 @@
+Metadata-Version: 1.1
+Name: corr
+Version: 2.0.1
+Summary: Interfaces to MeerKAT CBF
+Home-page: http://pypi.python.org/pypi/corr2
+Author: Paul Prozesky
+Author-email: paulp at ska.ac.za
+License: GPL
+Description: Provides interfaces and functions to configure MeerKAT packetised digital backend; FX correlators, beamformers and other realtime instrumentation.
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: License :: OSI Approved :: GNU General Public License (GPL)
+Classifier: Topic :: Scientific/Engineering :: Astronomy
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires: katcp
+Requires: pylab
+Requires: matplotlib
+Requires: iniparse
+Requires: numpy
+Requires: spead
+Requires: curses
+Provides: corr2
