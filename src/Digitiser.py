@@ -3,13 +3,13 @@
 '''
 
 import logging
-import KatcpClientFpga
+import katcpclientfpga
 
 logger = logging.getLogger(__name__)
 
-class Digitiser(KatcpClientFpga.KatcpClientFpga):
+class Digitiser(katcpclientfpga.KatcpClientFpga):
     def __init__(self, host, port=7147):
-        KatcpClientFpga.KatcpClientFpga.__init__(self, host, host, port)
+        katcpclientfpga.KatcpClientFpga.__init__(self, host, host, port)
         logger.info('New Digitiser created - %s' % str(self))
 
     def __str__(self):

@@ -3,18 +3,18 @@
 '''
 
 import logging
-import Engine
+import engine
 
 logger = logging.getLogger(__name__)
 
-class Xengine(Engine.Engine):
+class Xengine(engine.Engine):
     '''
     An X-engine, regardless of where it is located.
     '''
     def __init__(self, xengine_id):
         '''Constructor.
         '''
-        Engine.Engine.__init__(self, engine_id=xengine_id)
+        engine.Engine.__init__(self, engine_id=xengine_id)
         
         self.xeng_sample_bits = 32 # FROM DESIGN
         

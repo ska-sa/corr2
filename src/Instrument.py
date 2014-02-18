@@ -6,7 +6,7 @@ Created on Feb 28, 2013
 
 import logging
 
-import Host
+import host
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class Instrument(object):
         """Add a Host object to the dictionary of hosts that make up this instrument.
         @param host: a Host object
         """
-        if not isinstance(host, Host.Host):
+        if not isinstance(host, host.Host):
             raise RuntimeError('Object provided is not a Host.')
         if self.hosts.has_key(host.host):
             raise RuntimeError('Host host %s already exists on this Instrument.' % host.host)

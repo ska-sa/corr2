@@ -3,18 +3,18 @@
 '''
 
 import logging
-import Engine
+import engine
 
 logger = logging.getLogger(__name__)
 
-class Fengine(Engine.Engine):
+class Fengine(engine.Engine):
     '''
     An F-engine, regardless of where it is located.
     '''
     def __init__(self, fengine_id):
         '''Constructor.
         '''
-        Engine.Engine.__init__(self, engine_id=fengine_id)
+        engine.Engine.__init__(self, engine_id=fengine_id)
         self.length = -1
         self.output_format = -1
         logger.info('New Fengine(%i) created.' % (fengine_id))

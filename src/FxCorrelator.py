@@ -4,12 +4,12 @@ Created on Feb 28, 2013
 @author: paulp
 '''
 
-from Misc import log_runtime_error
-import Instrument
-import KatcpClientFpga
-import Fengine
-import Xengine
-import Types
+from misc import log_runtime_error
+import instrument
+import katcpclientfpga
+import fengine
+import xengine
+import types
 import logging
 import struct
 import socket
@@ -18,7 +18,7 @@ import iniparse
 
 logger = logging.getLogger(__name__)
 
-class FxCorrelator(Instrument.Instrument):
+class FxCorrelator(instrument.Instrument):
     '''
     An FxCorrelator implemented using FPGAs running BOF files for processing hosts.
     '''
@@ -70,9 +70,9 @@ class FxCorrelator(Instrument.Instrument):
             tmp.update(self.xhosts)
             return tmp
         elif name == 'fengines':
-            return self.engine_get(engine_id=None, engine_class=Fengine.Fengine)
+            return self.engine_get(engine_id=None, engine_class=fengine.Fengine)
         elif name == 'xengines':
-            return self.engine_get(engine_id=None, engine_class=Xengine.Xengine)
+            return self.engine_get(engine_id=None, engine_class=xengine.Xengine)
         return object.__getattribute__(self, name)
 
     def parse_config(self, filename):
@@ -243,13 +243,13 @@ class FxCorrelator(Instrument.Instrument):
         '''
         if (self.config['hosts_f'] == None) or (self.config['hosts_x'] == None):
             log_runtime_error(logger, 'Must have string describing F and X nodes.')
-        self.config['hosts_f'] = self.config['hosts_f'].split(Types.LISTDELIMIT)
-        self.config['hosts_x'] = self.config['hosts_x'].split(Types.LISTDELIMIT)
+        self.config['hosts_f'] = self.config['hosts_f'].split(types.LISTDELIMIT)
+        self.config['hosts_x'] = self.config['hosts_x'].split(types.LISTDELIMIT)
         self.fhosts = {}
         self.xhosts = {}
         for hostconfig, hostbitstream, hostdict in [[self.config['hosts_f'], self.config['bitstream_f'], self.fhosts], [self.config['hosts_x'], self.config['bitstream_x'], self.xhosts]]:
             for h in hostconfig:
-                host = KatcpClientFpga.KatcpClientFpga(h, h, self.config['katcp_port'])
+                host = katcpclientfpga.KatcpClientFpga(h, h, self.config['katcp_port'])
                 host.set_bof(hostbitstream)
                 hostdict[host.host] = host
         logger.info('Created %i hosts.' % len(self.hosts))

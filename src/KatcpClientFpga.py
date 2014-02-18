@@ -7,24 +7,24 @@ Created on Feb 28, 2013
 '''
 
 import logging, katcp, struct
-from Fpga import Register, Sbram, Snap, KatAdc, TenGbe, Memory
-import Host, AsyncRequester
-from Misc import log_runtime_error
+from fpga import Register, Sbram, Snap, KatAdc, TenGbe, Memory
+import host, asyncrequester
+from misc import log_runtime_error
 
 logger = logging.getLogger(__name__)
 
 # if __name__ == '__main__':
 #     print 'Hello World'
 
-class KatcpClientFpga(Host.Host, AsyncRequester.AsyncRequester, katcp.CallbackClient):
+class KatcpClientFpga(host.Host, asyncRequester.AsyncRequester, katcp.CallbackClient):
     '''
     A FPGA host board that has a KATCP server running on it.
     '''
     def __init__(self, host, ip, katcp_port = 7147, timeout = 5.0, connect = True):
         '''
         '''
-        Host.Host.__init__(self, host, ip, katcp_port)
-        AsyncRequester.AsyncRequester.__init__(self, self.callback_request, max_requests = 100)
+        host.Host.__init__(self, host, ip, katcp_port)
+        asyncRequester.AsyncRequester.__init__(self, self.callback_request, max_requests = 100)
         katcp.CallbackClient.__init__(self, host, katcp_port, tb_limit = 20, timeout = timeout, logger = logger, auto_reconnect = True)
 
         # device lists

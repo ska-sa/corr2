@@ -9,7 +9,7 @@ import Engine
 import logging
 logger = logging.getLogger(__name__)
 
-from Misc import log_runtime_error
+from misc import log_runtime_error
 
 class Host(object):
     '''
