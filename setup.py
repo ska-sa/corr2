@@ -1,16 +1,18 @@
-from distutils.core import setup, Extension
-import os, sys, glob
+from distutils.core import setup
+import glob
 
 __version__ = '2.0.1'
 
-setup(name = 'corr2',
-    version = __version__,
-    description = 'Interfaces to MeerKAT CBF',
-    long_description = 'Provides interfaces and functions to configure MeerKAT packetised digital backend; FX correlators, beamformers and other realtime instrumentation.',
-    license = 'GPL',
-    author = 'Paul Prozesky',
-    author_email = 'paulp at ska.ac.za',
-    url = 'http://pypi.python.org/pypi/corr2',
+setup(name='corr2',
+    version=__version__,
+    description='Interfaces to MeerKAT CBF',
+    long_description='Provides interfaces and functions to \
+        configure MeerKAT packetised digital backend; \
+        FX correlators, beamformers and other realtime instrumentation.',
+    license='GPL',
+    author='Paul Prozesky',
+    author_email='paulp at ska.ac.za',
+    url='http://pypi.python.org/pypi/corr2',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
@@ -19,13 +21,15 @@ setup(name = 'corr2',
         'Topic :: Scientific/Engineering :: Astronomy',
         'Topic :: Software Development :: Libraries :: Python Modules',
         ],
-    install_requires=['katcp', 'matplotlib', 'iniparse', 'numpy', 'spead', 'construct', 'h5py'],
+    install_requires=['katcp', 'matplotlib', 'iniparse', 'numpy', 'spead',
+                      'construct', 'h5py'],
     provides=['corr2'],
-    package_dir = {'corr2':'src'},
-    packages = ['corr2'],
+    package_dir={'corr2':'src'},
+    packages=['corr2'],
     scripts=glob.glob('scripts/*'),
-    data_files=[('/etc/corr2',['etc/default']),
+    data_files=[('/etc/corr2', ['etc/default']),
                 #('/var/run/corr',['support_files/sync_time'])
-                ]
+    ]
 )
 
+# end

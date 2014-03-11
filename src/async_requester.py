@@ -1,20 +1,24 @@
-import threading, time
-from katcp import Message
+# pylint: disable-msg=C0103
+# pylint: disable-msg=C0301
 
 import logging
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
+
+import threading, time
+from katcp import Message
 
 class AsyncRequester(object):
     """A class to hold information about a specific KATCP request made by a Fpga.
        """
-    def __init__(self, request_func, max_requests=100):
+    def __init__(self, host, request_func, max_requests=100):
+        self.host = host
         self._nb_request_id_lock = threading.Lock()
         self._nb_request_id = 0
         self._nb_requests_lock = threading.Lock()
         self._nb_requests = {}
         self._nb_max_requests = max_requests
         self._nb_request_func = request_func
-    
+
     def nb_get_request_by_id(self, request_id):
         try:
             return self._nb_requests[request_id]
@@ -74,7 +78,7 @@ class AsyncRequester(object):
             raise RuntimeError('Recieved inform for request_id(%s), but no such stored request.' % request_id)
         self._nb_requests[request_id].got_inform(msg.copy())
 
-    def nb_request(self, request, inform_cb = None, reply_cb = None, *args):
+    def nb_request(self, request, inform_cb=None, reply_cb=None, *args):
         """Make a non-blocking request.
 
            @param self          This object.
@@ -85,17 +89,17 @@ class AsyncRequester(object):
            """
         if len(self._nb_requests) == self._nb_max_requests:
             oldreq = self.nb_pop_oldest_request()
-            self._logger.info("Request list full, removing oldest one(%s,%s)." % (oldreq.request, oldreq.request_id))
+            LOGGER.info("Request list full, removing oldest one(%s,%s).", oldreq.request, oldreq.request_id)
             print "Request list full, removing oldest one(%s,%s)." % (oldreq.request, oldreq.request_id)
         request_id = self.nb_get_next_request_id()
         self.nb_add_request(request, request_id, inform_cb, reply_cb)
-        self._nb_request_func(msg = Message.request(request, *args), reply_cb = self.nb_replycb, inform_cb = self.nb_informcb, user_data = request_id)
+        self._nb_request_func(msg=Message.request(request, *args), reply_cb=self.nb_replycb, inform_cb=self.nb_informcb, user_data=request_id)
         return {'host': self.host, 'request': request, 'id': request_id}
 
-class AsyncRequest:
+class AsyncRequest(object):
     """A class to hold information about a specific KATCP request made by a Fpga.
        """
-    def __init__(self, host, request, request_id, inform_cb = None, reply_cb = None):
+    def __init__(self, host, request, request_id, inform_cb=None, reply_cb=None):
         self.host = host
         self.request = request
         self.request_id = request_id
@@ -111,7 +115,7 @@ class AsyncRequest:
         return '%s(%s)@(%10.5f) - reply%s - informs(%i)' % (self.request, self.request_id, self.time_tx, str(self.reply), len(self.informs))
 
     def got_reply(self, reply_message):
-        if not (reply_message.name == self.request):
+        if not reply_message.name == self.request:
             error_string = 'rx reply(%s) does not match request(%s)' % (reply_message.name, self.request)
             print error_string
             raise RuntimeError(error_string)
@@ -122,9 +126,9 @@ class AsyncRequest:
 
     def got_inform(self, inform_message):
         if self.reply != None:
-            logger.error('Received inform for message(%s,%s) after reply. Invalid?' % (self.request, self.request_id))
+            LOGGER.error('Received inform for message(%s,%s) after reply. Invalid?', self.request, self.request_id)
             raise RuntimeError('Received inform for message(%s,%s) after reply. Invalid?' % (self.request, self.request_id))
-        if not (inform_message.name == self.request):
+        if not inform_message.name == self.request:
             error_string = 'rx inform(%s) does not match request(%s)' % (inform_message.name, self.request)
             print error_string
             raise RuntimeError(error_string)
@@ -136,6 +140,6 @@ class AsyncRequest:
     def complete_ok(self):
         '''Has this request completed successfully?
         '''
-        if self.reply == None: return False
+        if self.reply == None:
+            return False
         return self.reply.arguments[0] == Message.OK
-    

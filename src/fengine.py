@@ -1,30 +1,33 @@
+# pylint: disable-msg=C0103
+# pylint: disable-msg=C0301
 '''
 @author: paulp
 '''
 
 import logging
-import engine
+LOGGER = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
+from katcp_client_fpga import KatcpClientFpga
 
-class Fengine(engine.Engine):
+class Fengine(KatcpClientFpga):
     '''
     An F-engine, regardless of where it is located.
     '''
-    def __init__(self, fengine_id):
+    def __init__(self, host, port=7147):
         '''Constructor.
         '''
-        engine.Engine.__init__(self, engine_id=fengine_id)
-        self.length = -1
+        KatcpClientFpga.__init__(self, host, port)
+        self.num_channels = -1
         self.output_format = -1
-        logger.info('New Fengine(%i) created.' % (fengine_id))
-    
+        LOGGER.info('New %i-channel Fengine created @ %s:%i.', \
+            self.num_channels, self.host, self.katcp_port)
+
     def eq_get(self):
         raise NotImplementedError
-    
+
     def eq_set(self):
         raise NotImplementedError
-    
+
     def __str__(self):
-        return 'fengine %i @ %s' % (self.id, self.host)
+        return 'fengine @ %s:%s' % (self.host, self.port)
 # end

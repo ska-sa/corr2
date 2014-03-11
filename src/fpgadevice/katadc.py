@@ -5,7 +5,7 @@ Created on Feb 28, 2013
 '''
 
 import logging
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 class KatAdc(object):
     '''Information above KatAdc yellow blocks.
@@ -19,12 +19,12 @@ class KatAdc(object):
         self.parent = parent
         self.name = name
         self.options = {}
-        logger.info('New KatADC %s' % self.name)
+        LOGGER.info('New KatADC %s', self.name)
 
-    def update_info(self, info):
-        '''Set this memory's extra information.
+    def post_create_update(self, raw_device_info):
+        '''Update the device with information not available at creation.
         '''
-        print 'dfgdssfd'
-        self.options = info
+#        self.options = info
+        return
 
 # end

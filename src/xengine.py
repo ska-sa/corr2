@@ -1,11 +1,13 @@
+# pylint: disable-msg=C0103
+# pylint: disable-msg=C0301
 '''
 @author: paulp
 '''
 
 import logging
-import engine
+LOGGER = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
+import engine
 
 class Xengine(engine.Engine):
     '''
@@ -15,12 +17,11 @@ class Xengine(engine.Engine):
         '''Constructor.
         '''
         engine.Engine.__init__(self, engine_id=xengine_id)
-        
+
         self.xeng_sample_bits = 32 # FROM DESIGN
-        
-        
-        logger.info('New Xengine(%i) created.' % (xengine_id))
+
+        LOGGER.info('New Xengine(%i) created.', xengine_id)
 
     def __str__(self):
-        return 'xengine %i @ %s' % (self.id, self.host)
+        return 'xengine %i @ %s' % (self.engine_id, self.host)
 # end
