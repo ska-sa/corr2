@@ -10,7 +10,7 @@ Created on Feb 28, 2013
 import logging, struct
 LOGGER = logging.getLogger(__name__)
 
-from misc import log_runtime_error
+from corr2.misc import log_runtime_error
 
 class Mac(object):
     '''A MAC address.
@@ -201,11 +201,11 @@ class TenGbe(object):
 
     def read_txsnap(self):
         snapname = self.name + '_txs_ss'
-        return self.parent.devices[snapname].read()
+        return self.parent.devices[snapname].read(timeout=10)
 
     def read_rxsnap(self):
         snapname = self.name + '_rxs_ss'
-        return self.parent.devices[snapname].read()
+        return self.parent.devices[snapname].read(timeout=10)
 
     def read_counters(self):
         '''Read all the counters embedded in the gbe block.
@@ -245,7 +245,7 @@ class TenGbe(object):
             LOGGER.info("Tap already running on %s.", str(self))
             return
         LOGGER.info("Starting tap driver instance for %s.", str(self))
-        reply, _ = self.parent.request(name="tap-start", request_timeout=-1, require_ok=True, request_args=(self.name, self.name, str(self.ip_address), str(self.port), str(self.mac), ))
+        reply, _ = self.parent.katcprequest(name="tap-start", request_timeout=-1, require_ok=True, request_args=(self.name, self.name, str(self.ip_address), str(self.port), str(self.mac), ))
         if reply.arguments[0] != 'ok':
             log_runtime_error(LOGGER, "Failure starting tap driver instance for %s." % str(self))
 
@@ -257,7 +257,7 @@ class TenGbe(object):
         if self.tap_running() == False:
             return
         LOGGER.info("Stopping tap driver instance for %s.", str(self))
-        reply, _ = self.parent.request(name="tap-stop", request_timeout=-1, require_ok=True, request_args=(self.name, ))
+        reply, _ = self.parent.katcprequest(name="tap-stop", request_timeout=-1, require_ok=True, request_args=(self.name, ))
         if reply.arguments[0] != 'ok':
             log_runtime_error(LOGGER, "Failure stopping tap device for %s." % str(self))
 
@@ -269,7 +269,7 @@ class TenGbe(object):
         def handle_inform(msg):
             uninforms.append(msg)
         self.parent.unhandled_inform_handler = handle_inform
-        _, informs = self.parent.request(name="tap-info", request_timeout=-1, require_ok=False, request_args=(self.name, ))
+        _, informs = self.parent.katcprequest(name="tap-info", request_timeout=-1, require_ok=False, request_args=(self.name, ))
         self.parent.unhandled_inform_handler = None
         # process the tap-info
         if len(informs) == 1:
@@ -294,7 +294,7 @@ class TenGbe(object):
 # == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == ==
 # NOT NEEDED
 #     def multicast_send(self, ip_str):
-#         reply, informs = self.parent.request("tap-multicast-add", self.parent._timeout, self.name, 'send', str2ip(ip_str))
+#         reply, informs = self.parent.katcprequest("tap-multicast-add", self.parent._timeout, self.name, 'send', str2ip(ip_str))
 #         if reply.arguments[0] == 'ok':
 #             return
 #         else:
@@ -313,7 +313,7 @@ class TenGbe(object):
         mcast_group_string = ip_str + '+' + str(group_size)
         mcast_group_string = ip_str
         try:
-            reply, _ = self.parent.request("tap-multicast-add", -1, True, request_args=(self.name, 'recv', mcast_group_string, ))
+            reply, _ = self.parent.katcprequest("tap-multicast-add", -1, True, request_args=(self.name, 'recv', mcast_group_string, ))
         except Exception:
             raise RuntimeError("tap-multicast-add does not seem to be supported on %s" % (self.parent.host))
         if reply.arguments[0] == 'ok':
@@ -327,7 +327,7 @@ class TenGbe(object):
         @param ip_str  A dotted decimal string representation of the base mcast IP address.
         '''
         try:
-            reply, _ = self.parent.request("tap-multicast-remove", -1, True, request_args=(self.name, str2ip(ip_str), ))
+            reply, _ = self.parent.katcprequest("tap-multicast-remove", -1, True, request_args=(self.name, str2ip(ip_str), ))
         except:
             raise RuntimeError("tap-multicast-remove does not seem to be supported on %s" % (self.parent.host))
         if reply.arguments[0] == 'ok':

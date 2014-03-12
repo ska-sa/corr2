@@ -9,9 +9,9 @@ Created on Feb 28, 2013
 import logging, katcp, struct
 LOGGER = logging.getLogger(__name__)
 
-from fpgadevice import register, sbram, snap, katadc, tengbe, memory, qdr
-import hostdevice, async_requester
-from misc import log_runtime_error
+from corr2.fpgadevice import register, sbram, snap, katadc, tengbe, memory, qdr
+from corr2 import hostdevice, async_requester
+from corr2.misc import log_runtime_error
 
 # if __name__ == '__main__':
 #     print 'Hello World'
@@ -169,7 +169,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
 #                                                                                                            len(self.dev_sbrams), len(self.dev_adcs), len(self.dev_tengbes),
 #                                                                                                            'connected' if self.is_connected() else 'disconnected')
 
-    def request(self, name, request_timeout=-1, require_ok=True, request_args=()):
+    def katcprequest(self, name, request_timeout=-1, require_ok=True, request_args=()):
         """Make a blocking request and check the result.
            Raise an error if the reply indicates a request failure.
 
@@ -193,7 +193,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            @param self  This object.
            @return  A list of register names.
            """
-        _, informs = self.request(name="listdev", request_timeout=self._timeout)
+        _, informs = self.katcprequest(name="listdev", request_timeout=self._timeout)
         return [i.arguments[0] for i in informs]
 
     def listbof(self):
@@ -202,7 +202,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            @param self  This object.
            @return  List of strings: list of executable files.
            """
-        _, informs = self.request(name="listbof", request_timeout=self._timeout)
+        _, informs = self.katcprequest(name="listbof", request_timeout=self._timeout)
         return [i.arguments[0] for i in informs]
 
     def listcmd(self):
@@ -218,7 +218,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
     def deprogram(self):
         '''Deprogram the FPGA.
         '''
-        reply, _ = self.request(name="progdev")
+        reply, _ = self.katcprequest(name="progdev")
         if reply.arguments[0] == 'ok':
             self.running_bof = ''
         LOGGER.info("Deprogramming FPGA %s... %s.", self.host, reply.arguments[0])
@@ -238,7 +238,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         def handle_inform(msg):
             uninforms.append(msg)
         self.unhandled_inform_handler = handle_inform
-        reply, _ = self.request(name="progdev", request_timeout=10, request_args=(boffile, ))
+        reply, _ = self.katcprequest(name="progdev", request_timeout=10, request_args=(boffile, ))
         self.unhandled_inform_handler = dummy_inform_handler
         if reply.arguments[0] == 'ok':
             complete_okay = False
@@ -260,7 +260,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            @param self  This object.
            @return  String: FPGA status.
            """
-        reply, _ = self.request(name="status", request_timeout=self._timeout)
+        reply, _ = self.katcprequest(name="status", request_timeout=self._timeout)
         return reply.arguments[1]
 
     def ping(self):
@@ -268,7 +268,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            @param self  This object.
            @return  boolean: ping result.
            """
-        reply, _ = self.request(name="watchdog", request_timeout=self._timeout)
+        reply, _ = self.katcprequest(name="watchdog", request_timeout=self._timeout)
         if reply.arguments[0] == 'ok':
             LOGGER.info('katcp ping okay')
             return True
@@ -286,7 +286,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            @param offset  Integer: offset to read data from (in bytes).
            @return  Bindary string: data read.
            """
-        reply, _ = self.request(name="read", request_timeout=self._timeout, require_ok=True, request_args=(device_name, str(offset), str(size)))
+        reply, _ = self.katcprequest(name="read", request_timeout=self._timeout, require_ok=True, request_args=(device_name, str(offset), str(size)))
         return reply.arguments[1]
 
     def bulkread(self, device_name, size, offset=0):
@@ -301,7 +301,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            @param offset  Integer: offset to read data from (in bytes).
            @return  Bindary string: data read.
            """
-        _, informs = self.request(name="bulkread", request_timeout=self._timeout, require_ok=True, request_args=(device_name, str(offset), str(size)))
+        _, informs = self.katcprequest(name="bulkread", request_timeout=self._timeout, require_ok=True, request_args=(device_name, str(offset), str(size)))
         return ''.join([i.arguments[0] for i in informs])
 
     def upload_to_flash(self, binary_file, port=-1, force_upload=False, timeout=30, wait_complete=True):
@@ -331,7 +331,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             '''Make the uploadbof request to the KATCP server on the host.
             '''
 #            try:
-            result = self.request(name='saveremote', request_timeout=timeout, require_ok=True, request_args=(port, filename, ))
+            result = self.katcprequest(name='saveremote', request_timeout=timeout, require_ok=True, request_args=(port, filename, ))
             if result[0].arguments[0] == katcp.Message.OK:
                 result_queue.put('')
             else:
@@ -372,7 +372,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         else:
             bofs = [bofname]
         for bof in bofs:
-            result = self.request(name='delbof', request_timeout=self._timeout, require_ok=True, request_args=(bof, ))
+            result = self.katcprequest(name='delbof', request_timeout=self._timeout, require_ok=True, request_args=(bof, ))
             if result[0].arguments[0] != katcp.Message.OK:
                 log_runtime_error(LOGGER, 'Failed to delete bof file %s' % bof)
 
@@ -395,14 +395,14 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         def makerequest(result_queue):
             '''Make the upload request to the KATCP server on the host.
             '''
-            try:
-                result = self.request(name='progremote', request_timeout=timeout, require_ok=True, request_args=(port, ))
-                if result[0].arguments[0] == katcp.Message.OK:
-                    result_queue.put('')
-                else:
-                    result_queue.put('Request to client returned, but not Message.OK.')
-            except Exception:
-                result_queue.put('Request to client failed.')
+#            try:
+            result = self.katcprequest(name='progremote', request_timeout=timeout, require_ok=True, request_args=(port, ))
+            if result[0].arguments[0] == katcp.Message.OK:
+                result_queue.put('')
+            else:
+                result_queue.put('Request to client returned, but not Message.OK.')
+#            except Exception:
+#                result_queue.put('Request to client failed.')
         if port == -1:
             import random
             port = random.randint(2000, 2500)
@@ -551,7 +551,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         assert(type(data) == str), 'You need to supply binary packed string data!'
         assert(len(data)%4) == 0, 'You must write 32-bit-bounded words!'
         assert((offset%4) == 0), 'You must write 32-bit-bounded words!'
-        self.request(name="write", request_timeout=self._timeout, require_ok=True, request_args=(device_name, str(offset), data))
+        self.katcprequest(name="write", request_timeout=self._timeout, require_ok=True, request_args=(device_name, str(offset), data))
 
     def read_int(self, device_name):
         """Calls .read() command with size = 4, offset = 0 and
@@ -662,7 +662,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
     def is_running(self):
         '''Is the FPGA programmed and running?
         '''
-        reply, _ = self.request(name="fpgastatus", request_timeout=self._timeout, require_ok=False)
+        reply, _ = self.katcprequest(name="fpgastatus", request_timeout=self._timeout, require_ok=False)
         if reply.arguments[0] == 'ok':
             return True
         else:
@@ -671,7 +671,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
     def _read_system_info(self):
         '''Katcp request for extra system information embedded in the boffile.
         '''
-        reply, informs = self.request(name="meta", request_timeout=self._timeout, require_ok=True)
+        reply, informs = self.katcprequest(name="meta", request_timeout=self._timeout, require_ok=True)
         if reply.arguments[0] != 'ok':
             log_runtime_error(LOGGER, 'Could not read meta information from %s' % self.host)
         metalist = []

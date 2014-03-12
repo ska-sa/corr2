@@ -13,7 +13,7 @@ LOGGER = logging.getLogger(__name__)
 
 import numpy, struct
 
-from fpgadevice import register
+import register
 
 calibration_data = [[0xAAAAAAAA, 0x55555555] * 16,
     [0, 0, 0xFFFFFFFF, 0, 0, 0, 0, 0],

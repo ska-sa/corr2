@@ -1,7 +1,7 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from fpgadevice import memory
+import memory
 
 class Sbram(memory.Memory):
     '''General SBRAM memory on the FPGA.

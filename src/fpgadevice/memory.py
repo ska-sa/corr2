@@ -11,8 +11,8 @@ LOGGER = logging.getLogger(__name__)
 
 import construct
 
-import bitfield
-from misc import log_runtime_error, bin2fp
+import corr2.bitfield as bitfield
+from corr2.misc import log_runtime_error, bin2fp
 
 class Memory(bitfield.Bitfield):
     '''
