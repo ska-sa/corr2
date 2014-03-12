@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
@@ -8,13 +9,9 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
-import sys, logging, time, argparse
+import time, argparse
 
-sys.path.insert(0, '/home/paulp/code/corr2.github/src')
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-from katcp_client_fpga import KatcpClientFpga
+from corr2.katcp_client_fpga import KatcpClientFpga
 
 parser = argparse.ArgumentParser(description='Print any snapblock(s) on a FPGA.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -29,7 +26,21 @@ parser.add_argument('-n', '--numrows', dest='numrows', action='store',
 parser.add_argument('-s', '--snap', dest='snap', action='store',
                     default='', type=str,
                     help='the snap to query, all for ALL of them!')
+parser.add_argument('-t', '--mantrig', dest='mantrig', action='store_true',
+                    default=False,
+                    help='manually trigger the snapshot')
+parser.add_argument('-e', '--manvalid', dest='manvalid', action='store_true',
+                    default=False,
+                    help='manually enable the snapshot valid')
+parser.add_argument('-v', '--verbose', dest='verbose', action='store_true',
+                    default=False,
+                    help='show debug output')
 args = parser.parse_args()
+
+if args.verbose:
+    import logging
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=logging.INFO)
 
 # create the device and connect to it
 fpga = KatcpClientFpga(args.hostname, 7147)
@@ -41,15 +52,17 @@ fpga.get_system_information()
 
 # list the cores we find
 if args.listsnaps:
-    numsnaps = len(fpga.dev_snapshots)
+    snapshots = fpga.snapshots.keys()
+    numsnaps = len(snapshots)
     print 'Found %i snapshot%s:' % (numsnaps, '' if numsnaps == 1 else 's')
-    for snap in fpga.dev_snapshots:
+    for snap in snapshots:
         print '\t', snap
     fpga.disconnect()
+    import sys
     sys.exit(0)
 
 # read the snap block
-snapdata = fpga.devices[args.snap].read(man_valid=True, man_trig=True)
+snapdata = fpga.devices[args.snap].read(man_valid=args.manvalid, man_trig=args.mantrig)
 for ctr in range(0, len(snapdata[snapdata.keys()[0]])):
     print '%5d' % ctr,
     for key in snapdata.keys():

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
@@ -8,13 +9,12 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
-import sys, logging, time, curses, argparse, copy
+import logging, time, curses, argparse, copy
 
-sys.path.insert(0, '/home/paulp/code/corr2.github/src')
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-from digitiser import Digitiser
+from corr2.digitiser import Digitiser
 
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT digitiser.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -41,7 +41,7 @@ digitiser_fpga.test_connection()
 digitiser_fpga.get_system_information()
 
 # is there a 10gbe core in the design?
-numgbes = len(digitiser_fpga.dev_tengbes)
+numgbes = len(digitiser_fpga.tengbes.keys())
 if not numgbes == 4:
     raise RuntimeError('A digitiser must have four 10Gbe cores.')
 print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
@@ -50,7 +50,7 @@ def get_coredata(fpga):
     '''Get the updated counters for all the cores.
     '''
     cdata = {}
-    for device in fpga.dev_tengbes:
+    for device in fpga.tengbes.keys():
         data = fpga.devices[device].read_counters()
         cdata[device] = data
     return cdata
@@ -58,7 +58,7 @@ def get_coredata(fpga):
 def reset_counters(fpga, cdata):
     '''Reset all core counters.
     '''
-    for device in fpga.dev_tengbes:
+    for device in fpga.tengbes.keys():
         for direction in ['tx', 'rx']:
             for key in cdata[device][direction].keys():
                 cdata[device][direction][key] = 0
@@ -107,7 +107,8 @@ def handle_keys(keyval, dig_fpga):
 def mainfunc(stdscr, dig_fpga, coredata):
     '''The main screen-drawing loop of the program.
     '''
-    for device in dig_fpga.dev_tengbes:
+    device_list = dig_fpga.tengbes.keys()
+    for device in device_list:
         if not (coredata[device]['tx'].has_key(device + '_txctr') and
                 coredata[device]['tx'].has_key(device + '_txerrctr') and
                 coredata[device]['tx'].has_key(device + '_txofctr') and
@@ -125,8 +126,8 @@ def mainfunc(stdscr, dig_fpga, coredata):
     print_bottom_str(stdscr)
     print_headers(stdscr)
     # core names
-    for n, core in enumerate(dig_fpga.dev_tengbes):
-        line = 3 + n
+    for ctr, core in enumerate(device_list):
+        line = 3 + ctr
         stdscr.addstr(line, 2, '%s' % core)
     dig_fpga.registers['control'].write(clr_status='pulse')
     # loop and read & print the core info
@@ -141,13 +142,13 @@ def mainfunc(stdscr, dig_fpga, coredata):
         if time.time() > last_render + polltime:
             print_top_str(stdscr, dig_fpga.host, starttime)
             loop_time = dig_fpga.get_current_time()
-            for n, core in enumerate(dig_fpga.dev_tengbes):
-                line = 3 + n
+            for ctr, core in enumerate(device_list):
+                line = 3 + ctr
                 stdscr.move(line, 20)
                 stdscr.clrtoeol()
                 # update the core counter data
-                newdata = get_coredata(digitiser_fpga)
-                for device in digitiser_fpga.dev_tengbes:
+                newdata = get_coredata(dig_fpga)
+                for device in device_list:
                     for direction in ['tx', 'rx']:
                         for key in coredata[device][direction].keys():
                             coredata[device][direction][key] = newdata[device][direction][key]
@@ -176,7 +177,7 @@ def mainfunc(stdscr, dig_fpga, coredata):
 
 # set up the counters
 tengbedata = get_coredata(digitiser_fpga)
-for tengbecore in digitiser_fpga.dev_tengbes:
+for tengbecore in digitiser_fpga.tengbes.keys():
     tengbedata[tengbecore]['tap'] = digitiser_fpga.devices[tengbecore].tap_info()
     print '\t', tengbecore
 tengbedata = reset_counters(digitiser_fpga, tengbedata)
@@ -191,6 +192,7 @@ import signal
 def signal_handler(sig, frame):
     '''Handle a os signal.'''
     teardown()
+    import sys
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGHUP, signal_handler)

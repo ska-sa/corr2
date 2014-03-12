@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
@@ -10,12 +11,11 @@ Created on Fri Jan  3 10:40:53 2014
 """
 import sys, logging, time, argparse
 
-sys.path.insert(0, '/home/paulp/code/corr2.github/src')
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-from katcp_client_fpga import KatcpClientFpga
-from fpgadevice import tengbe
+from corr2.katcp_client_fpga import KatcpClientFpga
+from corr2.fpgadevice import tengbe
 
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT digitiser.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -45,9 +45,10 @@ fpga.get_system_information()
 
 # list the cores we find
 if args.listcores:
-    numgbes = len(fpga.dev_tengbes)
+    cores = fpga.tengbes.keys()
+    numgbes = len(cores)
     print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
-    for core in fpga.dev_tengbes:
+    for core in cores:
         print '\t', core
     fpga.disconnect()
     sys.exit(0)
