@@ -4,9 +4,9 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from fpgadevice import memory, register
-import bitfield
-from misc import log_runtime_error
+import memory, register
+import corr2.bitfield as bitfield
+from corr2.misc import log_runtime_error
 
 class Snap(memory.Memory):
     '''Snap blocks are triggered/controlled blocks of RAM on FPGAs.
@@ -38,10 +38,6 @@ class Snap(memory.Memory):
                         break
         # and link control registers to snapshots
         self._link_control_registers(self.parent.registers)
-
-#    def update_info(self, info):
-#        '''Set this Snap's extra information.
-#        '''
 
     def update_from_bitsnap(self, info):
         '''Update this device with information from a bitsnap container.
@@ -93,7 +89,6 @@ class Snap(memory.Memory):
 #    def read_raw(self, man_trig = False, man_valid = False, timeout = 1, offset = -1, circular_capture = False, get_extra_val = False, arm = True):
     def read_raw(self, **kwargs):
         # TODO - The extra value?
-        import time
         def getkwarg(key, default):
             try:
                 return kwargs[key]
@@ -102,15 +97,16 @@ class Snap(memory.Memory):
         man_trig = getkwarg('man_trig', False)
         man_valid = getkwarg('man_valid', False)
         timeout = getkwarg('timeout', -1)
-        offset = getkwarg('offset', 0)
+        offset = getkwarg('offset', -1)
         circular_capture = getkwarg('circular_capture', False)
-        arm = getkwarg('arm', False)
-#        extra_val = getkwarg('extra_val', False)
+        arm = getkwarg('arm', True)
+        extra_val = getkwarg('extra_val', False)
         # arm
         if arm:
             self._arm(man_trig=man_trig, man_valid=man_valid, offset=offset, circular_capture=circular_capture)
         # wait
         done = False
+        import time
         start_time = time.time()
         while not done and ((time.time() - start_time) < timeout or (timeout < 0)):
             addr = self.control_registers['status']['register'].read_uint()
