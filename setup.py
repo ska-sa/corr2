@@ -24,12 +24,10 @@ setup(name='corr2',
     install_requires=['katcp', 'matplotlib', 'iniparse', 'numpy', 'spead',
                       'construct', 'h5py'],
     provides=['corr2'],
-    package_dir={'corr2':'src'},
-    packages=['corr2'],
-    scripts=glob.glob('scripts/*'),
-    data_files=[('/etc/corr2', ['etc/default']),
-                #('/var/run/corr',['support_files/sync_time'])
-    ]
+    packages=['corr2', 'corr2.fpgadevice'],
+    package_dir={'corr2': 'src', 'corr2.fpgadevice': 'src/fpgadevice'},
+
+    scripts=glob.glob('scripts/*')
 )
 
 # end

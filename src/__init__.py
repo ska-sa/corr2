@@ -1,10 +1,15 @@
-"""
-A module for controlling and receiving data from a CASPER_N correlator.
+'''
+corr2 - control and monitoring for casper-based instruments.
+'''
 
-Implements interfaces for controlling a CASPER_N correlator and verifying       correct operation.
-Used primarily for by the PAPER array project.
+# import modules into corr2 that fpgadevice modules will need
+import bitfield, misc, types
 
-Author: Jason Manley, Aaron Parsons
-Email: jason_manley at hotmail.com, aparsons at astron.berkeley.edu
-Revisions:
-"""
+# import all fpgadevice modules
+import fpgadevice
+
+# import the base corr2 modules
+import async_requester, digitiser, engine, fengine, \
+    fxcorrelator, hostdevice, instrument, katcp_client_fpga, xengine
+
+# end
