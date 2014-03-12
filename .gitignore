@@ -16,3 +16,6 @@ Thumbs.db
 +build/
 *.egg-info
 *.pyc
+MANIFEST
+build
+dist
