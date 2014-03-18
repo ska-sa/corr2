@@ -19,7 +19,7 @@ class Fengine(KatcpClientFpga):
         KatcpClientFpga.__init__(self, host, port)
         self.num_channels = -1
         self.output_format = -1
-        LOGGER.info('New %i-channel Fengine created @ %s:%i.', \
+        LOGGER.info('New %i-channel Fengine created @ %s:%i.',
             self.num_channels, self.host, self.katcp_port)
 
     def eq_get(self):
@@ -29,5 +29,5 @@ class Fengine(KatcpClientFpga):
         raise NotImplementedError
 
     def __str__(self):
-        return 'fengine @ %s:%s' % (self.host, self.port)
+        return 'fengine @ %s:%s' % (self.host, self.katcp_port)
 # end

@@ -15,6 +15,9 @@ class Snap(memory.Memory):
         memory.Memory.__init__(self, name=name, width=1, length=1)
         self.parent = parent
         self.block_info = info
+        if info['value'] == 'on':
+            LOGGER.error('Extra values in snapshots are not yet handled!')
+            raise RuntimeError
         self.width = int(info['data_width'])
         self.length = pow(2, int(info['nsamples']))
         self.add_field(bitfield.Field(name='data', numtype=0, width=self.width, binary_pt=0, lsb_offset=0))
@@ -43,13 +46,21 @@ class Snap(memory.Memory):
         '''Update this device with information from a bitsnap container.
         '''
         self.block_info = info
+        if info['snap_value'] == 'on':
+            LOGGER.error('Extra values in bitsnaps are not yet handled!')
+            raise RuntimeError
         if self.width != int(info['snap_data_width']):
             log_runtime_error(LOGGER, 'Snap and matched bitsnap widths do not match.')
         if self.length != pow(2, int(info['snap_nsamples'])):
             log_runtime_error(LOGGER, 'Snap and matched bitsnap lengths do not match.')
-        self.fields = {}
         def clean_fields(fstr):
-            return fstr.replace('[', '').replace(']', '').rstrip().lstrip().split(' ')
+            _fstr = fstr.replace('[', '').replace(']', '').rstrip().lstrip().replace(', ', ',')
+            if (_fstr.find(' ') > -1) and (_fstr.find(',') > -1):
+                LOGGER.error('Parameter string %s contains spaces and commas as delimiters. This is confusing.', fstr)
+            if _fstr.find(' ') > -1:
+                return _fstr.split(' ')
+            else:
+                return _fstr.split(',')
         field_names = clean_fields(info['io_names'])
         field_widths = clean_fields(info['io_widths'])
         field_types = clean_fields(info['io_types'])
@@ -58,6 +69,7 @@ class Snap(memory.Memory):
         field_widths.reverse()
         field_types.reverse()
         field_bps.reverse()
+        self.fields = {}
         for n, fn in enumerate(field_names):
             field = bitfield.Field(name=fn,
                 numtype=int(field_types[n]),
