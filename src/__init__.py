@@ -10,6 +10,7 @@ import fpgadevice
 
 # import the base corr2 modules
 import async_requester, digitiser, engine, fengine, \
-    fxcorrelator, hostdevice, instrument, katcp_client_fpga, xengine
+    fxcorrelator, hostdevice, instrument, katcp_client_fpga, \
+    xengine, scroll
 
 # end
