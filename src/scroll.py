@@ -11,8 +11,6 @@ Revs:
 
 import curses
 
-DEBUGGING = True
-
 def screen_teardown():
     '''Restore sensible options to the terminal upon exit
     '''
@@ -21,12 +19,12 @@ def screen_teardown():
     curses.endwin()
 
 class Screenline(object):
-    def __init__(self, data, xpos=-1, ypos=-1, scrollable=True, attributes=curses.A_NORMAL):
+    def __init__(self, data, xpos=-1, ypos=-1, absolute=False, attributes=curses.A_NORMAL):
         assert type(data) == str
         self.data = data
         self.xpos = xpos
         self.ypos = ypos
-        self.scrollable = scrollable
+        self.absolute = absolute
         if not isinstance(attributes, list):
             attributes = [attributes]
         self.line_attributes = attributes
@@ -34,7 +32,7 @@ class Screenline(object):
 class Scroll(object):
     '''Scrollable ncurses screen.
     '''
-    def __init__(self):
+    def __init__(self, debug=False):
         '''Constructor
         '''
         self._instruction_string = ''
@@ -48,6 +46,7 @@ class Scroll(object):
         self._xmax = 0
         self._ymin = 0
         self._ymax = 0
+        self._debugging = debug
 
     # set up the screen
     def screen_setup(self):
@@ -101,7 +100,7 @@ class Scroll(object):
         '''
         self._screen.clear()
 
-    def add_line(self, new_line, xpos=-1, ypos=-1, scrollable=True, attributes=curses.A_NORMAL):
+    def add_line(self, new_line, xpos=-1, ypos=-1, absolute=False, attributes=curses.A_NORMAL):
         '''Add a text line to the screen buffer.
         '''
         if not isinstance(new_line, str):
@@ -110,7 +109,7 @@ class Scroll(object):
         if yposition < 0:
             yposition = self._curr_y
             self._curr_y += 1
-        self._sbuffer.append(Screenline(new_line, xpos, yposition, scrollable, attributes))
+        self._sbuffer.append(Screenline(new_line, xpos, yposition, absolute, attributes))
 
     def get_current_line(self):
         '''Return the current y position of the internal screen buffer.
@@ -141,30 +140,31 @@ class Scroll(object):
         return maxy
 
     def _calculate_screen_pos(self, sline, yposition):
-        stringx = max(sline.xpos, 0) + self._offset_x
-        if stringx < 0:
-            xpos = 0
-            strs = stringx * -1
-        else:
-            xpos = stringx
-            strs = 0
-        stre = strs + curses.COLS
-        stry = sline.ypos
-        if stry == -1:
-            stry = yposition
-            yposition += 1
-        strx = xpos
-        if not sline.scrollable:
+        if sline.absolute:
             strs = 0
             stre = curses.COLS
-            strx = 0
+            strx = sline.xpos
+            stry = sline.ypos
         else:
+            stringx = max(sline.xpos, 0) + self._offset_x
+            if stringx < 0:
+                xpos = 0
+                strs = stringx * -1
+            else:
+                xpos = stringx
+                strs = 0
+            stre = strs + curses.COLS
+            stry = sline.ypos
+            if stry == -1:
+                stry = yposition
+                yposition += 1
+            strx = xpos
             stry -= self._offset_y
         return (strs, stre, strx, stry, yposition)
 
     def draw_screen(self, data=None):
         '''Draw the screen using the provided data
-        TODO: ylimits, xlimits, not scrollable is actually absolutely positioned, proper line counts in the status
+        TODO: ylimits, xlimits, proper line counts in the status
         '''
         self._screen.clear()
         if data != None:
@@ -175,16 +175,20 @@ class Scroll(object):
         for sline in self._sbuffer:
             (strs, stre, strx, stry, yposition) = self._calculate_screen_pos(sline, yposition)
             drawstring = sline.data[strs : stre]
-            if DEBUGGING:
+            if self._debugging:
                 drawstring += '_(%d,%d,[%d:%d])' % (strx, stry, strs, stre)
-            if not sline.scrollable:
-                self._screen.addstr(stry, strx, drawstring, *sline.line_attributes)
-            elif (stry >= self._ymin) and (stry < self._ymax):
-                self._screen.addstr(stry, strx, drawstring, *sline.line_attributes)
-                top_line = self._offset_y - yposition
+            try:
+                if sline.absolute:
+                    self._screen.addstr(stry, strx, drawstring, *sline.line_attributes)
+                elif (stry >= self._ymin) and (stry < self._ymax):
+                    self._screen.addstr(stry, strx, drawstring, *sline.line_attributes)
+                    top_line = self._offset_y - yposition
+            except Exception, e:
+                e.args = ('(%d,%d)_%s - ' % (stry, strx, drawstring) + e.args[0], )
+                raise
             if yposition + self._offset_y >= self._ymax - 2:
                 break
-        if DEBUGGING:
+        if self._debugging:
             self._screen.addstr(self._ymax - 2, 0, 'offsets(%d,%d) dims(%d,%d) sbuf_ymax(%d) xlim(%d,%d) ylim(%d,%d)' %
                 (self._offset_x, self._offset_y, curses.COLS, curses.LINES,
                 num_lines_total, self._xmin, self._xmax, self._ymin, self._ymax))
@@ -214,6 +218,9 @@ class Scroll(object):
             self._ymin = ymin
         if ymax > -1:
             self._ymax = ymax
+
+    def set_ypos(self, newpos):
+        self._curr_y = newpos
 
     # set and get the instruction string at the bottom
     def get_instruction_string(self):
