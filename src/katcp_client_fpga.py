@@ -16,6 +16,12 @@ from corr2.misc import log_runtime_error
 # if __name__ == '__main__':
 #     print 'Hello World'
 
+class Dummy_attribute_container(object):
+    '''A dummy class to make registers, snapshots, etc more accessible.
+    '''
+    def __str__(self):
+        return str(self.__dict__)
+
 def _create_meta_dictionary(metalist):
     '''Build a meta information dictionary from a provided list.
     '''
@@ -87,29 +93,30 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         async_requester.AsyncRequester.__init__(self, host, self.callback_request, max_requests=100)
         katcp.CallbackClient.__init__(self, host, katcp_port, tb_limit=20, timeout=timeout, logger=LOGGER, auto_reconnect=True)
 
-        # device types and lists of devices
-        self.devices = {}
-        self.device_info = {'register': {'tag': 'xps:sw_reg',
+        self.devices_known = {'register': {'tag': 'xps:sw_reg',
                                           'class': register.Register,
-                                          'items': []},
+                                          'attr_container': 'registers'},
                             'snapshot': {'tag': 'casper:snapshot',
                                           'class': snap.Snap,
-                                          'items': []},
+                                          'attr_container': 'snaps'},
                             'bitsnap': {'tag': 'casper:bitsnap',
                                           'class': None,
-                                          'items': []},
+                                          'attr_container': None},
                             'sbram': {'tag': 'xps:bram',
                                           'class': sbram.Sbram,
-                                          'items': []},
+                                          'attr_container': 'sbrams'},
                             'tengbe': {'tag': 'xps:tengbe_v2',
                                           'class': tengbe.TenGbe,
-                                          'items': []},
+                                          'attr_container': 'tengbes'},
                             'katadc': {'tag': 'xps:katadc',
                                           'class': katadc.KatAdc,
-                                          'items': []},
+                                          'attr_container': 'katadcs'},
                             'qdr': {'tag': 'xps:qdr',
                                           'class': qdr.Qdr,
-                                          'items': []}}
+                                          'attr_container': 'qdrs'}
+                            }
+        self.devices = {}
+        self.__reset_devices()
 
         self.system_info = {}
         self.system_name = None
@@ -140,18 +147,18 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         if self.unhandled_inform_handler != None:
             self.unhandled_inform_handler(msg)
 
-    def __getattribute__(self, name):
-        if name == 'registers':
-            return {self.devices[r].name: self.devices[r] for r in self.device_info['register']['items']}
-        elif name == 'snapshots':
-            return {self.devices[r].name: self.devices[r] for r in self.device_info['snapshot']['items']}
-        elif name == 'sbrams':
-            return {self.devices[r].name: self.devices[r] for r in self.device_info['sbram']['items']}
-        elif name == 'tengbes':
-            return {self.devices[r].name: self.devices[r] for r in self.device_info['tengbe']['items']}
-        elif name == 'qdrs':
-            return {self.devices[r].name: self.devices[r] for r in self.device_info['qdr']['items']}
-        return object.__getattribute__(self, name)
+#    def __getattribute__(self, name):
+#        if name == 'registers':
+#            return {self.devices[r].name: self.devices[r] for r in self.devices_known['register']['items']}
+#        elif name == 'snapshots':
+#            return {self.devices[r].name: self.devices[r] for r in self.devices_known['snapshot']['items']}
+#        elif name == 'sbrams':
+#            return {self.devices[r].name: self.devices[r] for r in self.devices_known['sbram']['items']}
+#        elif name == 'tengbes':
+#            return {self.devices[r].name: self.devices[r] for r in self.devices_known['tengbe']['items']}
+#        elif name == 'qdrs':
+#            return {self.devices[r].name: self.devices[r] for r in self.devices_known['qdr']['items']}
+#        return object.__getattribute__(self, name)
 
     def connect(self):
         LOGGER.info('%s: daemon started', self.host)
@@ -685,6 +692,12 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             metalist.append((name, tag, param, value))
         return _create_meta_dictionary(metalist)
 
+    def __reset_devices(self):
+        self.devices = {}
+        for known_device in self.devices_known.values():
+            if not known_device['attr_container'] == None:
+                setattr(self, known_device['attr_container'], Dummy_attribute_container())
+
     def get_system_information(self, filename=None):
         '''Get and process the extra system information from the bof file.
         '''
@@ -699,10 +712,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         except KeyError:
             LOGGER.warn('No sys info key in design info!')
 
-        # reset the devices known to this fpga and create new ones
-        self.devices = {}
-        for key in self.device_info.keys():
-            self.device_info[key]['items'] = []
+        self.__reset_devices()
         self.__create_devices(device_info)
 
         # match devices to actual memory bus devices
@@ -726,45 +736,44 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         except KeyError:
             log_runtime_error(LOGGER, 'No such device to remove - %s.' % device_name)
 
-    def add_device(self, obj):
+    def add_device(self, new_device_obj):
         '''
         Add an object to the device list, throwing an exception if it's not an object known to this version.
         '''
-        if obj == None:
-            log_runtime_error(LOGGER, 'Calling add_device on None type?')
-        if self.devices.has_key(obj.name):
-            log_runtime_error(LOGGER, 'Device %s of type %s already exists in devices list.' % (obj.name, type(obj)))
-        self.devices[obj.name] = obj
-        # categorise it
+        assert not new_device_obj == None, 'Calling add_device on None type?'
+        if self.devices.has_key(new_device_obj.name):
+            log_runtime_error(LOGGER, 'Device %s of type %s already exists in devices list.' % (new_device_obj.name, type(new_device_obj)))
         categorised = False
-        for value in self.device_info.values():
-            if value['class'] != None:
-                if isinstance(obj, value['class']):
-                    value['items'].append(obj.name)
+        for known_device in self.devices_known.values():
+            if known_device['class'] != None:
+                if isinstance(new_device_obj, known_device['class']):
+                    self.devices[new_device_obj.name] = known_device['attr_container']
+                    setattr(getattr(self, known_device['attr_container']), new_device_obj.name, new_device_obj)
                     categorised = True
                     break
         if not categorised:
-            log_runtime_error(LOGGER, 'Unknown device %s of type %s' % (obj.name, type(obj)))
+            log_runtime_error(LOGGER, 'Unknown device %s of type %s' % (new_device_obj.name, type(new_device_obj)))
 
-    def __create_devices(self, device_info):
+    def __create_devices(self, all_device_info):
         '''Set up devices on this FPGA from a list of design information, from XML or from KATCP.
         '''
-        for dev_name, dev_info in device_info.items():
-            if dev_name != '':
-                if self.devices.has_key(dev_name):
-                    log_runtime_error(LOGGER, 'Already have device %s, trying to add another with the same name?' % dev_name)
-                new_object = None
-                for value in self.device_info.values():
-                    if (dev_info['tag'] == value['tag']) and (value['class'] != None):
-                        new_object = value['class'](parent=self, name=dev_name, info=dev_info)
-                # add it to the list of devices
-                if new_object == None:
-                    LOGGER.info('Unhandled device %s of type %s', dev_name, dev_info['tag'])
-                else:
-                    self.add_device(new_object)
+        for dev_name, dev_info in all_device_info.items():
+            if dev_name == '':
+                raise RuntimeError('There\'s a problem somewhere, got a blank device name?')
+            if self.devices.has_key(dev_name):
+                log_runtime_error(LOGGER, 'Device %s already exists.' % dev_name)
+            new_object = None
+            for known_device in self.devices_known.values():
+                if (dev_info['tag'] == known_device['tag']) and (known_device['class'] != None):
+                    new_object = known_device['class'](parent=self, name=dev_name, info=dev_info)
+            if new_object == None:
+                LOGGER.info('Unhandled device %s of type %s', dev_name, dev_info['tag'])
+            else:
+                self.add_device(new_object)
         # allow devices to update themselves with full device info
-        for dev in self.devices.values():
-            dev.post_create_update(device_info)
+        for name, container in self.devices.items():
+            device = getattr(getattr(self, container), name)
+            device.post_create_update(all_device_info)
 
     def set_bof(self, bofname):
         '''Set the name of the bof file that will be used on this FPGA host.

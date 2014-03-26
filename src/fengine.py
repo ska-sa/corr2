@@ -7,27 +7,23 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from katcp_client_fpga import KatcpClientFpga
+from corr2.engine import Engine
 
-class Fengine(KatcpClientFpga):
+class Fengine(Engine):
     '''
     An F-engine, regardless of where it is located.
     '''
-    def __init__(self, host, port=7147):
+    def __init__(self, parent):
         '''Constructor.
         '''
-        KatcpClientFpga.__init__(self, host, port)
-        self.num_channels = -1
-        self.output_format = -1
-        LOGGER.info('New %i-channel Fengine created @ %s:%i.',
-            self.num_channels, self.host, self.katcp_port)
+        Engine.__init__(self, parent, 'f-engine')
+        self.num_output_channels = -1
+        LOGGER.info('%i-channel Fengine created @ %s',
+            self.num_output_channels, str(self.parent))
 
     def eq_get(self):
         raise NotImplementedError
 
     def eq_set(self):
         raise NotImplementedError
-
-    def __str__(self):
-        return 'fengine @ %s:%s' % (self.host, self.katcp_port)
 # end

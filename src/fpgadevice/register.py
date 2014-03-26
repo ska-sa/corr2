@@ -127,6 +127,7 @@ class Register(memory.Memory):
             # current one
             def clean_fields(fstr):
                 return fstr.replace('[', '').replace(']', '').rstrip().lstrip().split(' ')
+            # a single value may have been used for width, type or binary point
             field_names = clean_fields(info['names'])
             field_widths = clean_fields(info['bitwidths'])
             field_types = clean_fields(info['arith_types'])
@@ -135,11 +136,24 @@ class Register(memory.Memory):
             field_widths.reverse()
             field_types.reverse()
             field_bin_pts.reverse()
-            if (self.block_info['mode'] == 'fields of equal size') and (len(field_widths) == 1):
-                for ctr in range(1, len(field_names)):
-                    field_widths.append(field_widths[0])
-                    field_types.append(field_types[0])
-                    field_bin_pts.append(field_bin_pts[0])
+            num_fields = len(field_names)
+            if self.block_info['mode'] == 'fields of equal size':
+                for avar in [field_widths, field_bin_pts, field_types]:
+                    if len(avar) != 1:
+                        raise RuntimeError('register %s has equal size fields set, field parameters != 1?', self.name)
+                    avar[:] = num_fields * avar
+            elif (self.block_info['mode'] == 'fields of arbitrary size'):
+                if num_fields == 1:
+                    if (len(field_widths) != 1) or (len(field_types) != 1) or (len(field_bin_pts) != 1):
+                        raise RuntimeError('register %s has equal size fields set, unequal field parameters?', self.name)
+                else:
+                    for avar in [field_widths, field_bin_pts, field_types]:
+                        len_avar = len(avar)
+                        if len_avar != num_fields:
+                            if len_avar == 1:
+                                avar[:] = num_fields * avar
+                            else:
+                                raise RuntimeError('register %s: number of fields is %s, given %s', self.name, num_fields, len_avar)
             for ctr, name in enumerate(field_names):
                 field = bitfield.Field(name, int(field_types[ctr]), \
                     int(field_widths[ctr]), int(field_bin_pts[ctr]), -1)

@@ -164,19 +164,21 @@ class TenGbe(object):
         '''
         # link registers
         self.registers = {'tx': [], 'rx': []}
-        for reg in self.parent.registers:
-            if reg.find(self.name + '_') == 0:
-                name = reg.replace(self.name + '_', '')
+        fpga_registers = [devname for devname, container in self.parent.devices.iteritems() if container == 'registers']
+        for reg_name in fpga_registers:
+            if reg_name.find(self.name + '_') == 0:
+                name = reg_name.replace(self.name + '_', '')
                 if name[0:2] == 'tx' and name.find('txs_') == -1:
-                    self.registers['tx'].append(reg)
+                    self.registers['tx'].append(reg_name)
                 elif name[0:2] == 'rx' and name.find('rxs_') == -1:
-                    self.registers['rx'].append(reg)
+                    self.registers['rx'].append(reg_name)
                 else:
                     if not (name.find('txs_') == 0 or name.find('rxs_') == 0):
-                        LOGGER.warn('Funny reg name %s under tengbe block %s', reg, self.name)
+                        LOGGER.warn('Funny register name %s under tengbe block %s', reg_name, self.name)
         # link snap blocks
         self.snaps = {'tx': None, 'rx': None}
-        for snap in self.parent.snapshots:
+        fpga_snaps = [devname for devname, container in self.parent.devices.iteritems() if container == 'snapshots']
+        for snap in fpga_snaps:
             if snap.find(self.name + '_') == 0:
                 name = snap.replace(self.name + '_', '')
                 if name == 'txs_ss':

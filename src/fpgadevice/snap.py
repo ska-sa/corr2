@@ -4,15 +4,16 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-import memory, register
+from corr2.fpgadevice.memory import Memory
 import corr2.bitfield as bitfield
 from corr2.misc import log_runtime_error
+from corr2.fpgadevice.register import Register
 
-class Snap(memory.Memory):
+class Snap(Memory):
     '''Snap blocks are triggered/controlled blocks of RAM on FPGAs.
     '''
     def __init__(self, parent, name, info):
-        memory.Memory.__init__(self, name=name, width=1, length=1)
+        Memory.__init__(self, name=name, width=1, length=1)
         self.parent = parent
         self.block_info = info
         if info['value'] == 'on':
@@ -32,15 +33,13 @@ class Snap(memory.Memory):
     def post_create_update(self, raw_device_info):
         '''Update the device with information not available at creation.
         '''
-        # update with bitsnap info, if present
         for dev_name, dev_info in raw_device_info.items():
             if dev_name != '':
                 if dev_info['tag'] == 'casper:bitsnap':
                     if self.name == dev_name + '_ss':
                         self.update_from_bitsnap(dev_info)
                         break
-        # and link control registers to snapshots
-        self._link_control_registers(self.parent.registers)
+        self._link_control_registers([devname for devname, container in self.parent.devices.iteritems() if container == 'registers'])
 
     def update_from_bitsnap(self, info):
         '''Update this device with information from a bitsnap container.
@@ -81,10 +80,11 @@ class Snap(memory.Memory):
         '''Link available registers to this snapshot block's control registers.
         '''
         for controlreg in self.control_registers.values():
-            for key, value in available_registers.items():
-                assert isinstance(value, register.Register)
-                if key == controlreg['name']:
-                    controlreg['register'] = value
+            for register in available_registers:
+                regobj = getattr(self.parent.registers, register)
+                assert isinstance(regobj, Register)
+                if regobj.name == controlreg['name']:
+                    controlreg['register'] = regobj
                     break
         if (self.control_registers['control']['register'] == None) or (self.control_registers['status']['register'] == None):
             log_runtime_error(LOGGER, 'Critical control registers for snap %s missing.' % self.name)
