@@ -52,17 +52,17 @@ fpga.get_system_information()
 
 # list the cores we find
 if args.listsnaps:
-    snapshots = fpga.snapshots.keys()
+    snapshots = fpga.snapshots
     numsnaps = len(snapshots)
     print 'Found %i snapshot%s:' % (numsnaps, '' if numsnaps == 1 else 's')
     for snap in snapshots:
-        print '\t', snap
+        print '\t', snap.name, '-', snap.length, '-', snap.fields.keys()
     fpga.disconnect()
     import sys
     sys.exit(0)
 
 # read the snap block
-snapdata = fpga.devices[args.snap].read(man_valid=args.manvalid, man_trig=args.mantrig)
+snapdata = fpga.device_by_name(args.snap).read(man_valid=args.manvalid, man_trig=args.mantrig)
 for ctr in range(0, len(snapdata[snapdata.keys()[0]])):
     print '%5d' % ctr,
     for key in snapdata.keys():

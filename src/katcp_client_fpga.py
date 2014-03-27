@@ -16,11 +16,34 @@ from corr2.misc import log_runtime_error
 # if __name__ == '__main__':
 #     print 'Hello World'
 
-class Dummy_attribute_container(object):
-    '''A dummy class to make registers, snapshots, etc more accessible.
+class Attribute_container(object):
+    '''An iterable class to make registers, snapshots, etc more accessible.
     '''
+    def __init__(self):
+        self._next_item = 0
+        self._items = []
+    def __setattr__(self, name, value):
+        try:
+            if name != '_next_item':
+                self._items.append(name)
+        except AttributeError:
+            pass
+        object.__setattr__(self, name, value)
     def __str__(self):
         return str(self.__dict__)
+    def __iter__(self):
+        return self
+    def next(self): # Python 3: def __next__(self)
+        try:
+            item_name = self._items[self._next_item]
+        except:
+            self._next_item = 0
+            raise StopIteration
+        else:
+            self._next_item += 1
+            return getattr(self, item_name)
+    def __len__(self):
+        return len(self._items)
 
 def _create_meta_dictionary(metalist):
     '''Build a meta information dictionary from a provided list.
@@ -98,7 +121,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
                                           'attr_container': 'registers'},
                             'snapshot': {'tag': 'casper:snapshot',
                                           'class': snap.Snap,
-                                          'attr_container': 'snaps'},
+                                          'attr_container': 'snapshots'},
                             'bitsnap': {'tag': 'casper:bitsnap',
                                           'class': None,
                                           'attr_container': None},
@@ -116,12 +139,14 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
                                           'attr_container': 'qdrs'}
                             }
         self.devices = {}
-        self.__reset_devices()
+        self.registers = Attribute_container()
+        self.snapshots = Attribute_container()
+        self.sbrams = Attribute_container()
+        self.tengbes = Attribute_container()
+        self.katadcs = Attribute_container()
+        self.qdrs = Attribute_container()
 
-        self.system_info = {}
-        self.system_name = None
-        self.running_bof = ''
-        self.bofname = ''
+        self.system_info = {'system_name': None, 'running_bof': '', 'bofname': ''}
 
         self.unhandled_inform_handler = dummy_inform_handler
 
@@ -694,9 +719,12 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
 
     def __reset_devices(self):
         self.devices = {}
-        for known_device in self.devices_known.values():
-            if not known_device['attr_container'] == None:
-                setattr(self, known_device['attr_container'], Dummy_attribute_container())
+        self.registers = Attribute_container()
+        self.snapshots = Attribute_container()
+        self.sbrams = Attribute_container()
+        self.tengbes = Attribute_container()
+        self.katadcs = Attribute_container()
+        self.qdrs = Attribute_container()
 
     def get_system_information(self, filename=None):
         '''Get and process the extra system information from the bof file.
@@ -708,7 +736,8 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         else:
             device_info = self._read_system_info()
         try:
-            self.system_info = device_info['77777']
+            more_sys_info = device_info['77777']
+            self.system_info.update(more_sys_info)
         except KeyError:
             LOGGER.warn('No sys info key in design info!')
 
@@ -723,7 +752,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
                     try:
                         listdev.index(dev_name)
                     except ValueError:
-                        log_runtime_error(LOGGER, 'Specified Memory device %s could not be found on parent %s.' % (dev_name, self.parent.name))
+                        log_runtime_error(LOGGER, 'Specified Memory device %s could not be found on parent %s.' % (dev_name, self.host))
         else:
             log_runtime_error(LOGGER, 'This cannot be run on an unconnected device.')
 
@@ -774,6 +803,23 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         for name, container in self.devices.items():
             device = getattr(getattr(self, container), name)
             device.post_create_update(all_device_info)
+
+    def device_by_name(self, device_name):
+        '''Get a device object using its name.
+        '''
+        device_container = self.devices[device_name]
+        container = getattr(self, device_container)
+        return getattr(container, device_name)
+
+    def device_names_by_container(self, container_name):
+        '''Return a list of devices in a certain container.
+        '''
+        return [devname for devname, container in self.devices.iteritems() if container == container_name]
+
+    def devices_by_container(self, container):
+        '''Get devices using container type.
+        '''
+        return getattr(self, container)
 
     def set_bof(self, bofname):
         '''Set the name of the bof file that will be used on this FPGA host.

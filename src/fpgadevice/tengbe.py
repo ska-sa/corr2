@@ -159,34 +159,32 @@ class TenGbe(object):
         self.ip_address = IpAddress(ipaddress)
         self.port = port if isinstance(port, int) else int(port)
 
-    def post_create_update(self, raw_device_info):
+    def post_create_update(self, _):
         '''Update the device with information not available at creation.
         '''
-        # link registers
         self.registers = {'tx': [], 'rx': []}
-        fpga_registers = [devname for devname, container in self.parent.devices.iteritems() if container == 'registers']
-        for reg_name in fpga_registers:
-            if reg_name.find(self.name + '_') == 0:
-                name = reg_name.replace(self.name + '_', '')
+        #fpga_registers = self.parent.device_names_by_container('registers')
+        for register in self.parent.registers:
+            if register.name.find(self.name + '_') == 0:
+                name = register.name.replace(self.name + '_', '')
                 if name[0:2] == 'tx' and name.find('txs_') == -1:
-                    self.registers['tx'].append(reg_name)
+                    self.registers['tx'].append(register.name)
                 elif name[0:2] == 'rx' and name.find('rxs_') == -1:
-                    self.registers['rx'].append(reg_name)
+                    self.registers['rx'].append(register.name)
                 else:
                     if not (name.find('txs_') == 0 or name.find('rxs_') == 0):
-                        LOGGER.warn('Funny register name %s under tengbe block %s', reg_name, self.name)
-        # link snap blocks
+                        LOGGER.warn('Funny register name %s under tengbe block %s', register.name, self.name)
         self.snaps = {'tx': None, 'rx': None}
-        fpga_snaps = [devname for devname, container in self.parent.devices.iteritems() if container == 'snapshots']
-        for snap in fpga_snaps:
-            if snap.find(self.name + '_') == 0:
-                name = snap.replace(self.name + '_', '')
+        #fpga_snaps = self.parent.device_names_by_container('snapshots')
+        for snapshot in self.parent.snapshots:
+            if snapshot.name.find(self.name + '_') == 0:
+                name = snapshot.name.replace(self.name + '_', '')
                 if name == 'txs_ss':
-                    self.snaps['tx'] = snap
+                    self.snaps['tx'] = snapshot.name
                 elif name == 'rxs_ss':
-                    self.snaps['rx'] = snap
+                    self.snaps['rx'] = snapshot.name
                 else:
-                    LOGGER.error('Incorrect snap %s under tengbe block %s', snap, self.name)
+                    LOGGER.error('Incorrect snap %s under tengbe block %s', snapshot.name, self.name)
 
     def _check(self):
         '''Does this device exist on the parent?
@@ -202,20 +200,21 @@ class TenGbe(object):
         return '%s: MAC(%s) IP(%s) Port(%s)' % (self.name, str(self.mac), str(self.ip_address), str(self.port))
 
     def read_txsnap(self):
-        snapname = self.name + '_txs_ss'
-        return self.parent.devices[snapname].read(timeout=10)
+        snap = self.parent.device_by_name(self.name + '_txs_ss')
+        return snap.read(timeout=10)
 
     def read_rxsnap(self):
-        snapname = self.name + '_rxs_ss'
-        return self.parent.devices[snapname].read(timeout=10)
+        snap = self.parent.device_by_name(self.name + '_rxs_ss')
+        return snap.read(timeout=10)
 
     def read_counters(self):
         '''Read all the counters embedded in the gbe block.
         '''
-        results = {'tx': {}, 'rx': {}}
+        results = {}
         for direction in ['tx', 'rx']:
+            results[direction] = {}
             for reg in self.registers[direction]:
-                results[direction][reg] = self.parent.devices[reg].read()['reg']
+                results[direction][reg] = self.parent.device_by_name(reg).read()['reg']
         return results
 
     #def read_raw(self,  **kwargs):

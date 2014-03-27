@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 from corr2.digitiser import Digitiser
+import corr2.scroll as scroll
 
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT digitiser.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -41,7 +42,7 @@ digitiser_fpga.test_connection()
 digitiser_fpga.get_system_information()
 
 # is there a 10gbe core in the design?
-numgbes = len(digitiser_fpga.tengbes.keys())
+numgbes = len(digitiser_fpga.device_names_by_container('tengbes'))
 if not numgbes == 4:
     raise RuntimeError('A digitiser must have four 10Gbe cores.')
 print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')

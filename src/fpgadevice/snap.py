@@ -39,7 +39,7 @@ class Snap(Memory):
                     if self.name == dev_name + '_ss':
                         self.update_from_bitsnap(dev_info)
                         break
-        self._link_control_registers([devname for devname, container in self.parent.devices.iteritems() if container == 'registers'])
+        self._link_control_registers(self.parent.device_names_by_container('registers'))
 
     def update_from_bitsnap(self, info):
         '''Update this device with information from a bitsnap container.
