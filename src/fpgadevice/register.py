@@ -18,10 +18,10 @@ class Register(memory.Memory):
         '''
         memory.Memory.__init__(self, name=name, width=width, length=1)
         self.parent = parent
-        self.process_info(info)
         self.auto_update = auto_update
         self.last_values = {}
         self.block_info = info
+        self.process_info(info)
         LOGGER.info('New register - %s', self)
 
     def __str__(self):
@@ -34,6 +34,14 @@ class Register(memory.Memory):
 
 #     def __repr__(self):
 #         return '[' + self.__str__() + ']'
+
+    def info(self):
+        fstring = ''
+        for field in self.fields.keys():
+            fstring += field + ', '
+        if fstring[-2:] == ', ':
+            fstring = fstring[:-2]
+        return '%s(%i,[%s])' % (self.name, self.width, fstring)
 
     def post_create_update(self, raw_device_info):
         '''Update the Register with information not available at creation.
@@ -159,4 +167,7 @@ class Register(memory.Memory):
                     int(field_widths[ctr]), int(field_bin_pts[ctr]), -1)
                 self.add_field(field, auto_offset=True)
         else:
+            LOGGER.warn('That is a seriously old register - please swap it out!')
+            print self
+            print info
             raise RuntimeError('Unknown Register type.')

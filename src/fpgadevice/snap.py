@@ -17,8 +17,8 @@ class Snap(Memory):
         self.parent = parent
         self.block_info = info
         if info['value'] == 'on':
-            LOGGER.error('Extra values in snapshots are not yet handled!')
-            raise RuntimeError
+            LOGGER.warning('Extra values in snapshots are not yet handled!')
+#            raise RuntimeError
         self.width = int(info['data_width'])
         self.length = pow(2, int(info['nsamples']))
         self.add_field(bitfield.Field(name='data', numtype=0, width=self.width, binary_pt=0, lsb_offset=0))
@@ -96,6 +96,18 @@ class Snap(Memory):
             self.control_registers['trig_offset']['register'].write_int(offset)
         self.control_registers['control']['register'].write_int((0 + (man_trig << 1) + (man_valid << 2) + (circular_capture << 3)))
         self.control_registers['control']['register'].write_int((1 + (man_trig << 1) + (man_valid << 2) + (circular_capture << 3)))
+
+    def print_snap(self, limit_lines=-1, man_valid=False, man_trig=False):
+        '''Read and print a snap block.
+        '''
+        snapdata = self.read(man_valid=man_valid, man_trig=man_trig)
+        for ctr in range(0, len(snapdata[snapdata.keys()[0]])):
+            print '%5d' % ctr,
+            for key in snapdata.keys():
+                print '%s(%d)' % (key, snapdata[key][ctr]), '\t',
+            print ''
+            if (limit_lines > 0) and (ctr == limit_lines):
+                break
 
     #return {'data': processed, 'extra_value': extra_value}
 #    def read_raw(self, man_trig = False, man_valid = False, timeout = 1, offset = -1, circular_capture = False, get_extra_val = False, arm = True):

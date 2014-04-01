@@ -42,6 +42,8 @@ class Attribute_container(object):
         else:
             self._next_item += 1
             return getattr(self, item_name)
+    def names(self):
+        return self._items
     def __len__(self):
         return len(self._items)
 

@@ -61,15 +61,8 @@ if args.listsnaps:
     import sys
     sys.exit(0)
 
-# read the snap block
-snapdata = fpga.device_by_name(args.snap).read(man_valid=args.manvalid, man_trig=args.mantrig)
-for ctr in range(0, len(snapdata[snapdata.keys()[0]])):
-    print '%5d' % ctr,
-    for key in snapdata.keys():
-        print '%s(%d)' % (key, snapdata[key][ctr]), '\t',
-    print ''
-    if ctr == args.numrows:
-        break
+# read and print the snap block
+fpga.device_by_name(args.snap).print_snap(limit_lines=args.numrows, man_valid=args.manvalid, man_trig=args.mantrig)
 
 fpga.disconnect()
 # end
