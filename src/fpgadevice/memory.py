@@ -44,13 +44,17 @@ class Memory(bitfield.Bitfield):
         '''
         # read the data raw, passing necessary arguments through
         raw = self.read_raw(**kwargs)
-        raw = raw['data']
-        if not(isinstance(raw, str) or isinstance(raw, buffer)):
+        # and convert using our bitstruct
+        return self._process_data(raw['data'])
+
+    def _process_data(self, rawdata):
+        '''
+        '''
+        if not(isinstance(rawdata, str) or isinstance(rawdata, buffer)):
             log_runtime_error(LOGGER, 'self.read_raw returning incorrect datatype. Must be str or buffer.')
-        #extra_value = self.control_registers['extra_value']['register'].read() if self.options['extra_value'] else None
-        # and convert using the bitstruct
+        large_unsigned_detected = False
         repeater = construct.GreedyRange(self.bitstruct)
-        parsed = repeater.parse(raw)
+        parsed = repeater.parse(rawdata)
         processed = {}
         for field in self.fields.itervalues():
             processed[field.name] = []

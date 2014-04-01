@@ -16,9 +16,6 @@ class Snap(Memory):
         Memory.__init__(self, name=name, width=1, length=1)
         self.parent = parent
         self.block_info = info
-        if info['value'] == 'on':
-            LOGGER.warning('Extra values in snapshots are not yet handled!')
-#            raise RuntimeError
         self.width = int(info['data_width'])
         self.length = pow(2, int(info['nsamples']))
         self.add_field(bitfield.Field(name='data', numtype=0, width=self.width, binary_pt=0, lsb_offset=0))
@@ -32,22 +29,22 @@ class Snap(Memory):
 
     def post_create_update(self, raw_device_info):
         '''Update the device with information not available at creation.
+        @param raw_device_info: dictionary of device information
         '''
-        for dev_name, dev_info in raw_device_info.items():
-            if dev_name != '':
+        # is this snap block inside a bitsnap block?
+        for device_name, dev_info in raw_device_info.items():
+            if device_name != '':
                 if dev_info['tag'] == 'casper:bitsnap':
-                    if self.name == dev_name + '_ss':
+                    if self.name == device_name + '_ss':
                         self.update_from_bitsnap(dev_info)
                         break
-        self._link_control_registers(self.parent.device_names_by_container('registers'))
+        # find control registers for this snap block
+        self._link_control_registers(self.parent.device_names_by_container('registers'), raw_device_info)
 
     def update_from_bitsnap(self, info):
         '''Update this device with information from a bitsnap container.
         '''
         self.block_info = info
-        if info['snap_value'] == 'on':
-            LOGGER.error('Extra values in bitsnaps are not yet handled!')
-            raise RuntimeError
         if self.width != int(info['snap_data_width']):
             log_runtime_error(LOGGER, 'Snap and matched bitsnap widths do not match.')
         if self.length != pow(2, int(info['snap_nsamples'])):
@@ -76,18 +73,28 @@ class Snap(Memory):
                 binary_pt=int(field_bps[n]), lsb_offset=-1)
             self.add_field(field, auto_offset=True)
 
-    def _link_control_registers(self, available_registers):
+    def _link_control_registers(self, available_registers, raw_device_info):
         '''Link available registers to this snapshot block's control registers.
         '''
         for controlreg in self.control_registers.values():
-            for register in available_registers:
-                regobj = getattr(self.parent.registers, register)
+            for register_name in available_registers:
+                regobj = getattr(self.parent.registers, register_name)
                 assert isinstance(regobj, Register)
                 if regobj.name == controlreg['name']:
                     controlreg['register'] = regobj
                     break
         if (self.control_registers['control']['register'] == None) or (self.control_registers['status']['register'] == None):
             log_runtime_error(LOGGER, 'Critical control registers for snap %s missing.' % self.name)
+        if self.block_info['snap_value'] == 'on':
+            if self.control_registers['extra_value']['register'] == None:
+                log_runtime_error(LOGGER, 'snap %s extra value register specified, but not found. Problem.' % self.name)
+            extra_info = raw_device_info[self.control_registers['extra_value']['name']]
+            extra_info['mode'] = 'fields of arbitrary size'
+            extra_info['names'] = self.block_info['extra_names']
+            extra_info['bitwidths'] = self.block_info['extra_widths']
+            extra_info['arith_types'] = self.block_info['extra_types']
+            extra_info['bin_pts'] = self.block_info['extra_bps']
+            self.control_registers['extra_value']['register'].process_info(extra_info)
 
     def _arm(self, man_trig=False, man_valid=False, offset=-1, circular_capture=False):
         '''Arm the snapshot block.
@@ -109,10 +116,16 @@ class Snap(Memory):
             if (limit_lines > 0) and (ctr == limit_lines):
                 break
 
-    #return {'data': processed, 'extra_value': extra_value}
-#    def read_raw(self, man_trig = False, man_valid = False, timeout = 1, offset = -1, circular_capture = False, get_extra_val = False, arm = True):
+    def read(self, **kwargs):
+        '''Override Memory.read to handle the extra value register.
+        '''
+        raw = self.read_raw(**kwargs)
+        processed = self._process_data(raw['data'])
+        return {'data': processed, 'extra_value': raw['extra_value']}
+
     def read_raw(self, **kwargs):
-        # TODO - The extra value?
+        '''Read snap data from the memory device.
+        '''
         def getkwarg(key, default):
             try:
                 return kwargs[key]
@@ -124,7 +137,6 @@ class Snap(Memory):
         offset = getkwarg('offset', -1)
         circular_capture = getkwarg('circular_capture', False)
         arm = getkwarg('arm', True)
-        extra_val = getkwarg('extra_val', False)
         # arm
         if arm:
             self._arm(man_trig=man_trig, man_valid=man_valid, offset=offset, circular_capture=circular_capture)
@@ -136,6 +148,7 @@ class Snap(Memory):
             addr = self.control_registers['status']['register'].read_uint()
             done = not bool(addr & 0x80000000)
         bram_dmp = {}
+        bram_dmp['extra_value'] = None
         bram_dmp['data'] = []
         bram_dmp['length'] = addr & 0x7fffffff
         bram_dmp['offset'] = 0
@@ -168,6 +181,10 @@ class Snap(Memory):
             bram_dmp['offset'] = 0
         if bram_dmp['length'] != self.length * (self.width / 8):
             log_runtime_error(LOGGER, '%s.read_uint() - expected %i bytes, got %i' % (self.name, self.length, bram_dmp['length'] / (self.width / 8)))
+        # read the extra value
+        if self.control_registers['extra_value']['register'] != None:
+            bram_dmp['extra_value'] = self.control_registers['extra_value']['register'].read()
+        # done
         return bram_dmp
 
     def __str__(self):

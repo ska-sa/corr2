@@ -44,9 +44,6 @@ if args.verbose:
 
 # create the device and connect to it
 fpga = KatcpClientFpga(args.hostname, 7147)
-time.sleep(0.2)
-if not fpga.is_connected():
-    fpga.connect()
 fpga.test_connection()
 fpga.get_system_information()
 
