@@ -6,7 +6,7 @@ Created on Feb 28, 2013
 @author: paulp
 '''
 
-import logging, katcp, struct
+import logging, struct, time, katcp
 LOGGER = logging.getLogger(__name__)
 
 from corr2.fpgadevice import register, sbram, snap, katadc, tengbe, memory, qdr
@@ -86,7 +86,7 @@ def sendfile(filename, host, port, result_queue):
     '''Send a file to a host using sockets. Place the result of the
     action in a Queue.Queue
     '''
-    import socket, time
+    import socket
     upload_socket = socket.socket()
     stime = time.time()
     connected = False
@@ -147,15 +147,11 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         self.tengbes = Attribute_container()
         self.katadcs = Attribute_container()
         self.qdrs = Attribute_container()
-
         self.system_info = {'system_name': None, 'running_bof': '', 'bofname': ''}
-
         self.unhandled_inform_handler = dummy_inform_handler
-
         self._timeout = timeout
         if connect:
-            self.start(daemon=True)
-
+            self.connect()
         LOGGER.info('%s:%s created%s.', host, katcp_port, ' & daemon started' if connect else '')
 
     def test_connection(self):
@@ -187,13 +183,23 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
 #            return {self.devices[r].name: self.devices[r] for r in self.devices_known['qdr']['items']}
 #        return object.__getattribute__(self, name)
 
-    def connect(self):
+    def connect(self, timeout=1):
+        '''Start the KATCP daemon on the device.
+        '''
+        stime = time.time()
+        while (not self.is_connected()) and (time.time()-stime<timeout):
+            try:
+                self.start(daemon=True)
+            except RuntimeError:
+                raise
+            time.sleep(0.1)
         LOGGER.info('%s: daemon started', self.host)
-        self.start(daemon=True)
 
     def disconnect(self):
-        LOGGER.info('%s: daemon stopped', self.host)
+        '''Stop the KATCP daemon on the device.
+        '''
         self.stop()
+        LOGGER.info('%s: daemon stopped', self.host)
 
     def __str__(self):
         return 'KatcpFpga(%s):%i - %s' % (self.host, self.katcp_port,
@@ -410,7 +416,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             if result[0].arguments[0] != katcp.Message.OK:
                 log_runtime_error(LOGGER, 'Failed to delete bof file %s' % bof)
 
-    def upload_to_ram_and_program(self, bof_file, port=-1, timeout=30, wait_complete=True):
+    def upload_to_ram_and_program(self, bof_file, port=-1, timeout=10, wait_complete=True):
         """Upload a BORPH file to the ROACH board for execution.
            @param self  This object.
            @param bof_file  The filename and/or path of the bof file to upload.
@@ -429,14 +435,14 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         def makerequest(result_queue):
             '''Make the upload request to the KATCP server on the host.
             '''
-#            try:
-            result = self.katcprequest(name='progremote', request_timeout=timeout, require_ok=True, request_args=(port, ))
-            if result[0].arguments[0] == katcp.Message.OK:
-                result_queue.put('')
-            else:
-                result_queue.put('Request to client returned, but not Message.OK.')
-#            except Exception:
-#                result_queue.put('Request to client failed.')
+            try:
+                result = self.katcprequest(name='progremote', request_timeout=timeout, require_ok=True, request_args=(port, ))
+                if result[0].arguments[0] == katcp.Message.OK:
+                    result_queue.put('')
+                else:
+                    result_queue.put('Request to client returned, but not Message.OK.')
+            except Exception:
+                result_queue.put('Request to client failed.')
         if port == -1:
             import random
             port = random.randint(2000, 2500)
