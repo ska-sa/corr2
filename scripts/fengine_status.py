@@ -138,7 +138,7 @@ try:
                     for reg in reg_list:
                         scroller.add_line(reg, start_pos, 1, absolute=True)
                         start_pos += pos_increment
-                scroller.set_ypos(2)
+                scroller.set_ypos(newpos=2)
                 scroller.set_ylimits(ymin=2)
             else:
                 scroller.set_ypos(1)
@@ -146,15 +146,15 @@ try:
             for ctr, fpga in enumerate(ffpgas):
                 fpga_data = get_fpga_data(fpga)
                 scroller.add_line(fpga.host)
-                start_pos = 30
-                pos_increment = 20
                 for core, value in fpga_data['gbe'].items():
+                    start_pos = 30
+                    pos_increment = 20
                     scroller.add_line(core, 5)
-                    for direc, reg_list in fpga_headers[0].items():
+                    for direction, reg_list in fpga_headers[0].items():
                         for reg in reg_list:
                             if start_pos < 200:
-                                scroller.add_line('%10d' % fpga_data['gbe'][core][direc][reg.replace('gbe', core)], start_pos, scroller.get_current_line() - 1)
-                                scroller.add_line(reg, start_pos, 1, absolute=True)
+                                regval = '%10d' % fpga_data['gbe'][core][direction][reg.replace('gbe', core)]
+                                scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
                                 start_pos += pos_increment
             scroller.draw_screen()
             last_refresh = time.time()

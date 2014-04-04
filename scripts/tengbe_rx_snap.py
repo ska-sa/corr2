@@ -45,7 +45,7 @@ fpga.get_system_information()
 
 # list the cores we find
 if args.listcores:
-    cores = fpga.tengbes.keys()
+    cores = fpga.tengbes.names()
     numgbes = len(cores)
     print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
     for core in cores:
@@ -54,7 +54,7 @@ if args.listcores:
     sys.exit(0)
 
 # read the snap block
-coredata = fpga.devices[args.core].read_rxsnap()
+coredata = fpga.device_by_name(args.core).read_rxsnap()
 for ctr in range(0, len(coredata[coredata.keys()[0]])):
     print '%5d' % ctr,
     key_order = ['led_up', 'led_rx', 'valid_in', 'eof_in', 'bad_frame', 'overrun', 'ip_in', 'data_in']
