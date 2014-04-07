@@ -55,6 +55,8 @@ for host in feng_hosts:
     ffpgas.append(feng_fpga)
 
 def fengine_gbe(fpga):
+    '''Get 10gbe data from the fpga.
+    '''
     cores = fpga.tengbes
     returndata = {}
     for core in cores:
@@ -68,34 +70,30 @@ def get_fpga_data(fpga):
 
 # work out tables for each fpga
 fpga_headers = []
+master_list = []
 for cnt, fpga in enumerate(ffpgas):
     gbedata = get_fpga_data(fpga)['gbe']
     core0_regs = {}
     gbe0 = gbedata.keys()[0]
-    for direc in ['tx', 'rx']:
-        core0_regs[direc] = [key.replace(gbe0, 'gbe') for key in gbedata[gbe0][direc].keys()]
+    core0_regs = [key.replace(gbe0, 'gbe') for key in gbedata[gbe0].keys()]
     if cnt == 0:
-        master_list = core0_regs.copy()
+        master_list = core0_regs[:]
     for core in gbedata:
         core_regs = {}
-        for direc in ['tx', 'rx']:
-            core_regs[direc] = [key.replace(core, 'gbe') for key in gbedata[core][direc].keys()]
-        for direc in ['tx', 'rx']:
-            if sorted(core0_regs[direc]) != sorted(core_regs[direc]):
-                raise RuntimeError('Not all GBE cores for FPGA %s have the same support registers. Problem.', fpga.host)
+        core_regs = [key.replace(core, 'gbe') for key in gbedata[core].keys()]
+        if sorted(core0_regs) != sorted(core_regs):
+            raise RuntimeError('Not all GBE cores for FPGA %s have the same support registers. Problem.', fpga.host)
     fpga_headers.append(core0_regs)
 
-master_list = fpga_headers[0]
 all_the_same = True
 for cnt, fpga in enumerate(ffpgas):
-    for direc in ['tx', 'rx']:
-        if sorted(master_list[direc]) != sorted(fpga_headers[cnt][direc]):
-            all_the_same = False
-            raise RuntimeError('Warning: GBE cores across given FPGAs are NOT configured the same!')
+    if sorted(master_list) != sorted(fpga_headers[cnt]):
+        all_the_same = False
+        raise RuntimeError('Warning: GBE cores across given FPGAs are NOT configured the same!')
 if all_the_same:
     fpga_headers = [fpga_headers[0]]
 
-fpga_headers = [{'rx': ['gbe_rxctr', 'gbe_rxofctr', 'gbe_rxerrctr', 'gbe_rxbadctr'], 'tx': ['gbe_txerrctr', 'gbe_txfullctr', 'gbe_txofctr', 'gbe_txctr', 'gbe_txvldctr']}]
+fpga_headers = [['gbe_rxctr', 'gbe_rxofctr', 'gbe_rxerrctr', 'gbe_rxbadctr', 'gbe_txerrctr', 'gbe_txfullctr', 'gbe_txofctr', 'gbe_txctr', 'gbe_txvldctr']]
 
 import signal
 def signal_handler(sig, frame):
@@ -134,28 +132,27 @@ try:
             pos_increment = 20
             if len(fpga_headers) == 1:
                 scroller.add_line('Host', 0, 1, absolute=True)
-                for reg_list in fpga_headers[0].values():
-                    for reg in reg_list:
-                        scroller.add_line(reg, start_pos, 1, absolute=True)
-                        start_pos += pos_increment
+                for reg in fpga_headers[0]:
+                    scroller.add_line(reg, start_pos, 1, absolute=True)
+                    start_pos += pos_increment
                 scroller.set_ypos(newpos=2)
                 scroller.set_ylimits(ymin=2)
             else:
                 scroller.set_ypos(1)
                 scroller.set_ylimits(ymin=1)
             for ctr, fpga in enumerate(ffpgas):
-                fpga_data = get_fpga_data(fpga)
                 scroller.add_line(fpga.host)
-                for core, value in fpga_data['gbe'].items():
+                fpga_data = get_fpga_data(fpga)
+                for core, core_data in fpga_data['gbe'].items():
                     start_pos = 30
                     pos_increment = 20
                     scroller.add_line(core, 5)
-                    for direction, reg_list in fpga_headers[0].items():
-                        for reg in reg_list:
-                            if start_pos < 200:
-                                regval = '%10d' % fpga_data['gbe'][core][direction][reg.replace('gbe', core)]
-                                scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
-                                start_pos += pos_increment
+                    for header_register in fpga_headers[0]:
+                        core_register_name = header_register.replace('gbe', core)
+                        if start_pos < 200:
+                            regval = '%10d' % core_data[core_register_name]['data']['reg']
+                            scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
+                            start_pos += pos_increment
             scroller.draw_screen()
             last_refresh = time.time()
 except Exception, e:
