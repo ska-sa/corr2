@@ -43,9 +43,9 @@ def program_fpgas(fpga_list, timeout=10):
     '''Program a list of fpgas/boffile tuple-pairs concurrently.
     '''
     for fpga, boffile in fpga_list[0:-1]:
-        fpga.upload_to_ram_and_program(boffile, wait_complete=False)
+        fpga.upload_to_ram_and_program(boffile, timeout=45, wait_complete=False)
     fpga_list[-1][0].upload_to_ram_and_program(fpga_list[-1][1],
-        wait_complete=True)
+        timeout=45, wait_complete=True)
     all_done = False
     import time
     stime = time.time()

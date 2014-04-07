@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 from corr2.digitiser import Digitiser
-import corr2.scroll as scroll
+#import corr2.scroll as scroll
 
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT digitiser.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -47,25 +47,26 @@ if not numgbes == 4:
     raise RuntimeError('A digitiser must have four 10Gbe cores.')
 print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
 
-def get_coredata(fpga):
+def get_coredata():
     '''Get the updated counters for all the cores.
     '''
     cdata = {}
-    for device in fpga.tengbes.keys():
-        data = fpga.devices[device].read_counters()
-        cdata[device] = data
+    for device in digitiser_fpga.tengbes:
+        cdata[device.name] = device.read_counters()
+        for key in cdata[device.name].keys():
+            cdata[device.name][key]['data'] = cdata[device.name][key]['data']['reg']
     return cdata
 
-def reset_counters(fpga, cdata):
+def reset_counters(cdata):
     '''Reset all core counters.
     '''
-    for device in fpga.tengbes.keys():
-        for direction in ['tx', 'rx']:
-            for key in cdata[device][direction].keys():
-                cdata[device][direction][key] = 0
+    for device in digitiser_fpga.tengbes:
+        for key in cdata[device.name].keys():
+            cdata[device.name][key]['data'] = 0
+            cdata[device.name][key]['timestamp'] = -1
     return cdata
 
-def print_top_str(stdscr, host, starttime):
+def print_top_str(stdscr, host, displaytime):
     '''Print the top string of the display.
     '''
     stdscr.move(1, 2)
@@ -73,7 +74,7 @@ def print_top_str(stdscr, host, starttime):
     stdscr.addnstr(1, 2,
         'Polling %i core%s on %s every %i second%s - %is elapsed.' %
         (numgbes, '' if numgbes == 1 else 's', host, polltime,
-        '' if polltime == 1 else 's', time.time() - starttime), 100,
+        '' if polltime == 1 else 's', time.time() - displaytime), 100,
         curses.A_REVERSE)
 
 def print_bottom_str(stdscr):
@@ -95,93 +96,97 @@ def print_headers(stdscr):
     stdscr.addstr(2, 160, 'packet count')
     stdscr.addstr(2, 180, 'last_time')
 
-def handle_keys(keyval, dig_fpga):
+def handle_keys(keyval):
     ''' Handle some key presses.
     '''
     if (keyval == ord('q')) or (keyval == ord('Q')):
         return (True, False)
     elif (keyval == ord('r')) or (keyval == ord('R')):
-        #reset_counters(dig_fpga)
+        #reset_counters(digitiser_fpga)
         return (False, True)
     return (False, False)
 
-def mainfunc(stdscr, dig_fpga, coredata):
+def mainloop(stdscr):
+    counter_data = get_coredata()
+    last_render = time.time() - (polltime + 1)
+    while True:
+        if stdscr != None:
+            quit_pressed, force_render = handle_keys(stdscr.getch())
+            if quit_pressed:
+                break
+            if force_render:
+                last_render = time.time() - (polltime + 1)
+        if time.time() > last_render + polltime:
+            if stdscr != None:
+                print_top_str(stdscr, digitiser_fpga.host, starttime)
+            digitiser_time = digitiser_fpga.get_current_time()
+            newdata = get_coredata()
+            for ctr, core in enumerate(device_list):
+                packets = newdata[core][core + '_txctr']['data'] - counter_data[core][core + '_txctr']['data']
+                time_elapsed = newdata[core][core + '_txctr']['timestamp'] - counter_data[core][core + '_txctr']['timestamp']
+                errors = newdata[core][core + '_txerrctr']['data'] - counter_data[core][core + '_txerrctr']['data']
+                errors = newdata[core][core + '_txerrctr']['data']
+                rate = packets * (bytes_per_packet * 8) / (1000000000.0 * time_elapsed)
+                ipstr = tap_data[core]['ip']
+                line = 3 + ctr
+                if stdscr == None:
+                    print newdata
+                    print ''
+                    print counter_data
+                if stdscr != None:
+                    stdscr.move(line, 20)
+                    stdscr.clrtoeol()
+#                    stdscr.addnstr(40, 0, '%.3f'%last_render, 40)
+#                    stdscr.addnstr(41, 0, '%.3f'%time.time(), 40)
+#                    stdscr.addnstr(42, 0, '%.3f'%polltime, 40)
+                    stdscr.addnstr(line, 20, ipstr, 20)
+                    stdscr.addnstr(line, 40, 'False' if tap_data[core]['name'] == '' else 'True', 20)
+                    stdscr.addnstr(line, 60, '%i' % packets, 20)
+                    stdscr.addnstr(line, 80, '%.3f' % rate, 20)
+                    stdscr.addnstr(line, 100, '%i' % errors, 20)
+                    stdscr.addnstr(line, 120, '%i' % newdata[core][core + '_txfullctr']['data'], 20)
+                    stdscr.addnstr(line, 140, '%i' % newdata[core][core + '_txofctr']['data'], 20)
+                    stdscr.addnstr(line, 160, '%i' % newdata[core][core + '_txctr']['data'], 20)
+                    stdscr.addnstr(line, 180, '%i' % digitiser_time, 20)
+            last_render = time.time()
+            if stdscr != None:
+                stdscr.refresh()
+            counter_data = copy.deepcopy(newdata)
+        time.sleep(0.1)
+
+def mainfunc(stdscr):
     '''The main screen-drawing loop of the program.
     '''
-    device_list = dig_fpga.tengbes.keys()
-    for device in device_list:
-        if not (coredata[device]['tx'].has_key(device + '_txctr') and
-                coredata[device]['tx'].has_key(device + '_txerrctr') and
-                coredata[device]['tx'].has_key(device + '_txofctr') and
-                coredata[device]['tx'].has_key(device + '_txfullctr') and
-                coredata[device]['tx'].has_key(device + '_txvldctr')):
-            raise RuntimeError('Core %s was not built with the required debug counters.', device)
-
-    starttime = time.time()
     curses.use_default_colors()
     curses.curs_set(0)
     stdscr.clear()
     stdscr.box()
     stdscr.nodelay(1)
-    print_top_str(stdscr, dig_fpga.host, starttime)
+    print_top_str(stdscr, digitiser_fpga.host, starttime)
     print_bottom_str(stdscr)
     print_headers(stdscr)
-    # core names
     for ctr, core in enumerate(device_list):
         line = 3 + ctr
         stdscr.addstr(line, 2, '%s' % core)
-    dig_fpga.registers['control'].write(clr_status='pulse')
-    # loop and read & print the core info
-    last_render = time.time() - (polltime + 1)
-    coredata_old = copy.deepcopy(coredata)
-    while True:
-        (quit_pressed, force_render) = handle_keys(stdscr.getch(), dig_fpga)
-        if quit_pressed:
-            break
-        if force_render:
-            last_render = time.time() - (polltime + 1)
-        if time.time() > last_render + polltime:
-            print_top_str(stdscr, dig_fpga.host, starttime)
-            loop_time = dig_fpga.get_current_time()
-            for ctr, core in enumerate(device_list):
-                line = 3 + ctr
-                stdscr.move(line, 20)
-                stdscr.clrtoeol()
-                # update the core counter data
-                newdata = get_coredata(dig_fpga)
-                for device in device_list:
-                    for direction in ['tx', 'rx']:
-                        for key in coredata[device][direction].keys():
-                            coredata[device][direction][key] = newdata[device][direction][key]
-                # and update the table
-                packets = coredata[core]['tx'][core + '_txctr'] - \
-                            coredata_old[core]['tx'][core + '_txctr']
-                errors = coredata[core]['tx'][core + '_txerrctr'] - \
-                            coredata_old[core]['tx'][core + '_txerrctr']
-                errors = coredata[core]['tx'][core + '_txerrctr']
-                rate = packets * (bytes_per_packet * 8) / (1000000000.0 * (time.time() - last_render))
-                ipstr = coredata[core]['tap']['ip']
-                stdscr.addnstr(line, 20, ipstr, 20)
-                stdscr.addnstr(line, 40, 'False' if coredata[core]['tap']['name'] == '' else 'True', 20)
-                stdscr.addnstr(line, 60, '%i' % packets, 20)
-                stdscr.addnstr(line, 80, '%.2f' % rate, 20)
-                stdscr.addnstr(line, 100, '%i' % errors, 20)
-                stdscr.addnstr(line, 120, '%i' % coredata[core]['tx'][core + '_txfullctr'], 20)
-                stdscr.addnstr(line, 140, '%i' % coredata[core]['tx'][core + '_txofctr'], 20)
-                stdscr.addnstr(line, 160, '%i' % coredata[core]['tx'][core + '_txctr'], 20)
-                stdscr.addnstr(line, 180, '%i' % loop_time, 20)
-            stdscr.refresh()
-            last_render = time.time()
-            coredata_old = copy.deepcopy(coredata)
-        time.sleep(0.1)
-    return
+    digitiser_fpga.registers.control.write(clr_status='pulse')
+    mainloop(stdscr)
 
 # set up the counters
-tengbedata = get_coredata(digitiser_fpga)
-for tengbecore in digitiser_fpga.tengbes.keys():
-    tengbedata[tengbecore]['tap'] = digitiser_fpga.devices[tengbecore].tap_info()
-    print '\t', tengbecore
-tengbedata = reset_counters(digitiser_fpga, tengbedata)
+counter_data = get_coredata()
+tap_data = {}
+for core in digitiser_fpga.tengbes.names():
+    tap_data[core] = digitiser_fpga.device_by_name(core).tap_info()
+    print '\t', core
+counter_data = reset_counters(counter_data)
+starttime = time.time()
+device_list = digitiser_fpga.tengbes.names()
+for device in device_list:
+    if not (counter_data[device].has_key(device + '_txctr') and
+            counter_data[device].has_key(device + '_txerrctr') and
+            counter_data[device].has_key(device + '_txofctr') and
+            counter_data[device].has_key(device + '_txfullctr') and
+            counter_data[device].has_key(device + '_txvldctr')):
+        raise RuntimeError('Core %s was not built with the required debug counters.', device)
 
 # start curses after setting up a clean teardown
 def teardown():
@@ -189,14 +194,16 @@ def teardown():
     curses.nocbreak()
     curses.echo()
     curses.endwin()
-import signal
 def signal_handler(sig, frame):
     '''Handle a os signal.'''
     teardown()
     import sys
     sys.exit(0)
+import signal
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGHUP, signal_handler)
-curses.wrapper(mainfunc, digitiser_fpga, tengbedata)
+
+curses.wrapper(mainfunc)
+
 teardown()
 # end

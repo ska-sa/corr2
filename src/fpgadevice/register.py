@@ -4,7 +4,7 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-import construct, struct
+import construct, struct, time
 
 from corr2.fpgadevice.memory import Memory
 import corr2.bitfield as bitfield
@@ -46,16 +46,18 @@ class Register(Memory):
     def read(self, **kwargs):
         '''Memory.read returns a list for all bitfields, so just put those
         values into single values.'''
-        results = Memory.read(self, **kwargs)
+        memdata = Memory.read(self, **kwargs)
+        results = memdata['data']
+        timestamp = memdata['timestamp']
         for k, v in results.iteritems():
             results[k] = v[0]
         self.last_values = results
-        return results
+        return {'data': results, 'timestamp': timestamp}
 
     def read_raw(self, **kwargs):
         # size in bytes
-        data = self.parent.read(device_name=self.name, size=4, offset=0*4)
-        return {'data': data}
+        rawdata = self.parent.read(device_name=self.name, size=4, offset=0*4)
+        return rawdata, time.time()
 
     def write_raw(self, data):
         self.parent.write_int(self.name, data)
@@ -74,7 +76,7 @@ class Register(Memory):
         if len(kwargs) == 0:
             LOGGER.info('%s: no keyword args given, exiting.', self.name)
             return
-        current_values = self.read()
+        current_values = self.read()['data']
 #        for key, value in current_values.iteritems():
 #            current_values[key] = value
         pulse = {}

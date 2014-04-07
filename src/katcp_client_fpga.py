@@ -191,7 +191,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             try:
                 self.start(daemon=True)
             except RuntimeError:
-                raise
+                pass
             time.sleep(0.1)
         LOGGER.info('%s: daemon started', self.host)
 
@@ -478,7 +478,8 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             try:
                 inf = uninform_queue.get(block=True, timeout=timeout)
             except Queue.Empty:
-                log_runtime_error(LOGGER, 'FPGA programming informs not received.')
+                LOGGER.warning('No programming informs yet. Odd?')
+#                log_runtime_error(LOGGER, 'FPGA programming informs not received.')
             if (inf.name == 'fpga') and (inf.arguments[0] == 'ready'):
                 done = True
         self._timeout = old_timeout

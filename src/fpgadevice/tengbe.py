@@ -201,20 +201,19 @@ class TenGbe(object):
 
     def read_txsnap(self):
         snap = self.parent.device_by_name(self.name + '_txs_ss')
-        return snap.read(timeout=10)
+        return snap.read(timeout=10)['data']
 
     def read_rxsnap(self):
         snap = self.parent.device_by_name(self.name + '_rxs_ss')
-        return snap.read(timeout=10)
+        return snap.read(timeout=10)['data']
 
     def read_counters(self):
         '''Read all the counters embedded in the gbe block.
         '''
         results = {}
         for direction in ['tx', 'rx']:
-            results[direction] = {}
             for reg in self.registers[direction]:
-                results[direction][reg] = self.parent.device_by_name(reg).read()['reg']
+                results[reg] = self.parent.device_by_name(reg).read()
         return results
 
     #def read_raw(self,  **kwargs):

@@ -85,15 +85,23 @@ class Snap(Memory):
                     break
         if (self.control_registers['control']['register'] == None) or (self.control_registers['status']['register'] == None):
             log_runtime_error(LOGGER, 'Critical control registers for snap %s missing.' % self.name)
+        if self.block_info.has_key('value'):
+            self.block_info['snap_value'] = self.block_info.has_key('value')
         if self.block_info['snap_value'] == 'on':
             if self.control_registers['extra_value']['register'] == None:
                 log_runtime_error(LOGGER, 'snap %s extra value register specified, but not found. Problem.' % self.name)
             extra_info = raw_device_info[self.control_registers['extra_value']['name']]
             extra_info['mode'] = 'fields of arbitrary size'
-            extra_info['names'] = self.block_info['extra_names']
-            extra_info['bitwidths'] = self.block_info['extra_widths']
-            extra_info['arith_types'] = self.block_info['extra_types']
-            extra_info['bin_pts'] = self.block_info['extra_bps']
+            if self.block_info.has_key('extra_names'):
+                extra_info['names'] = self.block_info['extra_names']
+                extra_info['bitwidths'] = self.block_info['extra_widths']
+                extra_info['arith_types'] = self.block_info['extra_types']
+                extra_info['bin_pts'] = self.block_info['extra_bps']
+            else:
+                extra_info['names'] = '[reg]'
+                extra_info['bitwidths'] = '[32]'
+                extra_info['arith_types'] = '[0]'
+                extra_info['bin_pts'] = '[0]'
             self.control_registers['extra_value']['register'].process_info(extra_info)
 
     def _arm(self, man_trig=False, man_valid=False, offset=-1, circular_capture=False):
@@ -107,7 +115,7 @@ class Snap(Memory):
     def print_snap(self, limit_lines=-1, man_valid=False, man_trig=False):
         '''Read and print a snap block.
         '''
-        snapdata = self.read(man_valid=man_valid, man_trig=man_trig)
+        snapdata = self.read(man_valid=man_valid, man_trig=man_trig)['data']
         for ctr in range(0, len(snapdata[snapdata.keys()[0]])):
             print '%5d' % ctr,
             for key in snapdata.keys():
@@ -119,9 +127,9 @@ class Snap(Memory):
     def read(self, **kwargs):
         '''Override Memory.read to handle the extra value register.
         '''
-        raw = self.read_raw(**kwargs)
-        processed = self._process_data(raw['data'])
-        return {'data': processed, 'extra_value': raw['extra_value']}
+        rawdata, rawtime = self.read_raw(**kwargs)
+        processed = self._process_data(rawdata['data'])
+        return {'data': processed, 'timestamp': rawtime, 'extra_value': rawdata['extra_value']}
 
     def read_raw(self, **kwargs):
         '''Read snap data from the memory device.
@@ -137,7 +145,6 @@ class Snap(Memory):
         offset = getkwarg('offset', -1)
         circular_capture = getkwarg('circular_capture', False)
         arm = getkwarg('arm', True)
-        # arm
         if arm:
             self._arm(man_trig=man_trig, man_valid=man_valid, offset=offset, circular_capture=circular_capture)
         # wait
@@ -176,6 +183,7 @@ class Snap(Memory):
             bram_dmp['data'] = []
         else:
             bram_dmp['data'] = self.parent.read(self.name + '_bram', bram_dmp['length'])
+            datatime = time.time()
         bram_dmp['offset'] += offset
         if bram_dmp['offset'] < 0:
             bram_dmp['offset'] = 0
@@ -185,7 +193,7 @@ class Snap(Memory):
         if self.control_registers['extra_value']['register'] != None:
             bram_dmp['extra_value'] = self.control_registers['extra_value']['register'].read()
         # done
-        return bram_dmp
+        return bram_dmp, datatime
 
     def __str__(self):
         return '%s: %s' % (self.name, self.block_info)

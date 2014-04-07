@@ -35,20 +35,22 @@ class Memory(bitfield.Bitfield):
 
     def read_raw(self, **kwargs):
         '''Placeholder for child classes.
+        @return: (rawdata, timestamp)
         '''
         raise NotImplementedError
 
     def read(self, **kwargs):
         '''Read raw binary data and convert it using the bitfield description
            for this memory.
+           @return : (data dictionary, read time)
         '''
         # read the data raw, passing necessary arguments through
-        raw = self.read_raw(**kwargs)
+        rawdata, rawtime = self.read_raw(**kwargs)
         # and convert using our bitstruct
-        return self._process_data(raw['data'])
+        return {'data': self._process_data(rawdata), 'timestamp': rawtime}
 
     def _process_data(self, rawdata):
-        '''
+        '''Process raw data according to this memory's bitfield setup.
         '''
         if not(isinstance(rawdata, str) or isinstance(rawdata, buffer)):
             log_runtime_error(LOGGER, 'self.read_raw returning incorrect datatype. Must be str or buffer.')
