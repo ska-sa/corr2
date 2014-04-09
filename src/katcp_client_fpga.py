@@ -11,41 +11,10 @@ LOGGER = logging.getLogger(__name__)
 
 from corr2.fpgadevice import register, sbram, snap, katadc, tengbe, memory, qdr
 from corr2 import hostdevice, async_requester
-from corr2.misc import log_runtime_error
+from corr2.misc import log_runtime_error, Attribute_container
 
 # if __name__ == '__main__':
 #     print 'Hello World'
-
-class Attribute_container(object):
-    '''An iterable class to make registers, snapshots, etc more accessible.
-    '''
-    def __init__(self):
-        self._next_item = 0
-        self._items = []
-    def __setattr__(self, name, value):
-        try:
-            if name != '_next_item':
-                self._items.append(name)
-        except AttributeError:
-            pass
-        object.__setattr__(self, name, value)
-    def __str__(self):
-        return str(self.__dict__)
-    def __iter__(self):
-        return self
-    def next(self): # Python 3: def __next__(self)
-        try:
-            item_name = self._items[self._next_item]
-        except:
-            self._next_item = 0
-            raise StopIteration
-        else:
-            self._next_item += 1
-            return getattr(self, item_name)
-    def names(self):
-        return self._items
-    def __len__(self):
-        return len(self._items)
 
 def _create_meta_dictionary(metalist):
     '''Build a meta information dictionary from a provided list.

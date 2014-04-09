@@ -21,16 +21,16 @@ class Memory(bitfield.Bitfield):
     def __init__(self, name, width, length):
         '''
         @param width  In bits. i.e. a register is 32 bits wide, one long.
+        @param length  In words, how many times does this bitfield repeat?
         '''
-        self.name = name
+        bitfield.Bitfield.__init__(self, name=name, width=width)
         self.length = length
         self.block_info = {}
-        bitfield.Bitfield.__init__(self, name=name, width=width, fields={})
-        LOGGER.debug('New CASPER memory block - %s', self.name)
+        LOGGER.debug('New FPGA memory block, %s', self)
 
     def __str__(self):
         rv = '%s, %i * %i, fields[%s]' % (self.name, self.width,
-            self.length, self.get_fields_string())
+            self.length, self.fields_string_get())
         return rv
 
     def read_raw(self, **kwargs):

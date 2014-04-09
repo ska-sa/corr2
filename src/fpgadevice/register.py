@@ -16,15 +16,16 @@ class Register(Memory):
     def __init__(self, parent, name, width=32, info=None, auto_update=False):
         '''Constructor.
         '''
-        Memory.__init__(self, name=name, width=width, length=1)
-        self.parent = parent
         self.auto_update = auto_update
+        self.parent = parent
         self.last_values = {}
-        self.block_info = info
+        Memory.__init__(self, name=name, width=width, length=1)
         self.process_info(info)
         LOGGER.info('New register - %s', self)
 
     def __str__(self):
+        '''Return a string representation of this Register instance.
+        '''
         if self.auto_update:
             self.read()
         vstr = ''
@@ -36,8 +37,10 @@ class Register(Memory):
 #         return '[' + self.__str__() + ']'
 
     def info(self):
+        '''Return a string with information about this Register instance.
+        '''
         fstring = ''
-        for field in self.fields.keys():
+        for field in self._fields.iterkeys():
             fstring += field + ', '
         if fstring[-2:] == ', ':
             fstring = fstring[:-2]
@@ -113,8 +116,10 @@ class Register(Memory):
     def process_info(self, info):
         '''Set this Register's extra information.
         '''
+        if (info == None) or (info == {}):
+            return
         self.block_info = info
-        self.fields = {}
+        self.fields_clear()
         if self.block_info.has_key('mode'):
             self._process_info_current()
         elif self.block_info.has_key('numios'):
@@ -123,7 +128,7 @@ class Register(Memory):
         elif self.block_info.has_key('name'):
             # oldest
             LOGGER.warn('Old registers are deprecated!')
-            self.add_field(bitfield.Field('', 0, 32, 0, 0))
+            self.field_add(bitfield.Field('', 0, 32, 0, 0))
         else:
             LOGGER.warn('That is a seriously old register - please swap it out!')
             print self
@@ -164,7 +169,7 @@ class Register(Memory):
         for ctr, name in enumerate(field_names):
             field = bitfield.Field(name, int(field_types[ctr]), \
                 int(field_widths[ctr]), int(field_bin_pts[ctr]), -1)
-            self.add_field(field, auto_offset=True)
+            self.field_add(field, auto_offset=True)
 
     def _process_info_tabbed(self):
         LOGGER.warn('Tabbed registers are deprecated!')
@@ -179,6 +184,6 @@ class Register(Memory):
             field = bitfield.Field(self.block_info['name%i'%ctr], atype,
                 int(self.block_info['bitwidth%i'%ctr]),
                 int(self.block_info['bin_pt%i'%ctr]), -1)
-            self.add_field(field, auto_offset=True)
+            self.field_add(field, auto_offset=True)
 
 # end

@@ -32,10 +32,9 @@ args = parser.parse_args()
 polltime = args.polltime
 num_spead_headers = 4
 
-feng_hosts = ['roach02091b', 'roach020914',]# 'roach020915', 'roach020922',
-#              'roach020921', 'roach020927', 'roach020919', 'roach020925']
-
-feng_hosts = ['roach020915']
+#feng_hosts = ['roach02091b', 'roach020914',]# 'roach020915', 'roach020922',
+##              'roach020921', 'roach020927', 'roach020919', 'roach020925']
+#feng_hosts = ['roach020915']
 
 feng_hosts = args.hosts.lstrip().rstrip().replace(' ', '').split(',')
 
@@ -63,9 +62,14 @@ def fengine_gbe(fpga):
         returndata[core.name] = core.read_counters()
     return returndata
 
+def fengine_rxtime(fpga):
+    return (fpga.registers.local_time_msw.read()['data']['reg'] << 32) + \
+        fpga.registers.local_time_lsw.read()['data']['reg']
+
 def get_fpga_data(fpga):
     data = {}
     data['gbe'] = fengine_gbe(fpga)
+    data['rxtime'] = fengine_rxtime(fpga)
     return data
 
 # work out tables for each fpga
@@ -141,8 +145,9 @@ try:
                 scroller.set_ypos(1)
                 scroller.set_ylimits(ymin=1)
             for ctr, fpga in enumerate(ffpgas):
-                scroller.add_line(fpga.host)
                 fpga_data = get_fpga_data(fpga)
+#                scroller.add_line(fpga.host)
+                scroller.add_line(fpga.host + ' - %12d' % fpga_data['rxtime'])
                 for core, core_data in fpga_data['gbe'].items():
                     start_pos = 30
                     pos_increment = 20

@@ -18,7 +18,7 @@ class Snap(Memory):
         self.block_info = info
         self.width = int(info['data_width'])
         self.length = pow(2, int(info['nsamples']))
-        self.add_field(bitfield.Field(name='data', numtype=0, width=self.width, binary_pt=0, lsb_offset=0))
+        self.field_add(bitfield.Field(name='data', numtype=0, width=self.width, binary_pt=0, lsb_offset=0))
         self.control_registers = {}
         self.control_registers['control'] = {'register': None, 'name': self.name + '_ctrl'}
         self.control_registers['status'] = {'register': None, 'name': self.name + '_status'}
@@ -65,13 +65,13 @@ class Snap(Memory):
         field_widths.reverse()
         field_types.reverse()
         field_bps.reverse()
-        self.fields = {}
+        self.fields_clear()
         for n, fn in enumerate(field_names):
             field = bitfield.Field(name=fn,
                 numtype=int(field_types[n]),
                 width=int(field_widths[n]),
                 binary_pt=int(field_bps[n]), lsb_offset=-1)
-            self.add_field(field, auto_offset=True)
+            self.field_add(field, auto_offset=True)
 
     def _link_control_registers(self, available_registers, raw_device_info):
         '''Link available registers to this snapshot block's control registers.
