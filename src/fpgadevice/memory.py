@@ -58,11 +58,11 @@ class Memory(bitfield.Bitfield):
         repeater = construct.GreedyRange(self.bitstruct)
         parsed = repeater.parse(rawdata)
         processed = {}
-        for field in self.fields.itervalues():
+        for field in self._fields.itervalues():
             processed[field.name] = []
         large_unsigned_detected = False
         for data in parsed:
-            for field in self.fields.itervalues():
+            for field in self._fields.itervalues():
                 if field.numtype == 0:
 #                    if field.width <= 32:
                     val = bin2fp(bits=data[field.name],

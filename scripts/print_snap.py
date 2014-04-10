@@ -9,7 +9,7 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
-import time, argparse
+import argparse
 
 from corr2.katcp_client_fpga import KatcpClientFpga
 
@@ -53,7 +53,7 @@ if args.listsnaps:
     numsnaps = len(snapshots)
     print 'Found %i snapshot%s:' % (numsnaps, '' if numsnaps == 1 else 's')
     for snap in snapshots:
-        print '\t', snap.name, '-', snap.length, '-', snap.fields.keys()
+        print '\t', snap.name, '-', snap.length, '-', snap._fields.keys()
     fpga.disconnect()
     import sys
     sys.exit(0)

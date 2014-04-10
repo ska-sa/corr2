@@ -63,11 +63,12 @@ class Register(Memory):
         return rawdata, time.time()
 
     def write_raw(self, data):
+        '''Use the katcp_client_fpga write integer function.
+        '''
         self.parent.write_int(self.name, data)
 
     def read_uint(self, **kwargs):
-        data = self.parent.read_uint(self.name, **kwargs)
-        return data
+        return self.parent.read_uint(self.name, **kwargs)
 
     def write_int(self, uintvalue, blindwrite=False, offset=0):
         '''Write an unsigned integer to this device using the fpga client.
@@ -75,7 +76,7 @@ class Register(Memory):
         self.parent.write_int(device_name=self.name, integer=uintvalue, blindwrite=blindwrite, offset=offset)
 
     def write(self, **kwargs):
-        # Write fields in a register, using keyword arguments
+        # write fields in a register, using keyword arguments
         if len(kwargs) == 0:
             LOGGER.info('%s: no keyword args given, exiting.', self.name)
             return
@@ -97,11 +98,10 @@ class Register(Memory):
                 current_values[k] = not current_values[k]
                 changes = True
             else:
-                if current_values[k] == kwargs[k]:
-                    break
-                changes = True
-                current_values[k] = kwargs[k]
-                LOGGER.debug('%s: writing %i to field %s', self.name, kwargs[k], k)
+                if current_values[k] != kwargs[k]:
+                    changes = True
+                    current_values[k] = kwargs[k]
+                    LOGGER.debug('%s: writing %i to field %s', self.name, kwargs[k], k)
         if changes:
             unpacked = struct.unpack('>I', self.bitstruct.build(construct.Container(**current_values)))[0]
             self.write_raw(unpacked)
