@@ -21,42 +21,48 @@ class Memory(bitfield.Bitfield):
     def __init__(self, name, width, length):
         '''
         @param width  In bits. i.e. a register is 32 bits wide, one long.
+        @param length  In words, how many times does this bitfield repeat?
         '''
-        self.name = name
+        bitfield.Bitfield.__init__(self, name=name, width=width)
         self.length = length
         self.block_info = {}
-        bitfield.Bitfield.__init__(self, name=name, width=width, fields={})
-        LOGGER.debug('New CASPER memory block - %s', self.name)
+        LOGGER.debug('New FPGA memory block, %s', self)
 
     def __str__(self):
         rv = '%s, %i * %i, fields[%s]' % (self.name, self.width,
-            self.length, self.get_fields_string())
+            self.length, self.fields_string_get())
         return rv
 
     def read_raw(self, **kwargs):
         '''Placeholder for child classes.
+        @return: (rawdata, timestamp)
         '''
         raise NotImplementedError
 
     def read(self, **kwargs):
         '''Read raw binary data and convert it using the bitfield description
            for this memory.
+           @return : (data dictionary, read time)
         '''
         # read the data raw, passing necessary arguments through
-        raw = self.read_raw(**kwargs)
-        raw = raw['data']
-        if not(isinstance(raw, str) or isinstance(raw, buffer)):
+        rawdata, rawtime = self.read_raw(**kwargs)
+        # and convert using our bitstruct
+        return {'data': self._process_data(rawdata), 'timestamp': rawtime}
+
+    def _process_data(self, rawdata):
+        '''Process raw data according to this memory's bitfield setup.
+        '''
+        if not(isinstance(rawdata, str) or isinstance(rawdata, buffer)):
             log_runtime_error(LOGGER, 'self.read_raw returning incorrect datatype. Must be str or buffer.')
-        #extra_value = self.control_registers['extra_value']['register'].read() if self.options['extra_value'] else None
-        # and convert using the bitstruct
+        large_unsigned_detected = False
         repeater = construct.GreedyRange(self.bitstruct)
-        parsed = repeater.parse(raw)
+        parsed = repeater.parse(rawdata)
         processed = {}
-        for field in self.fields.itervalues():
+        for field in self._fields.itervalues():
             processed[field.name] = []
         large_unsigned_detected = False
         for data in parsed:
-            for field in self.fields.itervalues():
+            for field in self._fields.itervalues():
                 if field.numtype == 0:
 #                    if field.width <= 32:
                     val = bin2fp(bits=data[field.name],

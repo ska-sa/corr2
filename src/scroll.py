@@ -115,6 +115,10 @@ class Scroll(object):
         '''Return the current y position of the internal screen buffer.
         '''
         return self._curr_y
+    def set_current_line(self, linenum):
+        '''Set the current y position of the internal screen buffer.
+        '''
+        self._curr_y = linenum
 
     def _load_buffer_from_list(self, screendata):
         '''Load the internal screen buffer from a given mixed list of

@@ -23,4 +23,7 @@ class Engine(object):
 
     def __str__(self):
         return '%s @ %s' % (self.descriptor, self.parent)
+
+#    def write_field(self, control_structure, value):
+#        control_structure[0].write(control_structure[1] = value)
 # end

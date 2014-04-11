@@ -143,7 +143,7 @@ class Qdr(object):
         n_steps = 32
         n_bits = 32
         fail = []
-        bit_cal = [[] for bit in range(n_bits)]
+        bit_cal = [[]] * n_bits
         for step in range(n_steps):
             stepfail = self.cal_check()
             fail.append(stepfail)
@@ -211,7 +211,7 @@ class Qdr(object):
 #            except Exception:
 #                calibrated = False
 #                in_delays = [0 for bit in range(36)]
-            out_delays = [out_step for bit in range(36)]
+            out_delays = [out_step] * 36
             self.apply_cals(in_delays, out_delays, clk_delay=out_step)
             calibrated = self.cal_check()
             out_step += 1
@@ -220,5 +220,242 @@ class Qdr(object):
             return True
         else:
             raise RuntimeError("QDR %i calibration failed.", self.qdr_number)
+
+'''
+import corr,struct,numpy,scipy
+
+#qdr layout:
+#32b_offset         funct
+#0  lsb is reset bit
+#4  enable_in0 (0:31)
+#5  enable_1 (0-3: input_delay bits 32-35, 4-7: output_delay bits 32-35, 8:clk )
+#6  enable_out0 (0:31)
+#7  inc_dec (lsb)
+#8  clk tap_step count readback (5b counter 0-4 and also 5-10)
+
+f=corr.katcp_wrapper.FpgaClient('192.168.14.66')
+#f=corr.katcp_wrapper.FpgaClient('192.168.14.98')
+f.upload_program_bof('r2_qdr_1x_2014_Mar_24_1631.bof.gz',33333)
+#f.upload_program_bof('r2_qdr_1x_orig_2014_Mar_04_1211_160mhz.bof.gz',33333)
+#f.upload_program_bof('r2_qdr_1x_orig_2014_Mar_04_1227_220mhz.bof.gz',33333)
+#f.progdev('r2_qdr_4x_220Mhz_2014_Mar_03_1527.bof.gz')
+#f.upload_program_bof('r2_qdr_4x_200Mhz_2014_Mar_03_1440.bof.gz',33333)
+
+def qdr_reset(qdr):
+    "Resets the QDR and the IO delays (sets all taps=0)."
+    f.write_int('qdr%i_ctrl'%qdr,1,blindwrite=True,offset=0)
+    f.write_int('qdr%i_ctrl'%qdr,0,blindwrite=True,offset=0)
+
+
+def qdr_delay_out_step(qdr,bitmask,step):
+    "Steps all bits in bitmask by 'step' number of taps."
+    if step >0:
+        f.write_int('qdr%i_ctrl'%qdr,(0xffffffff),blindwrite=True,offset=7)
+    elif step <0:
+        f.write_int('qdr%i_ctrl'%qdr,(0),blindwrite=True,offset=7)
+    else:
+        return
+    for i in range(abs(step)):
+        f.write_int('qdr%i_ctrl'%qdr,0,blindwrite=True,offset=6)
+        f.write_int('qdr%i_ctrl'%qdr,0,blindwrite=True,offset=5)
+        f.write_int('qdr%i_ctrl'%qdr,(0xffffffff&bitmask),blindwrite=True,offset=6)
+        f.write_int('qdr%i_ctrl'%qdr,((0xf)&(bitmask>>32))<<4,blindwrite=True,offset=5)
+
+def qdr_delay_clk_step(qdr,step):
+    "Steps the output clock by 'step' amount."
+    if step >0:
+        f.write_int('qdr%i_ctrl'%qdr,(0xffffffff),blindwrite=True,offset=7)
+    elif step <0:
+        f.write_int('qdr%i_ctrl'%qdr,(0),blindwrite=True,offset=7)
+    else:
+        return
+    for i in range(abs(step)):
+        f.write_int('qdr%i_ctrl'%qdr,0,blindwrite=True,offset=5)
+        f.write_int('qdr%i_ctrl'%qdr,(1<<8),blindwrite=True,offset=5)
+
+def qdr_delay_in_step(qdr,bitmask,step):
+    "Steps all bits in bitmask by 'step' number of taps."
+    if step >0:
+        f.write_int('qdr%i_ctrl'%qdr,(0xffffffff),blindwrite=True,offset=7)
+    elif step <0:
+        f.write_int('qdr%i_ctrl'%qdr,(0),blindwrite=True,offset=7)
+    else:
+        return
+    for i in range(abs(step)):
+        f.write_int('qdr%i_ctrl'%qdr,0,blindwrite=True,offset=4)
+        f.write_int('qdr%i_ctrl'%qdr,0,blindwrite=True,offset=5)
+        f.write_int('qdr%i_ctrl'%qdr,(0xffffffff&bitmask),blindwrite=True,offset=4)
+        f.write_int('qdr%i_ctrl'%qdr,((0xf)&(bitmask>>32)),blindwrite=True,offset=5)
+
+def qdr_delay_clk_get(qdr):
+    "Gets the current value for the clk delay."
+    raw=f.read_uint('qdr%i_ctrl'%qdr,8)
+    if (raw&0x1f) != ((raw&(0x1f<<5))>>5):
+        raise RuntimeError("Counter values not the same -- logic error! Got back %i."%raw)
+    return raw&(0x1f)
+
+cal_data=[
+            [ 0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555,0xAAAAAAAA,0x55555555],
+            [0,0,0xFFFFFFFF,0,0,0,0,0],
+            numpy.arange(256)<<0,
+            numpy.arange(256)<<8,
+            numpy.arange(256)<<16,
+            numpy.arange(256)<<24,
+            ]
+
+def qdr_cal_check(qdr,verbosity=0):
+    "checks calibration on a qdr. Raises an exception if it failed."
+    patfail=0
+    for pattern in cal_data:
+        f.blindwrite('qdr%i_memory'%qdr,struct.pack('>%iL'%len(pattern),*pattern))
+        retdat=struct.unpack('>%iL'%len(pattern),f.read('qdr%i_memory'%qdr,len(pattern)*4))
+        for word_n,word in enumerate(pattern):
+            patfail=patfail|(word ^ retdat[word_n])
+            if verbosity>2:
+                print "{0:032b}".format(word),
+                print "{0:032b}".format(retdat[word_n]),
+                print "{0:032b}".format(patfail)
+    if patfail>0:
+        #raise RuntimeError ("Calibration of QDR%i failed: 0b%s."%(qdr,"{0:032b}".format(patfail)))
+        return False
+    else:
+        return True
+
+
+def find_in_delays(qdr,verbosity=0):
+    n_steps=32
+    n_bits=32
+    fail=[]
+    bit_cal=[[] for bit in range(n_bits)]
+    #valid_steps=[[] for bit in range(n_bits)]
+    for step in range(n_steps):
+        patfail=0
+        for pattern in cal_data:
+            f.blindwrite('qdr%i_memory'%qdr,struct.pack('>%iL'%len(pattern),*pattern))
+            retdat=struct.unpack('>%iL'%len(pattern),f.read('qdr%i_memory'%qdr,len(pattern)*4))
+            for word_n,word in enumerate(pattern):
+                patfail=patfail|(word ^ retdat[word_n])
+                if verbosity>2:
+                    print '\t %4i %4i'%(step,word_n),
+                    print "{0:032b}".format(word),
+                    print "{0:032b}".format(retdat[word_n]),
+                    print "{0:032b}".format(patfail)
+        fail.append(patfail)
+        for bit in range(n_bits):
+            bit_cal[bit].append(1-2*((fail[step]&(1<<bit))>>bit))
+            #if bit_cal[bit][step]==True:
+            #    valid_steps[bit].append(step)
+        if (verbosity>2):
+            print 'STEP input delays to %i!'%(step+1)
+        qdr_delay_in_step(qdr,0xfffffffff,1)
+
+    if (verbosity > 0):
+        print 'Eye for QDR %i (0 is pass, 1 is fail):'%qdr
+        for step in range(n_steps):
+            print '\tTap step %2i: '%step,
+            print "{0:032b}".format(fail[step])
+
+    if (verbosity > 3):
+        for bit in range(n_bits):
+            print 'Bit %2i: '%bit,
+            print bit_cal[bit]
+
+    #find indices where calibration passed and failed:
+    for bit in range(n_bits):
+        try:
+            bit_cal[bit].index(1)
+        except ValueError:
+            raise RuntimeError("Calibration failed for bit %i."%bit)
+
+    #if (verbosity > 0):
+    #    print 'valid_steps for bit %i'%(bit),valid_steps[bit]
+
+    cal_steps=numpy.zeros(n_bits+4)
+    #find the largest contiguous cal area
+    for bit in range(n_bits):
+        cal_area=find_cal_area(bit_cal[bit])
+        if cal_area[0]<4:
+            raise RuntimeError('Could not find a robust calibration setting for QDR%i'%qdr)
+        cal_steps[bit]=sum(cal_area[1:3])/2
+        if (verbosity > 1):
+            print 'Selected tap for bit %i: %i'%(bit,cal_steps[bit])
+    #since we don't have access to bits 32-36, we guess the number of taps required based on the other bits:
+    median_taps=numpy.median(cal_steps)
+    if verbosity>1:
+        print "Median taps: %i"%median_taps
+    for bit in range(32,36):
+        cal_steps[bit]=median_taps
+        if (verbosity > 1):
+            print 'Selected tap for bit %i: %i'%(bit,cal_steps[bit])
+    return cal_steps
+
+def apply_cals(qdr,in_delays,out_delays,clk_delay,verbosity=0):
+    #reset all the taps to default (0)
+    qdr_reset(qdr)
+
+    assert len(in_delays)==36
+    assert len(out_delays)==36
+    qdr_delay_clk_step(qdr,clk_delay)
+    for step in range(int(max(in_delays))):
+        mask=0
+        for bit in range(len(in_delays)):
+            mask+=(1<<bit if (step<in_delays[bit]) else 0)
+        if verbosity>1:
+            print 'Step %i'%step,
+            print "{0:036b}".format(mask)
+        qdr_delay_in_step(qdr,mask,1)
+
+    for step in range(int(max(out_delays))):
+        mask=0
+        for bit in range(len(out_delays)):
+            mask+=(1<<bit if (step<out_delays[bit]) else 0)
+        if verbosity>1:
+            print 'Step out %i'%step,
+            print "{0:036b}".format(mask)
+        qdr_delay_out_step(qdr,mask,1)
+
+
+
+def qdr_cal(qdr,verbosity=0):
+    "Calibrates a QDR controller, stepping input delays and (if that fails) output delays. Returns True if calibrated, raises a runtime exception if it doesn't."
+    cal=False
+    out_step=0
+    while (not cal) and (out_step<32):
+        try:
+            qdr_reset(qdr)
+            in_delays=find_in_delays(qdr,verbosity)
+        except:
+            cal=False
+            in_delays=[0 for bit in range(36)]
+        apply_cals(qdr,in_delays,out_delays=[out_step for bit in range(36)],clk_delay=out_step,verbosity=verbosity)
+        cal=qdr_cal_check(qdr,verbosity)
+        out_step+=1
+        if verbosity>0:
+            print "--- === STEPPING OUT DELAYS to %i=== ---"%out_step,
+            print 'was: %i'%qdr_delay_clk_get(qdr)
+    if qdr_cal_check(qdr,verbosity):
+        return True
+    else:
+        raise RuntimeError("QDR %i calibration failed."%qdr)
+
+def find_cal_area(A):
+    max_so_far  = A[0]
+    max_ending_here = A[0]
+    begin_index = 0
+    begin_temp = 0
+    end_index = 0
+    for i in range(len(A)):
+        if (max_ending_here < 0):
+                max_ending_here = A[i]
+                begin_temp = i
+        else:
+                max_ending_here += A[i]
+        if(max_ending_here >= max_so_far ):
+                max_so_far  = max_ending_here;
+                begin_index = begin_temp;
+                end_index = i;
+    return max_so_far,begin_index,end_index
+
+'''
 
 # end

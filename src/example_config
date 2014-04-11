@@ -1,0 +1,89 @@
+# NO WHITESPACE BETWEEN TEXT DELIMITERS!
+# This is a sample config file for a lab correlator instrument in South Africa.
+# It has with 8 dual-pol antennas on 16 ROACH boards all plugged into 10GbE switch with 10GbE output.
+
+[katcp]
+# List of engine hosts. Comma separated list with no whitespace.
+d_hosts = roach020958
+servers_f = roach02091b,roach020914,roach020915,roach020922
+servers_x = roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
+# This is the control port to use when communicating with BORPH. By default, use 7147.
+katcp_port = 7147
+# bitstream to load the FPGAs. Should be present and load-able by ROACH's KATCP server - corr will not do this for you
+bitstream_d = r2_deng_tvg_2014_Mar_31_1516.fpg
+bitstream_f = feng_rx_test_2014_Apr_07_1841.fpg
+bitstream_x = r2_2f_4x_4a_4k_r366_2014_Mar_31_1547.fpg
+
+[dengine]
+# Number of bits in ADC
+adc_bits = 10
+# Number of accumulations used during ADC amplitude averaging.
+adc_levels_acc_len = 65536
+# multicast IP starting address
+multicast_ip_start = 239.2.0.64
+
+[fengine]
+# FFT shifting schedule in decimal. A binary '1' shifts, a zero does not.
+fft_shift = 252
+# Number of quantisation bits post FFT in the F engines. 4 is the only fully supported config option at present.
+feng_output_bits = 4
+# Logical binary point position of F engine data. Normally feng_output_bits-1.
+feng_fix_pnt_pos = 3
+
+[xengine]
+# Number of spectra to integrate in DRAM.
+acc_len = 3051
+# Number of accumulations performed in the X engine cores.
+xeng_acc_len = 128
+
+[correlator]
+# Starting IP address for all hosts
+ip_start = 10.0.0.1
+# The UDP port to use for 10Gbe comms
+udp_port = 8888
+# Number of bits used in the F engine for timekeeping (the master counter)
+master_cnt_bits = 48
+# number of bits used in the packet header for timestamping
+packet_cnt_bits = 48
+# the sync period set in the f-engine design. used for f-engine arming. this default is for WIDEBAND!
+feng_sync_period = 134217728
+# the number of 1PPS pulses that we expect to elapse between arming the system and actually triggering. This is usually 2, to allow any sync pulses in the pipeline to flush before resyncing.
+feng_sync_delay = 2
+
+[spead_receiver]
+# spead flavour. string in the form XX,YY. Default: 64,40. consult the SPEAD documentation for details. Only 64-40 tested.
+spead_flavour=64,48
+# UDP receiver for output data
+rx_udp_ip = 10.0.0.2
+rx_udp_port = 7148
+rx_meta_ip = 127.0.0.1
+# signal display config:
+sig_disp_ip = 127.0.0.1
+sig_disp_port=7149
+
+[equalisation]
+# Decimation. Adjacent frequency channels share coefficients. The center equalisation value is chosen for adjacent bins. n_eq_coeffs_per_polarisation == n_chans/eq_decimation
+eq_decimation = 1
+# Equaliser type (complex or scalar)
+eq_type = complex
+# Default values for equaliser (digital gain) derived from eq_poly values (poly) or set to eq_coeff values (coef).
+eq_default = poly
+# Tolerance to use for auto-equalization
+tolerance = 0.01
+
+# rf_gain sets the analogue attenuators on the ADCs. Acceptible range on KATADCs is -11 to +22 in  0.5dB steps.
+# the antenna string must match your /var/run/corr/antenna_mapping contents!
+rf_gain_0 = 4
+
+# The eq_poly lines are used for setting the equalisers using a polynomial.
+# One line entry per input. Item is a list of polynomial coefficients.
+# the antenna string must match your /var/run/corr/antenna_mapping contents exactly!
+# e.g. 'eq_poly_0 = 10,30,40' corresponds to 10c^2 + 30c + 40 where c is the frequency channel index.
+# In the event of complex equaliser types, these values are applied to both the real and imaginary components (ie scalar).
+# If you want to be able to configure these coefficients separately, use the eq_coeff configuration mode.
+eq_poly_0  = 300
+
+# The eq_coeff lines are used for setting the equalisers manually, specifying each frequency channel for every polarisation input.
+# Each line should have n_chans/eq_decimation entries.
+# Entries are python lists (comma separated values within square brackets).
+# e.g. eq_coeff_0x = [1,2,3,4]

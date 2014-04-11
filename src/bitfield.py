@@ -3,33 +3,39 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from misc import log_runtime_error
+from corr2.misc import log_runtime_error
 
 import construct
 
 class Bitfield(object):
-    '''Wraps contruct's BitStruct class.
+    '''Wraps contruct's BitStruct class. It describes a chunk of memory that
+    consists of a number of fields.
     '''
-    def __init__(self, name, width, fields):
+    def __init__(self, name, width, fields={}):
         self.name = name
         self.width = width
-        self.fields = {}
+        self._fields = {}
         self.bitstruct = None
         if len(fields) > 0:
-            self.add_fields(fields)
-        LOGGER.debug('New Bitfield - %s', self.name)
+            self.fields_add(fields)
+        LOGGER.debug('New Bitfield(%s) with %i fields', self.name, len(self._fields))
 
-    def add_fields(self, fields):
+    def fields_clear(self):
+        '''Reset the fields in this bitstruct.
+        '''
+        self._fields = {}
+
+    def fields_add(self, fields):
         '''Add a dictionary of Fields to this bitfield.
         '''
         if not isinstance(fields, dict):
             log_runtime_error(LOGGER, 'fields should be a dictionary of Field objects.')
         if len(fields) == 0:
             log_runtime_error(LOGGER, 'Empty dictionary is not so useful?')
-        for f in fields.itervalues():
-            self.add_field(f)
+        for newfield in fields.itervalues():
+            self.field_add(newfield)
 
-    def add_field(self, newfield, auto_offset=False):
+    def field_add(self, newfield, auto_offset=False):
         '''Add a Field to this bitfield.
         '''
         if not isinstance(newfield, Field):
@@ -37,10 +43,10 @@ class Bitfield(object):
         # add it at the end of the current fields
         if auto_offset:
             width = 0
-            for field in self.fields.itervalues():
+            for field in self._fields.itervalues():
                 width += field.width
             newfield.offset = width
-        self.fields[newfield.name] = newfield
+        self._fields[newfield.name] = newfield
         self._update_bitstruct()
 
     def _update_bitstruct(self):
@@ -48,8 +54,8 @@ class Bitfield(object):
         '''
         # need it msb -> lsb
 #        print 100 * '#'
-        fields = sorted(self.fields.itervalues(), key=lambda x: x.offset, reverse=True)
-        field_width_sum = sum(f.width for f in self.fields.itervalues())
+        fields = sorted(self._fields.itervalues(), key=lambda x: x.offset, reverse=True)
+        field_width_sum = sum(f.width for f in self._fields.itervalues())
 #        print fields
 #        print field_width_sum
 #        print 100 * '#'
@@ -62,25 +68,33 @@ class Bitfield(object):
             bs.subcon.subcons = bs.subcon.subcons + (newfield,)
         self.bitstruct = bs
 
-    def get_field(self, fieldname):
+    def field_get_by_name(self, fieldname):
+        '''Get a field from this bitfield by its name.
+        '''
         try:
-            return self.fields[fieldname]
+            return self._fields[fieldname]
         except KeyError:
             return None
 
-    def get_fields_string(self):
+    def fields_string_get(self):
+        '''Get a string of all the field names.
+        '''
         fieldstring = ''
-        for v in self.fields.itervalues():
-            fieldstring = fieldstring + ('%s, ' % v)
+        for field in self._fields.itervalues():
+            fieldstring = fieldstring + ('%s, ' % field)
         fieldstring = fieldstring[0:-2]
         return fieldstring
 
     def __str__(self):
+        '''Return a string representation of this object.
+        '''
         rv = self.name + '(' + str(self.width) + ',['
-        rv = rv + self.get_fields_string() + '])'
+        rv = rv + self.fields_string_get() + '])'
         return rv
 
 class Field(object):
+    '''A Field object is a number of bits somewhere in a Bitfield object.
+    '''
     def __init__(self, name, numtype, width, binary_pt, lsb_offset):
         '''
         Initialise a field object.
