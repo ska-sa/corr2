@@ -25,7 +25,7 @@ class Instrument(object):
         '''
         self.name = name
         self.description = description
-        self.hosts = {}
+        self.hosts = []
         self.config_file = config_file
         self.config = {}
         if config_file != None:
@@ -48,9 +48,9 @@ class Instrument(object):
         """
         if not isinstance(host, hostdevice.Host):
             raise RuntimeError('Object provided is not a Host.')
-        if self.hosts.has_key(host.host):
+        if host.host in self.hosts:
             raise RuntimeError('Host host %s already exists on this Instrument.' % host.host)
-        self.hosts[host.host] = host
+        self.hosts.append(host)
 
     def host_ping(self, host_to_ping=None):
         '''Ping hosts, or a single host, if provided.

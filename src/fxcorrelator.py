@@ -14,11 +14,11 @@ import instrument, katcp_client_fpga, fengine, xengine, types
 
 import struct, socket, iniparse
 
-class FxCorrelator(instrument.Instrument):
+class Fx_correlator(instrument.Instrument):
     '''
     An FxCorrelator implemented using FPGAs running BOF files for processing hosts.
     '''
-    def __init__(self, name, description, config_file, connect):
+    def __init__(self, name, description, config_file, connect=True):
         '''
         Constructor
         @param name: The instrument's unique name.
@@ -26,7 +26,7 @@ class FxCorrelator(instrument.Instrument):
         @param config_file: An XML/YAML/ini config file describing the correlator.
         @param connect: True/False, should the a connection be established to the instrument after setup.
         '''
-        super(FxCorrelator, self).__init__(name=name, description=description)
+        super(Fx_correlator, self).__init__(name=name, description=description)
 
         # process config
         self.parse_config(config_file)
@@ -40,8 +40,8 @@ class FxCorrelator(instrument.Instrument):
 
         # connect to nodes - check katcp connections
 
-        self.fhosts = {}
-        self.xhosts = {}
+        self.fhosts = []
+        self.xhosts = []
 
         if connect:
             self.connect()
