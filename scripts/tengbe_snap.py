@@ -88,6 +88,7 @@ def process_spead(current_spead_info, data, packet_counter):
             current_spead_info['packet_length'] = current_spead_info['num_headers'] + hdr_data
         return current_spead_info if hdr_id == 0x0004 else None, 'spead hdr 0x%04x: %d' % (hdr_id, hdr_data)
     else:
+#        data = '%d, %d, %d, %d' % (data >> 48, (data >> 32) & 0xffff, (data >> 16) & 0xffff, (data >> 0) & 0xffff)
         return None, data
 
 if args.direction == 'tx':
