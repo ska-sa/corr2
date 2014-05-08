@@ -9,7 +9,7 @@ LOGGER = logging.getLogger(__name__)
 
 from corr2.engine import Engine
 
-import numpy
+import numpy, struct
 
 def ip2str(ip):
     """ Returns IP address in human readable string notation """
@@ -27,7 +27,7 @@ def arm_timed_latch(self, latch_name, time=None, force=False):
     load_count = self.parent.device_by_name('%s_status' %(latch_name)).read()['data']['load_count']
 
 #    # check for counter weirdness
-#    if (arm_count != load_count) and (force is False):
+#    if (arm_count != load_count) and (force == False):
 #        # waiting for previous arm to complete
 #        if ((arm_count - load_count) == 1):
 #            #TODO error
@@ -36,12 +36,12 @@ def arm_timed_latch(self, latch_name, time=None, force=False):
 #            #TODO different error
 
     # we load immediate if not given time
-    if time is None:
+    if time == None:
         self.parent.device_by_name('%s_control0' %(latch_name)).write(arm=0)
         self.parent.device_by_name('%s_control0' %(latch_name)).write(arm=1, load_immediate=1)
     else: 
         # TODO time conversion
-        time_samples = 0
+        time_samples = numpy.uint32(0)
         time_msw = (time_samples & 0xFFFF0000) >> 32
         time_lsw = (time_samples & 0x0000FFFF)
         
@@ -62,9 +62,9 @@ class Fengine(Engine):
     def init_config(self, info=None):
         """ initialise config from info """
         #defaults if no info passed
-        if info is None:
+        if info == None:
             #TODO determine n_chans from system info
-            self.config = { 'n_chans': 0, 
+            self.config = { 'n_chans': 4096, 
                             'fft_shift': 0,
                             'sampling_frequency': 1700000000,
                             'feng_id': 0,
@@ -72,12 +72,14 @@ class Fengine(Engine):
                             'txport': 0,
                             'txip_str': '192.168.0.0'}
             
+            #TODO determine some equalisation factors from system info
             self.config['equalisation'] = {}
             self.config['equalisation']['decimation'] = 1
-            #TODO determine some equalisation factors from system info
             self.config['equalisation']['coeffs'] = []
-            self.config['equalisation']['poly'] = 1
+            self.config['equalisation']['poly'] = [1]
             self.config['equalisation']['type'] = 'complex'
+            self.config['equalisation']['n_bytes'] = 2      #number of bytes per coefficient
+            self.config['equalisation']['bin_pt'] = 1       #location of binary point/number of fractional bits
             self.config['equalisation']['default'] = 'poly'
                             
         else:
@@ -208,21 +210,21 @@ class Fengine(Engine):
     # reset
     def enable_reset(self, dsp=True, comms=True):
         """ Place aspects of system in reset """
-        if (dsp is True) and (comms is True):
+        if (dsp == True) and (comms == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=1, comms_rst=1)
-        elif (dsp is True):
+        elif (dsp == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=1)
-        elif (comms is True):
+        elif (comms == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_rst=1)
     
     #
     def disable_reset(self, dsp=True, comms=True):
         """ Remove aspects of system from reset """
-        if (dsp is True) and (comms is True):
+        if (dsp == True) and (comms == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=0, comms_rst=0)
-        elif (dsp is True):
+        elif (dsp == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=0)
-        elif (comms is True):
+        elif (comms == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_rst=0)
 
     #
@@ -274,13 +276,167 @@ class Fengine(Engine):
     # Equalisation before re-quantisation stuff  #
     ##############################################
 
+    #
+    def pack_eq(self, coeffs, n_bits, bin_pt=0, signed=True):
+        """ Convert coeffs into a string with n_bits of resolution and a binary point at bin_pt """
+        
+        if len(coeffs) == 0:
+            raise RuntimeError('Passing empty coeffs list')
+        if bin_pt < 0:
+            raise RuntimeError('Binary point cannot be less than 0')
+        
+        step = 1/(2**bin_pt) #coefficient resolution
+
+        if signed == True:
+            min_val = -(2**(n_bits-bin_pt-1))
+            max_val = -(min_val)-step
+        else:
+            min_val = 0
+            max_val = 2**(n_bits-bin_pt)-step
+
+        if numpy.max(coeffs) > max_val or numpy.min(coeffs) < min_val:
+            raise RuntimeError('Coeffs out of range')
+     
+        is_complex = numpy.iscomplexobj(coeffs)
+        if is_complex == True:
+            n_coeffs = len(coeffs)*2
+            coeffs = numpy.array(coeffs, dtype = numpy.complex128)
+        else:
+            n_coeffs = len(coeffs) 
+            coeffs = numpy.array(coeffs, dtype = numpy.float64)
+     
+        #compensate for fractional bits
+        coeffs = (coeffs * 2**bin_pt)
+
+        byte_order = '>' #big endian
+
+        if n_bits == 16:
+            if signed == True:
+                pack_type = 'h'
+            else:
+                pack_type = 'H'
+        else:
+            raise RuntimeError('Don''t know how to pack data type with %i bits' %n_bits)
+        
+        coeff_str = struct.pack('%s%i%s' %(byte_order, n_coeffs, pack_type), *coeffs.view(dtype=numpy.float64))
+        return coeff_str
+
+    #
+    def unpack_eq(self, string, n_bits, eq_complex=True, bin_pt=0, signed=True):
+        """ Unpack string according to format specified. Return array of floats """
+
+        byte_order = '>' #big endian
+
+        n_vals = len(string)/(n_bits/8)
+
+        if n_bits == 16:
+            if signed == True:
+                pack_type = 'h'
+            else:
+                pack_type = 'H'
+        else:
+            raise RuntimeError('Don''t know how to pack data type with %i bits' %n_bits)
+        
+        coeffs = struct.unpack('%s%i%s'%(byte_order, n_vals, pack_type), string)
+        coeffs_na = numpy.array(coeffs, dtype = numpy.float64)
+
+        coeffs = coeffs_na/(2**bin_pt) #scale by binary points 
+        
+        if eq_complex == True:
+            #change view to 64 bit floats packed as complex 128 bit values
+            coeffs = coeffs.view(dtype = numpy.complex128) 
+
+        return coeffs 
+
+    #
     def get_eq(self):
         """ Get current equalisation values applied pre-quantisation """
-        raise NotImplementedError
+        
+        register_name='eq%i'%(self.config['feng_id'])
+        n_chans = self.config['n_chans']
+        decimation = self.config['equalisation']['decimation']
+        n_coeffs = n_chans/decimation
 
-    def set_eq(self, init_coeffs=None, init_poly=None):
+        eq_type = self.config['equalisation']['type']
+        if eq_type == 'complex':
+            n_coeffs = n_coeffs*2
+
+        n_bytes = self.config['equalisation']['n_bytes']
+        bin_pt = self.config['equalisation']['bin_pt']
+
+        #read raw bytes
+        coeffs_raw = self.parent.read(register_name, n_coeffs*n_bytes)
+
+        if eq_type == 'complex':
+            eq_complex = True
+        else:
+            eq_complex = False
+
+        coeffs = self.unpack_eq(coeffs_raw, n_bytes*8, eq_complex, bin_pt, signed=True)        
+
+        #pad coeffs out by decimation factor
+        coeffs_padded = numpy.reshape(numpy.tile(coeffs, [decimation, 1]), [1, n_chans], 'F')
+    
+        return coeffs_padded[0]
+    
+    # 
+    def get_default_eq(self):
+        """ Get default equalisation settings """
+        
+        decimation = self.config['equalisation']['decimation']
+        n_chans = self.config['n_chans']       
+        n_coeffs = n_chans/decimation
+        eq_default = self.config['equalisation']['default']
+
+        if eq_default == 'coeffs':
+            equalisation = self.config['equalisation']['coeffs']
+        elif eq_default == 'poly':
+            poly = self.config['equalisation']['poly']
+            equalisation = numpy.polyval(poly, range(n_chans))[decimation/2::decimation]
+            if self.config['equalisation']['type'] == 'complex':
+                equalisation = [eq+0*1j for eq in equalisation]
+        else:
+            raise RuntimeError("Your EQ type, %s, is not understood." % eq_default)
+
+        if len(equalisation) != n_coeffs:
+            raise RuntimeError("Something's wrong. I have %i eq coefficients when I should have %i." % (len(equalisation), n_coeffs))
+        return equalisation
+
+    # 
+    def set_eq(self, init_coeffs=[], init_poly=[]):
         """ Set equalisation values to be applied pre-quantisation """
-        raise NotImplementedError
+
+        n_chans = self.config['n_chans']
+        decimation = self.config['equalisation']['decimation']
+        n_coeffs = n_chans / decimation
+
+        if init_coeffs == [] and init_poly == []:
+            coeffs = self.get_default_eq()
+        elif len(init_coeffs) == n_coeffs:
+            coeffs = init_coeffs
+        elif len(init_coeffs) == n_chans:
+            coeffs = init_coeffs[0::decimation]
+            LOGGER.warn("You specified %i EQ coefficients but your system only supports %i actual values. Only writing every %ith value."%(n_chans ,n_coeffs, decimation))
+        elif len(init_coeffs) > 0:
+            raise RuntimeError ('You specified %i coefficients, but there are %i EQ coefficients in this design.'%(len(init_coeffs), n_coeffs))
+        else:
+            coeffs = numpy.polyval(init_poly, range(n_chans))[decimation/2::decimation]
+
+        eq_type = self.config['equalisation']['type'] 
+        if eq_type == 'scalar':
+            coeffs = numpy.real(coeffs)
+        elif eq_type == 'complex':
+            coeffs = numpy.complex64(coeffs)
+        else:
+            raise RuntimeError ('Don''t know what to do with %s equalisation type.'%eq_type)
+
+        n_bytes = self.config['equalisation']['n_bytes'] 
+        bin_pt = self.config['equalisation']['bin_pt'] 
+
+        coeffs_str = self.pack_eq(coeffs, n_bits=n_bytes*8, bin_pt=bin_pt, signed=True) 
+
+        # finally write to the bram
+        self.parent.write('eq%i'%self.config['feng_id'], coeffs_str)
 
     #################################
     # Delay and phase compensation  #
@@ -298,7 +454,7 @@ class Fengine(Engine):
     # data transmission UDP port 
     def set_txport(self, txport=None, issue_spead=False):
         """ Set data transmission port """    
-        if txport is None:
+        if txport == None:
             txport = self.config['txport']
         
         self.config['txport'] = txport
@@ -315,10 +471,10 @@ class Fengine(Engine):
     # data transmission UDP IP address 
     def set_txip(self, txip_str=None, txip=None, issue_spead=False):
         """ Set data transmission IP base """    
-        if txip_str is None and txip is None:
+        if txip_str == None and txip == None:
             txip = self.config['txip']
             txip_str = self.config['txip_str']
-        elif txip is None:
+        elif txip == None:
             self.config['txip_str'] = txip_str
             txip = struct.unpack('>L',socket.inet_aton(txip_str))[0]
             self.config['txip'] = txip
@@ -356,7 +512,7 @@ class Fengine(Engine):
     #TODO SPEAD stuff
     def config_tx_comms(self, reset=True, issue_spead=True):
         """ Configure transmission infrastructure """ 
-        if reset is True:
+        if reset == True:
             self.disable_tx_comms()
             self.reset_tx_comms()   
     #
