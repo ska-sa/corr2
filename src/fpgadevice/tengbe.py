@@ -206,6 +206,22 @@ class TenGbe(object):
     def read_rxsnap(self):
         snap = self.parent.device_by_name(self.name + '_rxs_ss')
         return snap.read(timeout=10)['data']
+    
+    def read_rx_counters(self):
+        '''Read all rx counters in gbe block
+        '''
+        results = {}
+        for reg in self.registers['rx']:
+            results[reg] = self.parent.device_by_name(reg).read()
+        return results
+
+    def read_tx_counters(self):
+        '''Read all tx counters in gbe block
+        '''
+        results = {}
+        for reg in self.registers['tx']:
+            results[reg] = self.parent.device_by_name(reg).read()
+        return results
 
     def read_counters(self):
         '''Read all the counters embedded in the gbe block.
