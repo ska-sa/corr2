@@ -14,13 +14,13 @@ import sys, logging, time, argparse
 logger = logging.getLogger(__name__)
 #logging.basicConfig(level=logging.INFO)
 
-from corr2.xengine import Xengine
+from corr2.katcp_client_fpga import KatcpClientFpga
 import corr2.scroll as scroll
 
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT xengine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hostname', type=str, action='store',
-                    help='the hostname of the xengine')
+parser.add_argument(dest='hosts', type=str, action='store',
+                    help='comma-delimited list of x-engine hosts')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
                     help='time at which to poll xengine data, in seconds')
@@ -32,13 +32,15 @@ args = parser.parse_args()
 polltime = args.polltime
 num_spead_headers = 4
 
-xeng_hosts = ['roach02091b', 'roach020914',]# 'roach020915', 'roach020922',
-#              'roach020921', 'roach020927', 'roach020919', 'roach020925']
+xeng_hosts = args.hosts.lstrip().rstrip().replace(' ', '').split(',')
+
+xeng_hosts = ['roach020921', 'roach020927', 'roach020919', 'roach020925',
+          'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
 
 # create the devices and connect to them
 xfpgas = []
 for host in xeng_hosts:
-    xeng_fpga = Xengine(host)
+    xeng_fpga = KatcpClientFpga(host)
     time.sleep(0.3)
     if not xeng_fpga.is_connected():
         xeng_fpga.connect()
@@ -66,13 +68,18 @@ def xengine_gbe(fpga):
     cores = fpga.tengbes
     returndata = {}
     for core in cores:
-        returndata[core] = fpga.devices[core].read_counters()
+        returndata[core.name] = core.read_counters()
     return returndata
 
 def get_fpga_data(fpga):
     data = {}
     data['gbe'] = xengine_gbe(fpga)
     return data
+
+fpga_data = get_fpga_data(xfpgas[0])
+print fpga_data
+
+#sys.exit()
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
@@ -108,10 +115,14 @@ try:
                 scroller.add_line(fpga.host)
                 for core, value in fpga_data['gbe'].items():
                     scroller.add_line(core, 5)
-                    scroller.add_line('%10d' % fpga_data['gbe'][core]['rx'][core + '_rxctr'],       30, scroller.get_current_line() - 1)
-                    scroller.add_line('%10d' % fpga_data['gbe'][core]['rx'][core + '_rxerrctr'],    50, scroller.get_current_line() - 1)
-                    scroller.add_line('%10d' % fpga_data['gbe'][core]['tx'][core + '_txctr'],       70, scroller.get_current_line() - 1)
-                    scroller.add_line('%10d' % fpga_data['gbe'][core]['tx'][core + '_txerrctr'],    90, scroller.get_current_line() - 1)
+                    xpos = 30
+                    for regname in [core + '_rxctr', core + '_rxerrctr', core + '_txctr', core + '_txerrctr']:
+                        try:
+                            regval = '%10d' % fpga_data['gbe'][core][regname]['data']['reg']
+                        except KeyError:
+                            regval = 'n/a'
+                        scroller.add_line(regval, xpos, scroller.get_current_line() - 1)
+                        xpos += 20
             scroller.draw_screen()
             last_refresh = time.time()
 except Exception, e:

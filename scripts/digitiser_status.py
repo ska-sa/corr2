@@ -95,6 +95,7 @@ def print_headers(stdscr):
     stdscr.addstr(2, 140, 'overflow count')
     stdscr.addstr(2, 160, 'packet count')
     stdscr.addstr(2, 180, 'last_time')
+    stdscr.addstr(2, 200, 'spead_time')
 
 def handle_keys(keyval):
     ''' Handle some key presses.
@@ -120,6 +121,7 @@ def mainloop(stdscr):
             if stdscr != None:
                 print_top_str(stdscr, digitiser_fpga.host, starttime)
             digitiser_time = digitiser_fpga.get_current_time()
+            spead_time = digitiser_time >> 9
             newdata = get_coredata()
             for ctr, core in enumerate(device_list):
                 packets = newdata[core][core + '_txctr']['data'] - counter_data[core][core + '_txctr']['data']
@@ -148,6 +150,7 @@ def mainloop(stdscr):
                     stdscr.addnstr(line, 140, '%i' % newdata[core][core + '_txofctr']['data'], 20)
                     stdscr.addnstr(line, 160, '%i' % newdata[core][core + '_txctr']['data'], 20)
                     stdscr.addnstr(line, 180, '%i' % digitiser_time, 20)
+                    stdscr.addnstr(line, 200, '%i' % spead_time, 20)
             last_render = time.time()
             if stdscr != None:
                 stdscr.refresh()

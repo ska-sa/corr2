@@ -24,6 +24,9 @@ parser.add_argument(dest='hosts', type=str, action='store',
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
                     help='time at which to poll fengine data, in seconds')
+parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
+                    default=False,
+                    help='reset all counters at script startup')
 #parser.add_argument('-s', '--payloadsize', dest='payloadsize', action='store',
 #                    default=5120, type=int,
 #                    help='the 10GBE SPEAD payload size, in bytes')
@@ -38,6 +41,8 @@ num_spead_headers = 4
 
 feng_hosts = args.hosts.lstrip().rstrip().replace(' ', '').split(',')
 
+feng_hosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']
+
 # create the devices and connect to them
 ffpgas = []
 for host in feng_hosts:
@@ -51,6 +56,8 @@ for host in feng_hosts:
     if numgbes < 1:
         raise RuntimeError('Cannot have an fengine with no 10gbe cores?')
     print '%s: found %i 10gbe core%s.' % (host, numgbes, '' if numgbes == 1 else 's')
+    if args.rstcnt:
+        feng_fpga.registers.control.write(cnt_rst='pulse')
     ffpgas.append(feng_fpga)
 
 def fengine_gbe(fpga):
@@ -70,6 +77,7 @@ def get_fpga_data(fpga):
     data = {}
     data['gbe'] = fengine_gbe(fpga)
     data['rxtime'] = fengine_rxtime(fpga)
+    data['mcnt_nolock'] = fpga.registers.mcnt_nolock.read_uint()
     return data
 
 # work out tables for each fpga
@@ -147,7 +155,7 @@ try:
             for ctr, fpga in enumerate(ffpgas):
                 fpga_data = get_fpga_data(fpga)
 #                scroller.add_line(fpga.host)
-                scroller.add_line(fpga.host + ' - %12d' % fpga_data['rxtime'])
+                scroller.add_line(fpga.host + (' - %12d' % fpga_data['rxtime']) + (', %12d' % fpga_data['mcnt_nolock']))
                 for core, core_data in fpga_data['gbe'].items():
                     start_pos = 30
                     pos_increment = 20
