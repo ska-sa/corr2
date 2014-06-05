@@ -116,7 +116,7 @@ class Snap(Memory):
         '''Read and print a snap block.
         '''
         snapdata = self.read(man_valid=man_valid, man_trig=man_trig, circular_capture=circular_capture)
-        for ctr in range(0, len(snapdata['data'][snapdata.keys()[0]])):
+        for ctr in range(0, len(snapdata['data'][snapdata['data'].keys()[0]])):
             print '%5d' % ctr,
             for key in snapdata['data'].keys():
                 print '%s(%d)' % (key, snapdata['data'][key][ctr]), '\t',
