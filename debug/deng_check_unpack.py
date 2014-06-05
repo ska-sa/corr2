@@ -8,7 +8,7 @@ Created on Thu May  8 15:35:52 2014
 from corr2.katcp_client_fpga import KatcpClientFpga
 import time, argparse
 
-dhost = 'roach020958'
+dhost = 'roach020959'
 #fhosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']
 
 parser = argparse.ArgumentParser(description='Display the data unpack counters on the dengine.',

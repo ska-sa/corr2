@@ -52,20 +52,111 @@ rxhosts = ['roach020826', 'roach02070f', 'roach020828', 'roach02082c',
     'roach02081c', 'roach020637', 'roach02081e', 'roach02064b',
     'roach02070f', 'roach02082c', 'roach020818', 'roach02070e']
 
+f = KatcpClientFpga('roach020921')
+f.get_system_information()
+
+#
+#import corr, struct
+#f = corr.katcp_wrapper.FpgaClient('roach020921')
+#time.sleep(0.3)
+#sd = f.snapshot_get('snap_reord0_ss', circular_capture=True, man_trig=True)
+#up = struct.unpack('>2048Q', sd['data'])
+#for ctr in range(0, 2048, 2):
+#    print ctr, ':',
+#    w1 = up[ctr]
+#    w2 = up[ctr+1]
+#    sync = (w1 >> 63) & 0x01
+#    data = (w1 >> 31) & 0xffffffff
+#    valid = (w1 >> 30) & 0x01
+#    dtime = ((w1 & (pow(2,30)-1)) << 12) & ((w2 >> 46) & (pow(2,18)-1))
+#    freq = (w2 >> 4) & (pow(2,42)-1)
+#    xeng_err = (w2 >> 3) & 0x01
+#    feng_err = (w2 >> 2) & 0x01
+#    adc_err = (w2 >> 1) & 0x01
+#    nd_on = (w2 >> 0) & 0x01
+#    print '%10d\t%10d\t%10d\t%2d\t%2d\t%2d\t%2d\t%2d\t%2d' % (data, dtime, freq, sync, valid, xeng_err, feng_err, adc_err, nd_on)
+#print ''
+
+f = KatcpClientFpga('roach020921')
+f.get_system_information()
+snapdata = f.snapshots.snap_reord0_ss.read(circular_capture=True, man_trig=True)['data']
+for ctr in range(0, len(snapdata['sync'])):
+    print ctr, ':',
+    sync = snapdata['sync'][ctr]
+    data = snapdata['data'][ctr]
+    valid = snapdata['valid'][ctr]
+    dtime = snapdata['time'][ctr]
+    freq = snapdata['freq'][ctr]
+    xeng_err = snapdata['xeng_err'][ctr]
+    feng_err = snapdata['feng_err'][ctr]
+    adc_err = snapdata['adc_over'][ctr]
+    nd_on = snapdata['nd_on'][ctr]
+    print '%10d\t%10d\t%10d\t%2d\t%2d\t%2d\t%2d\t%2d\t%2d' % (data, dtime, freq, sync, valid, xeng_err, feng_err, adc_err, nd_on)
+
+sys.exit()
+
 #for host in [dhost]:
 #    fpga = KatcpClientFpga(host)
 #    fpga.get_system_information()
 #    fpga.registers.control.write(cnt_rst='pulse')
 
-for host in fhosts:
-    fpga = KatcpClientFpga(host)
-    fpga.get_system_information()
-    fpga.registers.control.write(cnt_rst='pulse')
+#for host in fhosts:
+#    fpga = KatcpClientFpga(host)
+#    fpga.get_system_information()
+#    fpga.registers.control.write(cnt_rst='pulse')
 
+import numpy
+
+xfpgas = []
 for host in xhosts:
     fpga = KatcpClientFpga(host)
     fpga.get_system_information()
-    fpga.registers.control.write(cnt_rst='pulse')
+    xfpgas.append(fpga)
+#    fpga.registers.control.write(cnt_rst='pulse', gbe_debug_rst='pulse', clr_status='pulse')
+
+xfreqs = {}
+for f in xfpgas:
+    xfreqs[f.host] = {}
+    for snapctr in range(0,4):
+        xfreqs[f.host][snapctr] = {}
+        for ctr in range(0,4):
+            xfreqs[f.host][snapctr][ctr] = []
+
+done = False
+for ctr in range(0, 500):
+    try:
+        for f in xfpgas:
+            snapdata0 = f.snapshots.snap_unpack0_ss.read()['data']
+            snapdata1 = f.snapshots.snap_unpack1_ss.read()['data']
+            snapdata2 = f.snapshots.snap_unpack2_ss.read()['data']
+            snapdata3 = f.snapshots.snap_unpack3_ss.read()['data']
+            for snapctr, snapdata in enumerate([snapdata0, snapdata1, snapdata2, snapdata3]):
+                for pktctr in range(0, len(snapdata['eof'])):
+                    if snapdata['eof'][pktctr] == 1:
+                        if not snapdata['valid'][pktctr] == 1:
+                            raise RuntimeError('(!valid && eof) ?!?!')
+                        fengid = snapdata['feng_id'][pktctr]
+                        freq = snapdata['freq'][pktctr]
+                        xfreqs[f.host][snapctr][fengid].append(freq)
+                        xfreqs[f.host][snapctr][fengid] = list(numpy.unique(xfreqs[f.host][snapctr][fengid]))
+                        xfreqs[f.host][snapctr][fengid].sort()
+    except KeyboardInterrupt:
+        done = True
+    print ctr,
+    sys.stdout.flush()
+    if done:
+        break
+print ''
+
+for f in xfpgas:
+    print f.host, f.registers.board_id.read()['data'], ':'
+    for snapctr in range(0,4):
+        print '\t', 'stream%i'%snapctr, ':'
+        for ctr in range(0,4):
+            print '\t\t', 'ant%i'%ctr, xfreqs[f.host][snapctr][ctr]
+
+for f in xfpgas:
+    f.disconnect()
 
 sys.exit()
 

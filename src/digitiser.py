@@ -17,7 +17,7 @@ class Digitiser(KatcpClientFpga):
     def get_current_time(self):
         '''Read the latest time on the digitiser, since the last sync.
         '''
-        return (self.registers.local_time_msw.read_uint() << 32) | self.registers.local_time_lsw.read_uint()
+        return ((self.registers.local_time_msw.read_uint() << 32) | self.registers.local_time_lsw.read_uint())
 
     def __str__(self):
         return 'digitiser %s @ %i' % (self.host, self.katcp_port)

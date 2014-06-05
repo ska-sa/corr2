@@ -43,9 +43,9 @@ fhosts = ['roach020958', 'roach02091b', 'roach020914', 'roach020922']
 xhosts = ['roach020921', 'roach020927', 'roach020919', 'roach020925',
           'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
 
-dfpg = '/srv/bofs/deng/r2_deng_tvg_2014_May_21_1802.fpg'
-ffpg = '/srv/bofs/feng/feng_rx_test_2014_May_26_0935.fpg'
-xfpg = '/srv/bofs/xeng/x_rx_reorder_2014_Apr_16_1703.fpg'
+dfpg = '/srv/bofs/deng/r2_deng_tvg_2014_May_30_1123.fpg'
+ffpg = '/srv/bofs/feng/feng_rx_test_2014_Jun_05_1207.fpg'
+xfpg = '/srv/bofs/xeng/x_rx_reorder_2014_Jun_02_1913.fpg'
 
 fdig = Digitiser(dhost)
 ffpgas = []
@@ -116,11 +116,14 @@ if setup_gbe:
 #    for fpga in xfpgas:
 #        fpga.registers.control.write(gbe_rst = True)
 
-    # reset the boards
+    # start the local timer on the test d-engine - mrst, then a fake sync
     fdig.registers.control.write(mrst = 'pulse')
     fdig.registers.control.write(msync = 'pulse')
+
+    # reset the fengine fpgas
     for fpga in ffpgas:
         fpga.registers.control.write(sys_rst='pulse')
+
     # x-engines don't have a reset?
 
     # the all_fpgas have tengbe cores, so set them up
@@ -148,7 +151,7 @@ if setup_gbe:
             macbase += 1
             xipbase += 1
         fpga.registers.board_id.write_int(board_id)
-        board_id += 1
+        board_id += 4 # see the model file as to why this must incrementby 4 - this needs to be changed!!
 
     # tap start
     for fpga in all_fpgas:
@@ -173,7 +176,7 @@ if setup_gbe:
         arptime = 200
         stime = time.time()
         while time.time() < stime + arptime:
-            print '\rWaiting for ARP, %ds   ' % (200-(time.time()-stime)),
+            print '\rWaiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
             sys.stdout.flush()
             time.sleep(1)
         print 'done.'
@@ -202,21 +205,26 @@ if setup_gbe:
     print 'Starting TX...',
     sys.stdout.flush()
     fdig.registers.control.write(gbe_txen=True)
-#    time.sleep(20)
+#    sleeptime = 5
+#    stime = time.time()
+#    while time.time() < stime + sleeptime:
+#        print '\rStarting TX... %ds   ' % (sleeptime-(time.time()-stime)),
+#        sys.stdout.flush()
+#        time.sleep(1)
 #    for fpga in ffpgas:
 #        fpga.registers.control.write(gbe_txen=True)
     print 'done.'
 
-# print 10gbe core details
-fdig.tengbes.gbe0.print_10gbe_core_details(arp=True)
-fdig.tengbes.gbe1.print_10gbe_core_details(arp=True)
-fdig.tengbes.gbe2.print_10gbe_core_details(arp=True)
-fdig.tengbes.gbe3.print_10gbe_core_details(arp=True)
-for fpga in ffpgas:
-    fpga.tengbes.gbe0.print_10gbe_core_details(arp=True)
-    fpga.tengbes.gbe1.print_10gbe_core_details(arp=True)
-    fpga.tengbes.gbe2.print_10gbe_core_details(arp=True)
-    fpga.tengbes.gbe3.print_10gbe_core_details(arp=True)
+## print 10gbe core details
+#fdig.tengbes.gbe0.print_10gbe_core_details(arp=True)
+#fdig.tengbes.gbe1.print_10gbe_core_details(arp=True)
+#fdig.tengbes.gbe2.print_10gbe_core_details(arp=True)
+#fdig.tengbes.gbe3.print_10gbe_core_details(arp=True)
+#for fpga in ffpgas:
+#    fpga.tengbes.gbe0.print_10gbe_core_details(arp=True)
+#    fpga.tengbes.gbe1.print_10gbe_core_details(arp=True)
+#    fpga.tengbes.gbe2.print_10gbe_core_details(arp=True)
+#    fpga.tengbes.gbe3.print_10gbe_core_details(arp=True)
 
 #ffpgas[0][0].registers.snap_control.write(trig_reord_en=True)
 #ffpgas[0][0].snapshots.snapreord0_ss.print_snap(man_trig=True)
