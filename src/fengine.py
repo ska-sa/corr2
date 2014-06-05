@@ -9,7 +9,7 @@ LOGGER = logging.getLogger(__name__)
 
 from corr2.engine import Engine
 
-import numpy
+import numpy, struct
 
 def ip2str(ip):
     """ Returns IP address in human readable string notation """
@@ -19,15 +19,15 @@ def ip2str(ip):
     return txip_str
 
 #TODO make part of separate class
-def arm_timed_latch(self, latch_name, time=None, force=False):
+def arm_timed_latch(fpga, latch_name, time=None, force=False):
     """ Arm a timed register """
     
     # get the current arm and load count
-    arm_count = self.parent.device_by_name('%s_status' %(latch_name)).read()['data']['arm_count']
-    load_count = self.parent.device_by_name('%s_status' %(latch_name)).read()['data']['load_count']
+    arm_count = fpga.device_by_name('%s_status' %(latch_name)).read()['data']['arm_count']
+    load_count = fpga.device_by_name('%s_status' %(latch_name)).read()['data']['load_count']
 
 #    # check for counter weirdness
-#    if (arm_count != load_count) and (force is False):
+#    if (arm_count != load_count) and (force == False):
 #        # waiting for previous arm to complete
 #        if ((arm_count - load_count) == 1):
 #            #TODO error
@@ -36,17 +36,17 @@ def arm_timed_latch(self, latch_name, time=None, force=False):
 #            #TODO different error
 
     # we load immediate if not given time
-    if time is None:
-        self.parent.device_by_name('%s_control0' %(latch_name)).write(arm=0)
-        self.parent.device_by_name('%s_control0' %(latch_name)).write(arm=1, load_immediate=1)
+    if time == None:
+        fpga.device_by_name('%s_control0' %(latch_name)).write(arm=0)
+        fpga.device_by_name('%s_control0' %(latch_name)).write(arm=1, load_immediate=1)
     else: 
         # TODO time conversion
-        time_samples = 0
+        time_samples = numpy.uint32(0)
         time_msw = (time_samples & 0xFFFF0000) >> 32
         time_lsw = (time_samples & 0x0000FFFF)
         
-        self.parent.device_by_name('%s_control' %(latch_name)).write(arm=0)
-        self.parent.device_by_name('%s_control' %(latch_name)).write(arm=1, load_immediate=1)
+        fpga.device_by_name('%s_control' %(latch_name)).write(arm=0)
+        fpga.device_by_name('%s_control' %(latch_name)).write(arm=1, load_immediate=1)
 
     #TODO check that arm count increased as expected
     #TODO check that load count increased as expected if immediate
@@ -62,9 +62,9 @@ class Fengine(Engine):
     def init_config(self, info=None):
         """ initialise config from info """
         #defaults if no info passed
-        if info is None:
+        if info == None:
             #TODO determine n_chans from system info
-            self.config = { 'n_chans': 0, 
+            self.config = { 'n_chans': 4096, 
                             'fft_shift': 0,
                             'sampling_frequency': 1700000000,
                             'feng_id': 0,
@@ -72,12 +72,14 @@ class Fengine(Engine):
                             'txport': 0,
                             'txip_str': '192.168.0.0'}
             
+            #TODO determine some equalisation factors from system info
             self.config['equalisation'] = {}
             self.config['equalisation']['decimation'] = 1
-            #TODO determine some equalisation factors from system info
             self.config['equalisation']['coeffs'] = []
-            self.config['equalisation']['poly'] = 1
+            self.config['equalisation']['poly'] = [1]
             self.config['equalisation']['type'] = 'complex'
+            self.config['equalisation']['n_bytes'] = 2      #number of bytes per coefficient
+            self.config['equalisation']['bin_pt'] = 1       #location of binary point/number of fractional bits
             self.config['equalisation']['default'] = 'poly'
                             
         else:
@@ -147,18 +149,119 @@ class Fengine(Engine):
     # Status monitoring of various system components #
     ##################################################
 
-    def get_status(self):
-        """ Status of f-engine return in dictionary """
-        raise NotImplementedError
+    #
+    # status
+    def clear_status(self, comms=True, fstatus_reg=True):
+        """ Clear status registers """
+        # needs a positive edge to clear 
+        if comms == True and fstatus_reg == True:
+            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(status_clr=0, comms_status_clr=0)
+            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(status_clr=1, comms_status_clr=1)
+        elif comms == True:
+            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_status_clr=0)
+            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_status_clr=1)
+        elif fstatus_reg == True:
+            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(fstatus_reg=0)
+            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(fstatus_reg=1)
+    
+    def get_status(self, rx_comms=True, timestamp=True, dsp=True, tx_comms=True, timed_latches=True, debug=True):
+        """ Status of f-engine returned in dictionary. All status returned if specific status not specified """
 
-    def clear_status(self):
-        """ Clear flags and counters of fengine indicating status """
-        raise NotImplementedError
+        status = {}
+       
+        status['board_id'] = self.get_board_id()
+        status['engine_id'] = self.get_engine_id()
+ 
+        if rx_comms == True:
+            status['rx_comms'] = self.get_rx_comms_status(debug=debug)
+        
+        if timestamp == True:
+            status['timestamp'] = self.get_timestamp()       
+                
+        if dsp == True:
+            status['dsp'] = self.get_dsp_status()
+        
+        if tx_comms == True:
+            status['tx_comms'] = self.get_tx_comms_status(debug=debug)
+            
+        if timed_latches == True:
+            status['timed_latches'] = self.get_timed_latches_status()
+
+        return status
 
     ######################################
     # Control of various system settings #
     ######################################
     
+    #TODO should be in separate class
+
+    def get_timed_latch_status(self, device):
+        """ Get current state of device timed latch """
+        tl_control_reg = self.parent.device_by_name('%s_control'%device).read()['data']
+        tl_control0_reg = self.parent.device_by_name('%s_control0'%device).read()['data']
+        tl_status_reg = self.parent.device_by_name('%s_status'%device).read()['data']
+
+        status = {}
+#        status['armed'] = tl_status_reg['armed']
+        status['arm_count'] = tl_status_reg['arm_count']       
+        status['load_count'] = tl_status_reg['load_count']       
+ 
+        status['load_time'] = (tl_control0_reg['load_time_msw'] << 32) | (tl_control_reg['load_time_lsw'])
+        
+        return status
+
+    def get_timed_latches_status(self, coarse_delay=True, fine_delay=True, tvg=True):
+        """ Get status of timed latches """
+
+        status = {}
+        if coarse_delay == True:
+            status['coarse_delay'] = self.get_timed_latch_status('tl_cd%i'%(self.config['feng_id']))
+
+        if tvg == True:
+            status['tvg'] = self.get_timed_latch_status('tl_tvg')
+        
+        if fine_delay == True:
+            status['fine_delay'] = self.get_timed_latch_status('tl_fd%i'%(self.config['feng_id']))
+
+        return status
+ 
+    def get_dsp_status(self):
+        """ Get current state of DSP pipeline """
+        
+        #control
+        control_reg = self.parent.device_by_name('control%i'%(self.config['feng_id'])).read()['data']
+        status_reg = self.parent.device_by_name('dsp_status%i'%(self.config['feng_id'])).read()['data']
+        trigger_level_reg = self.parent.device_by_name('trigger_level').read()['data']
+        fft_shift_reg = self.parent.device_by_name('fft_shift').read()['data']
+
+        #in reset
+        control = {'reset': control_reg['dsp_rst']} 
+
+        #status
+        dsp_status = {}
+        #adc overflows reported
+        dsp_status['adc_over_range'] = status_reg['adc_or']
+        #fft over range
+        dsp_status['fft_over_range'] = status_reg['fft_or']
+        #requantiser overflow
+        dsp_status['equalisation_over_range'] = status_reg['quant_or']
+        #qdr not ready
+        dsp_status['qdr_sram_not_ready'] = status_reg['qdr_not_ready']
+        #qdr calibration fail
+        dsp_status['qdr_calibration_fail'] = status_reg['qdr_cal_fail']
+        #qdr parity error
+        dsp_status['qdr_parity_error'] = status_reg['qdr_parity_error']
+   
+        status = {}
+        #trigger level
+        status['trigger_level'] = trigger_level_reg['trigger_level']
+        #fft shift
+        status['fft_shift'] = fft_shift_reg['fft_shift']
+        status['status'] = dsp_status
+        status['control'] = control
+
+        return status
+         
     #
     # fft shift
     def set_fft_shift(self, fft_shift=None):
@@ -208,37 +311,22 @@ class Fengine(Engine):
     # reset
     def enable_reset(self, dsp=True, comms=True):
         """ Place aspects of system in reset """
-        if (dsp is True) and (comms is True):
+        if (dsp == True) and (comms == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=1, comms_rst=1)
-        elif (dsp is True):
+        elif (dsp == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=1)
-        elif (comms is True):
+        elif (comms == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_rst=1)
     
     #
     def disable_reset(self, dsp=True, comms=True):
         """ Remove aspects of system from reset """
-        if (dsp is True) and (comms is True):
+        if (dsp == True) and (comms == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=0, comms_rst=0)
-        elif (dsp is True):
+        elif (dsp == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=0)
-        elif (comms is True):
+        elif (comms == True):
             self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_rst=0)
-
-    #
-    # status
-    def clear_status(self, comms=True, fstatus_reg=True):
-        """ Clear status registers """
-        # needs a positive edge to clear 
-        if comms == True and fstatus_reg == True:
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(status_clr=0, comms_status_clr=0)
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(status_clr=1, comms_status_clr=1)
-        elif comms == True:
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_status_clr=0)
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_status_clr=1)
-        elif fstatus_reg == True:
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(fstatus_reg=0)
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(fstatus_reg=1)
    
     # 
     # timestamp
@@ -270,18 +358,6 @@ class Fengine(Engine):
         """ Get the level at which data capture to snapshot is stopped """
         return self.parent.device_by_name('trigger_level').read()['data']['trigger_level']
 
-    ##############################################
-    # Equalisation before re-quantisation stuff  #
-    ##############################################
-
-    def get_eq(self):
-        """ Get current equalisation values applied pre-quantisation """
-        raise NotImplementedError
-
-    def set_eq(self, init_coeffs=None, init_poly=None):
-        """ Set equalisation values to be applied pre-quantisation """
-        raise NotImplementedError
-
     #################################
     # Delay and phase compensation  #
     #################################
@@ -291,14 +367,116 @@ class Fengine(Engine):
         raise NotImplementedError
 
     ##################
+    # RX comms stuff #
+    ##################
+
+    def get_rx_comms_status(self, debug=True):
+        """ Get status for rx comms, debug=True gives low level core info """
+
+        #control
+        reg = self.parent.device_by_name('control%i'%(self.config['feng_id'])).read()['data']
+        control = {'enabled': (reg['comms_en'] == 1), 'reset': (reg['comms_rst'] == 1)} 
+
+        #status
+        reg = self.parent.device_by_name('comms_status%i'%(self.config['feng_id'])).read()['data']
+
+        core_info = {}
+        #core info
+        for gbe in self.parent.tengbes:
+            core_info[gbe.name] = {}
+            if debug == True:
+                core_info[gbe.name]['core_details'] = gbe.get_10gbe_core_details()
+                core_info[gbe.name]['counters'] = gbe.read_tx_counters()
+
+        #TODO check that these names exist
+        for index in range(4):
+            gbe = {}
+            #link down reported by gbe core
+            gbe['link_down'] = (((reg['gbe_ldn'] >> index) & 0x1) == 1)
+            #spead_unpack reported error
+            #1. SPEAD header bad
+            #2. SPEAD flags not received or bad
+            #3. payload length not expected length
+            gbe['spead_error'] = (((reg['spead_error'] >> index) & 0x1) == 1)
+            #an overflow happened in the fifo buffer in the unpack/fifo block 
+            #this should never happen, packets should be discarded first (see packet_discarded)
+            gbe['unpack_fifo_overflow'] = (((reg['unpack_fifo_of'] >> index) & 0x1) == 1)
+            #fifo block in unpack discarded packet due to one of the following;
+            #1. discard line went high during packet reception
+            #2. packet was not the correct multiple of words
+            #3. the fifo contained the maximum packets supported and might overflow
+            #4. the maximum number of words supported per packet is being exceeded
+            gbe['packet_discarded'] = (((reg['packet_of'] >> index) & 0x1) == 1)
+            core_info['gbe%i' %index]['status'] = gbe                
+
+        status = {}
+        #this polarisation is missing data
+        status['missing_data'] = (reg['recvd_error'] == 1)
+        #one of the polarisations is missing
+        status['data_streams_misaligned'] = (reg['misaligned'] == 1)
+        #data count does not align with timestamp changes expected
+        status['timestamp_error'] = (reg['timestamp_error'] == 1)
+        #timestamp received by unpack/pkt_reorder block not in range allowed
+        status['timestamp_unlocked'] = (reg['mcnt_no_lock'] == 1)
+
+        rx_status = {}
+        rx_status['core_info'] = core_info
+        rx_status['control'] = control
+        rx_status['status'] = status
+      
+        return rx_status
+
+    ##################
     # TX comms stuff #
     ##################
+
+    def get_tx_comms_status(self, debug=True):
+        """ Get status of tx comms, debug=True gives low level core info """
+
+        #status
+        reg = self.parent.device_by_name('comms_status%i'%(self.config['feng_id'])).read()['data']
+        status = {} 
+
+        core_info = {}
+        #core info
+        for gbe in self.parent.tengbes:
+            core_info[gbe.name] = {}
+            if debug == True:
+                core_info[gbe.name]['core_details'] = gbe.get_10gbe_core_details()
+                core_info[gbe.name]['counters'] = gbe.read_tx_counters()
+
+        #TODO check that these names exist
+        for index in range(4):
+            gbe = {}
+            #link down reported by gbe core
+            gbe['link_down'] = (((reg['gbe_ldn'] >> index) & 0x1) == 1)
+            #TX FIFO overflowed (a reset of the gbe core is required)
+            gbe['gbe_fifo_overflow'] = (((reg['gbe_of'] >> index) & 0x1) == 1)
+            #spead_pack detected error
+            #1. payload length is not as expected
+            gbe['spead_error'] = (((reg['pack_of'] >> index) & 0x1) == 1)
+            core_info['gbe%i' %index]['status'] = gbe
+
+        #control
+        reg = self.parent.device_by_name('control%i'%(self.config['feng_id'])).read()['data']
+        control = {'enabled': (reg['comms_en'] == 1), 'reset': (reg['comms_rst'] == 1)} 
+ 
+        tx_status = {}        
+        #base ip and port
+        tx_status['base_port'] = self.get_txport()
+        tx_status['base_ip'] = self.get_txip_str()
+
+        tx_status['core_info'] = core_info
+        tx_status['control'] = control
+        tx_status['status'] = status
+
+        return tx_status
  
     # 
-    # data transmission UDP port 
+    # base data transmission UDP port 
     def set_txport(self, txport=None, issue_spead=False):
         """ Set data transmission port """    
-        if txport is None:
+        if txport == None:
             txport = self.config['txport']
         
         self.config['txport'] = txport
@@ -315,10 +493,10 @@ class Fengine(Engine):
     # data transmission UDP IP address 
     def set_txip(self, txip_str=None, txip=None, issue_spead=False):
         """ Set data transmission IP base """    
-        if txip_str is None and txip is None:
+        if txip_str == None and txip == None:
             txip = self.config['txip']
             txip_str = self.config['txip_str']
-        elif txip is None:
+        elif txip == None:
             self.config['txip_str'] = txip_str
             txip = struct.unpack('>L',socket.inet_aton(txip_str))[0]
             self.config['txip'] = txip
@@ -356,7 +534,7 @@ class Fengine(Engine):
     #TODO SPEAD stuff
     def config_tx_comms(self, reset=True, issue_spead=True):
         """ Configure transmission infrastructure """ 
-        if reset is True:
+        if reset == True:
             self.disable_tx_comms()
             self.reset_tx_comms()   
     #
@@ -388,5 +566,173 @@ class Fengine(Engine):
     def issue_spead(self):
         """ Issue SPEAD meta data """  
         raise NotImplementedError
+
+
+    ##############################################
+    # Equalisation before re-quantisation stuff  #
+    ##############################################
+
+    #
+    def pack_eq(self, coeffs, n_bits, bin_pt=0, signed=True):
+        """ Convert coeffs into a string with n_bits of resolution and a binary point at bin_pt """
+        
+        if len(coeffs) == 0:
+            raise RuntimeError('Passing empty coeffs list')
+        if bin_pt < 0:
+            raise RuntimeError('Binary point cannot be less than 0')
+        
+        step = 1/(2**bin_pt) #coefficient resolution
+
+        if signed == True:
+            min_val = -(2**(n_bits-bin_pt-1))
+            max_val = -(min_val)-step
+        else:
+            min_val = 0
+            max_val = 2**(n_bits-bin_pt)-step
+
+        if numpy.max(coeffs) > max_val or numpy.min(coeffs) < min_val:
+            raise RuntimeError('Coeffs out of range')
+     
+        is_complex = numpy.iscomplexobj(coeffs)
+        if is_complex == True:
+            n_coeffs = len(coeffs)*2
+            coeffs = numpy.array(coeffs, dtype = numpy.complex128)
+        else:
+            n_coeffs = len(coeffs) 
+            coeffs = numpy.array(coeffs, dtype = numpy.float64)
+     
+        #compensate for fractional bits
+        coeffs = (coeffs * 2**bin_pt)
+
+        byte_order = '>' #big endian
+
+        if n_bits == 16:
+            if signed == True:
+                pack_type = 'h'
+            else:
+                pack_type = 'H'
+        else:
+            raise RuntimeError('Don''t know how to pack data type with %i bits' %n_bits)
+        
+        coeff_str = struct.pack('%s%i%s' %(byte_order, n_coeffs, pack_type), *coeffs.view(dtype=numpy.float64))
+        return coeff_str
+
+    #
+    def unpack_eq(self, string, n_bits, eq_complex=True, bin_pt=0, signed=True):
+        """ Unpack string according to format specified. Return array of floats """
+
+        byte_order = '>' #big endian
+
+        n_vals = len(string)/(n_bits/8)
+
+        if n_bits == 16:
+            if signed == True:
+                pack_type = 'h'
+            else:
+                pack_type = 'H'
+        else:
+            raise RuntimeError('Don''t know how to pack data type with %i bits' %n_bits)
+        
+        coeffs = struct.unpack('%s%i%s'%(byte_order, n_vals, pack_type), string)
+        coeffs_na = numpy.array(coeffs, dtype = numpy.float64)
+
+        coeffs = coeffs_na/(2**bin_pt) #scale by binary points 
+        
+        if eq_complex == True:
+            #change view to 64 bit floats packed as complex 128 bit values
+            coeffs = coeffs.view(dtype = numpy.complex128) 
+
+        return coeffs 
+
+    #
+    def get_eq(self):
+        """ Get current equalisation values applied pre-quantisation """
+        
+        register_name='eq%i'%(self.config['feng_id'])
+        n_chans = self.config['n_chans']
+        decimation = self.config['equalisation']['decimation']
+        n_coeffs = n_chans/decimation
+
+        eq_type = self.config['equalisation']['type']
+        if eq_type == 'complex':
+            n_coeffs = n_coeffs*2
+
+        n_bytes = self.config['equalisation']['n_bytes']
+        bin_pt = self.config['equalisation']['bin_pt']
+
+        #read raw bytes
+        coeffs_raw = self.parent.read(register_name, n_coeffs*n_bytes)
+
+        if eq_type == 'complex':
+            eq_complex = True
+        else:
+            eq_complex = False
+
+        coeffs = self.unpack_eq(coeffs_raw, n_bytes*8, eq_complex, bin_pt, signed=True)        
+
+        #pad coeffs out by decimation factor
+        coeffs_padded = numpy.reshape(numpy.tile(coeffs, [decimation, 1]), [1, n_chans], 'F')
+    
+        return coeffs_padded[0]
+    
+    # 
+    def get_default_eq(self):
+        """ Get default equalisation settings """
+        
+        decimation = self.config['equalisation']['decimation']
+        n_chans = self.config['n_chans']       
+        n_coeffs = n_chans/decimation
+        eq_default = self.config['equalisation']['default']
+
+        if eq_default == 'coeffs':
+            equalisation = self.config['equalisation']['coeffs']
+        elif eq_default == 'poly':
+            poly = self.config['equalisation']['poly']
+            equalisation = numpy.polyval(poly, range(n_chans))[decimation/2::decimation]
+            if self.config['equalisation']['type'] == 'complex':
+                equalisation = [eq+0*1j for eq in equalisation]
+        else:
+            raise RuntimeError("Your EQ type, %s, is not understood." % eq_default)
+
+        if len(equalisation) != n_coeffs:
+            raise RuntimeError("Something's wrong. I have %i eq coefficients when I should have %i." % (len(equalisation), n_coeffs))
+        return equalisation
+
+    # 
+    def set_eq(self, init_coeffs=[], init_poly=[]):
+        """ Set equalisation values to be applied pre-quantisation """
+
+        n_chans = self.config['n_chans']
+        decimation = self.config['equalisation']['decimation']
+        n_coeffs = n_chans / decimation
+
+        if init_coeffs == [] and init_poly == []:
+            coeffs = self.get_default_eq()
+        elif len(init_coeffs) == n_coeffs:
+            coeffs = init_coeffs
+        elif len(init_coeffs) == n_chans:
+            coeffs = init_coeffs[0::decimation]
+            LOGGER.warn("You specified %i EQ coefficients but your system only supports %i actual values. Only writing every %ith value."%(n_chans ,n_coeffs, decimation))
+        elif len(init_coeffs) > 0:
+            raise RuntimeError ('You specified %i coefficients, but there are %i EQ coefficients in this design.'%(len(init_coeffs), n_coeffs))
+        else:
+            coeffs = numpy.polyval(init_poly, range(n_chans))[decimation/2::decimation]
+
+        eq_type = self.config['equalisation']['type'] 
+        if eq_type == 'scalar':
+            coeffs = numpy.real(coeffs)
+        elif eq_type == 'complex':
+            coeffs = numpy.complex64(coeffs)
+        else:
+            raise RuntimeError ('Don''t know what to do with %s equalisation type.'%eq_type)
+
+        n_bytes = self.config['equalisation']['n_bytes'] 
+        bin_pt = self.config['equalisation']['bin_pt'] 
+
+        coeffs_str = self.pack_eq(coeffs, n_bits=n_bytes*8, bin_pt=bin_pt, signed=True) 
+
+        # finally write to the bram
+        self.parent.write('eq%i'%self.config['feng_id'], coeffs_str)
+
 
 # end
