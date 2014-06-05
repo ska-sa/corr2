@@ -3,7 +3,13 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-View the status of a given xengine.
+Monitor the debug counters inside the f-engine unpack block, just after the SPEAD unpack units.
+
+The unpack block has hardware error checking of the data inside the SPEAD packets.
+
+1. Is the data ramp inside the packet payload present?
+2. Does the time in the data payload match the SPEAD time?
+3. Do successive packets have successive timestamps? This is a decent link quality check.
 
 Created on Fri Jan  3 10:40:53 2014
 
@@ -48,12 +54,12 @@ for host in feng_hosts:
 def get_fpga_data(fpga):
     data = {}
     for interface in [0,1,2,3]:
-        unpack_errors = fpga.device_by_name('unpack_err_%i' % interface).read()['data']
+        unpack_errors = fpga.device_by_name('up_err_%i' % interface).read()['data']
         data['up%i_cnt' % interface] = unpack_errors['cnt']
         data['up%i_time' % interface] = unpack_errors['time']
         data['up%i_tstep' % interface] = unpack_errors['timestep']
-    data['sperror'] = fpga.registers.unpack_spead_err.read()['data']['reg']
-    data['spvalid'] = fpga.registers.unpack_spead_val.read()['data']['reg']
+    data['sperror'] = fpga.registers.up_spead_err.read()['data']['reg']
+    data['spvalid'] = fpga.registers.up_spead_val.read()['data']['reg']
     return data
 
 data = get_fpga_data(ffpgas[0])

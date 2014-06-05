@@ -2,15 +2,22 @@
 """
 Created on Thu May 22 13:35:29 2014
 
+This script pulls a snapshot from the unpack block on the f-engine and examines the spead data inside it to see if it matches
+d-engine TVG data.
+
 @author: paulp
 """
 
-#import numpy
-#
-#feng_hosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']
-#f = corr2.katcp_client_fpga.KatcpClientFpga(feng_hosts[2])
-#f.get_system_information()
-#snapdata = f.snapshots.unpack_spead0_ss.read(man_trig=True,circular_capture=True)['data']
+import numpy, corr2
+
+feng_hosts = ['roach02091b', 'roach020914', 'roach020958', 'roach020922']
+f = corr2.katcp_client_fpga.KatcpClientFpga(feng_hosts[2])
+f.get_system_information()
+snaps = f.snapshots.names()
+if snaps.count('unpack_spead0_ss') == 0:
+    raise RuntimeError('The f-engine does not have the required snapshot compiled into it.')
+
+snapdata = f.snapshots.unpack_spead0_ss.read(man_trig=True,circular_capture=True)['data']
 
 # check the data
 lastval = snapdata['dramp'][0] - 1

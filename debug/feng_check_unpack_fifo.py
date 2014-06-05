@@ -3,7 +3,7 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-View the status of a given xengine.
+Check the post-FIFO debug registers inside the f-engine unpack block.
 
 Created on Fri Jan  3 10:40:53 2014
 
@@ -47,14 +47,14 @@ for host in feng_hosts:
 
 def get_fpga_data(fpga):
     data = {}
-    valid_cnt_fifo0 = fpga.device_by_name('unpack_validcnt_fifo0').read()['data']
-    valid_cnt_fifo1 = fpga.device_by_name('unpack_validcnt_fifo1').read()['data']
+    valid_cnt_fifo0 = fpga.device_by_name('up_validcnt_fifo0').read()['data']
+    valid_cnt_fifo1 = fpga.device_by_name('up_validcnt_fifo1').read()['data']
     data['valid_fifo0'] = valid_cnt_fifo0['fifo0']
     data['valid_fifo1'] = valid_cnt_fifo0['fifo1']
     data['valid_fifo2'] = valid_cnt_fifo1['fifo2']
     data['valid_fifo3'] = valid_cnt_fifo1['fifo3']
-    fifoof = fpga.registers.unpack_fifo_of1.read()['data']
-    fifopktof = fpga.registers.unpack_fifo_pktof1.read()['data']
+    fifoof = fpga.registers.up_fifo_of1.read()['data']
+    fifopktof = fpga.registers.up_fifo_pktof1.read()['data']
     for ctr in range(0,4):
         data['of%i'%ctr] = fifoof['input%i'%ctr]
         data['pktof%i'%ctr] = fifopktof['input%i'%ctr]

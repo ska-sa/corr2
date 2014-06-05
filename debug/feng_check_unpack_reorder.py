@@ -3,7 +3,13 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-View the status of a given xengine.
+Check the debug registers after the reorder block inside the unpack section of the f-engine.
+
+The unpack block has hardware error checking of the data inside the reordered packets.
+
+1. Is the data ramp inside the packet payload present?
+2. Does the time in the data payload match the SPEAD time?
+3. Do successive packets have successive timestamps? This is a decent link quality check. It also checks the functionality of the reorder block.
 
 Created on Fri Jan  3 10:40:53 2014
 
@@ -48,11 +54,11 @@ for host in feng_hosts:
 def get_fpga_data(fpga):
     data = {}
     for pol in [0,1]:
-        reord_errors = fpga.device_by_name('unpack_err_reord%i' % pol).read()['data']
+        reord_errors = fpga.device_by_name('up_err_reord%i' % pol).read()['data']
         data['re%i_cnt' % pol] = reord_errors['cnt']
         data['re%i_time' % pol] = reord_errors['time']
         data['re%i_tstep' % pol] = reord_errors['timestep']
-    valid_cnt = fpga.device_by_name('unpack_validcnt').read()['data']
+    valid_cnt = fpga.device_by_name('up_validcnt').read()['data']
     data['valid_arbiter'] = valid_cnt['arb']
     data['valid_reord'] = valid_cnt['reord']
     data['mcnt_nolock'] = fpga.registers.mcnt_nolock.read()['data']['mcnt_nolock']
