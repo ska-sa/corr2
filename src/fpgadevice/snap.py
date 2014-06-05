@@ -112,24 +112,30 @@ class Snap(Memory):
         self.control_registers['control']['register'].write_int((0 + (man_trig << 1) + (man_valid << 2) + (circular_capture << 3)))
         self.control_registers['control']['register'].write_int((1 + (man_trig << 1) + (man_valid << 2) + (circular_capture << 3)))
 
-    def print_snap(self, limit_lines=-1, man_valid=False, man_trig=False):
+    def print_snap(self, limit_lines=-1, man_valid=False, man_trig=False, circular_capture=False):
         '''Read and print a snap block.
         '''
-        snapdata = self.read(man_valid=man_valid, man_trig=man_trig)['data']
-        for ctr in range(0, len(snapdata[snapdata.keys()[0]])):
+        snapdata = self.read(man_valid=man_valid, man_trig=man_trig, circular_capture=circular_capture)
+        for ctr in range(0, len(snapdata['data'][snapdata.keys()[0]])):
             print '%5d' % ctr,
-            for key in snapdata.keys():
-                print '%s(%d)' % (key, snapdata[key][ctr]), '\t',
+            for key in snapdata['data'].keys():
+                print '%s(%d)' % (key, snapdata['data'][key][ctr]), '\t',
             print ''
             if (limit_lines > 0) and (ctr == limit_lines):
                 break
+        if circular_capture == True:
+            print 'Circular capture offset: ', snapdata['offset']
 
     def read(self, **kwargs):
         '''Override Memory.read to handle the extra value register.
         '''
         rawdata, rawtime = self.read_raw(**kwargs)
         processed = self._process_data(rawdata['data'])
-        return {'data': processed, 'timestamp': rawtime, 'extra_value': rawdata['extra_value']}
+        if rawdata.has_key('offset'):
+            offset = rawdata['offset']
+        else:
+            offset = 0
+        return {'data': processed, 'offset': offset, 'timestamp': rawtime, 'extra_value': rawdata['extra_value']}
 
     def read_raw(self, **kwargs):
         '''Read snap data from the memory device.
