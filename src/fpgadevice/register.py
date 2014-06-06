@@ -148,6 +148,14 @@ class Register(Memory):
         field_widths.reverse()
         field_types.reverse()
         field_bin_pts.reverse()
+        # convert the number-based fields to integers
+        for avar in [field_widths, field_bin_pts, field_types]:
+            for index, value in enumerate(avar):
+                try:
+                    intvalue = int(value)
+                except ValueError:
+                    intvalue = eval(value)
+                avar[index] = intvalue
         num_fields = len(field_names)
         if self.block_info['mode'] == 'fields of equal size':
             for avar in [field_widths, field_bin_pts, field_types]:
@@ -167,8 +175,8 @@ class Register(Memory):
                         else:
                             raise RuntimeError('register %s: number of fields is %s, given %s', self.name, num_fields, len_avar)
         for ctr, name in enumerate(field_names):
-            field = bitfield.Field(name, int(field_types[ctr]), \
-                int(field_widths[ctr]), int(field_bin_pts[ctr]), -1)
+            field = bitfield.Field(name, field_types[ctr], \
+                field_widths[ctr], field_bin_pts[ctr], -1)
             self.field_add(field, auto_offset=True)
 
     def _process_info_tabbed(self):

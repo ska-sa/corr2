@@ -32,6 +32,9 @@ parser.add_argument('-t', '--mantrig', dest='mantrig', action='store_true',
 parser.add_argument('-e', '--manvalid', dest='manvalid', action='store_true',
                     default=False,
                     help='manually enable the snapshot valid')
+parser.add_argument('-c', '--circcap', dest='circcap', action='store_true',
+                    default=False,
+                    help='select circular capture mode')
 parser.add_argument('-v', '--verbose', dest='verbose', action='store_true',
                     default=False,
                     help='show debug output')
@@ -59,7 +62,7 @@ if args.listsnaps:
     sys.exit(0)
 
 # read and print the snap block
-fpga.device_by_name(args.snap).print_snap(limit_lines=args.numrows, man_valid=args.manvalid, man_trig=args.mantrig)
+fpga.device_by_name(args.snap).print_snap(limit_lines=args.numrows, man_valid=args.manvalid, man_trig=args.mantrig, circular_capture=args.circcap)
 
 fpga.disconnect()
 # end

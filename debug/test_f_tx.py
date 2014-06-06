@@ -44,6 +44,9 @@ while True:
                     packet_lengths.append(packet_counter)
             packet_counter = 0
             num_packets += 1
+    if read_counter % 10 == 0:
+        print read_counter,
+    read_counter += 1
 
 #    if (errors['valid'] > 0) or (errors['packet_length'] > 1):
 #        packet_counter = 0

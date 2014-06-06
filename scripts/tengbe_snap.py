@@ -12,7 +12,7 @@ Created on Fri Jan  3 10:40:53 2014
 import sys, logging, time, argparse
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging.INFO)
 
 from corr2.katcp_client_fpga import KatcpClientFpga
 from corr2.fpgadevice import tengbe
@@ -33,6 +33,9 @@ parser.add_argument('-d', '--direction', dest='direction', action='store',
 parser.add_argument('-s', '--spead', dest='spead', action='store_true',
                     default=False,
                     help='try and decode spead in this 10Gbe stream')
+parser.add_argument('--hex', dest='hex', action='store_true',
+                    default=False,
+                    help='show numbers in hex')
 args = parser.parse_args()
 
 # create the device and connect to it
@@ -86,7 +89,8 @@ def process_spead(current_spead_info, data, packet_counter):
         hdr_id, hdr_data = decode_item_pointer(current_spead_info, data)
         if hdr_id == 0x004:
             current_spead_info['packet_length'] = current_spead_info['num_headers'] + hdr_data
-        return current_spead_info if hdr_id == 0x0004 else None, 'spead hdr 0x%04x: %d' % (hdr_id, hdr_data)
+        string_data = 'spead hdr 0x%04x: '%hdr_id + ('%d'%hdr_data if not args.hex else '0x%X'%hdr_data)
+        return current_spead_info if hdr_id == 0x0004 else None, string_data
     else:
 #        data = '%d, %d, %d, %d' % (data >> 48, (data >> 32) & 0xffff, (data >> 16) & 0xffff, (data >> 0) & 0xffff)
         return None, data
@@ -116,14 +120,23 @@ for ctr in range(0, len(coredata[coredata.keys()[0]])):
     print '%5d,%3d' % (ctr, packet_counter),
     for key in key_order:
         if key == ip_key:
-            print '%s(%s)' % (key, tengbe.ip2str(coredata[key][ctr])), '\t',
+            if key == 'ip':
+                display_key = 'dst_ip'
+            elif key == 'ip_in':
+                display_key = 'src_ip'
+            else:
+                raise RuntimeError('Unknown IP key?')
+            print '%s(%s)' % (display_key, tengbe.ip2str(coredata[key][ctr])), '\t',
         elif (key == data_key) and args.spead:
             new_spead_info, spead_stringdata = process_spead(spead_info, coredata[data_key][ctr], packet_counter)
             if new_spead_info != None:
                 spead_info = new_spead_info.copy()
             print '%s(%s)' % (key, spead_stringdata), '\t',
         else:
-            print '%s(%s)' % (key, coredata[key][ctr]), '\t',
+            if args.hex:
+                print '%s(0x%X)' % (key, coredata[key][ctr]), '\t',
+            else:
+                print '%s(%s)' % (key, coredata[key][ctr]), '\t',
     print 'PACKET LENGTH ERROR' if packet_length_error else ''
     packet_counter += 1
 
