@@ -34,7 +34,7 @@ parser.add_argument('-d', '--deprogram', dest='deprogram', action='store_true',
 args = parser.parse_args()
 
 dhost = 'roach020958'
-fhosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']
+fhosts = ['roach020958', 'roach02091b', 'roach020914', 'roach020922']
 xhosts = ['roach020921', 'roach020927', 'roach020919', 'roach020925',
           'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
 
@@ -51,6 +51,13 @@ rxhosts = ['roach020826', 'roach02070f', 'roach020828', 'roach02082c',
     'roach02080f', 'roach020813', 'roach020712', 'roach02082d',
     'roach02081c', 'roach020637', 'roach02081e', 'roach02064b',
     'roach02070f', 'roach02082c', 'roach020818', 'roach02070e']
+
+fchan_per_x = 128
+
+
+xengines
+
+
 
 f = KatcpClientFpga('roach020921')
 f.get_system_information()

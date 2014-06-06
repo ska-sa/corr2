@@ -44,7 +44,7 @@ xhosts = ['roach020921', 'roach020927', 'roach020919', 'roach020925',
           'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
 
 dfpg = '/srv/bofs/deng/r2_deng_tvg_2014_May_30_1123.fpg'
-ffpg = '/srv/bofs/feng/feng_rx_test_2014_Jun_05_1207.fpg'
+ffpg = '/srv/bofs/feng/feng_rx_test_2014_Jun_05_1818.fpg'
 xfpg = '/srv/bofs/xeng/x_rx_reorder_2014_Jun_02_1913.fpg'
 
 fdig = Digitiser(dhost)
