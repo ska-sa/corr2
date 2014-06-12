@@ -1,42 +1,25 @@
 # NO WHITESPACE BETWEEN TEXT DELIMITERS!
+# ALL PARAMETER NAMES MUST BE UNIQUE, EVEN ACROSS SECTIONS
+# ALL PARAMETERS MUST BE CONTAINED WITHIN A SECTION
 # This is a sample config file for a lab correlator instrument in South Africa.
 # It has with 8 dual-pol antennas on 16 ROACH boards all plugged into 10GbE switch with 10GbE output.
 
+
+# TODO many of these can be determined at run time from fpg files
+
+[hosts]
+# Source for host allocation
+host_allocation = file
+# List of engine hosts. Comma separated list with no whitespace. 
+roach_host_pool = roach020959,roach02091b,roach020958,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
+
 [katcp]
-# List of engine hosts. Comma separated list with no whitespace.
-d_hosts = roach020958
-servers_f = roach02091b,roach020914,roach020915,roach020922
-servers_x = roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
-# This is the control port to use when communicating with BORPH. By default, use 7147.
+# This is the control port to use when communicating with FPGAs. By default, use 7147.
 katcp_port = 7147
-# bitstream to load the FPGAs. Should be present and load-able by ROACH's KATCP server - corr will not do this for you
-bitstream_d = r2_deng_tvg_2014_Mar_31_1516.fpg
-bitstream_f = feng_rx_test_2014_Apr_07_1841.fpg
-bitstream_x = r2_2f_4x_4a_4k_r366_2014_Mar_31_1547.fpg
-
-[dengine]
-# Number of bits in ADC
-adc_bits = 10
-# Number of accumulations used during ADC amplitude averaging.
-adc_levels_acc_len = 65536
-# multicast IP starting address
-multicast_ip_start = 239.2.0.64
-
-[fengine]
-# FFT shifting schedule in decimal. A binary '1' shifts, a zero does not.
-fft_shift = 252
-# Number of quantisation bits post FFT in the F engines. 4 is the only fully supported config option at present.
-feng_output_bits = 4
-# Logical binary point position of F engine data. Normally feng_output_bits-1.
-feng_fix_pnt_pos = 3
-
-[xengine]
-# Number of spectra to integrate in DRAM.
-acc_len = 3051
-# Number of accumulations performed in the X engine cores.
-xeng_acc_len = 128
 
 [correlator]
+#the timeout in seconds per FPGA during programing
+fpga_program_timeout = 3
 # Starting IP address for all hosts
 ip_start = 10.0.0.1
 # The UDP port to use for 10Gbe comms
@@ -49,6 +32,71 @@ packet_cnt_bits = 48
 feng_sync_period = 134217728
 # the number of 1PPS pulses that we expect to elapse between arming the system and actually triggering. This is usually 2, to allow any sync pulses in the pipeline to flush before resyncing.
 feng_sync_delay = 2
+# number of antennas in system
+n_ants = 4
+# polarisation labels in system
+pols = x,y
+
+[files]
+# bitstream to load the FPGAs. Should be present and load-able by ROACH's KATCP server - corr will not do this for you
+bitstream_d = /srv/bofs/deng/r2_deng_tvg_2014_May_30_1123.fpg
+#bitstream_f = feng_rx_test_2014_Apr_07_1841.fpg
+bitstream_f = /srv/bofs/feng/r2_256w_4k_32x_r433_2014_Jun_02_1742.fpg
+#bitstream_x = r2_2f_4x_4a_4k_r366_2014_Mar_31_1547.fpg
+bitstream_x = /srv/bofs/xeng/r2_2f_4x_4a_4k_r366_2014_Jun_09_2335.fpg
+
+[engines]
+#number of each type of engine different hosts accommodate
+d_host_type = roach
+d_per_host = 1
+f_host_type = roach
+f_per_host = 2
+x_host_type = roach
+x_per_host = 4
+
+[mapping]
+# correlator input to name mapping 
+
+[dengine]
+# sampling frequency (Hz)
+sampling_frequency = 1700000000
+# mux factor of ADC
+mux_ratio = 8
+# Number of bits sampled by ADC
+adc_bits = 10
+# Number of accumulations used during ADC amplitude averaging.
+# adc_levels_acc_len = 65536
+# multicast IP starting address
+# multicast_ip_start = 239.2.0.64
+
+[fengine]
+# number of output channels from PFB
+n_chans = 4096
+# FFT shifting schedule in decimal. A binary '1' shifts, a zero does not.
+fft_shift = 252
+# Number of quantisation bits post FFT in the F engines.
+feng_output_bits = 8
+# Logical binary point position of F engine data. Normally feng_output_bits-1.
+feng_fix_pnt_pos = 7
+
+[delay_tracking]
+# minimum setup time required (seconds)
+min_ld_time = 0.1
+network_latency_adjust = 0.015
+delay_integer_bits = 16
+delay_fractional_bits = 16
+delta_delay_bits = 16
+phase_bits = 16
+delta_phase_bits = 16
+divisor_bits = 16
+
+[xengine]
+# Number of spectra to integrate in DRAM.
+acc_len = 3051
+# number of accumulations performed in the X engine cores.
+xeng_acc_len = 256 
+# the number of FFT channels each x-engine processes
+n_chans_per_x = 128 
 
 [spead_receiver]
 # spead flavour. string in the form XX,YY. Default: 64,40. consult the SPEAD documentation for details. Only 64-40 tested.
@@ -69,21 +117,22 @@ eq_type = complex
 # Default values for equaliser (digital gain) derived from eq_poly values (poly) or set to eq_coeff values (coef).
 eq_default = poly
 # Tolerance to use for auto-equalization
-tolerance = 0.01
-
-# rf_gain sets the analogue attenuators on the ADCs. Acceptible range on KATADCs is -11 to +22 in  0.5dB steps.
-# the antenna string must match your /var/run/corr/antenna_mapping contents!
-rf_gain_0 = 4
-
+eq_tolerance = 0.01
+# Number of bytes in coefficients
+n_bytes = 2
+# Binary point position in coefficients
+eq_bin_pt = 1
 # The eq_poly lines are used for setting the equalisers using a polynomial.
 # One line entry per input. Item is a list of polynomial coefficients.
 # the antenna string must match your /var/run/corr/antenna_mapping contents exactly!
 # e.g. 'eq_poly_0 = 10,30,40' corresponds to 10c^2 + 30c + 40 where c is the frequency channel index.
 # In the event of complex equaliser types, these values are applied to both the real and imaginary components (ie scalar).
 # If you want to be able to configure these coefficients separately, use the eq_coeff configuration mode.
-eq_poly_0  = 300
+eq_poly_0 = 300
 
 # The eq_coeff lines are used for setting the equalisers manually, specifying each frequency channel for every polarisation input.
 # Each line should have n_chans/eq_decimation entries.
 # Entries are python lists (comma separated values within square brackets).
 # e.g. eq_coeff_0x = [1,2,3,4]
+
+
