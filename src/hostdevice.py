@@ -19,7 +19,6 @@ class Host(object):
     '''
     def __init__(self, host, katcp_port):
         '''Constructor
-
         @param host: the unique hostname/identifier for this Host
         @param katcp_port: and its KATCP port.
         '''
@@ -38,7 +37,7 @@ class Host(object):
         '''
         raise NotImplementedError
 
-    def engine_add(self, new_engine):
+    def add_engine(self, new_engine):
         '''Add an engine to this node.
         @param engine: the Engine object to add to this Host.
         '''
@@ -49,7 +48,7 @@ class Host(object):
         new_engine.host = self.host
         self.engines[new_engine.id] = new_engine
 
-    def engine_get(self, engine_id, engine_class):
+    def get_engine(self, engine_id, engine_class):
         '''Get an engine based on engine_id and engine_class. If no engine_id is passed, all engines of the given type will be returned.
         @param engine_id: the unique id of the engine to return.
         @param engine_class: the engine class to look for.
