@@ -16,6 +16,7 @@ LOGGER = logging.getLogger(__name__)
 from misc import log_runtime_error, program_fpgas, config_get_string, config_get_list, config_get_int, config_get_float
 import instrument, katcp_client_fpga, digitiser, fengine,  xengine, types
 from corr2.fengine_fb_fpga import FengineFbFpga
+from corr2.xengine_fpga import XengineFpga
 from corr2.katcp_client_fpga import KatcpClientFpga
 
 import struct, socket, iniparse, time, numpy
@@ -224,6 +225,7 @@ class FxCorrelator(instrument.Instrument):
         self.create_fengine_fb_fpga_engines() 
 
         # xengines
+        self.create_xengine_fpga_engines() 
 
     def create_fengine_fb_fpga_engines(self):
         '''Create fpga based full band fengines
@@ -244,9 +246,16 @@ class FxCorrelator(instrument.Instrument):
     def create_xengine_fpga_engines(self):
         '''
         '''
-        raise NotImplementedError
+        x_per_host = self.config['x_per_host']
 
-
+        for host_index, host in enumerate(self.xhosts.values()):
+            for engine_index in range(x_per_host):
+                engine_id = host_index*x_per_host+engine_index
+                # create xengine, allocating which input data it will service at the same time
+                xeng = XengineFpga(parent=host, engine_id=engine_id, index=engine_index, config_file=self.config_file)
+                # add to host
+                host.add_engine(xeng) 
+                self.xengines['%i'%engine_id] = xeng
 
     ####################
     ## Initialisation ##
