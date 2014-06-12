@@ -279,10 +279,10 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            """
         reply, _ = self.katcprequest(name="watchdog", request_timeout=self._timeout)
         if reply.arguments[0] == 'ok':
-            LOGGER.info('katcp ping okay')
+            LOGGER.info('%s:katcp ping okay' %self.host)
             return True
         else:
-            LOGGER.error('katcp connection failed')
+            LOGGER.error('%s:katcp connection failed' %self.host)
             return False
 
     def read(self, device_name, size, offset=0):
@@ -803,4 +803,9 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         '''Set the name of the bof file that will be used on this FPGA host.
         '''
         self.bofname = bofname
+    
+    def get_bof(self):
+        '''Get the name of the bof file that will be used on this FPGA host.
+        '''
+        return self.bofname
 # end
