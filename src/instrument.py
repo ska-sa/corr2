@@ -14,25 +14,25 @@ import hostdevice
 class Instrument(object):
     '''
     An abstract base class for instruments.
-    Instruments are made of Nodes.
-    These Nodes host processing Engines that do work.
+    Instruments are made of Hosts.
+    These Hosts host processing Engines that do work.
     '''
-    def __init__(self, name, description, config_file=None):
+    def __init__(self, name, descriptor, config_file=None):
         '''Constructor for the base Instrument class.
         @param name: The name by which this instrument is identified. i.e. kat7_beamformer_test_4_ant_13_March_2013
         @param description: More info about this instrument, if needed.
         @param config_file: The location of the file that will be used to configure this instrument
         '''
         self.name = name
-        self.description = description
-        self.hosts = []
+        self.descriptor = descriptor
+        self.hosts =  {}
         self.config_file = config_file
         self.config = {}
         if config_file != None:
-            self.parse_config(config_file)
+            self.get_config(config_file)
         LOGGER.info('Instrument %s created.', name)
 
-    def parse_config(self, config_file):
+    def get_config(self, config_file):
         '''Stub method - must be implemented in child class.
         '''
         raise NotImplementedError
@@ -42,33 +42,35 @@ class Instrument(object):
         """
         raise NotImplementedError
 
-    def host_add(self, host):
-        """Add a Host object to the dictionary of hosts that make up this instrument.
-        @param host: a Host object
+    def add_hosts(self, hosts):
+        """Add a dictionary of Host objects to the dictionary of hosts that make up this instrument.
+        @param hosts: a dictionary of Host objects
         """
-        if not isinstance(host, hostdevice.Host):
-            raise RuntimeError('Object provided is not a Host.')
-        if host.host in self.hosts:
-            raise RuntimeError('Host host %s already exists on this Instrument.' % host.host)
-        self.hosts.append(host)
+        for host in hosts:
+            if not isinstance(host, hostdevice.Host):
+                raise RuntimeError('Object provided is not a Host.')
+            self.hosts.update(host):
 
-    def host_ping(self, host_to_ping=None):
+    def ping_hosts(self, hosts_to_ping=all):
         '''Ping hosts, or a single host, if provided.
         @param host_to_ping: If None, all hosts will be pinged.
         @return: dictionary with host ids as key and ping result (True/False) as value.
         '''
-        ntp = {host_to_ping: self.hosts[host_to_ping]} if (host_to_ping != None) else self.hosts.items()
+        if (hosts_to_ping == all):
+            ntp = self.hosts
+        else: 
+            ntp = hosts_to_ping
         returnval = {}
-        for key, node in ntp:
+        for key, node in ntp.items():
             returnval[key] = node.ping()
         return returnval
-
-    def engine_get(self, engine_id, engine_class):
+    
+    def get_engine(self, engine_id, engine_class):
         '''Get a specific engine based on id or all instances of an engine class.
         '''
         engines = {}
         for node in self.hosts.values():
-            engines.update(node.engine_get(engine_id, engine_class))
+            engines.update(node.get_engine(engine_id, engine_class))
         return engines
 
     def __str__(self):
