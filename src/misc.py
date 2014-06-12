@@ -5,7 +5,7 @@ Miscellaneous functions that are used in a few places but don't really belong
 anywhere.
 '''
 
-import logging
+import logging, iniparse, types
 LOGGER = logging.getLogger(__name__)
 
 class Attribute_container(object):
@@ -91,5 +91,60 @@ def program_fpgas(fpga_list, timeout=10):
         if time.time() - stime > timeout:
             log_runtime_error(LOGGER, 'Programming fpgas timed out.')
     return
+
+# config parser related
+def config_get_string(iniparser, section_name, param_name, fail_hard=True):
+    '''Get the string at [section_name][param_name] in configuration file
+    @param iniparser: iniparse.INIConfig parser
+    @param section_name: section in configuration file
+    @param param_name: parameter name
+    @param fail_hard: fail hard if can't find value
+    '''
+    string = iniparser[section_name][param_name]
+    if isinstance(string, iniparse.config.Undefined):
+        msg = 'Asked for unknown param \'%s\' in section \'%s\' in config' % (param_name, section_name)
+        if fail_hard==True:
+            log_runtime_error(LOGGER, msg)
+        else:
+            LOGGER.warning(msg)
+        return None
+
+    return string
+
+def config_get_list(iniparser, section, param, fail_hard=True):
+    string = config_get_string(iniparser, section, param, fail_hard)
+    if string == None:
+        return None
+
+    try:
+        value = string.split(types.LISTDELIMIT)
+    except ValueError:
+        log_runtime_error(LOGGER, 'Error converting \'%s\' to list while getting config item %s,%s', string, section, name)
+
+    return value
+
+def config_get_int(iniparser, section, param, fail_hard=True):
+    string = config_get_string(iniparser, section, param, fail_hard)
+    if string == None:
+        return None
+
+    try:
+        value = int(string)
+    except ValueError:
+        log_runtime_error(LOGGER, 'Error converting \'%s\' to integer while getting config item %s,%s', string, section, name)
+
+    return value
+
+def config_get_float(iniparser, section, param, fail_hard=True):
+    string = config_get_string(iniparser, section, param, fail_hard)
+    if string == None:
+        return None
+    
+    try:
+        value = float(string)
+    except ValueError:
+        log_runtime_error(LOGGER, 'Error converting \'%s\' to float while getting config item %s,%s', string, section, name)
+
+    return value
 
 # end
