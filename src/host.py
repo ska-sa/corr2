@@ -11,7 +11,7 @@ import engine
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from misc import log_runtime_error
+from misc import log_runtime_error, log_not_implemented_error 
 
 class Host(object):
     '''
@@ -29,26 +29,26 @@ class Host(object):
     def initialise(self):
         """Initialise this node to its normal running state.
         """
-        raise NotImplementedError
+        log_not_implemented_error(LOGGER, '%s.initialise() not implemented'%host.host)
 
     def ping(self):
         '''All nodes must supply a ping method that returns true or false.
         @return: True or False
         '''
-        raise NotImplementedError
+        log_not_implemented_error(LOGGER, '%s.ping() not implemented'%host.host)
 
     def add_engine(self, new_engine):
         '''Add an engine to this node.
         @param engine: the Engine object to add to this Host.
         '''
         if not isinstance(new_engine, engine.Engine):
-            raise RuntimeError('Object provided is not an Engine.')
+            log_runtime_error(LOGGER, 'Object provided is not an Engine')
         if self.engines.has_key(new_engine.id):
-            raise RuntimeError('Engine ID %s already exists on this Host.' % new_engine.id)
+            log_runtime_error(LOGGER, 'Engine ID %s already exists on this Host.' % new_engine.id)
         new_engine.host = self.host
         self.engines[new_engine.id] = new_engine
 
-    def get_engine(self, engine_id, engine_class):
+    def get_engine(self, engine_class, engine_id=None):
         '''Get an engine based on engine_id and engine_class. If no engine_id is passed, all engines of the given type will be returned.
         @param engine_id: the unique id of the engine to return.
         @param engine_class: the engine class to look for.
