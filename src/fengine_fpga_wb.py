@@ -10,30 +10,26 @@ LOGGER = logging.getLogger(__name__)
 
 from corr2.fengine import Fengine
 from corr2.fpgadevice import tengbe
-from misc import log_runtime_error, config_get_string, config_get_list, config_get_int, config_get_float
+from misc import log_runtime_error
 
 import numpy, struct, socket, iniparse
 
-class FengineFbFpga(Fengine):
-    ''' A full bandwidth F-engine located on an FPGA host
+class FengineFpgaWb(Fengine):
+    ''' A wide band F-engine located on an FPGA host. 
+        Produces channels covering a contiguous band whose certain frequency is fixed
     '''
 
-    def __init__(self, parent, engine_id, index, config_file=None, descriptor='fpga-based full band f-engine'):
+    def __init__(self, parent, engine_id, instrument, ant_str, descriptor='fengine_fpga_wb'):
         ''' Constructor
             @param parent: fpga host for engine (already programed)
-            @param engine_id: antenna string for data being processed by this engine
-            @param index: index of this engine within fpga
-            @param config_file: configuration information
+            @param engine_id: index within FPGA
+            @param instrument: instrument it is part of
+            @param ant_str: string identifying data being channelised
             @param descriptor: description of fengine
         '''
         Fengine.__init__(self, parent, engine_id, config_file, descriptor)
 
         self.index = index
-        #set up configuration related to this f-engine
-        self.get_config(filename=config_file)
-
-        LOGGER.info('%i-channel wideband Fengine created processing %s data @ index %i in %s',
-            self.config['n_chans'], self.id, self.index, str(self.parent))
 
     def get_config(self, filename=None):
         # if we are provided with a config file, initialise using that
@@ -73,7 +69,7 @@ class FengineFbFpga(Fengine):
 
         fptr.close()
 
-    def initialise(self, reset=True, set_eq=True, send_spead=True):
+    def initialise(self, reset=True, set_eq=True):
         ''' Initialise fengine for data processing 
         '''
         #check status
@@ -81,30 +77,18 @@ class FengineFbFpga(Fengine):
         self.enable_reset()
         #clear status bits
         self.clear_status()
-        #calibrate qdr sram
-        #TODO 
-        # self.calibrate()
         #set fft shift
         self.set_fft_shift()
         #set equaliser settings pre requantization
         if set_eq == True:
             self.set_equalisation()
         
-        #issue any spead meta data required
-        if send_spead == True:
-            self.issue_spead()
-      
         #remove reset
         self.disable_reset()
         #check status
         status = self.get_status(debug=False)
         #TODO what do we expect to have happened at this point?
     
-    def calibrate(self, qdr=True):
-        ''' Run any software calibration required 
-        '''
-        raise NotImplementedError
-
     ########
     # TVGs #
     ########
@@ -256,10 +240,10 @@ class FengineFbFpga(Fengine):
         '''
         
         #control
-        control_reg = self.parent.device_by_name('control%i'%(self.index)).read()['data']
-        status_reg = self.parent.device_by_name('dsp_status%i'%(self.index)).read()['data']
-        trigger_level_reg = self.parent.device_by_name('trigger_level').read()['data']
-        fft_shift_reg = self.parent.device_by_name('fft_shift').read()['data']
+        control_reg = self.control.read()['data']
+        status_reg = self.dsp_status.read()['data']
+        trigger_level_reg = self.trigger_level.read()['data']
+        fft_shift_reg = self.fft_shift.read()['data']
 
         #in reset
         control = {'reset': control_reg['dsp_rst']} 
@@ -295,36 +279,34 @@ class FengineFbFpga(Fengine):
         '''    
         if fft_shift == None:
             fft_shift = self.config['fft_shift']
-        self.parent.device_by_name('fft_shift').write(fft_shift=fft_shift)
+        self.fft_shift.write(fft_shift=fft_shift)
     
     def get_fft_shift(self):
         ''' Get current FFT shift schedule 
         '''
-        fft_shift = self.parent.device_by_name('fft_shift').read()['data']['fft_shift']
+        fft_shift = self.fft_shift.read()['data']['fft_shift']
         return fft_shift
    
     # reset
     def enable_reset(self, dsp=True, comms=True):
         ''' Place aspects of system in reset 
         '''
-        ctrl = 'control%i'%(self.index)
         if (dsp == True) and (comms == True):
-            self.parent.device_by_name(ctrl).write(dsp_rst=1, comms_rst=1)
+            self.control.write(dsp_rst=1, comms_rst=1)
         elif (dsp == True):
-            self.parent.device_by_name(ctrl).write(dsp_rst=1)
+            self.control.write(dsp_rst=1)
         elif (comms == True):
-            self.parent.device_by_name(ctrl).write(comms_rst=1)
+            self.control.write(comms_rst=1)
     
     def disable_reset(self, dsp=True, comms=True):
         ''' Remove aspects of system from reset 
         '''
-        ctrl = 'control%i'%(self.index)
         if (dsp == True) and (comms == True):
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=0, comms_rst=0)
+            self.control.write(dsp_rst=0, comms_rst=0)
         elif (dsp == True):
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(dsp_rst=0)
+            self.control.write(dsp_rst=0)
         elif (comms == True):
-            self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(comms_rst=0)
+            self.control.write(comms_rst=0)
    
     # timestamp
     def get_timestamp(self):
@@ -338,30 +320,38 @@ class FengineFbFpga(Fengine):
     def enable_kitt(self):
         ''' Turn on the Knightrider effect 
         '''
-        self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(fancy_en=1)
+        self.control.write(fancy_en=1)
     
     def disable_kitt(self):
         ''' Turn off the Knightrider effect 
         '''
-        self.parent.device_by_name('control%i'%(self.config['feng_id'])).write(fancy_en=0)
+        self.control.write(fancy_en=0)
 
     # trigger level
     def set_trigger_level(self, trigger_level):    
         ''' Set the level at which data capture to snapshot is stopped 
         '''
-        self.parent.device_by_name('trigger_level').write(trigger_level=trigger_level)
+        self.trigger_level.write(trigger_level=trigger_level)
 
     def get_trigger_level(self):    
         ''' Get the level at which data capture to snapshot is stopped 
         '''
-        return self.parent.device_by_name('trigger_level').read()['data']['trigger_level']
+        return self.trigger_level.read()['data']['trigger_level']
 
     #################################
     # Delay and phase compensation  #
     #################################
 
     #TODO
-    def set_delay(self, ant_str, delay=0, delay_delta=0, phase=0, phase_delta=0, load_time=None, load_check=True, extra_wait_time = 0):
+    def set_delay(self, delay=0, delay_delta=0, phase=0, phase_delta=0, load_time=None, load_check=True):
+        '''
+        @param delay: delay in samples
+        @param delay_delta: change in delay in samples per ADC sample 
+        @param phase: initial phase offset TODO units
+        @param phase_delta: change in phase TODO units
+        @param load_time: time to load values in ADC samples since sync epoch. If None load immediately
+        @param load_check: check that the value loaded
+        '''
         raise NotImplementedError
 
     ##################
@@ -371,13 +361,12 @@ class FengineFbFpga(Fengine):
     def get_rx_comms_status(self, debug=True):
         ''' Get status for rx comms, debug=True gives low level core info 
         '''
-
         #control
-        reg = self.parent.device_by_name('control%i'%(self.index)).read()['data']
+        reg = self.control.read()['data']
         control = {'enabled': (reg['comms_en'] == 1), 'reset': (reg['comms_rst'] == 1)} 
 
         #status
-        reg = self.parent.device_by_name('comms_status%i'%(self.index)).read()['data']
+        reg = self.comms_status.read()['data']
 
         core_info = {}
         #core info
@@ -434,7 +423,7 @@ class FengineFbFpga(Fengine):
         '''
 
         #status
-        reg = self.parent.device_by_name('comms_status%i'%(self.index)).read()['data']
+        reg = self.comms_status.read()['data']
         status = {} 
 
         core_info = {}
@@ -458,7 +447,7 @@ class FengineFbFpga(Fengine):
             core_info['gbe%i' %index]['status'] = gbe
 
         #control
-        reg = self.parent.device_by_name('control%i'%(self.index)).read()['data']
+        reg = self.control.read()['data']
         control = {'enabled': (reg['comms_en'] == 1), 'reset': (reg['comms_rst'] == 1)} 
  
         tx_status = {}        
@@ -473,58 +462,45 @@ class FengineFbFpga(Fengine):
         return tx_status
  
     # base data transmission UDP port 
-    def set_txport(self, txport=None, issue_spead=False):
+    def set_txport(self, txport=None):
         ''' Set data transmission port 
         '''    
         if txport == None:
             txport = self.config['txport']
         
-        self.config['txport'] = txport
-        self.parent.device_by_name('txport').write(port_gbe=txport)
+        self.txport.write(port_gbe=txport)
 
         #TODO spead stuff
 
     def get_txport(self):
         ''' Get data transmission port 
         '''    
-        txport = self.parent.device_by_name('txport').read()['data']['port_gbe']
-        self.config['txport'] = txport 
+        txport = self.txport.read()['data']['port_gbe']
         return txport
 
     # data transmission UDP IP address 
-    def set_txip(self, txip_str=None, txip=None, issue_spead=False):
+    def set_txip(self, txip_str=None, txip=None):
         ''' Set data transmission IP base 
         '''    
         if txip_str == None and txip == None:
-            txip = self.config['txip']
-            txip_str = self.config['txip_str']
+            txip = struct.unpack('>L',socket.inet_aton(self.config['txip_str']))[0]
         elif txip == None:
-            self.config['txip_str'] = txip_str
             txip = struct.unpack('>L',socket.inet_aton(txip_str))[0]
-            self.config['txip'] = txip
-        else:
-            self.config['txip_str'] = tengbe.ip2str(txip)
-            self.config['txip'] = txip
         
         #TODO spead stuff
-
-        self.parent.device_by_name('txip').write(ip_gbe=txip)
+        self.txip.write(ip_gbe=txip)
     
     def get_txip(self):
         ''' Get current data transmission IP base 
         '''
-        txip = self.parent.device_by_name('txip').read()['data']['ip_gbe']
-        self.config['txip'] = txip 
-        self.config['txip_str'] = tengbe.ip2str(txip)
+        txip = self.txip.read()['data']['ip_gbe']
         return txip
     
     def get_txip_str(self):
         ''' Get current data transmission IP base in string form 
         '''
-        txip = self.parent.device_by_name('txip').read()['data']['ip_gbe']
-        self.config['txip'] = txip 
+        txip = self.txip.read()['data']['ip_gbe']
         txip_str = tengbe.ip2str(txip)
-        self.config['txip_str'] = txip_str
         return txip_str
 
     def reset_tx_comms(self):
@@ -532,8 +508,7 @@ class FengineFbFpga(Fengine):
         '''
         self.enable_reset(comms=True)
    
-    #TODO SPEAD stuff
-    def config_tx_comms(self, reset=True, issue_spead=True):
+    def config_tx_comms(self, reset=True):
         ''' Configure transmission infrastructure 
         ''' 
         if reset == True:
@@ -543,33 +518,22 @@ class FengineFbFpga(Fengine):
     def enable_tx_comms(self):
         ''' Enable communications transmission. Comms for both fengines need to be enabled for data to flow 
         '''
-        self.parent.device_by_name('control%i'%(self.index)).write(comms_en=1, comms_rst=0)
+        self.control.write(comms_en=1, comms_rst=0)
     
     def disable_tx_comms(self):
         ''' Disable communications transmission. Comms for both fengines need to be enabled for data to flow 
         '''
-        self.parent.device_by_name('control%i'%(self.index)).write(comms_en=1)
+        self.control.write(comms_en=1)
  
-    #TODO SPEAD stuff
-    def start_tx(self, issue_spead=True):
+    def start_tx(self):
         ''' Start data transmission 
         '''
         self.enable_tx_comms()
  
-    def stop_tx(self, issue_spead=True):
+    def stop_tx(self):
         ''' Stop data transmission 
         '''
         self.disable_tx_comms()
-
-    ################   
-    # SPEAD stuff ##
-    ################
- 
-    #TODO 
-    def issue_spead(self):
-        ''' Issue SPEAD meta data specific to this f-engine 
-        '''
-        raise NotImplementedError
 
     ##############################################
     # Equalisation before re-quantisation stuff  #
@@ -701,7 +665,8 @@ class FengineFbFpga(Fengine):
             log_runtime_error(LOGGER, "Something's wrong. I have %i eq coefficients when I should have %i." % (len(equalisation), n_coeffs))
         return equalisation
 
-    def set_equalisation(self, init_coeffs=[], init_poly=[]):
+    #TODO this is generic to fengine_fpgas, move to ancestor class
+    def set_equalisation(self, init_coeffs=[], init_poly=[], send_spead=True):
         ''' Set equalisation values to be applied pre-quantisation 
         '''
 
@@ -737,6 +702,8 @@ class FengineFbFpga(Fengine):
         # finally write to the bram
         self.parent.write('eq%i'%self.index, coeffs_str)
 
+        #TODO spead
+
     def __getattribute__(self, name):
         '''Overload __getattribute__ to make shortcuts for getting object data.
         '''
@@ -746,7 +713,18 @@ class FengineFbFpga(Fengine):
             return self.parent.device_by_name('comms_status%i'%(self.index))
         elif name == 'dsp_status':
             return self.parent.device_by_name('dsp_status%i'%(self.index))
-        
+        elif name == 'fft_shift':
+            return self.parent.device_by_name('fft_shift')
+        elif name == 'txip':
+            return self.parent.device_by_name('txip')
+        elif name == 'txport':
+            return self.parent.device_by_name('txport')
+        elif name == 'snap_quant':
+            return self.parent.device_by_name('snap_quant%i_ss'%(self.index))
+        elif name == 'adc_quant':
+            return self.parent.device_by_name('adc_quant%i_ss'%(self.index))
+        elif name == 'trigger_level':
+            return self.parent.device_by_name('trigger_level')
         #default
         return object.__getattribute__(self, name)
 
