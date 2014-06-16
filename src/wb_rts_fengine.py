@@ -1,9 +1,6 @@
 '''
-@author: andrewm
+@author: andrew
 '''
-#TODO much of this stuff is not specific to full band fengines
-#TODO inherit from FengineFpga class for fengine comms stuff etc
-#TODO inherit from EngineFpga class for index, generic comms stuff
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -16,20 +13,19 @@ import numpy, struct, socket, iniparse
 
 class FengineFpgaWb(Fengine):
     ''' A wide band F-engine located on an FPGA host. 
-        Produces channels covering a contiguous band whose certain frequency is fixed
+        Produces channels covering a contiguous band whose center frequency is fixed
     '''
 
-    def __init__(self, parent, engine_id, instrument, ant_str, descriptor='fengine_fpga_wb'):
+    def __init__(self, ant_id, host_device, engine_id=0, host_instrument=None, config_file=None, descriptor='fengine_fpga_wb'):
         ''' Constructor
+            @param ant_id: 
             @param parent: fpga host for engine (already programed)
             @param engine_id: index within FPGA
             @param instrument: instrument it is part of
-            @param ant_str: string identifying data being channelised
             @param descriptor: description of fengine
         '''
-        Fengine.__init__(self, parent, engine_id, config_file, descriptor)
+        Fengine.__init__(self, ant_id, host_device, engine_id, host_instrument, config_file, descriptor)
 
-        self.index = index
 
     def get_config(self, filename=None):
         # if we are provided with a config file, initialise using that
@@ -135,42 +131,6 @@ class FengineFpgaWb(Fengine):
         #posedge on enable 
         self.control.write(tvg_en = 1)
 
-    ##################
-    # Data snapshots #
-    ##################
-
-    def get_input_data_snapshot(self):
-        ''' Get snapshot of adc data 
-        '''
-   
-        #get raw data 
-        data = self.parent.device_by_name('snap_adc%i_ss'%(self.index)).read(man_trig=False, man_valid=True)['data']   
- 
-        streams = len(data.keys())
-        length = len(data['data0'])
-    
-        #extract data in order and stack into rows 
-        data_stacked = numpy.vstack(data['data%i' %count] for count in range(streams))
-    
-        repacked = numpy.reshape(data_stacked, streams*length, 1)
-
-        return repacked
-
-    def get_output_data_snapshot(self):
-        ''' Get snapshot of data after quantiser 
-        '''
-
-        data = self.parent.device_by_name('snap_quant%i_ss'%(self.index)).read(man_trig=False, man_valid=False)['data']   
-        
-        streams = len(data.keys())
-        length = len(data['real0'])
-
-        #extract data in order and stack into columns
-        data_stacked = numpy.column_stack((numpy.array(data['real%i' %count])+1j*numpy.array(data['imag%i' %count])) for count in range(streams/2))
-    
-        repacked = numpy.reshape(data_stacked, (streams/2)*length, 1)
-
-        return repacked
 
     ##################################################
     # Status monitoring of various system components #
@@ -273,20 +233,6 @@ class FengineFpgaWb(Fengine):
 
         return status
          
-    # fft shift
-    def set_fft_shift(self, fft_shift=None):
-        ''' Set current FFT shift schedule 
-        '''    
-        if fft_shift == None:
-            fft_shift = self.config['fft_shift']
-        self.fft_shift.write(fft_shift=fft_shift)
-    
-    def get_fft_shift(self):
-        ''' Get current FFT shift schedule 
-        '''
-        fft_shift = self.fft_shift.read()['data']['fft_shift']
-        return fft_shift
-   
     # reset
     def enable_reset(self, dsp=True, comms=True):
         ''' Place aspects of system in reset 
@@ -314,7 +260,7 @@ class FengineFpgaWb(Fengine):
         '''
         lsw = self.parent.device_by_name('timestamp_lsw').read()['data']['timestamp_lsw']
         msw = self.parent.device_by_name('timestamp_msw').read()['data']['timestamp_msw']
-        return numpy.uint32(msw << 32) + numpy.uint32(lsw) 
+        return numpy.uint64(msw << 32) + numpy.uint64(lsw) 
 
     # flashy leds on front panel
     def enable_kitt(self):
@@ -535,175 +481,6 @@ class FengineFpgaWb(Fengine):
         '''
         self.disable_tx_comms()
 
-    ##############################################
-    # Equalisation before re-quantisation stuff  #
-    ##############################################
-
-    def pack_equalisation(self, coeffs, n_bits, bin_pt=0, signed=True):
-        ''' Convert coeffs into a string with n_bits of resolution and a binary point at bin_pt 
-        '''
-        
-        if len(coeffs) == 0:
-            log_runtime_error(LOGGER, 'Passing empty coeffs list')
-        if bin_pt < 0:
-            log_runtime_error(LOGGER, 'Binary point cannot be less than 0')
-        
-        step = 1/(2**bin_pt) #coefficient resolution
-
-        if signed == True:
-            min_val = -(2**(n_bits-bin_pt-1))
-            max_val = -(min_val)-step
-        else:
-            min_val = 0
-            max_val = 2**(n_bits-bin_pt)-step
-
-        if numpy.max(coeffs) > max_val or numpy.min(coeffs) < min_val:
-            log_runtime_error(LOGGER, 'Coeffs out of range')
-     
-        is_complex = numpy.iscomplexobj(coeffs)
-        if is_complex == True:
-            n_coeffs = len(coeffs)*2
-            coeffs = numpy.array(coeffs, dtype = numpy.complex128)
-        else:
-            n_coeffs = len(coeffs) 
-            coeffs = numpy.array(coeffs, dtype = numpy.float64)
-     
-        #compensate for fractional bits
-        coeffs = (coeffs * 2**bin_pt)
-
-        byte_order = '>' #big endian
-
-        if n_bits == 16:
-            if signed == True:
-                pack_type = 'h'
-            else:
-                pack_type = 'H'
-        else:
-            log_runtime_error(LOGGER, 'Don''t know how to pack data type with %i bits' %n_bits)
-        
-        coeff_str = struct.pack('%s%i%s' %(byte_order, n_coeffs, pack_type), *coeffs.view(dtype=numpy.float64))
-        return coeff_str
-
-    def unpack_equalisation(self, string, n_bits, eq_complex=True, bin_pt=0, signed=True):
-        ''' Unpack string according to format specified. Return array of floats 
-        '''
-
-        byte_order = '>' #big endian
-
-        n_vals = len(string)/(n_bits/8)
-
-        if n_bits == 16:
-            if signed == True:
-                pack_type = 'h'
-            else:
-                pack_type = 'H'
-        else:
-            log_runtime_error(LOGGER, 'Don''t know how to pack data type with %i bits' %n_bits)
-        
-        coeffs = struct.unpack('%s%i%s'%(byte_order, n_vals, pack_type), string)
-        coeffs_na = numpy.array(coeffs, dtype = numpy.float64)
-
-        coeffs = coeffs_na/(2**bin_pt) #scale by binary points 
-        
-        if eq_complex == True:
-            #change view to 64 bit floats packed as complex 128 bit values
-            coeffs = coeffs.view(dtype = numpy.complex128) 
-
-        return coeffs 
-
-    def get_equalisation(self):
-        ''' Get current equalisation values applied pre-quantisation 
-        '''
-        
-        register_name='eq%i'%(self.index)
-        n_chans = self.config['n_chans']
-        decimation = self.config['eq_decimation']
-        n_coeffs = n_chans/decimation
-
-        eq_type = self.config['eq_type']
-        if eq_type == 'complex':
-            n_coeffs = n_coeffs*2
-
-        n_bytes = self.config['eq_n_bytes']
-        bin_pt = self.config['eq_bin_pt']
-
-        #read raw bytes
-        coeffs_raw = self.parent.read(register_name, n_coeffs*n_bytes)
-
-        if eq_type == 'complex':
-            eq_complex = True
-        else:
-            eq_complex = False
-
-        coeffs = self.unpack_equalisation(coeffs_raw, n_bytes*8, eq_complex, bin_pt, signed=True)        
-
-        #pad coeffs out by decimation factor
-        coeffs_padded = numpy.reshape(numpy.tile(coeffs, [decimation, 1]), [1, n_chans], 'F')
-    
-        return coeffs_padded[0]
-    
-    def get_default_equalisation(self):
-        ''' Get default equalisation settings 
-        '''
-        
-        decimation = self.config['eq_decimation']
-        n_chans = self.config['eq_n_chans']       
-        n_coeffs = n_chans/decimation
-        eq_default = self.config['eq_default']
-
-        if eq_default == 'coeffs':
-            equalisation = self.config['eq_coeffs']
-        elif eq_default == 'poly':
-            poly = self.config['eq_poly']
-            equalisation = numpy.polyval(poly, range(n_chans))[decimation/2::decimation]
-            if self.config['eq_type'] == 'complex':
-                equalisation = [eq+0*1j for eq in equalisation]
-        else:
-            log_runtime_error(LOGGER, "Your EQ type, %s, is not understood." % eq_default)
-
-        if len(equalisation) != n_coeffs:
-            log_runtime_error(LOGGER, "Something's wrong. I have %i eq coefficients when I should have %i." % (len(equalisation), n_coeffs))
-        return equalisation
-
-    #TODO this is generic to fengine_fpgas, move to ancestor class
-    def set_equalisation(self, init_coeffs=[], init_poly=[], send_spead=True):
-        ''' Set equalisation values to be applied pre-quantisation 
-        '''
-
-        n_chans = self.config['n_chans']
-        decimation = self.config['eq_decimation']
-        n_coeffs = n_chans / decimation
-
-        if init_coeffs == [] and init_poly == []:
-            coeffs = self.get_default_eq()
-        elif len(init_coeffs) == n_coeffs:
-            coeffs = init_coeffs
-        elif len(init_coeffs) == n_chans:
-            coeffs = init_coeffs[0::decimation]
-            LOGGER.warn("You specified %i EQ coefficients but your system only supports %i actual values. Only writing every %ith value."%(n_chans ,n_coeffs, decimation))
-        elif len(init_coeffs) > 0:
-            log_runtime_error(LOGGER, 'You specified %i coefficients, but there are %i EQ coefficients in this design.'%(len(init_coeffs), n_coeffs))
-        else:
-            coeffs = numpy.polyval(init_poly, range(n_chans))[decimation/2::decimation]
-
-        eq_type = self.config['eq_type'] 
-        if eq_type == 'scalar':
-            coeffs = numpy.real(coeffs)
-        elif eq_type == 'complex':
-            coeffs = numpy.complex64(coeffs)
-        else:
-            log_runtime_error(LOGGER, 'Don''t know what to do with %s equalisation type.'%eq_type)
-
-        n_bytes = self.config['eq_n_bytes'] 
-        bin_pt = self.config['eq_bin_pt'] 
-
-        coeffs_str = self.pack_equalisation(coeffs, n_bits=n_bytes*8, bin_pt=bin_pt, signed=True) 
-
-        # finally write to the bram
-        self.parent.write('eq%i'%self.index, coeffs_str)
-
-        #TODO spead
-
     def __getattribute__(self, name):
         '''Overload __getattribute__ to make shortcuts for getting object data.
         '''
@@ -728,82 +505,4 @@ class FengineFpgaWb(Fengine):
         #default
         return object.__getattribute__(self, name)
 
-    #####################
-    # Timed latch stuff #
-    #####################
 
-    #TODO make part of separate class
-    def arm_timed_latch(self, fpga, latch_name, time=None, force=False):
-        ''' Arm a timed latch. Use force=True to force even if already armed 
-        '''
-        status = fpga.device_by_name('%s_status' %(latch_name)).read()['data']
-
-        # get armed, arm and load counts
-        armed_before = status['armed']
-        arm_count_before = status['arm_count']
-        load_count_before = status['load_count']
-
-        # if not forcing it, check for already armed first
-        if armed_before == True:
-            if force == False:
-                LOGGER.info('forcing arm of already armed timed latch %s' %latch_name)
-            else:
-                LOGGER.error('timed latch %s already armed, use force=True' %latch_name)
-                return
-
-        # we load immediate if not given time
-        if time == None:
-            fpga.device_by_name('%s_control0' %(latch_name)).write(arm=0, load_immediate=1)
-            fpga.device_by_name('%s_control0' %(latch_name)).write(arm=1, load_immediate=1)
-                
-            # TODO time
-            LOGGER.info('Timed latch %s arm-for-immediate-loading attempt' %latch_name)
-            
-        else: 
-            # TODO time conversion
-            time_samples = numpy.uint32(0)
-            time_msw = (time_samples & 0xFFFF0000) >> 32
-            time_lsw = (time_samples & 0x0000FFFF)
-            
-            fpga.device_by_name('%s_control0' %(latch_name)).write(arm=0, load_immediate=0)
-            fpga.device_by_name('%s_control0' %(latch_name)).write(arm=1, load_immediate=0)
-
-            # TODO time
-            LOGGER.info('Timed latch %s arm-for-loading-at-time attempt' %latch_name)
-
-        # TODO check that arm count increased as expected
-        status = fpga.device_by_name('%s_status' %(latch_name)).read()['data']
-        
-        # get armed, arm and load counts
-        armed_after = status['armed']
-        arm_count_after = status['arm_count']
-        load_count_after = status['load_count']
-        
-        # armed count did not succeed
-        if arm_count_after != (arm_count_before+1):
-            # TODO time
-            LOGGER.error('Timed latch %s arm count at %i instead of %i' %(latch_name, arm_count_after, (arm_count_before+1)))
-        else:
-            # check load count increased as expected
-            if time == None: 
-                if load_count_after != (load_count_before+1):
-                    LOGGER.error('Timed latch %s load count at %i instead of %i' %(latch_name, load_count_after, (load_count_before+1)))
-
-            else:
-                LOGGER.info('Timed latch %s successfully armed' %(latch_name))
-
-    def get_timed_latch_status(self, fpga, device):
-        ''' Get current state of timed latch device
-        '''
-        tl_control_reg = fpga.device_by_name('%s_control'%device).read()['data']
-        tl_control0_reg = fpga.device_by_name('%s_control0'%device).read()['data']
-        tl_status_reg = fpga.device_by_name('%s_status'%device).read()['data']
-
-        status = {}
-        status['armed'] = tl_status_reg['armed']
-        status['arm_count'] = tl_status_reg['arm_count']       
-        status['load_count'] = tl_status_reg['load_count']       
-        #TODO convert this to a time
-        status['load_time'] = (tl_control0_reg['load_time_msw'] << 32) | (tl_control_reg['load_time_lsw'])
-
-        return status
