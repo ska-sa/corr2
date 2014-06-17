@@ -32,11 +32,24 @@ class Host(object):
         log_not_implemented_error(LOGGER, '%s.initialise() not implemented'%host.host)
 
     def ping(self):
-        '''All nodes must supply a ping method that returns true or false.
+        '''All hosts must supply a ping method that returns true or false.
         @return: True or False
         '''
         log_not_implemented_error(LOGGER, '%s.ping() not implemented'%host.host)
 
+    def is_running(self):
+        '''All hosts must supply a is_running method that returns true or false.
+        @return: True or False
+        '''
+        log_not_implemented_error(LOGGER, '%s.is_running() not implemented'%host.host)
+    
+    def get_config_file_info(self):
+        '''All hosts must supply a get_config_file_info method returning information on the config file currently running.
+        @return name: name of file
+        @return build_time: time file was built
+        '''
+        log_not_implemented_error(LOGGER, '%s.config_file_info() not implemented'%host.host)
+    
     def add_engine(self, new_engine):
         '''Add an engine to this node.
         @param engine: the Engine object to add to this Host.

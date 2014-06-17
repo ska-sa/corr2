@@ -10,8 +10,8 @@ import logging, struct, time, katcp
 LOGGER = logging.getLogger(__name__)
 
 from corr2.fpgadevice import register, sbram, snap, katadc, tengbe, memory, qdr
-from corr2 import hostdevice, async_requester
-from corr2.misc import log_runtime_error, Attribute_container
+from corr2 import host, async_requester
+from corr2.misc import log_runtime_error, log_not_implemented_error, log_io_error, Attribute_container
 
 # if __name__ == '__main__':
 #     print 'Hello World'
@@ -28,7 +28,7 @@ def _create_meta_dictionary(metalist):
         except KeyError:
             meta_items[name]['tag'] = tag
         if meta_items[name]['tag'] != tag:
-            raise RuntimeError('Different tags - %s, %s - for the same item %s' % (meta_items[name]['tag'], tag, name))
+            log_runtime_error(LOGGER, 'Different tags - %s, %s - for the same item %s' % (meta_items[name]['tag'], tag, name))
         meta_items[name][param] = value
     return meta_items
 
@@ -74,18 +74,18 @@ def sendfile(filename, host, port, result_queue):
     result_queue.put('')
     return
 
-class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.CallbackClient):
+class KatcpClientFpga(host.Host, async_requester.AsyncRequester, katcp.CallbackClient):
     '''
     A FPGA host board that has a KATCP server running on it.
     '''
-    def __init__(self, host, katcp_port=7147, timeout=2.0, connect=True):
+    def __init__(self, host_device, katcp_port=7147, timeout=2.0, connect=True):
         '''Constructor.
         '''
-        if (not isinstance(host, str)) or (not isinstance(katcp_port, int)):
+        if (not isinstance(host_device, str)) or (not isinstance(katcp_port, int)):
             log_runtime_error(LOGGER, 'host must be a string, katcp_port must be an int')
-        hostdevice.Host.__init__(self, host, katcp_port)
-        async_requester.AsyncRequester.__init__(self, host, self.callback_request, max_requests=100)
-        katcp.CallbackClient.__init__(self, host, katcp_port, tb_limit=20, timeout=timeout, logger=LOGGER, auto_reconnect=True)
+        host.Host.__init__(self, host_device, katcp_port)
+        async_requester.AsyncRequester.__init__(self, host_device, self.callback_request, max_requests=100)
+        katcp.CallbackClient.__init__(self, host_device, katcp_port, tb_limit=20, timeout=timeout, logger=LOGGER, auto_reconnect=True)
 
         self.devices_known = {'register': {'tag': 'xps:sw_reg',
                                           'class': register.Register,
@@ -109,6 +109,16 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
                                           'class': qdr.Qdr,
                                           'attr_container': 'qdrs'}
                             }
+
+        self.__reset_devices()
+        self.system_info = {'last_programmed_bof': '', 'system_name': None, 'target_bof': ''}
+        self.unhandled_inform_handler = dummy_inform_handler
+        self._timeout = timeout
+        if connect:
+            self.connect()
+        LOGGER.info('%s:%s created%s.', host_device, katcp_port, ' & daemon started' if connect else '')
+
+    def __reset_devices(self):
         self.devices = {}
         self.registers = Attribute_container()
         self.snapshots = Attribute_container()
@@ -116,12 +126,13 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         self.tengbes = Attribute_container()
         self.katadcs = Attribute_container()
         self.qdrs = Attribute_container()
-        self.system_info = {'system_name': None, 'running_bof': '', 'bofname': ''}
-        self.unhandled_inform_handler = dummy_inform_handler
-        self._timeout = timeout
-        if connect:
-            self.connect()
-        LOGGER.info('%s:%s created%s.', host, katcp_port, ' & daemon started' if connect else '')
+        
+    def __reset_system_info(self):
+        '''Clear out system_info when programming etc
+        '''
+        self.system_info = {'last_programmed_bof': self.system_info['last_programmed_bof'], \
+                            'system_name': self.system_info['system_name'], \
+                            'target_bof': self.system_info['target_bof']}
 
     def test_connection(self):
         '''Write to and read from the scratchpad to test the connection to the FPGA.
@@ -130,7 +141,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             self.write_int('sys_scratchpad', val)
             rval = self.read_int('sys_scratchpad')
             if rval != val:
-                raise RuntimeError('%s cannot write scratchpad? %i != %i' % (self.host, rval, val))
+                log_runtime_error(LOGGER, '%s cannot write scratchpad? %i != %i' % (self.host, rval, val))
         return True
 
     def unhandled_inform(self, msg):
@@ -162,6 +173,8 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             except RuntimeError:
                 pass
             time.sleep(0.1)
+            if self.is_running():
+                self.get_system_information()
         LOGGER.info('%s: daemon started', self.host)
 
     def disconnect(self):
@@ -222,14 +235,17 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            @todo  Implement or remove.
            @param self  This object.
            """
-        raise NotImplementedError("LISTCMD not implemented by client.")
+        log_not_implemented_error(LOGGER, "LISTCMD not implemented by client.")
 
     def deprogram(self):
         '''Deprogram the FPGA.
         '''
         reply, _ = self.katcprequest(name="progdev")
         if reply.arguments[0] == 'ok':
-            self.running_bof = ''
+            # clear name of system running reported by fpga
+            self.system_info['system'] = ''
+            self.__reset_devices()
+            self.__reset_system_info()
         LOGGER.info("Deprogramming FPGA %s... %s.", self.host, reply.arguments[0])
 
     def program(self, boffile=None):
@@ -240,9 +256,9 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
            @param boffile  String: name of the BOF file.
            """
         if boffile == None:
-            boffile = self.bofname
-        elif boffile != self.bofname:
-            LOGGER.warning('Programming BOF file %s, config BOF file %s', boffile, self.bofname)
+            boffile = self.system_info['target_bof']
+        elif boffile != self.system_info['target_bof']:
+            LOGGER.warning('Programming BOF file %s, config BOF file %s', boffile, self.system_info['target_bof'])
         uninforms = []
         def handle_inform(msg):
             uninforms.append(msg)
@@ -258,9 +274,11 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
                 for inf in uninforms:
                     print inf
                 log_runtime_error(LOGGER, 'Programming file %s failed.' % boffile)
-            self.running_bof = boffile
+            self.system_info['last_programmed_bof'] = boffile
         else:
             log_runtime_error(LOGGER, 'progdev message for file %s failed.' % boffile)
+        self.__reset_system_info()
+        self.get_system_information()
         LOGGER.info("Programming FPGA %s with %s... %s.", self.host, boffile, reply.arguments[0])
         return
 
@@ -329,7 +347,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             os.path.getsize(binary_file)
             filename = binary_file.split("/")[-1]
         except:
-            raise IOError('Bin file not found.')
+            log_io_error(LOGGER, 'Bin file not found')
         # is it on the FPGA already?
         if not force_upload:
             bofs = self.listbof()
@@ -399,7 +417,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         try:
             os.path.getsize(bof_file)
         except:
-            raise IOError('Programming file not found.')
+            log_io_error(LOGGER, 'Programming file not found.')
         import threading, Queue
         def makerequest(result_queue):
             '''Make the upload request to the KATCP server on the host.
@@ -453,6 +471,9 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
                 done = True
         self._timeout = old_timeout
         self.unhandled_inform_handler = dummy_inform_handler
+        self.system_info['last_programmed_bof'] = bof_file
+        self.__reset_system_info()
+        self.get_system_information()
         return
 
     def read_dram(self, size, offset=0, verbose=False):
@@ -546,7 +567,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
             unpacked_rddata = struct.unpack('>L', new_data[0:4])[0]
             self._logger.error("Verification of write to %s at offset %d failed. Wrote 0x%08x... but got back 0x%08x..."
                 % (device_name, offset, unpacked_wrdata, unpacked_rddata))
-            raise RuntimeError("Verification of write to %s at offset %d failed. Wrote 0x%08x... but got back 0x%08x..."
+            log_runtime_error("Verification of write to %s at offset %d failed. Wrote 0x%08x... but got back 0x%08x..."
                 % (device_name, offset, unpacked_wrdata, unpacked_rddata))
 
     def blindwrite(self, device_name, data, offset=0):
@@ -678,31 +699,27 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         else:
             return False
 
-    def _read_system_info(self):
+    def _read_system_info(self, device=all):
         '''Katcp request for extra system information embedded in the boffile.
+        @param device: device name
         '''
-        reply, informs = self.katcprequest(name="meta", request_timeout=self._timeout, require_ok=True)
+        if device == all:
+            reply, informs = self.katcprequest(name="meta", request_timeout=self._timeout, require_ok=True)
+        else:
+            reply, informs = self.katcprequest(name='meta', request_timeout=self._timeout, require_ok=True, request_args=(device, ))
+    
         if reply.arguments[0] != 'ok':
             log_runtime_error(LOGGER, 'Could not read meta information from %s' % self.host)
         metalist = []
         for inform in informs:
             if len(inform.arguments) != 4:
-                log_runtime_error(LOGGER, 'Incorrect number of meta inform arguements: %s' % str(inform.arguments))
+                log_runtime_error(LOGGER, 'Incorrect number of meta inform arguments: %s' % str(inform.arguments))
             for arg in inform.arguments:
                 arg = arg.replace('\_', ' ')
             name, tag, param, value = inform.arguments[0], inform.arguments[1], inform.arguments[2], inform.arguments[3]
             name = name.replace('/', '_')
             metalist.append((name, tag, param, value))
         return _create_meta_dictionary(metalist)
-
-    def __reset_devices(self):
-        self.devices = {}
-        self.registers = Attribute_container()
-        self.snapshots = Attribute_container()
-        self.sbrams = Attribute_container()
-        self.tengbes = Attribute_container()
-        self.katadcs = Attribute_container()
-        self.qdrs = Attribute_container()
 
     def get_system_information(self, filename=None):
         '''Get and process the extra system information from the bof file.
@@ -766,7 +783,7 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         '''
         for dev_name, dev_info in all_device_info.items():
             if dev_name == '':
-                raise RuntimeError('There\'s a problem somewhere, got a blank device name?')
+                log_runtime_errolog_runtime_errorr('There\'s a problem somewhere, got a blank device name?')
             if self.devices.has_key(dev_name):
                 log_runtime_error(LOGGER, 'Device %s already exists.' % dev_name)
             new_object = None
@@ -799,13 +816,34 @@ class KatcpClientFpga(hostdevice.Host, async_requester.AsyncRequester, katcp.Cal
         '''
         return getattr(self, container)
 
-    def set_bof(self, bofname):
+    def set_target_bof(self, bofname):
         '''Set the name of the bof file that will be used on this FPGA host.
         '''
-        self.bofname = bofname
+        self.system_info['target_bof'] = bofname
     
-    def get_bof(self):
+    def get_target_bof(self):
         '''Get the name of the bof file that will be used on this FPGA host.
         '''
-        return self.bofname
+        return self.system_info['target_bof']
+    
+    def get_last_programmed_bof(self):
+        '''Set the name of the bof file that will be used on this FPGA host.
+        '''
+        return self.system_info['last_programmed_bof']
+   
+    def get_config_file_info(self):
+        '''
+        '''
+        host_dict = self._read_system_info(device=77777)
+        info = {}
+        info['name'] = host_dict['77777']['system']
+        #TODO conversion to time python understands
+        info['build_time'] = host_dict['77777']['builddate']
+        return info 
+
+    def is_initialised(self):
+        # test if we have device information
+        return not len(self.devices) == 0
+        #TODO hardware calibration
+
 # end
