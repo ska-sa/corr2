@@ -6,56 +6,65 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 from corr2.xengine import Xengine
+from corr2.engine_fpga import EngineFpga
 
 from corr2.fpgadevice import tengbe
-from misc import log_runtime_error, config_get_string, config_get_list, config_get_int, config_get_float
+from misc import log_runtime_error
 
-import numpy, struct, socket, iniparse
-
-class XengineFpga(Xengine):
+class XengineFpga(EngineFpga, Xengine):
     '''
     An X-engine, resident on an FPGA
+    Pre accumulation is applied to output products before longer term accumulation in vector accumulators
     '''
-    def __init__(self, parent, engine_id, index, config_file=None, descriptor='fpga based x-engine'):
-        '''Constructor.
+    def __init__(self, f_offset, host_device, engine_id, host_instrument, config_file=None, descriptor='xengine_fpga'):
+        '''Constructor
         '''
-        Xengine.__init__(self, parent, engine_id, descriptor)
+        EngineFpga.__init__(self, host_device, engine_id, host_instrument, config_file, descriptor)
+        Xengine.__init__(self, f_offset)
         
-        self.index = index
+        self._get_xengine_fpga_config()
 
-        self.get_config(config_file)
-        
-        base_channel = self.id*self.config['n_chans_per_x']
-        LOGGER.info('Xengine created processing channels %i-%i of %i @ index %i in %s',
-            base_channel, base_channel+self.config['n_chans_per_x']-1, self.config['n_chans'], self.index, str(self.parent))
-
-    def get_config(self, filename=None):
-        # if we are provided with a config file, initialise using that
-        if filename != None:
-            self.parse_config(filename)
-        # TODO otherwise we will get our configuration in some other way 
-        else:
-            log_runtime_error(LOGGER, 'Configuration from config file only at the moment')
-
-    def parse_config(self, filename):
-        ''' Get configuration info by parsing file
+    def __getattribute__(self, name):
+        '''Overload __getattribute__ to make shortcuts for getting object data.
         '''
-        if filename == None:
-            log_runtime_error(LOGGER, 'No config file provided.')
-            return
-        try:
-            fptr = open(filename, 'r')
-        except:
-            raise IOError('Configuration file \'%s\' cannot be opened.' % filename)
-        cfg_parser = iniparse.INIConfig(fptr)
-         
-        self.config['n_chans'] =            config_get_int(cfg_parser, 'fengine', 'n_chans')
+        if name == 'control':
+            return self.host.device_by_name('ctrl')
+        elif name == 'status':
+            return self.host.device_by_name('status%i'%(self.id))
+        elif name == 'acc_len':
+            return self.host.device_by_name('acc_len')
+        #default is to get useful stuff from ancestor
+        return EngineFpga.__getattribute__(self, name)
+        
+    def _get_xengine_fpga_config(self):
+        
+        # pre accumulation length
+        self.config['acc_len'] = self.config_portal.get_int(['%s' %self.descriptor, 'acc_len'])
+        # default accumulation length for vector accumulator
+        self.config['vacc_len'] = self.config_portal.get_int(['%s' %self.descriptor, 'vacc_len'])
 
-        self.config['n_chans_per_x'] =      config_get_int(cfg_parser, 'xengine', 'n_chans_per_x')
-        self.config['acc_len'] =            config_get_int(cfg_parser, 'xengine', 'acc_len')
-        self.config['xeng_acc_len'] =       config_get_int(cfg_parser, 'xengine', 'xeng_acc_len')
+    def set_vacc_len(self, vacc_len=None, issue_spead=True):
+        ''' Set accumulation length for vector accumulation
+        '''   
+        #TODO check vacc_len
+        self.acc_len.write(reg=vacc_len)
 
-        fptr.close()
+    def get_vacc_len(self):
+        ''' Set accumulation length for vector accumulation
+        '''   
+        return self.acc_len.read()['data']['reg'] 
 
+    def receiving_valid_data(self):
+        '''The engine is receiving valid data.
+        @return True or False
+        '''
+        #TODO
+        return True
+
+    def producing_data(self):
+        ''' The engine is producing data ready for transmission
+        '''
+        #TODO 
+        return True
 
 # end
