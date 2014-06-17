@@ -4,60 +4,54 @@
 # This is a sample config file for a lab correlator instrument in South Africa.
 # It has with 8 dual-pol antennas on 16 ROACH boards all plugged into 10GbE switch with 10GbE output.
 
-
-# TODO many of these can be determined at run time from fpg files
-
-[hosts]
+# resources available is getting them from file 
+[resources]
 # Source for host allocation
 host_allocation = file
+# types of hosts
+host_types = roach2
 # List of engine hosts. Comma separated list with no whitespace. 
-roach_host_pool = roach020959,roach02091b,roach020958,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
 
-[katcp]
-# This is the control port to use when communicating with FPGAs. By default, use 7147.
-katcp_port = 7147
-
-[correlator]
+[roach2]
+# This is the control port to use when communicating with roach2s. By default, use 7147.
+roach2_katcp_port = 7147
 #the timeout in seconds per FPGA during programing
-fpga_program_timeout = 3
-# Starting IP address for all hosts
-ip_start = 10.0.0.1
-# The UDP port to use for 10Gbe comms
-udp_port = 8888
-# Number of bits used in the F engine for timekeeping (the master counter)
-master_cnt_bits = 48
-# number of bits used in the packet header for timestamping
-packet_cnt_bits = 48
-# the sync period set in the f-engine design. used for f-engine arming. this default is for WIDEBAND!
-feng_sync_period = 134217728
-# the number of 1PPS pulses that we expect to elapse between arming the system and actually triggering. This is usually 2, to allow any sync pulses in the pipeline to flush before resyncing.
-feng_sync_delay = 2
-# number of antennas in system
+roach2_program_timeout = 3
+# the host pool (if getting hosts from file)
+roach2_host_pool = roach020959,roach02091b,roach020958,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
+roach2_andrew = roach020915
+
+# information on rts, these are parameters that may differ
+# across instruments of the same type e.g fxcorrelator
+[mock_rts]
+instrument_type = fxcorrelator
+# type of engines this instrument
+engines = mock_rts_lband_d, wb_rts_f, rts_x
+# number of each engine we require, in order
+n_engines = 1,4,32
+#comms settings, in same order as engines
+mac_base = 02:02:00:00:00:00,02:02:00:00:01:10,02:02:00:00:02:10
+ip_base = 10.0.0.70,10.0.0.150,10.0.0.110
+port = 7777,7777,8778
+# number of antennas in this fxcorrelator
 n_ants = 4
-# polarisation labels in system
-pols = x,y
+# FFT shifting schedule in decimal. A binary '1' shifts, a zero does not.
+fft_shift = 252
+# Number of spectra to integrate in DRAM vector accumulator.
+vacc_len = 3051
+# The eq_poly lines are used for setting the equalisers using a polynomial and are specific to each instrument
+# One line entry per input. Item is a list of polynomial coefficients.
+# e.g. 'eq_poly_0 = 10,30,40' corresponds to 10c^2 + 30c + 40 where c is the frequency channel index.
+#eq_poly_0 = 1
 
-[files]
-# bitstream to load the FPGAs. Should be present and load-able by ROACH's KATCP server - corr will not do this for you
-bitstream_d = /srv/bofs/deng/r2_deng_tvg_2014_May_30_1123.fpg
-#bitstream_f = feng_rx_test_2014_Apr_07_1841.fpg
-bitstream_f = /srv/bofs/feng/r2_256w_4k_32x_r433_2014_Jun_02_1742.fpg
-#bitstream_x = r2_2f_4x_4a_4k_r366_2014_Mar_31_1547.fpg
-bitstream_x = /srv/bofs/xeng/r2_2f_4x_4a_4k_r366_2014_Jun_09_2335.fpg
-
-[engines]
-#number of each type of engine different hosts accommodate
-d_host_type = roach
-d_per_host = 1
-f_host_type = roach
-f_per_host = 2
-x_host_type = roach
-x_per_host = 4
-
-[mapping]
-# correlator input to name mapping 
-
-[dengine]
+# a test digitiser can be set up to test data flow
+[mock_rts_lband_dengine]
+# to be used when requesting resources
+host_type = roach2
+engines_per_host = 2
+# engines colocated with in host
+located_with = Nothing
+host_config_file = /srv/bofs/deng/r2_deng_tvg_2014_May_30_1123.fpg
 # sampling frequency (Hz)
 sampling_frequency = 1700000000
 # mux factor of ADC
@@ -68,17 +62,62 @@ adc_bits = 10
 # adc_levels_acc_len = 65536
 # multicast IP starting address
 # multicast_ip_start = 239.2.0.64
+# data products (can be list)
+consumes = None
+produces = rts_lband_digitiser_data
 
-[fengine]
-# number of output channels from PFB
-n_chans = 4096
-# FFT shifting schedule in decimal. A binary '1' shifts, a zero does not.
+# descriptor for wideishband rts fengine 
+[wb_rts_fengine]
+# configuration file for host
+host_config_file = r2_256w_4k_32x_r434_2014_Jun_17_0110.fpg
+# to be used when requesting resources
+host_type = roach2
+# number of engines per host
+engines_per_host = 1
+# engines colocated with in host
+located_with = Nothing
+# prefix in fpga identifying engine registers if colocated (unused here)
+tag = 'f'
+# board id increment 
+board_id_increment = 1
+# default shift schedule
 fft_shift = 252
-# Number of quantisation bits post FFT in the F engines.
-feng_output_bits = 8
-# Logical binary point position of F engine data. Normally feng_output_bits-1.
-feng_fix_pnt_pos = 7
+# number of output channels from PFB. This is fixed for this engine descriptor.
+# If this is programmable, move to under instrument descriptor
+n_chans = 4096
+# Number of data bits post requanitsation in the F engines.
+n_bits_output = 8
+# Logical binary point position of F engine data post requantisation. Normally feng_output_bits-1.
+bin_pt_output = 7
+# strings associated with polarisation 0 and 1
+polarisation_tags = x,y
+# default equalisation values for fengines
+poly0 = 1 
+poly1 = 1
+# data products we use and consume (one of each)
+consumes = rts_lband_digitiser_data
+produces = rts_channelised_data
 
+#data product info
+[rts_channelised_data]
+txport = 8000
+# default base or ip to transmit on 
+txip = 10.0.0.110
+# allows transmission to different destination/s (if needed)
+meta_txport = 8000
+meta_txip = 10.0.0.110
+#TODO SPEAD meta data stuff
+
+#tells us how to get at it even if we don''t produce it
+[rts_lband_digitiser_data]
+txport = 8000
+txip = 10.0.0.150
+# allows transmission to different destination/s (if needed)
+meta_txport = 8000
+meta_txip = 10.0.0.150
+
+# delay tracking/fringe stopping info
+# the hope is to keep these constant across instruments i.e decoupled from fengine type
 [delay_tracking]
 # minimum setup time required (seconds)
 min_ld_time = 0.1
@@ -90,13 +129,48 @@ phase_bits = 16
 delta_phase_bits = 16
 divisor_bits = 16
 
-[xengine]
-# Number of spectra to integrate in DRAM.
-acc_len = 3051
+# equalisation post PFB, pre requantisation in fengines
+# the hope is to keep these the same across fengine types
+[equalisation]
+# Decimation. Adjacent frequency channels share coefficients. The center equalisation value is chosen for adjacent bins. n_eq_coeffs_per_polarisation == n_chans/eq_decimation
+decimation = 1
+# Equaliser type (complex or scalar)
+type = complex
+# Tolerance to use for auto-equalization
+tolerance = 0.01
+# Number of bytes in coefficients
+n_bytes_coeffs = 2
+# Binary point position in coefficients
+bin_pt_coeffs = 1
+
+[wb_rts_xengine]
+host_config_file = /srv/bofs/xeng/r2_2f_4x_4a_4k_r366_2014_Jun_17_1239.fpg
+# to be used when requesting resources
+host_type = roach2
+engines_per_host = 2
+# engines colocated with in host
+located_with = None
+# prefix in fpga identifying engine registers if colocated (unused in this case)
+tag = 'x'
+# board id increment 
+board_id_increment = 4
 # number of accumulations performed in the X engine cores.
-xeng_acc_len = 256 
-# the number of FFT channels each x-engine processes
-n_chans_per_x = 128 
+acc_len = 256 
+# defaults for values that may change
+# Number of spectra to integrate in DRAM.
+vacc_len = 3051
+# data products (can be list)
+consumes = rts_channelised_data
+produces = rts_4k_products
+
+# data item
+[rts_4k_products]
+txport = 8000
+txip = 10.0.0.150
+# allows transmission to different destination/s (if needed)
+meta_txport = 8000
+meta_txip = 10.0.0.150
+#TODO SPEAD
 
 [spead_receiver]
 # spead flavour. string in the form XX,YY. Default: 64,40. consult the SPEAD documentation for details. Only 64-40 tested.
@@ -108,31 +182,4 @@ rx_meta_ip = 127.0.0.1
 # signal display config:
 sig_disp_ip = 127.0.0.1
 sig_disp_port=7149
-
-[equalisation]
-# Decimation. Adjacent frequency channels share coefficients. The center equalisation value is chosen for adjacent bins. n_eq_coeffs_per_polarisation == n_chans/eq_decimation
-eq_decimation = 1
-# Equaliser type (complex or scalar)
-eq_type = complex
-# Default values for equaliser (digital gain) derived from eq_poly values (poly) or set to eq_coeff values (coef).
-eq_default = poly
-# Tolerance to use for auto-equalization
-eq_tolerance = 0.01
-# Number of bytes in coefficients
-n_bytes = 2
-# Binary point position in coefficients
-eq_bin_pt = 1
-# The eq_poly lines are used for setting the equalisers using a polynomial.
-# One line entry per input. Item is a list of polynomial coefficients.
-# the antenna string must match your /var/run/corr/antenna_mapping contents exactly!
-# e.g. 'eq_poly_0 = 10,30,40' corresponds to 10c^2 + 30c + 40 where c is the frequency channel index.
-# In the event of complex equaliser types, these values are applied to both the real and imaginary components (ie scalar).
-# If you want to be able to configure these coefficients separately, use the eq_coeff configuration mode.
-eq_poly_0 = 300
-
-# The eq_coeff lines are used for setting the equalisers manually, specifying each frequency channel for every polarisation input.
-# Each line should have n_chans/eq_decimation entries.
-# Entries are python lists (comma separated values within square brackets).
-# e.g. eq_coeff_0x = [1,2,3,4]
-
 
