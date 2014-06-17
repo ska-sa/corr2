@@ -5,7 +5,7 @@ Miscellaneous functions that are used in a few places but don't really belong
 anywhere.
 '''
 
-import logging, iniparse, types
+import logging, types, numpy
 LOGGER = logging.getLogger(__name__)
 
 class Attribute_container(object):
@@ -42,14 +42,40 @@ class Attribute_container(object):
         return len(self._items)
 
 def log_runtime_error(log, error_string):
-    '''Write an error string to the given log file and then raise a
-    runtime error.
+    '''Write an error string to the given log file and then raise a runtime error.
     '''
     try:
         log.error(error_string)
     except AttributeError:
         pass
     raise RuntimeError(error_string)
+
+def log_io_error(log, error_string):
+    '''Write an error string to the given log file and then raise an io error.
+    '''
+    try:
+        log.error(error_string)
+    except AttributeError:
+        pass
+    raise IOError(error_string)
+
+def log_value_error(log, error_string):
+    '''Write an error string to the given log file and then raise a value error.
+    '''
+    try:
+        log.error(error_string)
+    except AttributeError:
+        pass
+    raise ValueError(error_string)
+
+def log_not_implemented_error(log, error_string):
+    '''Write an error string to the given log file and then raise a not implemented error.
+    '''
+    try:
+        log.error(error_string)
+    except AttributeError:
+        pass
+    raise NotImplementedError(error_string)
 
 def bin2fp(bits, mantissa=8, exponent=7, signed=False):
     '''Convert a raw fixed-point number to a float based on a given
@@ -62,7 +88,7 @@ def bin2fp(bits, mantissa=8, exponent=7, signed=False):
             return float(bits) / (2**exponent)
     from numpy import int32 as numpy_signed, uint32 as numpy_unsigned
     if (mantissa > 32) or (exponent >= mantissa):
-        raise RuntimeError('Unsupported fixed format: %i.%i' % (mantissa,
+        log_runtime_error(LOGGER, 'Unsupported fixed format: %i.%i' % (mantissa,
                                                                 exponent))
     shift = 32 - mantissa
     bits = bits << shift
@@ -76,7 +102,7 @@ def program_fpgas(fpga_list, timeout=10):
     '''Program a list of fpgas/boffile tuple-pairs concurrently.
     '''
     for fpga, boffile in fpga_list[0:-1]:
-        fpga.upload_to_ram_and_program(boffile, timeout=45, wait_complete=False)
+        fpga.upload_to_ram_and_program(boffile, timeout=timeout, wait_complete=False)
     fpga_list[-1][0].upload_to_ram_and_program(fpga_list[-1][1],
         timeout=45, wait_complete=True)
     all_done = False
@@ -91,60 +117,5 @@ def program_fpgas(fpga_list, timeout=10):
         if time.time() - stime > timeout:
             log_runtime_error(LOGGER, 'Programming fpgas timed out.')
     return
-
-# config parser related
-def config_get_string(iniparser, section_name, param_name, fail_hard=True):
-    '''Get the string at [section_name][param_name] in configuration file
-    @param iniparser: iniparse.INIConfig parser
-    @param section_name: section in configuration file
-    @param param_name: parameter name
-    @param fail_hard: fail hard if can't find value
-    '''
-    string = iniparser[section_name][param_name]
-    if isinstance(string, iniparse.config.Undefined):
-        msg = 'Asked for unknown param \'%s\' in section \'%s\' in config' % (param_name, section_name)
-        if fail_hard==True:
-            log_runtime_error(LOGGER, msg)
-        else:
-            LOGGER.warning(msg)
-        return None
-
-    return string
-
-def config_get_list(iniparser, section, param, fail_hard=True):
-    string = config_get_string(iniparser, section, param, fail_hard)
-    if string == None:
-        return None
-
-    try:
-        value = string.split(types.LISTDELIMIT)
-    except ValueError:
-        log_runtime_error(LOGGER, 'Error converting \'%s\' to list while getting config item %s,%s', string, section, name)
-
-    return value
-
-def config_get_int(iniparser, section, param, fail_hard=True):
-    string = config_get_string(iniparser, section, param, fail_hard)
-    if string == None:
-        return None
-
-    try:
-        value = int(string)
-    except ValueError:
-        log_runtime_error(LOGGER, 'Error converting \'%s\' to integer while getting config item %s,%s', string, section, name)
-
-    return value
-
-def config_get_float(iniparser, section, param, fail_hard=True):
-    string = config_get_string(iniparser, section, param, fail_hard)
-    if string == None:
-        return None
-    
-    try:
-        value = float(string)
-    except ValueError:
-        log_runtime_error(LOGGER, 'Error converting \'%s\' to float while getting config item %s,%s', string, section, name)
-
-    return value
 
 # end
