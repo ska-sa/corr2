@@ -9,8 +9,8 @@ import bitfield, misc, types
 import fpgadevice
 
 # import the base corr2 modules
-import async_requester, digitiser, engine, fengine, \
-    fxcorrelator, hostdevice, instrument, katcp_client_fpga, \
-    xengine, scroll
-
+import engine, instrument, async_requester,\
+    katcp_client_fpga, host, configuration_katcp_client, \
+    engine_fpga, digitiser, fengine, xengine, fengine_fpga, xengine_fpga, \
+    wb_rts_fengine, wb_rts_xengine, mock_rts, instrument, fxcorrelator, scroll \
 # end

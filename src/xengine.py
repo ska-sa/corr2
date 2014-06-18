@@ -14,14 +14,8 @@ class Xengine():
     An X-engine, regardless of where it is located. 
     Xengines cross multiply a subset of channels from a number of fengines and accumulate the result
     '''
-    def __init__(self, f_offset):
+    def __init__(self):
         '''Constructor.
-        @param f_index: the index of the band of frequencies this engine processes
         '''
-        if not isinstance(f_offset, int):
-            log_runtime_error(LOGGER, "f_index must be an integer")        
-
-        #TODO more checking of f_offset
-        self.f_offset = f_offset
 
 # end

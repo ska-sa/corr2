@@ -5,34 +5,36 @@
 # It has with 8 dual-pol antennas on 16 ROACH boards all plugged into 10GbE switch with 10GbE output.
 
 # resources available is getting them from file 
-[resources]
-# Source for host allocation
-host_allocation = file
+[hosts]
 # types of hosts
-host_types = roach2
-# List of engine hosts. Comma separated list with no whitespace. 
+types = roach2
 
 [roach2]
 # This is the control port to use when communicating with roach2s. By default, use 7147.
-roach2_katcp_port = 7147
+katcp_port = 7147
 #the timeout in seconds per FPGA during programing
-roach2_program_timeout = 3
+program_timeout = 3
 # the host pool (if getting hosts from file)
-roach2_host_pool = roach020959,roach02091b,roach020958,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
-roach2_andrew = roach020915
+pool = roach020959,roach02091b,roach020958,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
+andrew = roach020915
 
 # information on rts, these are parameters that may differ
 # across instruments of the same type e.g fxcorrelator
 [mock_rts]
+#sanity check, code should check this
 instrument_type = fxcorrelator
 # type of engines this instrument
-engines = mock_rts_lband_d, wb_rts_f, rts_x
+engines = mock_rts_lband_dengine,wb_rts_fengine,rts_xengine
+# whether we care about host location arbitrary/specific
+host_locations = arbitrary,arbitrary,arbitrary
+# specific hosts, if that is your thing
+# mock_rts_lband_dengine_hosts = roach020959
 # number of each engine we require, in order
 n_engines = 1,4,32
 #comms settings, in same order as engines
-mac_base = 02:02:00:00:00:00,02:02:00:00:01:10,02:02:00:00:02:10
-ip_base = 10.0.0.70,10.0.0.150,10.0.0.110
-port = 7777,7777,8778
+mac_bases = 02:02:00:00:00:00,02:02:00:00:01:10,02:02:00:00:02:10
+ip_bases = 10.0.0.70,10.0.0.150,10.0.0.110
+ports = 7777,7777,8778
 # number of antennas in this fxcorrelator
 n_ants = 4
 # FFT shifting schedule in decimal. A binary '1' shifts, a zero does not.
@@ -48,7 +50,7 @@ vacc_len = 3051
 [mock_rts_lband_dengine]
 # to be used when requesting resources
 host_type = roach2
-engines_per_host = 2
+engines_per_host = 1
 # engines colocated with in host
 located_with = Nothing
 host_config_file = /srv/bofs/deng/r2_deng_tvg_2014_May_30_1123.fpg
@@ -143,11 +145,11 @@ n_bytes_coeffs = 2
 # Binary point position in coefficients
 bin_pt_coeffs = 1
 
-[wb_rts_xengine]
+[rts_xengine]
 host_config_file = /srv/bofs/xeng/r2_2f_4x_4a_4k_r366_2014_Jun_17_1239.fpg
 # to be used when requesting resources
 host_type = roach2
-engines_per_host = 2
+engines_per_host = 4
 # engines colocated with in host
 located_with = None
 # prefix in fpga identifying engine registers if colocated (unused in this case)

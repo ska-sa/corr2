@@ -10,8 +10,8 @@ LOGGER = logging.getLogger(__name__)
 from katcp_client_fpga import KatcpClientFpga
 
 class Digitiser(KatcpClientFpga):
-    def __init__(self, host, port=7147):
-        KatcpClientFpga.__init__(self, host, port)
+    def __init__(self, host_device, port=7147):
+        KatcpClientFpga.__init__(self, host_device, port)
         LOGGER.info('New Digitiser created - %s', str(self))
 
     def get_current_time(self):

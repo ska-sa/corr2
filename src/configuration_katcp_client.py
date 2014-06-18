@@ -46,6 +46,47 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
             self.config = get_remote_config(self.config_host, self.katcp_port)
             self.source = 'katcp'      
 
+        self.get_config()
+
+    def get_config(self):
+        # if getting from file, maintain our own host pool
+        if self.source == 'file':
+            host_types = self.get_str_list(['hosts', 'types'])
+            self.host_pool = {}
+            for host_type in host_types:
+                self.host_pool[host_type] = self.get_str_list(['%s'%host_type, 'pool'])            
+
+    def get_hosts(self, host_type='roach2', number=None, hostnames=None):
+        ''' Request hosts for use
+        @param hostnames: specific host names
+        @param host_type: type of host if not specific
+        @param number: number of type if not specific
+        @return hostnames if available or empty list if not
+        '''
+        if self.source == 'file':
+            hosts = list()
+            if hostnames==None:
+                avail_hosts = self.host_pool['%s'%host_type]
+                hosts.extend(avail_hosts[0:number])
+                avail_hosts = avail_hosts[number:len(avail_hosts)]
+                self.host_pool['%s'%host_type] = avail_hosts
+                return hosts
+            else:
+                log_runtime_error(LOGGER, 'Don''t know how to get specific hostnames yet')
+                #TODO
+        else:
+            log_runtime_error(LOGGER, 'Don''t know how to get hosts via katcp yet')
+ 
+    def return_hosts(self, hostnames, host_type='roach2'):
+        ''' Return hosts to the pool
+        '''
+        #check type
+        if self.source == 'file':
+            self.host_pool['%s'%host_type].extend(hostnames)
+        else:
+            log_runtime_error(LOGGER, 'Don''t know how to return hosts via katcp yet ')
+            #TODO katcp stuff
+
     def get_string(self, target, fail_hard=True):
         '''Get configuration string 
         @param target: list describing parameter

@@ -16,11 +16,11 @@ class XengineFpga(EngineFpga, Xengine):
     An X-engine, resident on an FPGA
     Pre accumulation is applied to output products before longer term accumulation in vector accumulators
     '''
-    def __init__(self, f_offset, host_device, engine_id, host_instrument, config_file=None, descriptor='xengine_fpga'):
+    def __init__(self, host_device, engine_id, host_instrument, config_file=None, descriptor='xengine_fpga'):
         '''Constructor
         '''
         EngineFpga.__init__(self, host_device, engine_id, host_instrument, config_file, descriptor)
-        Xengine.__init__(self, f_offset)
+        Xengine.__init__(self)
         
         self._get_xengine_fpga_config()
 
