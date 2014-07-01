@@ -98,7 +98,7 @@ def bin2fp(bits, mantissa=8, exponent=7, signed=False):
         return float(numpy_signed(bits)) / (2**exponent)
     return float(numpy_unsigned(bits)) / (2**exponent)
 
-def program_fpgas(fpgas, timeout=10):
+def program_fpgas(fpga_list, timeout=10):
     '''Program a list of fpgas/boffile tuple-pairs concurrently.
     '''
     for fpga, boffile in fpga_list[0:-1]:

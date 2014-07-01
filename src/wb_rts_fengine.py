@@ -8,13 +8,13 @@ LOGGER = logging.getLogger(__name__)
 from corr2.fengine_fpga import FengineFpga
 from misc import log_runtime_error
 
-import numpy, struct, socket, iniparse
+import numpy
 
 class WbRtsFengine(FengineFpga):
     ''' A FPGA F-engine implemented for RTS
     '''
 
-    def __init__(self, ant_id, host_device, engine_id=0, host_instrument=None, config_file=None, descriptor='wb_rts_fengine'):
+    def __init__(self, ant_id, fpga, engine_id=0, host_instrument=None, config_file=None, descriptor='wb_rts_fengine'):
         ''' Constructor
             @param ant_id: 
             @param parent: fpga host for engine (already programed)
@@ -29,6 +29,16 @@ class WbRtsFengine(FengineFpga):
     def _get_wb_rts_fengine_config(self):
         '''
         '''         
+
+    def __getattribute__(self, name):
+        '''Overload __getattribute__ to make shortcuts for getting object data.
+        '''
+        if name == 'trigger_level':
+            return self.host.device_by_name('trigger_level')
+        if name == 'debug_status':
+            return self.host.device_by_name('debug_status')
+        #default
+        return FengineFpga.__getattribute__(self, name)
 
     ########
     # TVGs #
@@ -117,29 +127,4 @@ class WbRtsFengine(FengineFpga):
         ''' Get the level at which data capture to snapshot is stopped 
         '''
         return self.trigger_level.read()['data']['trigger_level']
-
-    # move into ancestor class
-    def reset_comms(self):
-        ''' Reset comms
-        '''
-        #posedge
-        self.control.write(comms_rst=True)
-        self.control.write(comms_rst=False)
-    
-    def clear_comms_status(self):
-        ''' Clear comms status and internal counters
-        '''
-        #posedge
-        self.control.write(comms_status_clr=True)
-        self.control.write(comms_status_clr=False)
-   
-    def __getattribute__(self, name):
-        '''Overload __getattribute__ to make shortcuts for getting object data.
-        '''
-        if name == 'trigger_level':
-            return self.host.device_by_name('trigger_level')
-        if name == 'debug_status':
-            return self.host.device_by_name('debug_status')
-        #default
-        return FengineFpga.__getattribute__(self, name)
 

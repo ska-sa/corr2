@@ -18,8 +18,8 @@ class EngineFpga(Engine):
     '''
     def __init__(self, fpga, engine_id, host_instrument, config_file=None, descriptor='engine_fpga'):
         '''Constructor
-        @param host_device: the device that hosts this engine
-        @param engine_id: unique id for this engine type on host 
+        @param fpga: the link to the fpga that hosts this engine
+        @param engine_id: unique id for this engine type on the fpga
         @param host_instrument: the Instrument it is part of 
         @param config_file: configuration if engine is to be used not as part of Instrument
         @param descriptor: section in config to locate engine specific info at
@@ -29,14 +29,16 @@ class EngineFpga(Engine):
         self._get_engine_fpga_config()
 
     def _get_engine_fpga_config(self):
-        # if located with other engines on fpga use prefix to differentiate between engines
+        ''' Configuration needed by Engines resident on FPGAs
+        '''
+        # if located with other engines on fpga use register prefix to differentiate between engine types
         self.tag = ''
         located_with = self.config_portal.get_string(['%s'%self.descriptor, 'located_with']) 
         tag = self.config_portal.get_string(['%s'%self.descriptor, 'tag']) 
         if located_with != 'Nothing':
             self.tag = tag 
 
-        #if multiple of same engines on fpga, use index to discriminate between engines in same group
+        #if multiple of same engine on fpga, use index to discriminate between engines of same type
         self.offset = ''
         engines_per_host = self.config_portal.get_int(['%s'%self.descriptor, 'engines_per_host'])    
         if engines_per_host > 1:
@@ -47,14 +49,15 @@ class EngineFpga(Engine):
         '''
 
         # all engines on FPGAs have associated control and status registers
-        # use local __getattribute__ to redefine these
+        # use local __getattribute__ to redefine these if not following this convention
         if name == 'control':
             return self.host.device_by_name('%scontrol%s' %(self.tag, self.offset))
         elif name == 'status':
             return self.host.device_by_name('%sstatus%s' %(self.tag, self.offset))
 
-        # all engines by default have a single output destination (or base)
+        # all engines by default have a single output destination (or base) ip and port
         # shared amongst all engines of the same type on a host
+        # use local __getattribute__ to redefine these if not following this convention
         elif name == 'txport':
             return self.host.device_by_name('%stxport' %(self.tag))
         elif name == 'txip':
@@ -92,18 +95,26 @@ class EngineFpga(Engine):
         '''
         return self.status.read()['data']
 
+    ###############
+    #  Data input #
+    ###############
+
+    def is_receiving_valid_data(self):
+        ''' Is receiving valid data
+        '''
+        return self.status.read()['data']['rxing_data']
+
     ################
     # Comms stuff  #
     ################
 
-    def set_txip(self, txip_str=None, txip=None, issue_spead=True):
+    def set_txip(self, txip_str=None, issue_meta=True):
         ''' Set base transmission IP for SPEAD output
         @param txip_str: IP address in string form
-        @param txip: IP address as integer
         '''
-        if txip_str == None and txip == None:
-            txip = tengbe.str2ip(self.config['data_product']['txip'])
-        elif txip_str != None: 
+        if txip_str == None:
+            txip = tengbe.str2ip(self.config['data_product']['txip_str'])
+        else:
             txip = tengbe.str2ip(txip_str)
         
         self.txip.write(txip=txip)
@@ -115,7 +126,7 @@ class EngineFpga(Engine):
         txip_str = tengbe.ip2str(txip)
         return txip_str
 
-    def set_txport(self, txport=None, issue_spead=True):
+    def set_txport(self, txport=None, issue_meta=True):
         ''' Set transmission port for SPEAD output
         @param txport: transmission port as integer
         '''
@@ -123,37 +134,35 @@ class EngineFpga(Engine):
             txport = self.config['data_product']['txport']
         
         self.txport.write(txport=txport)
+        
+        #TODO SPEAD meta data
     
     def get_txport(self):
         ''' Get transmission port for SPEAD output
         '''
         return self.txport.read()['data']['txport']
 
+    def is_producing_valid_data(self):
+        ''' Is producing valid data ready for SPEAD output
+        '''
+        return self.status.read()['data']['txing_data']
+
     def start_tx(self):
         ''' Start SPEAD data transmission
         '''
         self.control.write(comms_en=1, comms_rst=0)
  
-    def stop_tx(self, issue_spead=True):
+    def stop_tx(self, issue_meta=True):
         ''' Stop SPEAD data transmission
         '''
         self.control.write(comms_en=0)
+        
+        #TODO SPEAD meta data
 
-    def receiving_valid_data(self):
-        '''The engine is receiving valid data.
-        @return True or False
-        '''
-        log_not_implemented_error(LOGGER, '%s.receiving_valid_data not implemented'%self.descriptor)
-
-    def producing_data(self):
-        ''' The engine is producing data ready for transmission
-        '''
-        log_not_implemented_error(LOGGER, '%s.producing_data not implemented'%self.descriptor)
-    
-    #########################################
-    # Timed latch stuff                     #
-    #TODO to be integrated as an fpgadevice #
-    #########################################
+    ##########################################
+    # Timed latch stuff                      #
+    # TODO to be integrated as an fpgadevice #
+    ##########################################
 
     def arm_timed_latch(self, latch_name, time=None, force=False):
         ''' Arm a timed latch. Use force=True to force even if already armed 

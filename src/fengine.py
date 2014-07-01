@@ -10,7 +10,9 @@ LOGGER = logging.getLogger(__name__)
 from misc import log_runtime_error, log_not_implemented_error 
 
 class Fengine():
-    ''' An engine that channelises data from an antenna input.
+    ''' An f-engine, no matter where it is located. Channelises data from
+        an antenna input in preparation for producing cross-multiplication products
+        using an x-engine.
     '''
 
     def __init__(self, ant_id):
@@ -27,13 +29,14 @@ class Fengine():
 
         self.ant_id = ant_id
 
+        # all fengines must have a config_portal to access configuration information
         if not hasattr(self, 'config_portal'):
-            log_runtime_error(LOGGER, 'Fengines can only be ancestors in companion with engines with config_portals')
+            log_runtime_error(LOGGER, 'Fengines can only be ancestors in companion with Engines with config_portals')
         
         self._get_fengine_config()  
 
     def _get_fengine_config(self):
-        ''' Get configuration info for this fengine
+        ''' Get configuration info common to all fengines
         '''
         self.config['n_chans'] = self.config_portal.get_int(['%s' %self.descriptor, 'n_chans'])
 
@@ -49,6 +52,6 @@ class Fengine():
         @param phase_delta: change in phase TODO units
         @param load_time: time to load values in ADC samples since epoch. If None load immediately
         '''
-        log_not_implemented_error(LOGGER, 'fengine.set_delay not implemented')
+        log_not_implemented_error(LOGGER, '%s.set_delay not implemented' %self.descriptor)
 
 # end

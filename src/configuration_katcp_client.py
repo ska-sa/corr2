@@ -20,7 +20,7 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
         @param katcp_port: port number configuration daemon is listening on
         @param config_file: file containing configuration information (overrides katcp)
         '''
-        if config_file == None and (host == None or katcp_port == None):
+        if config_file == None and (config_host == None or katcp_port == None):
             log_runtime_error(LOGGER, 'Need a configuration file name or katcp host location')
             
         self.source = None
@@ -31,7 +31,7 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
             try:
                 fptr = open(config_file, 'r')
             except:
-                log_io_error(LOGGER, 'Configuration file \'%s\' cannot be opened.' % filename)
+                log_io_error(LOGGER, 'Configuration file \'%s\' cannot be opened.' % config_file)
             self.config = iniparse.INIConfig(fptr)
             fptr.close()
             self.source = 'file'
@@ -52,11 +52,15 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
         # if getting from file, maintain our own host pool
         if self.source == 'file':
             host_types = self.get_str_list(['hosts', 'types'])
-            self.host_pool = {}
+            self.hosts = {}
             for host_type in host_types:
-                self.host_pool[host_type] = self.get_str_list(['%s'%host_type, 'pool'])            
+                self.hosts['%s' %host_type] = {}    
+                
+                host_configurations = self.get_str_list(['%s'%host_type, 'configurations'])
+                for host_configuration in host_configurations:
+                    self.hosts['%s'%host_type]['%s'%host_configuration] = self.get_str_list(['%s'%host_type, '%s'%host_configuration])            
 
-    def get_hosts(self, host_type='roach2', number=None, hostnames=None):
+    def get_hosts(self, host_type='roach2', host_configuration='all', number=None, hostnames=None):
         ''' Request hosts for use
         @param hostnames: specific host names
         @param host_type: type of host if not specific
@@ -66,10 +70,10 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
         if self.source == 'file':
             hosts = list()
             if hostnames==None:
-                avail_hosts = self.host_pool['%s'%host_type]
+                avail_hosts = self.hosts['%s'%host_type]['%s'%host_configuration]
                 hosts.extend(avail_hosts[0:number])
                 avail_hosts = avail_hosts[number:len(avail_hosts)]
-                self.host_pool['%s'%host_type] = avail_hosts
+                self.hosts['%s'%host_type]['%s'%host_configuration] = avail_hosts
                 return hosts
             else:
                 log_runtime_error(LOGGER, 'Don''t know how to get specific hostnames yet')
@@ -77,12 +81,12 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
         else:
             log_runtime_error(LOGGER, 'Don''t know how to get hosts via katcp yet')
  
-    def return_hosts(self, hostnames, host_type='roach2'):
+    def return_hosts(self, hostnames, host_type='roach2', host_configuration='all'):
         ''' Return hosts to the pool
         '''
         #check type
         if self.source == 'file':
-            self.host_pool['%s'%host_type].extend(hostnames)
+            self.host_pool['%s'%host_type]['%s'%host_configuration].extend(hostnames)
         else:
             log_runtime_error(LOGGER, 'Don''t know how to return hosts via katcp yet ')
             #TODO katcp stuff

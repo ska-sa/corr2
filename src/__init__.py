@@ -12,5 +12,5 @@ import fpgadevice
 import engine, instrument, async_requester,\
     katcp_client_fpga, host, configuration_katcp_client, \
     engine_fpga, digitiser, fengine, xengine, fengine_fpga, xengine_fpga, \
-    wb_rts_fengine, wb_rts_xengine, mock_rts, instrument, fxcorrelator, scroll \
+    wb_rts_fengine, wb_rts_xengine, mock_rts, instrument, fxcorrelator, fxcorrelator_fpga, scroll \
 # end

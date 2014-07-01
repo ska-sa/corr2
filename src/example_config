@@ -12,18 +12,22 @@ types = roach2
 [roach2]
 # This is the control port to use when communicating with roach2s. By default, use 7147.
 katcp_port = 7147
-#the timeout in seconds per FPGA during programing
+# the timeout in seconds per FPGA during programing
 program_timeout = 3
-# the host pool (if getting hosts from file)
-pool = roach020959,roach02091b,roach020958,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
+# different host configurations
+configurations = all,dual_10ge,quad_10ge,andrew 
+# the host pools (if getting hosts from file)
+all = roach020959,roach02091b,roach020958,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924,roach020915
+quad_10ge = roach020959,roach02091b,roach020958,roach020914,roach020922
+dual_10ge = roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
 andrew = roach020915
+#TODO
+#broken
 
 # information on rts, these are parameters that may differ
 # across instruments of the same type e.g fxcorrelator
 [mock_rts]
-#sanity check, code should check this
-instrument_type = fxcorrelator
-# type of engines this instrument
+# type of engines this instrument contains
 engines = mock_rts_lband_dengine,wb_rts_fengine,rts_xengine
 # whether we care about host location arbitrary/specific
 host_locations = arbitrary,arbitrary,arbitrary
@@ -50,6 +54,7 @@ vacc_len = 3051
 [mock_rts_lband_dengine]
 # to be used when requesting resources
 host_type = roach2
+host_configuration = quad_10ge
 engines_per_host = 1
 # engines colocated with in host
 located_with = Nothing
@@ -71,9 +76,11 @@ produces = rts_lband_digitiser_data
 # descriptor for wideishband rts fengine 
 [wb_rts_fengine]
 # configuration file for host
-host_config_file = r2_256w_4k_32x_r434_2014_Jun_17_0110.fpg
+host_config_file = /srv/bofs/feng/r2_256w_4k_32x_r434_2014_Jun_17_0110.fpg
 # to be used when requesting resources
 host_type = roach2
+# particular host configuration
+host_configuration = quad_10ge
 # number of engines per host
 engines_per_host = 1
 # engines colocated with in host
@@ -149,19 +156,20 @@ bin_pt_coeffs = 1
 host_config_file = /srv/bofs/xeng/r2_2f_4x_4a_4k_r366_2014_Jun_17_1239.fpg
 # to be used when requesting resources
 host_type = roach2
+host_configuration = dual_10ge
 engines_per_host = 4
 # engines colocated with in host
 located_with = None
 # prefix in fpga identifying engine registers if colocated (unused in this case)
 tag = 'x'
 # board id increment 
-board_id_increment = 4
-# number of accumulations performed in the X engine cores.
+board_id_increment = 1
+# number of accumulations performed in the X engine cores pre vector accumulation
 acc_len = 256 
 # defaults for values that may change
-# Number of spectra to integrate in DRAM.
-vacc_len = 3051
-# data products (can be list)
+# Total number of spectra to integrate in DRAM.
+vacc_len = 781056
+# data products TODO change names to something useful
 consumes = rts_channelised_data
 produces = rts_4k_products
 

@@ -68,23 +68,25 @@ class Engine(object):
         LOGGER.info('Initialised %s', str(self))
 
     def _get_engine_config(self):
-        '''
+        ''' COnfiguration info needed by all processing engines
         '''
         #TODO check for descriptor section in config
         if not self.ping():
-            log_runtime_error(LOGGER, 'host not pingable')
+            log_runtime_error(LOGGER, 'Host not pingable')
 
         if not self.host.is_running():
             log_runtime_error(LOGGER, 'Need running host')
 
+        # check firmware running on host same as specified in configuration
         host_config_file = self.config_portal.get_string(['%s'%self.descriptor, 'host_config_file']) 
         file_info = self.host.get_config_file_info()
-        
         if (host_config_file.find(file_info['name']) == -1):
             #TODO check date too
-            log_runtime_error(LOGGER, 'Need to be running on host with configuration file that matches config')
+            log_runtime_error(LOGGER, 'Need to be running on host with configuration file matching the one specified in config')
 
         # get types of data it produces
+        # each engine produces a single data product, other data products must be produced
+        # by other engines
         product = self.config_portal.get_string(['%s'%self.descriptor, 'produces']) 
         self.config['data_product'] = {}        
 
@@ -95,7 +97,7 @@ class Engine(object):
 
             self.config['data_product']['name'] = '%s'%product
             self.config['data_product']['txport'] = txport
-            self.config['data_product']['txip'] = txip_str
+            self.config['data_product']['txip_str'] = txip_str
 
     def ping(self):
         '''Test connection to Engine Host
@@ -105,17 +107,43 @@ class Engine(object):
     def __str__(self):
         return '%s @ %s,%s,%i' % (self.descriptor, self.instrument, self.host, self.id)
 
-    def set_txip(self, txip_str=None, txip=None, issue_spead=True):
+    ###########
+    # status  #
+    ###########
+
+    def clear_status(self):
+        ''' Clear status related to this engine
+        '''
+        log_not_implemented_error(LOGGER, '%s.clear_status not implemented'%self.descriptor)
+    
+    def get_status(self):
+        ''' Get status related to this engine
+        '''
+        log_not_implemented_error(LOGGER, '%s.get_status not implemented'%self.descriptor)
+
+    ###############
+    #  Data input #
+    ###############
+
+    def is_receiving_valid_data(self):
+        ''' Is receiving valid data
+        '''
+        log_not_implemented_error(LOGGER, '%s.is_receiving_valid_data not implemented'%self.descriptor)
+
+    #####################
+    # SPEAD data output #
+    #####################
+
+    def set_txip(self, txip_str=None, issue_spead=True):
         ''' Set base transmission IP for SPEAD output
         @param txip_str: IP address in string form
-        @param txip: IP address as integer
         '''
         log_not_implemented_error(LOGGER, '%s.set_txip not implemented'%self.descriptor)
     
     def get_txip(self):
         log_not_implemented_error(LOGGER, '%s.get_txip not implemented'%self.descriptor)
  
-    def set_txport(self, txport=None, issue_spead=True):
+    def set_txport(self, txport=None, issue_meta=True):
         ''' Set transmission port for SPEAD output
         @param txport: transmission port as integer
         '''
@@ -123,36 +151,43 @@ class Engine(object):
     
     def get_txport(self):
         log_not_implemented_error(LOGGER, '%s.get_txport not implemented'%self.descriptor)
+
+    def is_producing_valid_data(self):
+        ''' Is producing valid data ready for SPEAD output
+        '''
+        log_not_implemented_error(LOGGER, '%s.is_producing_valid_data not implemented'%self.descriptor)
     
-    def start_tx(self, product_name=all):
+    def start_tx(self):
         ''' Start SPEAD data transmission
         '''
         log_not_implemented_error(LOGGER, '%s.start_tx not implemented'%self.descriptor)
     
-    def stop_tx(self, product_name=all, issue_spead=True):
+    def stop_tx(self, issue_meta=True):
         ''' Stop SPEAD data transmission
+        @param issue_meta: Issue SPEAD meta data informing receivers of stopped stream
         '''
         log_not_implemented_error(LOGGER, '%s.stop_tx not implemented'%self.descriptor)
 
-    def set_meta_destination(self, txip_str, txport, txip=None):
-        ''' Set meta destination for transmission of SPEAD meta data output
-        @param txip_str: IP address in string form (takes preference)
-        @param txip: IP address as integer
-        @param txport: transmission port as integer
-        '''
-        log_not_implemented_error(LOGGER, '%s.set_txip not implemented'%self.descriptor)
-    
-    def add_meta_destination(self, txip_str, txip, txport):
-        ''' Add a desination for SPEAD meta data output
-        @param txip_str: IP address in string form (takes preference)
-        @param txip: IP address as integer
-        @param txport: transmission port as integer
-        '''
-        log_not_implemented_error(LOGGER, '%s.set_txport not implemented'%self.descriptor)
+    #########################
+    # SPEAD meta-data output #
+    #########################
 
-    def clear_meta_destination(self):
-        ''' Clears SPEAD metadata destination list
+    def update_meta_destination(self, destination, txip_str, txport):
+        ''' Update a destination for SPEAD meta data output. Create a new one if not yet existing
+        @param destination: unique descriptor string describing destination 
+        @param txip_str: IP address in string form (takes preference)
+        @param txport: transmission port as integer
         '''
-        log_not_implemented_error(LOGGER, '%s.set_txport not implemented'%self.descriptor)
+        log_not_implemented_error(LOGGER, '%s.update_meta_destination not implemented'%self.descriptor)
+
+    def delete_meta_destination(self, destination=all):
+        ''' Clears destination from SPEAD meta data destination list
+        @param desination: unique descriptor string describing destination to be cleared from list
+        '''
+        log_not_implemented_error(LOGGER, '%s.delete_meta_destination not implemented'%self.descriptor)
+
+    def issue_meta(self):
+        ''' Issue SPEAD meta data to all destinations in desination list
+        '''
 
 # end
