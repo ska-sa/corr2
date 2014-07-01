@@ -21,12 +21,10 @@ setup(name='corr2',
         'Topic :: Scientific/Engineering :: Astronomy',
         'Topic :: Software Development :: Libraries :: Python Modules',
         ],
-    install_requires=['katcp', 'matplotlib', 'iniparse', 'numpy', 'spead',
-                      'construct', 'h5py'],
+    install_requires=['casperfpga', 'katcp', 'matplotlib', 'iniparse', 'numpy', 'spead', 'h5py'],
     provides=['corr2'],
-    packages=['corr2', 'corr2.fpgadevice'],
-    package_dir={'corr2': 'src', 'corr2.fpgadevice': 'src/fpgadevice'},
-
+    packages=['corr2'],
+    package_dir={'corr2': 'src'},
     scripts=glob.glob('scripts/*')
 )
 

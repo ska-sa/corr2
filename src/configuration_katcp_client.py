@@ -1,9 +1,11 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-import iniparse, katcp, types
-from corr2 import async_requester
-from misc import log_runtime_error, log_io_error, log_not_implemented_error, log_value_error
+import iniparse
+import katcp
+
+import casperfpga.async_requester as async_requester
+from misc import log_runtime_error, log_io_error, log_value_error
 
 #TODO
 def get_remote_config(host, katcp_port):

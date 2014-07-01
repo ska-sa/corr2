@@ -8,7 +8,7 @@ LOGGER = logging.getLogger(__name__)
 from misc import log_runtime_error
 from corr2.engine import Engine
 
-from corr2.fpgadevice import tengbe
+from casperfpga import tengbe
 
 import numpy, struct
 

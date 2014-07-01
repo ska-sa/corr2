@@ -7,7 +7,7 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from katcp_client_fpga import KatcpClientFpga
+from casperfpga import KatcpClientFpga
 
 class Digitiser(KatcpClientFpga):
     def __init__(self, host_device, port=7147):

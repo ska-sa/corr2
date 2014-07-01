@@ -8,8 +8,6 @@ LOGGER = logging.getLogger(__name__)
 from corr2.xengine import Xengine
 from corr2.engine_fpga import EngineFpga
 
-from corr2.fpgadevice import tengbe
-from misc import log_runtime_error
 
 class XengineFpga(EngineFpga, Xengine):
     '''

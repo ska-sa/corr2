@@ -13,6 +13,7 @@ LOGGER = logging.getLogger(__name__)
 
 from misc import log_runtime_error, log_not_implemented_error 
 
+
 class Host(object):
     '''
     A processing host - Roach board, PC, etc. Hosts processing engines and communicates via a TCP/IP network.

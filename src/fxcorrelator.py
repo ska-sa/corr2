@@ -11,12 +11,9 @@ Created on Feb 28, 2013
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from misc import log_runtime_error, log_io_error, log_not_implemented_error, program_fpgas
-import instrument, katcp_client_fpga, digitiser, fengine,  xengine, types
+from casperfpga.misc import log_not_implemented_error
+import instrument
 
-from corr2.instrument import Instrument
-
-import struct, socket, iniparse, time, numpy
 
 class FxCorrelator(instrument.Instrument):
     '''

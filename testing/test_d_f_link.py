@@ -15,8 +15,8 @@ import logging, time, argparse
 logger = logging.getLogger(__name__)
 #logging.basicConfig(level=logging.INFO)
 
-from corr2.katcp_client_fpga import KatcpClientFpga
-import corr2.scroll as scroll
+from casperfpga import KatcpClientFpga
+import casperfpga.scroll as scroll
 
 dhost = 'roach020958'
 fhosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']

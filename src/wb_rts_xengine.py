@@ -3,7 +3,6 @@ LOGGER = logging.getLogger(__name__)
 
 from corr2.xengine_fpga import XengineFpga
 
-from misc import log_runtime_error
 
 class WbRtsXengine(XengineFpga):
     '''

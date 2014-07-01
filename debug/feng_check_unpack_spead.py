@@ -20,8 +20,8 @@ import sys, logging, time, argparse
 logger = logging.getLogger(__name__)
 #logging.basicConfig(level=logging.INFO)
 
-from corr2.katcp_client_fpga import KatcpClientFpga
-import corr2.scroll as scroll
+from casperfpga import KatcpClientFpga
+import casperfpga.scroll as scroll
 
 parser = argparse.ArgumentParser(description='Display the data unpack counters on the fengine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)

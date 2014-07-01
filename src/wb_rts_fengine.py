@@ -6,9 +6,8 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 from corr2.fengine_fpga import FengineFpga
-from misc import log_runtime_error
 
-import numpy, struct, socket, iniparse
+import numpy
 
 class WbRtsFengine(FengineFpga):
     ''' A FPGA F-engine implemented for RTS
