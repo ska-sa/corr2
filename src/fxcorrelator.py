@@ -6,15 +6,12 @@ Created on Feb 28, 2013
 @author: paulp
 '''
 
-# things all fxcorrelator Instruments do
+# things all fxcorrelators Instruments do
 
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from misc import log_runtime_error, log_io_error, log_not_implemented_error, program_fpgas
-import instrument, katcp_client_fpga, digitiser, fengine,  xengine, types
-
-import struct, socket, iniparse, time, numpy
+from casperfpga.misc import log_not_implemented_error
 
 class FxCorrelator():
     '''

@@ -12,8 +12,8 @@ import sys, logging, time, argparse
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-from corr2.katcp_client_fpga import KatcpClientFpga
-from corr2.fpgadevice import tengbe
+from casperfpga import KatcpClientFpga
+from casperfpga import tengbe
 
 parser = argparse.ArgumentParser(description='Display the contents of an FPGA''s 10Gbe buffers.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)

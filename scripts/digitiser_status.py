@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 from corr2.digitiser import Digitiser
-#import corr2.scroll as scroll
 
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT digitiser.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)

@@ -2,15 +2,12 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 from misc import log_runtime_error, log_io_error, log_not_implemented_error
-import instrument, katcp_client_fpga, digitiser, fengine,  xengine, types
 
-from corr2.fxcorrelator_fpga import FxCorrelatorFpga
+from corr2.fxcorrelator_fpga import FxCorrelatorFpgs
 from corr2.wb_rts_fengine import WbRtsFengine
 from corr2.wb_rts_xengine import WbRtsXengine
 
-import struct, socket, iniparse, time, numpy
-
-class MockRts(FxCorrelatorFpga):
+class MockRts(FxCorrelator):
     '''
     '''
 

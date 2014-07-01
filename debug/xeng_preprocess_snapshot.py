@@ -10,7 +10,7 @@ import logging, argparse
 logger = logging.getLogger(__name__)
 #logging.basicConfig(level=logging.INFO)
 
-from corr2.katcp_client_fpga import KatcpClientFpga
+from casperfpga import KatcpClientFpga
 
 parser = argparse.ArgumentParser(description='Display reorder preprocess snapblock info.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)

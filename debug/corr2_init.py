@@ -13,10 +13,10 @@ logging.basicConfig(level=logging.INFO)
 
 #sys.path.insert(0, '/home/paulp/code/corr2.ska.github/src')
 
-from corr2.katcp_client_fpga import KatcpClientFpga
+from casperfpga import KatcpClientFpga
 from corr2.digitiser import Digitiser
-from corr2.fpgadevice import tengbe
-import corr2.misc as misc
+from casperfpga import tengbe
+import casperfpga.misc as misc
 
 parser = argparse.ArgumentParser(description='Debug the deng-feng connection.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)

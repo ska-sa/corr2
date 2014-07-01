@@ -8,10 +8,12 @@ d-engine TVG data.
 @author: paulp
 """
 
-import numpy, corr2
+import numpy
+
+import casperfpga
 
 feng_hosts = ['roach02091b', 'roach020914', 'roach020958', 'roach020922']
-f = corr2.katcp_client_fpga.KatcpClientFpga(feng_hosts[2])
+f = casperfpga.KatcpClientFpga(feng_hosts[2])
 f.get_system_information()
 snaps = f.snapshots.names()
 if snaps.count('unpack_spead0_ss') == 0:
