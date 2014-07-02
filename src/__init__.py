@@ -2,8 +2,6 @@
 corr2 - control and monitoring for casper-based instruments.
 """
 
-import misc
-
 # import the base corr2 modules
 import engine
 import instrument

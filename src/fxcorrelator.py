@@ -13,6 +13,8 @@ LOGGER = logging.getLogger(__name__)
 
 from casperfpga.misc import log_not_implemented_error
 
+from corr2 import fengine, xengine
+
 class FxCorrelator():
     '''
     A generic FxCorrelator composed of fengines that channelise antenna inputs and xengines that each produce cross products 
@@ -24,12 +26,9 @@ class FxCorrelator():
         # all fxcorrelators must have a config_portal to access configuration information
         if not hasattr(self, 'config_portal'):
             log_runtime_error(LOGGER, 'FxCorrelators can only be ancestors in companion with Instruments with config_portals')
-    
+ 
         # get configuration information
         self._get_fxcorrelator_config()
-
-        self.fengines = []
-        self.xengines = []
 
     ##############################
     ## Configuration information #
@@ -38,12 +37,20 @@ class FxCorrelator():
     def _get_fxcorrelator_config(self):
         '''
         '''
+        # attributes we need   
+        self.n_ants = None
+        self.n_xengines = None
+        self.x_ip_base = None
+        self.x_port = None
+
+        self.fengines = []
+        self.xengines = []
 
     ###################################
     # Host creation and configuration #
     ###################################
 
-    def fxcorrelator_initialise(start_tx_f=True, issue_meta=True):
+    def fxcorrelator_initialise(self, start_tx_f=True, issue_meta=True):
         '''
         @param start_tx_f: start f engine transmission
         '''
@@ -70,16 +77,22 @@ class FxCorrelator():
     ###########################
 
     def create_fengines(self):
-        for fengine_index in range(self.n_ants):
-            engine = self.create_fengine(fengine_index)
-        # from an fxcorrelator's view, it is important that these are in order
-        self.fengines.append(engine) 
+        ''' Generic commands, overload if different
+        '''
+        for ant_id in range(self.n_ants):
+            engine = self.create_fengine(ant_id)
+            # from an fxcorrelator's view, it is important that these are in order
+            self.fengines.append(engine)
+        return self.fengines 
     
     def create_xengines(self):
+        ''' Generic xengine creation, overload if different
+        '''
         for xengine_index in range(self.n_xengines):
             engine = self.create_xengine(xengine_index)
-        # from an fxcorrelator's view, it is important that these are in order
-        self.xengines.append(engine)  
+            # from an fxcorrelator's view, it is important that these are in order
+            self.xengines.append(engine)  
+        return self.xengines
 
     # the specific fxcorrelator must know about it's specific f and x engine components
     def create_fengine(self, ant_id):
@@ -88,7 +101,7 @@ class FxCorrelator():
         '''
         log_not_implemented_error(LOGGER, '%s.create_fengine not implemented'%self.descriptor)
 
-    def create_xengine(self):
+    def create_xengine(self, xengine_index):
         ''' Create an xengine.
         '''
         log_not_implemented_error(LOGGER, '%s.create_xengine not implemented'%self.descriptor)
@@ -133,7 +146,6 @@ class FxCorrelator():
         for xengine in self.xengines:
             xengine.set_txip(txip_str)
             xengine.set_txport(txport)
-
 #TODO   
 #        if issue_meta:
  

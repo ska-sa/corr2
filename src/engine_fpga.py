@@ -241,7 +241,7 @@ class EngineFpga(Engine):
         status['load_time'] = (tl_control0_reg['load_time_msw'] << 32) | (tl_control_reg['load_time_lsw'])
         return status
 
-    def _float2str(self, coeffs, n_bits, bin_pt=0, signed=True):
+    def float2str(self, coeffs, n_bits, bin_pt=0, signed=True):
         ''' Convert floating point coeffs into a string with n_bits of resolution and a binary point at bin_pt 
         @param coeffs: floating point coefficients
         @param n_bits: fixed point number of bits

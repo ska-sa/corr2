@@ -8,7 +8,7 @@ class WbRtsXengine(XengineFpga):
     '''
     The RTS wideband X-engine
     '''
-    def __init__(self, fpga, engine_id=0, host_instrument=None, config_file=None, descriptor='wb_rts_xengine'):
+    def __init__(self, fpga, engine_id=0, host_instrument=None, config_file=None, descriptor='rts_xengine'):
         '''Constructor
         '''
         XengineFpga.__init__(self, fpga, engine_id, host_instrument, config_file, descriptor)

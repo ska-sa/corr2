@@ -5,7 +5,8 @@ import iniparse
 import katcp
 
 import casperfpga.async_requester as async_requester
-from misc import log_runtime_error, log_io_error, log_value_error
+from casperfpga.misc import log_runtime_error, log_io_error, log_value_error
+from casperfpga import types
 
 #TODO
 def get_remote_config(host, katcp_port):

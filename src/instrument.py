@@ -9,12 +9,11 @@ Created on Feb 28, 2013
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from corr2 import host, configuration_katcp_client
-from misc import log_runtime_error, log_not_implemented_error, program_fpgas
+from casperfpga import host, tengbe
+from casperfpga.misc import log_runtime_error, log_not_implemented_error, program_fpgas
+from casperfpga.katcp_client_fpga import KatcpClientFpga
 
-# we know about links to FPGAs
-from corr2.katcp_client_fpga import KatcpClientFpga
-from corr2.fpgadevice import tengbe
+from corr2 import configuration_katcp_client
 
 import time, numpy
 
@@ -121,7 +120,8 @@ class Instrument():
                 #update, removing duplicates
                 tmp.update(host_links)
             return tmp.values()
-        return object.__getattribute__(self, name)
+
+        return object.__getattribute__(name)
     
     #############################
     # Instrument initialisation #
@@ -155,36 +155,45 @@ class Instrument():
     def _create_links_to_hosts(self):
         ''' Create all the links to hosts we need for our engines
         '''
-        # go through engine types, requesting hosts of specified type and configuration
-        # Then create host links for that engine type
-        for engine_type, info in self.config['engines'].items():
-            n_engines = info['n_engines']        
-            engines_per_host = info['engines_per_host']            
-            host_type = info['host_type']            
-            host_configuration = info['host_configuration']            
-            host_links = {}            
-
-            if numpy.mod(n_engines, engines_per_host) != 0:
-                msg = 'Don''t know how to create hosts for %i %ss with %i per host'%(n_engines, engine_type, engines_per_host)
-                log_runtime_error(LOGGER, msg)
-
-            #TODO check info and, for colocated engines, don't request again, but reuse hostnames   
-
-            n_hosts = n_engines/engines_per_host
-
-            #request host names
-            host_names = self.config_portal.get_hosts(host_type, host_configuration, n_hosts)
-
-            if len(host_names) != n_hosts:
-                log_runtime_error(LOGGER, 'Requested %i %s %s hosts, only got %i'%(n_hosts, host_type, host_configuration, len(host_names)))
-
-            host_links = self._init_links_to_hosts_of_type(host_names, host_type)
-
+        # go through engine types
+        for engine_type in self.config['engines']:
+            host_links = self.create_host_links_for_engines_of_type(engine_type)
             self.host_links['%s'%engine_type] = host_links
-          
-            #TODO specific hostnames
-       
-            LOGGER.info('Created %i host links to %s %ss for %ss'%(len(host_links), host_configuration, host_type, engine_type))    
+
+    def create_host_links_for_engines_of_type(self, engine_type):
+        log_not_implemented_error(LOGGER, '%s.create_host_links_for_engines_of_type not implemented' %self.descriptor)
+
+    def instrument_create_host_links_for_engines_of_type(self, engine_type):
+        ''' Generic instrument version
+        '''
+        info = self.config['engines']['%s' %engine_type]
+        n_engines = info['n_engines']        
+        engines_per_host = info['engines_per_host']            
+        host_type = info['host_type']            
+        host_configuration = info['host_configuration']            
+        host_links = {}            
+
+        if numpy.mod(n_engines, engines_per_host) != 0:
+            msg = 'Don''t know how to create hosts for %i %ss with %i per host'%(n_engines, engine_type, engines_per_host)
+            log_runtime_error(LOGGER, msg)
+
+        #TODO check info and, for colocated engines, don't request again, but reuse hostnames   
+
+        n_hosts = n_engines/engines_per_host
+
+        #request host names
+        host_names = self.config_portal.get_hosts(host_type, host_configuration, n_hosts)
+
+        if len(host_names) != n_hosts:
+            log_runtime_error(LOGGER, 'Requested %i %s %s hosts, only got %i'%(n_hosts, host_type, host_configuration, len(host_names)))
+
+        host_links = self._init_links_to_hosts_of_type(host_names, host_type)
+
+        #TODO specific hostnames
+
+        LOGGER.info('Created %i host links to %s %ss for %ss'%(len(host_links), host_configuration, host_type, engine_type))
+
+        return host_links    
 
     def _init_links_to_hosts_of_type(self, host_names, host_type):
         ''' Initialise links to hosts of particular type and configuration 
@@ -354,9 +363,7 @@ class Instrument():
         log_not_implemented_error(LOGGER, '%s.instrument_teardown not implemented'%self.descriptor)
 
     def __str__(self):
-        returnstr = '%s: %s\n' % (self.name, self.description)
-        for node in self.hosts.itervalues():
-            returnstr += '\t%s\n' % node
+        returnstr = '%s' % (self.descriptor)
         return returnstr
    
 # end

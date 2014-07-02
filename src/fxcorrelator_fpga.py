@@ -1,13 +1,11 @@
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from misc import log_runtime_error, log_io_error, log_not_implemented_error, log_value_error
-import instrument, fengine,  xengine
+from casperfpga.misc import log_runtime_error, log_io_error, log_not_implemented_error, log_value_error
+from corr2 import instrument
 
 from corr2.instrument import Instrument
 from corr2.fxcorrelator import FxCorrelator
-
-import struct, socket, iniparse, time, numpy
 
 class FxCorrelatorFpga(FxCorrelator, Instrument):
     ''' FX Correlator implemented using FPGAs
@@ -19,6 +17,13 @@ class FxCorrelatorFpga(FxCorrelator, Instrument):
         Instrument.__init__(self, descriptor, config_host, katcp_port, config_file)
         FxCorrelator.__init__(self)
 
+        self.xhosts = []
+        self.fhosts = []
+        self.f_per_host = 0
+        self.x_per_host = 0
+        self.n_ants = 0
+        self.n_xengines = 0
+
         self.fxcorrelator_fpga_config()
 
     def fxcorrelator_fpga_config(self):
@@ -28,11 +33,6 @@ class FxCorrelatorFpga(FxCorrelator, Instrument):
         self.config['rev_pol_map'] = {0:'x', 1:'y'}
         self.config['pols'] = ['x', 'y']
     
-    def __getattribute__(self, name):
-        '''Overload __getattribute__ to make shortcuts for getting object data.
-        '''
-        return Instrument.__getattribute__(self, name)
-
     def fxcorrelator_fpga_initialise(self, configure_hosts=True, setup_hosts=True, fft_shift=True, set_eq=True, start_tx_f=True, issue_meta=True):
         '''
         '''
@@ -74,12 +74,42 @@ class FxCorrelatorFpga(FxCorrelator, Instrument):
         ''' 
         log_not_implemented_error(LOGGER, '%s.create_engines_of_type not implemented'%self.descriptor)
 
+    def create_fengine(self, ant_id):
+
+        # index of host
+        host_index = ant_id/self.f_per_host
+        # index in FPGA
+        engine_index = ant_id%self.f_per_host
+        
+        if len(self.fhosts) <= host_index:
+            log_runtime_error(LOGGER, 'Trying to create an fengine with index greater than the number of host_links we have')
+
+        host_link = self.fhosts[host_index]
+        fengine = self.create_fengine_fpga(ant_id, host_link, engine_index)
+        return fengine
+
+    def create_xengine(self, xengine_index):
+        
+        # index of host
+        host_index = xengine_index/self.x_per_host
+        # index in FPGA
+        engine_index = xengine_index%self.x_per_host
+
+        # number of existing xengines in system
+        if len(self.xhosts) <= host_index:
+            log_runtime_error(LOGGER, 'Trying to create an xengine with index greater than the number of host_links we have')
+
+        # host it belongs in
+        host_link = self.xhosts[host_index]
+        xengine = self.create_xengine_fpga(host_link, engine_index)
+        return xengine
+
     ####################
     # Normal operation #
     ####################
 
     def ant_str_to_tuples(self, ant_str=all):
-        ''' Get (ant_index, pol_index) tuples corresponding to ant_str
+        ''' Get (fengine, pol_index) tuples corresponding to ant_str
         '''
         if not (len(self.fengines) == self.n_ants):
             log_runtime_error(LOGGER, 'The number of fengines in our system (%d) does not match the number required (%d)'%(len(self.fengines), self.n_ants))

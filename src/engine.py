@@ -9,10 +9,11 @@ Created on Feb 28, 2013
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from corr2 import host, instrument, configuration_katcp_client
-from corr2.katcp_client_fpga import KatcpClientFpga
+from corr2 import instrument, configuration_katcp_client
+from casperfpga import host
 
-from misc import log_runtime_error, log_not_implemented_error
+from casperfpga.katcp_client_fpga import KatcpClientFpga
+from casperfpga.misc import log_runtime_error, log_not_implemented_error
 
 class Engine(object):
     '''

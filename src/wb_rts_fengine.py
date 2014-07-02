@@ -21,7 +21,7 @@ class WbRtsFengine(FengineFpga):
             @param instrument: instrument it is part of
             @param descriptor: description of fengine
         '''
-        FengineFpga.__init__(self, ant_id, host_device, engine_id, host_instrument, config_file, descriptor)
+        FengineFpga.__init__(self, ant_id, fpga, engine_id, host_instrument, config_file, descriptor)
         
         self._get_wb_rts_fengine_config()
 
