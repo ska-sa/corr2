@@ -3,8 +3,7 @@ LOGGER = logging.getLogger(__name__)
 
 from corr2.xengine_fpga import XengineFpga
 
-
-class WbRtsXengine(XengineFpga):
+class RtsXengine(XengineFpga):
     '''
     The RTS wideband X-engine
     '''

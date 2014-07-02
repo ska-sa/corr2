@@ -5,7 +5,7 @@ from casperfpga.misc import log_runtime_error, log_io_error, log_not_implemented
 
 from corr2.fxcorrelator_fpga import FxCorrelatorFpga
 from corr2.wb_rts_fengine import WbRtsFengine
-from corr2.wb_rts_xengine import WbRtsXengine
+from corr2.rts_xengine import RtsXengine
 
 class MockRts(FxCorrelatorFpga):
     '''
@@ -105,7 +105,7 @@ class MockRts(FxCorrelatorFpga):
     def create_xengine_fpga(self, host_link, engine_index):
         ''' Create an xengine
         '''
-        xeng = WbRtsXengine(host_link, engine_index, self)
+        xeng = RtsXengine(host_link, engine_index, self)
         return xeng
 
     ####################

@@ -14,7 +14,7 @@ import xengine
 import fengine_fpga
 import xengine_fpga
 import wb_rts_fengine
-import wb_rts_xengine
+import rts_xengine
 import mock_rts
 import instrument
 import fxcorrelator
