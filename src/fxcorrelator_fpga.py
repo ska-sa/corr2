@@ -17,12 +17,12 @@ class FxCorrelatorFpga(FxCorrelator, Instrument):
         Instrument.__init__(self, descriptor, config_host, katcp_port, config_file)
         FxCorrelator.__init__(self)
 
-        self.xhosts = []
-        self.fhosts = []
-        self.f_per_host = 0
-        self.x_per_host = 0
-        self.n_ants = 0
-        self.n_xengines = 0
+        self.xhosts = None 
+        self.fhosts = None
+        self.f_per_host = None
+        self.x_per_host = None
+        self.n_ants = None
+        self.n_xengines = None
 
         self.fxcorrelator_fpga_config()
 

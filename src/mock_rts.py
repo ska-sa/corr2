@@ -41,7 +41,7 @@ class MockRts(FxCorrelatorFpga):
         '''
         '''
         # do generic instrument setup first
-        self.fxcorrelator_fpga_initialise(configure_hosts=configure_hosts, setup_hosts=setup_hosts, fft_shift=fft_shift, set_eq=set_eq, start_tx_f=start_tx_f, issue_meta=issue_meta)
+        self.fxcorrelator_fpga_initialise(configure_hosts=configure_hosts, setup_hosts=setup_hosts, fft_shift=fft_shift, set_eq=set_eq, start_tx_f=start_tx_f, issue_meta=True)
 
     ##############
     # Host setup #
@@ -99,14 +99,12 @@ class MockRts(FxCorrelatorFpga):
     def create_fengine_fpga(self, ant_id, host_link, engine_index):
         ''' Create an fengine
         '''
-
         feng = WbRtsFengine(ant_id, host_link, engine_index, self)
         return feng
 
     def create_xengine_fpga(self, host_link, engine_index):
         ''' Create an xengine
         '''
-        
         xeng = WbRtsXengine(host_link, engine_index, self)
         return xeng
 

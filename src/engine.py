@@ -106,7 +106,7 @@ class Engine(object):
         return self.host.ping()
 
     def __str__(self):
-        return '%s @ %s,%s,%i' % (self.descriptor, self.instrument, self.host, self.id)
+        return '%s component of %s @ offset %i in %s' % (self.descriptor, self.instrument, self.id, self.host)
 
     ###########
     # status  #

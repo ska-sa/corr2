@@ -173,6 +173,5 @@ class FxCorrelator():
            are implemented by the child class
         '''
         #TODO
-        log_not_implemented_error(LOGGER, '%s.fxcorrelator_issue_meta not implemented'%self.descriptor)
 
 # end
