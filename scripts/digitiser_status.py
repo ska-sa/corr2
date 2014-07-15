@@ -9,7 +9,11 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
-import logging, time, curses, argparse, copy
+import logging
+import time
+import curses
+import argparse
+import copy
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

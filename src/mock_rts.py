@@ -8,19 +8,19 @@ from corr2.wb_rts_fengine import WbRtsFengine
 from corr2.rts_xengine import RtsXengine
 
 class MockRts(FxCorrelatorFpga):
-    '''
-    '''
+    """
+    """
 
     def __init__(self, config_file, descriptor='mock_rts'):
-        '''
-        '''
+        """
+        """
         FxCorrelatorFpga.__init__(self, descriptor, None, None, config_file)
 
         self.mock_rts_config()
 
     def mock_rts_config(self):
-        '''
-        '''
+        """
+        """
 
         # settings required by FxCorrealatorFpga
         n_ants = self.config_portal.get_int(['%s'%self.descriptor, 'n_ants'])
@@ -38,8 +38,8 @@ class MockRts(FxCorrelatorFpga):
         self.x_port = self.config['engines']['rts_xengine']['port']
 
     def initialise(self, configure_hosts=True, setup_hosts=True, fft_shift=True, set_eq=True, start_tx_f=True, issue_meta=True):
-        '''
-        '''
+        """
+        """
         # do generic instrument setup first
         self.fxcorrelator_fpga_initialise(configure_hosts=configure_hosts, setup_hosts=setup_hosts, fft_shift=fft_shift, set_eq=set_eq, start_tx_f=start_tx_f, issue_meta=True)
 
@@ -48,8 +48,8 @@ class MockRts(FxCorrelatorFpga):
     ##############
 
     def setup_hosts_for_engines_of_type(self, engine_type):
-        ''' 
-        '''
+        """
+        """
         # we know that these engines can be set up in a standard fashion
         if engine_type == 'wb_rts_fengine' or engine_type == 'rts_xengine':
             # use default instrument setup
@@ -77,10 +77,10 @@ class MockRts(FxCorrelatorFpga):
 
     # needed by Instrument
     def create_engines_of_type(self, engine_type):
-        ''' Create a new engine of specified type using link provided and info
+        """ Create a new engine of specified type using link provided and info
             This should be created in instrument being implemented as it helps
             generic instruments create engines with the same capabilities
-        ''' 
+        """
 
         # we know that these engines are what the fxcorrelator knows of as f engines so call it
         # It will call our create_fengine method in turn
@@ -97,14 +97,14 @@ class MockRts(FxCorrelatorFpga):
         return []
 
     def create_fengine_fpga(self, ant_id, host_link, engine_index):
-        ''' Create an fengine
-        '''
+        """ Create an fengine
+        """
         feng = WbRtsFengine(ant_id, host_link, engine_index, self)
         return feng
 
     def create_xengine_fpga(self, host_link, engine_index):
-        ''' Create an xengine
-        '''
+        """ Create an xengine
+        """
         xeng = RtsXengine(host_link, engine_index, self)
         return xeng
 
@@ -113,8 +113,8 @@ class MockRts(FxCorrelatorFpga):
     ####################
 
     def issue_meta(self):
-        '''
-        '''
+        """
+        """
         # use the generic fxcorrelator SPEAD meta data issue command
         self.fxcorrelator_fpga_issue_meta()
     

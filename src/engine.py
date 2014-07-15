@@ -1,76 +1,46 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
-'''
+"""
 Created on Feb 28, 2013
 
 @author: paulp
-'''
+"""
 
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from corr2 import instrument, configuration_katcp_client
-from casperfpga import host
-
-from casperfpga.katcp_client_fpga import KatcpClientFpga
-from casperfpga.misc import log_runtime_error, log_not_implemented_error
 
 class Engine(object):
-    '''
-    A compute engine of some kind, hosted on a Host, optionally part of an instrument. 
+    """
+    A compute engine of some kind, hosted on a Host, optionally part of an instrument.
+    Takes data in, gives data out, via its host.
     Produces SPEAD data products
-    '''
-    def __init__(self, host_device, engine_id, host_instrument=None, config_file=None, descriptor='engine'):
-        '''Constructor
-        @param host_device: the device that hosts this engine
-        @param engine_id: unique id for this engine type on host 
-        @param host_instrument: the Instrument it is part of 
-        @param config_file: configuration if engine is to be used not as part of Instrument
-        @param descriptor: section in config to locate engine specific info at
-        '''
-        if not isinstance(descriptor, str):
-            log_runtime_error(LOGGER, 'descriptor provided is not a string')
-
-        self.descriptor = descriptor
-
-        self.instrument = None
-        if host_instrument != None:
-            #if a config file is provided, get config from there, otherwise use host Instrument's
-            if not isinstance(host_instrument, instrument.Instrument):
-                log_runtime_error(LOGGER, 'instrument provided is not an Instrument')
-            else:
-                self.instrument = host_instrument
-
-        if not isinstance(host_device, host.Host):
-            log_runtime_error(LOGGER, 'host provided is not an Host')
+    """
+    def __init__(self, host_device, engine_id):
+        """Constructor
+        @param host_device: the network-accessible device that hosts this engine
+        @param engine_id: unique id for this engine type on host - number, string, something?
+        """
         self.host = host_device
+        self.engine_id = engine_id
 
-        if not isinstance(engine_id, int):
-            log_runtime_error(LOGGER, 'engine_id provided is not an int')
-        self.id = engine_id
+        self.update_config()
 
-        self.config_portal = None
-        #if no config file given
-        if config_file == None:
-            if self.instrument == None:
-                log_runtime_error(LOGGER, 'No way to get config')
-            # get config from instrument it is a part of
-            self.config_portal = self.instrument.config_portal
-        else:
-            # create new configuration portal
-            self.config_portal = configuration_katcp_client.ConfigurationKatcpClient(config_file=config_file)
+        LOGGER.info('%s %s initialised', self.__class__.__name__, str(self))
 
-        self.config = {}
-        self._get_engine_config()
+    def update_config(self):
+        """
+        Update the configuration for this engine.
+        This should be implemented by a child implementation.
+        """
+        raise NotImplementedError
 
-        #TODO SPEAD
-        self.spead_transmitter = None
-
-        LOGGER.info('Initialised %s', str(self))
-
+    '''
     def _get_engine_config(self):
-        ''' COnfiguration info needed by all processing engines
-        '''
+        """ Configuration info needed by all processing engines
+        """
+        raise NotImplementedError
+
         #TODO check for descriptor section in config
         if not self.ping():
             log_runtime_error(LOGGER, 'Host not pingable')
@@ -99,96 +69,99 @@ class Engine(object):
             self.config['data_product']['name'] = '%s'%product
             self.config['data_product']['txport'] = txport
             self.config['data_product']['txip_str'] = txip_str
+    '''
 
     def ping(self):
-        '''Test connection to Engine Host
-        '''
+        """
+        Test connection to Engine Host.
+        """
         return self.host.ping()
 
-    def __str__(self):
-        return '%s component of %s @ offset %i in %s' % (self.descriptor, self.instrument, self.id, self.host)
 
     ###########
-    # status  #
+    # Status  #
     ###########
 
     def clear_status(self):
-        ''' Clear status related to this engine
-        '''
-        log_not_implemented_error(LOGGER, '%s.clear_status not implemented'%self.descriptor)
-    
+        """
+        Clear status related to this engine.
+        """
+        raise NotImplementedError
+
     def get_status(self):
-        ''' Get status related to this engine
-        '''
-        log_not_implemented_error(LOGGER, '%s.get_status not implemented'%self.descriptor)
+        """
+        Get status related to this engine.
+        """
+        raise NotImplementedError
 
     ###############
     #  Data input #
     ###############
 
     def is_receiving_valid_data(self):
-        ''' Is receiving valid data
-        '''
-        log_not_implemented_error(LOGGER, '%s.is_receiving_valid_data not implemented'%self.descriptor)
+        """ Is receiving valid data
+        """
+        raise NotImplementedError
 
     #####################
     # SPEAD data output #
     #####################
 
     def set_txip(self, txip_str=None, issue_spead=True):
-        ''' Set base transmission IP for SPEAD output
+        """ Set base transmission IP for SPEAD output
         @param txip_str: IP address in string form
-        '''
-        log_not_implemented_error(LOGGER, '%s.set_txip not implemented'%self.descriptor)
+        """
+        raise NotImplementedError
     
     def get_txip(self):
-        log_not_implemented_error(LOGGER, '%s.get_txip not implemented'%self.descriptor)
+        raise NotImplementedError
  
     def set_txport(self, txport=None, issue_meta=True):
-        ''' Set transmission port for SPEAD output
+        """ Set transmission port for SPEAD output
         @param txport: transmission port as integer
-        '''
-        log_not_implemented_error(LOGGER, '%s.set_txport not implemented'%self.descriptor)
+        """
+        raise NotImplementedError
     
     def get_txport(self):
-        log_not_implemented_error(LOGGER, '%s.get_txport not implemented'%self.descriptor)
+        raise NotImplementedError
 
     def is_producing_valid_data(self):
-        ''' Is producing valid data ready for SPEAD output
-        '''
-        log_not_implemented_error(LOGGER, '%s.is_producing_valid_data not implemented'%self.descriptor)
+        """ Is producing valid data ready for SPEAD output
+        """
+        raise NotImplementedError
     
     def start_tx(self):
-        ''' Start SPEAD data transmission
-        '''
-        log_not_implemented_error(LOGGER, '%s.start_tx not implemented'%self.descriptor)
+        """ Start SPEAD data transmission
+        """
+        raise NotImplementedError
     
     def stop_tx(self, issue_meta=True):
-        ''' Stop SPEAD data transmission
+        """ Stop SPEAD data transmission
         @param issue_meta: Issue SPEAD meta data informing receivers of stopped stream
-        '''
-        log_not_implemented_error(LOGGER, '%s.stop_tx not implemented'%self.descriptor)
+        """
+        raise NotImplementedError
 
     #########################
     # SPEAD meta-data output #
     #########################
 
     def update_meta_destination(self, destination, txip_str, txport):
-        ''' Update a destination for SPEAD meta data output. Create a new one if not yet existing
-        @param destination: unique descriptor string describing destination 
+        """ Update a destination for SPEAD meta data output. Create a new one if not yet existing
+        @param destination: unique descriptor string describing destination
         @param txip_str: IP address in string form (takes preference)
         @param txport: transmission port as integer
-        '''
-        log_not_implemented_error(LOGGER, '%s.update_meta_destination not implemented'%self.descriptor)
+        """
+        raise NotImplementedError
 
     def delete_meta_destination(self, destination=all):
-        ''' Clears destination from SPEAD meta data destination list
+        """ Clears destination from SPEAD meta data destination list
         @param desination: unique descriptor string describing destination to be cleared from list
-        '''
-        log_not_implemented_error(LOGGER, '%s.delete_meta_destination not implemented'%self.descriptor)
+        """
+        raise NotImplementedError
 
     def issue_meta(self):
-        ''' Issue SPEAD meta data to all destinations in desination list
-        '''
+        """ Issue SPEAD meta data to all destinations in desination list
+        """
+        raise NotImplementedError
 
 # end

@@ -1,6 +1,6 @@
-'''
+"""
 @author: andrew
-'''
+"""
 
 import logging
 LOGGER = logging.getLogger(__name__)
@@ -13,18 +13,18 @@ from misc import log_runtime_error, log_value_error
 import numpy
 
 class XengineFpga(EngineFpga, Xengine):
-    '''
+    """
     An X-engine, resident on an FPGA
     Pre accumulation is applied to output products before longer term accumulation in vector accumulators
-    '''
+    """
     def __init__(self, fpga, engine_id, host_instrument, config_file=None, descriptor='xengine_fpga'):
-        ''' Constructor
+        """ Constructor
         @param fpga: fpga host the xengine is resident on
         @param engine_id: offset within FPGA xengine resides at
         @param host_instrument: instrument the engine is a part of, used to get configuration info
         @param config_file: name of file if engine not part of instrument
         @param descriptor: name of FPGA xengine type. Used to locate configuration information
-        ''' 
+        """
         EngineFpga.__init__(self, fpga, engine_id, host_instrument, config_file, descriptor)
         Xengine.__init__(self)
         
@@ -36,8 +36,8 @@ class XengineFpga(EngineFpga, Xengine):
         self.config['acc_len'] = self.config_portal.get_int(['%s' %self.descriptor, 'acc_len'])
 
     def __getattribute__(self, name):
-        ''' Overload __getattribute__ to make shortcuts for getting object data.
-        '''
+        """ Overload __getattribute__ to make shortcuts for getting object data.
+        """
         if name == 'control':
             return self.host.device_by_name('ctrl')
         elif name == 'status':
@@ -48,15 +48,15 @@ class XengineFpga(EngineFpga, Xengine):
         return EngineFpga.__getattribute__(self, name)
 
     def set_accumulation_length(self, accumulation_length=None, issue_meta=True):
-        ''' Set the accumulation time for the vector accumulator
+        """ Set the accumulation time for the vector accumulator
         @param accumulation_length: the accumulation time in spectra. If None default used.
         @param issue_meta: issue SPEAD meta data indicating the change in time
         @returns: the actual accumulation time in seconds
-        '''
+        """
         if not isinstance(accumulation_length, int):
             log_value_error(LOGGER, 'accumulation length %d must be an integer number of spectra' %accumulation_length)
 
-        if accumulation_length == None:
+        if accumulation_length is None:
             accumulation_length=self.config['vacc_len']
         
         acc_len = self.config['acc_len']
@@ -67,9 +67,9 @@ class XengineFpga(EngineFpga, Xengine):
         return vacc_len*acc_len
 
     def get_accumulation_length(self):
-        ''' Get the current accumulation time of the vector accumulator
+        """ Get the current accumulation time of the vector accumulator
         @returns: the accumulation time in spectra
-        '''
+        """
         acc_len = self.config['acc_len']
         vacc_len = self.vacc_len.read()['data']['reg'] 
         return vacc_len * acc_len

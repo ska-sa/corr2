@@ -1,36 +1,38 @@
+"""
+Small KATCP server
+"""
+
 import logging
 LOGGER = logging.getLogger(__name__)
 
 import iniparse
 import katcp
 
-import casperfpga.async_requester as async_requester
-from casperfpga.misc import log_runtime_error, log_io_error, log_value_error
-from casperfpga import types
+synchronisation-epoch
 
 #TODO
 def get_remote_config(host, katcp_port):
-    '''Connects to katcp daemon on remote host and gets config, constructing dictionary
-    '''
+    """Connects to katcp daemon on remote host and gets config, constructing dictionary
+    """
     log_runtime_error(LOGGER, 'Can''t get remote config yet')
 
-class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackClient):
-    '''A container class for accessing configuration information. 
-    '''
+class ConfigurationKatcpClient(katcp.CallbackClient):
+    """A container class for accessing configuration information.
+    """
     def __init__(self, config_host=None, katcp_port=None, config_file=None):
-        '''Constructor
+        """Constructor
         @param config_host: host name of server containing daemon serving configuration information via katcp
         @param katcp_port: port number configuration daemon is listening on
         @param config_file: file containing configuration information (overrides katcp)
-        '''
-        if config_file == None and (config_host == None or katcp_port == None):
+        """
+        if config_file is None and (config_host is None or katcp_port is None):
             log_runtime_error(LOGGER, 'Need a configuration file name or katcp host location')
             
         self.source = None
         self.config_host = ''
         self.katcp_port = 0
 
-        if config_file != None:
+        if config_file is not None:
             try:
                 fptr = open(config_file, 'r')
             except:
@@ -64,15 +66,15 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
                     self.hosts['%s'%host_type]['%s'%host_configuration] = self.get_str_list(['%s'%host_type, '%s'%host_configuration])            
 
     def get_hosts(self, host_type='roach2', host_configuration='all', number=None, hostnames=None):
-        ''' Request hosts for use
+        """ Request hosts for use
         @param hostnames: specific host names
         @param host_type: type of host if not specific
         @param number: number of type if not specific
         @return hostnames if available or empty list if not
-        '''
+        """
         if self.source == 'file':
             hosts = list()
-            if hostnames==None:
+            if hostnames is None:
                 avail_hosts = self.hosts['%s'%host_type]['%s'%host_configuration]
                 hosts.extend(avail_hosts[0:number])
                 avail_hosts = avail_hosts[number:len(avail_hosts)]
@@ -85,8 +87,8 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
             log_runtime_error(LOGGER, 'Don''t know how to get hosts via katcp yet')
  
     def return_hosts(self, hostnames, host_type='roach2', host_configuration='all'):
-        ''' Return hosts to the pool
-        '''
+        """ Return hosts to the pool
+        """
         #check type
         if self.source == 'file':
             self.host_pool['%s'%host_type]['%s'%host_configuration].extend(hostnames)
@@ -95,10 +97,10 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
             #TODO katcp stuff
 
     def get_string(self, target, fail_hard=True):
-        '''Get configuration string 
+        """Get configuration string
         @param target: list describing parameter
         @param fail_hard: throw exception on failure to locate target
-        '''
+        """
         if not isinstance(target, list):
             log_runtime_error(LOGGER, 'Configuration target must be a list in the form [section, name]')
         
@@ -114,7 +116,7 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
             if isinstance(section, iniparse.config.Undefined):
                 string = None
                 msg = 'Asked for unknown section \'%s\''% (target[0])
-                if fail_hard==True:
+                if fail_hard:
                     log_runtime_error(LOGGER, msg)
                 else:
                     LOGGER.warning(msg)
@@ -123,7 +125,7 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
                 if isinstance(string, iniparse.config.Undefined):
                     string = None
                     msg = 'Asked for unknown parameter \'%s\' in section \'%s\''% (target[1], target[0])
-                    if fail_hard==True:
+                    if fail_hard:
                         log_runtime_error(LOGGER, msg)
                     else:
                         LOGGER.warning(msg)
@@ -135,11 +137,11 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
         return string
 
     def get_str_list(self, target, fail_hard=True): 
-        '''Get configuration list
-        '''
+        """Get configuration list
+        """
         string = self.get_string(target, fail_hard)
 
-        if string != None:
+        if string is not None:
             try:
                 value = string.split(types.LISTDELIMIT)
             except ValueError:
@@ -149,10 +151,10 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
             return None
 
     def get_int(self, target, fail_hard=True): 
-        '''Get configuration int
-        '''
+        """Get configuration int
+        """
         string = self.get_string(target, fail_hard)
-        if string != None:
+        if string is not None:
             try:
                 value = int(string)
             except ValueError:
@@ -162,11 +164,11 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
             return None
 
     def get_int_list(self, target, fail_hard=True): 
-        '''Get configuration list
-        '''
+        """Get configuration list
+        """
         string = self.get_string(target, fail_hard)
 
-        if string != None:
+        if string is not None:
             try:
                 str_list = string.split(types.LISTDELIMIT)
             except ValueError:
@@ -185,10 +187,10 @@ class ConfigurationKatcpClient(async_requester.AsyncRequester, katcp.CallbackCli
 
 
     def get_float(self, target, fail_hard=True): 
-        '''Get configuration float
-        '''
+        """Get configuration float
+        """
         string = self.get_string(target, fail_hard)
-        if string != None:
+        if string is not None:
             try:
                 value = float(string)
             except ValueError:
