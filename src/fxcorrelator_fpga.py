@@ -2,10 +2,9 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 from casperfpga.misc import log_runtime_error, log_io_error, log_not_implemented_error, log_value_error
-from corr2 import instrument
 
-from corr2.instrument import Instrument
-from corr2.fxcorrelator import FxCorrelator
+from instrument import Instrument
+from fxcorrelator import FxCorrelator
 
 class FxCorrelatorFpga(FxCorrelator, Instrument):
     """ FX Correlator implemented using FPGAs

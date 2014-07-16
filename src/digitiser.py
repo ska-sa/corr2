@@ -1,13 +1,12 @@
-# pylint: disable-msg=C0103
-# pylint: disable-msg=C0301
 """
 @author: paulp
 """
 
 import logging
+from casperfpga import KatcpClientFpga
+
 LOGGER = logging.getLogger(__name__)
 
-from casperfpga import KatcpClientFpga
 
 class Digitiser(KatcpClientFpga):
     def __init__(self, host_device, port=7147):

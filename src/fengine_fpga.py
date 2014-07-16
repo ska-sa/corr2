@@ -1,6 +1,4 @@
 import logging
-import numpy
-
 from fengine import Fengine
 from engine_fpga import EngineCasperFpga
 
@@ -28,14 +26,14 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
         Update necessary values from a config dictionary/server
         :return:
         """
-        self.sample_bits = config_source['fengine']['sample_bits']
-        self.adc_demux_factor = config_source['fengine']['adc_demux_factor']
-        self.bandwidth = config_source['fengine']['bandwidth']
-        self.true_cf = config_source['fengine']['true_cf']
-        self.n_chans = config_source['fengine']['n_chans']
-        self.min_load_time = config_source['fengine']['min_load_time']
-        self.network_latency_adjust = config_source['fengine']['network_latency_adjust']
-        self.n_pols = config_source['fengine']['num_pols']
+        self.sample_bits = int(config_source['fengine']['sample_bits'])
+        self.adc_demux_factor = int(config_source['fengine']['adc_demux_factor'])
+        self.bandwidth = int(config_source['fengine']['bandwidth'])
+        self.true_cf = int(config_source['fengine']['true_cf'])
+        self.n_chans = int(config_source['fengine']['n_chans'])
+        self.min_load_time = int(config_source['fengine']['min_load_time'])
+        self.network_latency_adjust = int(config_source['fengine']['network_latency_adjust'])
+        self.n_pols = int(config_source['fengine']['num_pols'])
 
     def __str__(self):
         return 'Fengine id %d @ %s' % (self.engine_id, self.host)

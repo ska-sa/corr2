@@ -1,5 +1,3 @@
-# pylint: disable-msg=C0103
-# pylint: disable-msg=C0301
 """
 Created on Feb 28, 2013
 

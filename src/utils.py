@@ -5,11 +5,13 @@ import casperfpga
 from ConfigParser import SafeConfigParser
 
 
-def parse_ini_file(ini_file, required_sections=[]):
+def parse_ini_file(ini_file, required_sections=None):
         """
         Parse an ini file into a dictionary. No checking done at all.
         :return:
         """
+        if required_sections is None:
+            required_sections = []
         parser = SafeConfigParser()
         files = parser.read(ini_file)
         if len(files) == 0:

@@ -29,11 +29,12 @@ class EngineCasperFpga(Engine):
         """
         Engine.__init__(self, fpga_host, engine_id, config_source)
 
-        # try:
-        #     self.control_reg = self.host.registers['control%d' % engine_id]
-        #     self.status_reg = self.host.registers['status%d' % engine_id]
-        # except AttributeError:
-        #     LOGGER.error('Provided FpgaHost object does not have necessary control and status registers.')
+        try:
+            self.control_reg = self.host.registers['control%d' % engine_id]
+            self.status_reg = self.host.registers['status%d' % engine_id]
+        except AttributeError:
+            LOGGER.error('Provided FpgaHost object does not have necessary control and status registers.')
+            raise RuntimeError('Provided FpgaHost object does not have necessary control and status registers.')
 
         LOGGER.info('Casper FPGA engine created: host %s, engine_id %s', self.host, str(self.engine_id))
 

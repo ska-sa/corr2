@@ -5,9 +5,9 @@
 """
 
 import logging
-LOGGER = logging.getLogger(__name__)
-
 from engine import Engine
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Xengine(Engine):
@@ -15,10 +15,10 @@ class Xengine(Engine):
     A Cross-correlation (X) Engine.
     X-engines cross multiply a subset of channels from a number of fengines and accumulate the result
     """
-    def __init__(self, host_device, engine_id):
+    def __init__(self, host_device, engine_id, config_source):
         """
         """
-        super(Xengine, self).__init__(host_device, engine_id)
+        Engine.__init__(self, host_device, engine_id, config_source)
 
         # check that we have all the required attributes for an f-engine
         assert hasattr(self, 'vacc_len'), 'x-engine must have a vector accumulator length'

@@ -7,11 +7,11 @@ Created on Feb 28, 2013
 # things all fxcorrelators Instruments do
 
 import logging
+from host_fpga import FpgaHost
+from instrument import Instrument
+
 LOGGER = logging.getLogger(__name__)
 
-from fpgahost import FpgaHost
-from instrument import Instrument
-from fengine import Fengine
 
 class FxCorrelator(Instrument):
     """
