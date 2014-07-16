@@ -1,5 +1,3 @@
-# pylint: disable-msg=C0103
-# pylint: disable-msg=C0301
 """
 Created on Feb 28, 2013
 
@@ -8,8 +6,6 @@ Created on Feb 28, 2013
 
 import logging
 LOGGER = logging.getLogger(__name__)
-
-from engine import Engine
 
 
 class Host(object):
@@ -24,7 +20,7 @@ class Host(object):
         """
         self.host = host
         self.katcp_port = katcp_port
-        self.engines = []
+        self.engines = {}
 
     def initialise(self):
         """Initialise this host node to its normal running state.
@@ -44,32 +40,23 @@ class Host(object):
         raise NotImplementedError('%s.is_running() not implemented' % self.host)
 
     def add_engine(self, new_engine):
-        """Add an engine to this node.
-        @param engine: the Engine object to add to this Host.
         """
-        if not isinstance(new_engine, Engine):
-            raise TypeError('new engine is not an Engine')
+        Add an compute engine to this node.
+        :param new_engine:
+        :return: <nothing>
+        """
         if new_engine in self.engines:
             raise ValueError('engine_id %s already on host %s' % (new_engine.engine_id, self.host))
-        new_engine.host = self
+        new_engine.set_host(self)
         self.engines[new_engine.id] = new_engine
 
-    def get_engine(self, engine_class, engine_id=None):
-        """Get an engine based on engine_id and engine_class. If no engine_id is passed, all engines of the given type will be returned.
-        @param engine_id: the unique id of the engine to return.
-        @param engine_class: the engine class to look for.
+    def get_engine(self, engine_id):
         """
-        if engine_id is not None:
-            engine_obj = self.engines[engine_id]
-            if isinstance(engine_obj, engine_class):
-                return {engine_id: engine_obj}
-            else:
-                log_runtime_error(LOGGER, 'Engine %i exists but is type %s not %s' % (engine_id, type(engine_obj), engine_class))
-        engines = {}
-        for engine_obj in self.engines.values():
-            if isinstance(engine_obj, engine_class):
-                engines[engine_obj.id] = engine_obj
-        return engines
+        Get an engine based on engine_id. If no engine_id is passed, all engines will be returned.
+        :param engine_id: the unique id of the engine to return.
+        :return:
+        """
+        return self.engines[engine_id]
 
     def __str__(self):
         return '%s@%s' % (self.host, self.katcp_port)

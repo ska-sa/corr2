@@ -1,47 +1,46 @@
 import logging
-LOGGER = logging.getLogger(__name__)
-
-from corr2.fengine import Fengine
-from corr2.engine_fpga import EngineFpga
-from corr2 import engine_fpga
-
-from misc import log_runtime_error, log_not_implemented_error
-
 import numpy
 
-class FengineFpga(Fengine, EngineFpga):
+from fengine import Fengine
+from engine_fpga import EngineCasperFpga
+
+LOGGER = logging.getLogger(__name__)
+
+
+class FengineCasperFpga(Fengine, EngineCasperFpga):
     """ An fengine that is also an engine using an FPGA as a host
         Data from two polarisations are received via SPEAD, channelised, equalised pre-requantisation, corner-turned
         and transmitted via SPEAD. Delay correction is applied via coarse delay before channelisation and phase
         rotation post channelisation.
     """
-
-    def __init__(self, ant_id, host_device, engine_id=0, host_instrument=None, config_file=None, descriptor='fengine_fpga'):
-        """ Constructor
-        @param host: host device
+    def __init__(self, fpga_host, engine_id, ant_id, config_source):
+        """
+        @param fpga_host: fpga-bsed Host device
         @param engine_id: index of fengine on FPGA
-        @param host_instrument: instrument the engine is a part of, used to get configuration info
-        @param config_file: name of file if engine not part of instrument
-        @param descriptor: name of FPGA fengine type. Used to locate configuration information
         """
-        EngineFpga.__init__(self, host_device, engine_id, host_instrument, config_file, descriptor)
-        Fengine.__init__(self, ant_id)
+        Fengine.__init__(self, fpga_host, engine_id, ant_id, config_source)
+        EngineCasperFpga.__init__(self, fpga_host, engine_id, config_source)
 
-        self._get_fengine_fpga_config()
+        LOGGER.info('%s %s initialised', self.__class__.__name__, str(self))
 
-    def update_config(self):
+    def update_config(self, config_source):
         """
-        Update object from config.
+        Update necessary values from a config dictionary/server
         :return:
         """
-        raise NotImplementedError
+        self.sample_bits = config_source['fengine']['sample_bits']
+        self.adc_demux_factor = config_source['fengine']['adc_demux_factor']
+        self.bandwidth = config_source['fengine']['bandwidth']
+        self.true_cf = config_source['fengine']['true_cf']
+        self.n_chans = config_source['fengine']['n_chans']
+        self.min_load_time = config_source['fengine']['min_load_time']
+        self.network_latency_adjust = config_source['fengine']['network_latency_adjust']
+        self.n_pols = config_source['fengine']['num_pols']
 
-        self.n_pols = self.config['fengine']['num_pols']
+    def __str__(self):
+        return 'Fengine id %d @ %s' % (self.engine_id, self.host)
 
-        # delay tracking
-        self.min_load_time = self.config['fengine']['min_load_time']
-        self.network_latency_adjust = self.config['fengine']['network_latency_adjust']
-
+'''
     def _get_fengine_fpga_config(self):
   
         # constants for accessing polarisation specific registers 'x' even, 'y' odd
@@ -208,3 +207,4 @@ class FengineFpga(Fengine, EngineFpga):
         """
         log_not_implemented_error(LOGGER,  '%s.set_delay not implemented '%self.descriptor)
 
+'''

@@ -3,97 +3,76 @@
 """
 
 import logging
-LOGGER = logging.getLogger(__name__)
-
+import numpy
+from casperfpga import tengbe
 from engine import Engine
 
-from casperfpga import tengbe
-
-import numpy
+LOGGER = logging.getLogger(__name__)
 
 
 class EngineCasperFpga(Engine):
     """
     An Engine, resident on a CASPER FPGA.
     """
-    def __init__(self, fpga, engine_id, host_instrument, config_file=None, descriptor='engine_fpga'):
+    def __init__(self, fpga_host, engine_id, config_source):
+        """
+        :param fpga_host:
+        :param engine_id: engine number on this fpga
+        :return:
+        """
         """Constructor
-        @param fpga: the link to the fpga that hosts this engine
-        @param engine_id: unique id for this engine type on the fpga
+        @param fpga_host: the link to the fpga that hosts this engine
+        @param engine_id:
         @param host_instrument: the Instrument it is part of
         @param config_file: configuration if engine is to be used not as part of Instrument
         @param descriptor: section in config to locate engine specific info at
         """
-        Engine.__init__(self, fpga, engine_id, host_instrument, config_file, descriptor)
-    
-        self._get_engine_fpga_config()
+        Engine.__init__(self, fpga_host, engine_id, config_source)
 
-    def _get_engine_fpga_config(self):
-        """ Configuration needed by Engines resident on FPGAs
-        """
-        # if located with other engines on fpga use register prefix to differentiate between engine types
-        self.tag = ''
-        located_with = self.config_portal.get_string(['%s'%self.descriptor, 'located_with']) 
-        tag = self.config_portal.get_string(['%s'%self.descriptor, 'tag']) 
-        if located_with != 'Nothing':
-            self.tag = tag 
+        # try:
+        #     self.control_reg = self.host.registers['control%d' % engine_id]
+        #     self.status_reg = self.host.registers['status%d' % engine_id]
+        # except AttributeError:
+        #     LOGGER.error('Provided FpgaHost object does not have necessary control and status registers.')
 
-        #if multiple of same engine on fpga, use index to discriminate between engines of same type
-        self.offset = ''
-        engines_per_host = self.config_portal.get_int(['%s'%self.descriptor, 'engines_per_host'])    
-        if engines_per_host > 1:
-            self.offset = '%s'%(str(self.id))
+        LOGGER.info('Casper FPGA engine created: host %s, engine_id %s', self.host, str(self.engine_id))
 
-    def __getattribute__(self, name):
-        """Overload __getattribute__ to make shortcuts for getting object data.
-        """
-
-        # all engines on FPGAs have associated control and status registers
-        # use local __getattribute__ to redefine these if not following this convention
-        if name == 'control':
-            return self.host.device_by_name('%scontrol%s' %(self.tag, self.offset))
-        elif name == 'status':
-            return self.host.device_by_name('%sstatus%s' %(self.tag, self.offset))
-
-        # all engines by default have a single output destination (or base) ip and port
-        # shared amongst all engines of the same type on a host
-        # use local __getattribute__ to redefine these if not following this convention
-        elif name == 'txport':
-            return self.host.device_by_name('%stxport' %(self.tag))
-        elif name == 'txip':
-            return self.host.device_by_name('%stxip' %(self.tag))
-
-        #default
-        return object.__getattribute__(self, name)
+    # def _get_engine_fpga_config(self):
+    #     """ Configuration needed by Engines resident on FPGAs
+    #     """
+    #     # if located with other engines on fpga use register prefix to differentiate between engine types
+    #     self.tag = ''
+    #     located_with = self.config_portal.get_string(['%s'%self.descriptor, 'located_with'])
+    #     tag = self.config_portal.get_string(['%s'%self.descriptor, 'tag'])
+    #     if located_with != 'Nothing':
+    #         self.tag = tag
+    #
+    #     #if multiple of same engine on fpga, use index to discriminate between engines of same type
+    #     self.offset = ''
+    #     engines_per_host = self.config_portal.get_int(['%s'%self.descriptor, 'engines_per_host'])
+    #     if engines_per_host > 1:
+    #         self.offset = '%s'%(str(self.id))
 
     ################
     # Status stuff #
     ################
 
     def clear_status(self):
-        """ Clear status registers and counters related to this engine
         """
-        self.control.write(status_clr=True)
-        self.control.write(status_clr=False)
+        Clear status registers and counters related to this engine.
+        """
+        self.control_reg.write(status_clr='pulse')
+    
+    def get_status(self):
+        """ Returns status register associated with this engine
+        """
+        return self.status_reg.read()['data']
 
     def clear_comms_status(self):
         """ Clear comms status and counters related to this engine
             NOTE: may affect engines connected to the same comms medium
         """
-        self.control.write(comms_status_clr=True)
-        self.control.write(comms_status_clr=False)
-    
-    def reset_comms(self):
-        """ Resets the communications devices related to this engine
-            NOTE: may affect engines connected to the same comms medium
-        """
-        self.control.write(comms_rst=True)
-        self.control.write(comms_rst=False)
-    
-    def get_status(self):
-        """ Returns status register associated with this engine
-        """
-        return self.status.read()['data']
+        self.control_reg.write(comms_status_clr='pulse')
 
     ###############
     #  Data input #
@@ -107,6 +86,12 @@ class EngineCasperFpga(Engine):
     ################
     # Comms stuff  #
     ################
+
+    def reset_comms(self):
+        """ Resets the communications devices related to this engine
+            NOTE: may affect engines connected to the same comms medium
+        """
+        self.control_reg.write(comms_rst='pulse')
 
     def set_txip(self, txip_str=None, issue_meta=True):
         """ Set base transmission IP for SPEAD output

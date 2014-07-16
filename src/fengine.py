@@ -3,9 +3,9 @@
 """
 
 import logging
-LOGGER = logging.getLogger(__name__)
-
 from engine import Engine
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Fengine(Engine):
@@ -14,19 +14,17 @@ class Fengine(Engine):
     Channelises data from an antenna.
     """
 
-    def __init__(self, host_device, engine_id, ant_id):
+    def __init__(self, host_device, engine_id, ant_id, config_source):
         """
         :param ant_id: antenna input identity of data being processed
-        :return:
+        :return: <nothing>
         """
         assert isinstance(ant_id, int), 'ant_id must be a positive integer'
-
-        super(Fengine, self).__init__(host_device, engine_id)
-
+        Engine.__init__(self, host_device, engine_id, config_source)
         self.ant_id = ant_id
 
         # check that we have all the required attributes for an f-engine
-        assert hasattr(self, 'adc_bits'), 'f-engine must have the number of bits the ADC data uses'
+        assert hasattr(self, 'sample_bits'), 'f-engine must have the number of bits the ADC data uses'
         assert hasattr(self, 'adc_demux_factor'), 'f-engine must have the ADC demux factor (how many ADC samples' \
                                                   'we receive in parallel)'
         assert hasattr(self, 'bandwidth'), 'f-engine must have a specified bandwidth that is processed (from baseband)'

@@ -16,19 +16,25 @@ class Engine(object):
     Takes data in, gives data out, via its host.
     Produces SPEAD data products
     """
-    def __init__(self, host_device, engine_id):
+    def __init__(self, host_device, engine_id, config_source):
         """Constructor
         @param host_device: the network-accessible device that hosts this engine
         @param engine_id: unique id for this engine type on host - number, string, something?
         """
-        self.host = host_device
+        self.host = None
         self.engine_id = engine_id
+        self.set_host(host_device)
+        self.update_config(config_source)
 
-        self.update_config()
+    def set_host(self, host):
+        """
+        Set the parent host for this engine.
+        :param host: a Host instance
+        :return: <nothing>
+        """
+        self.host = host
 
-        LOGGER.info('%s %s initialised', self.__class__.__name__, str(self))
-
-    def update_config(self):
+    def update_config(self, config_source):
         """
         Update the configuration for this engine.
         This should be implemented by a child implementation.
@@ -71,13 +77,6 @@ class Engine(object):
             self.config['data_product']['txip_str'] = txip_str
     '''
 
-    def ping(self):
-        """
-        Test connection to Engine Host.
-        """
-        return self.host.ping()
-
-
     ###########
     # Status  #
     ###########
@@ -106,7 +105,6 @@ class Engine(object):
     #####################
     # SPEAD data output #
     #####################
-
     def set_txip(self, txip_str=None, issue_spead=True):
         """ Set base transmission IP for SPEAD output
         @param txip_str: IP address in string form

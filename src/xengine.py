@@ -29,12 +29,12 @@ class Xengine(Engine):
         @param issue_meta: issue SPEAD meta data indicating the change in time
         @returns: the actual accumulation time in spectra
         """
-        log_not_implemented_error(LOGGER, '%s.set_accumulation_length not implemented' %self.descriptor)
+        raise NotImplementedError
     
     def get_accumulation_length(self):
         """ Get the current accumulation time of the vector accumulator
         @returns: the accumulation time in spectra
         """
-        log_not_implemented_error(LOGGER, '%s.get_accumulation_length not implemented' %self.descriptor)
+        raise NotImplementedError
 
 # end

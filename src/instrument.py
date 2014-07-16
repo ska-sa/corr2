@@ -9,8 +9,6 @@ Created on Feb 28, 2013
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from ConfigParser import SafeConfigParser
-
 
 class Instrument(object):
     """
@@ -70,22 +68,7 @@ class Instrument(object):
             raise RuntimeError('config_source %s is invalid' % self.config_source)
         return
 
-    def _read_config_file(self):
-        """
-        To be implemented by the child class.
-        :return:
-        """
-        parser = SafeConfigParser()
-        files = parser.read(self.config_source)
-        if len(files) == 0:
-            raise IOError('Could not read the config file, %s' % self.config_source)
-        if not parser.has_section(self.classname):
-            raise ValueError('The config file does not seem to have the required %s section?' % self.classname)
-        self.config = {}
-        for section in parser.sections():
-            self.config[section] = {}
-            for items in parser.items(section):
-                self.config[section][items[0]] = items[1]
+
 
     def _read_config_server(self):
         """
