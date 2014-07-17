@@ -29,14 +29,13 @@ class EngineCasperFpga(Engine):
         """
         Engine.__init__(self, fpga_host, engine_id, config_source)
 
-        try:
-            self.control_reg = self.host.registers['control%d' % engine_id]
-            self.status_reg = self.host.registers['status%d' % engine_id]
-        except AttributeError:
-            LOGGER.error('Provided FpgaHost object does not have necessary control and status registers.')
-            raise RuntimeError('Provided FpgaHost object does not have necessary control and status registers.')
+        assert hasattr(self, 'control_reg'), 'Engine on an fpga must have a control register.'
+        assert hasattr(self, 'status_reg'), 'Engine on an fpga must have a status register'
 
         LOGGER.info('Casper FPGA engine created: host %s, engine_id %s', self.host, str(self.engine_id))
+
+    def __str__(self):
+        return '%s id %d @ %s' % (self.__class__.__name__, self.engine_id, self.host)
 
     # def _get_engine_fpga_config(self):
     #     """ Configuration needed by Engines resident on FPGAs

@@ -18,7 +18,6 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
         """
         Fengine.__init__(self, fpga_host, engine_id, ant_id, config_source)
         EngineCasperFpga.__init__(self, fpga_host, engine_id, config_source)
-
         LOGGER.info('%s %s initialised', self.__class__.__name__, str(self))
 
     def update_config(self, config_source):
@@ -35,8 +34,11 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
         self.network_latency_adjust = int(config_source['fengine']['network_latency_adjust'])
         self.n_pols = int(config_source['fengine']['num_pols'])
 
-    def __str__(self):
-        return 'Fengine id %d @ %s' % (self.engine_id, self.host)
+        # TODO
+        # self.control_reg = self.host.registers['control%d' % self.engine_id]
+        # self.status_reg = self.host.registers['status%d' % self.engine_id]
+        self.control_reg = None
+        self.status_reg = None
 
 '''
     def _get_fengine_fpga_config(self):

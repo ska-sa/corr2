@@ -7,6 +7,7 @@ Created on Feb 28, 2013
 """
 
 import logging
+import time
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,48 +34,54 @@ class Instrument(object):
         self.config_source = config_source
         self.config = None
 
-        # an instrument knows about hosts and engines, but specifics are left to child classes
+        # an instrument knows about hosts, but specifics are left to child classes
         self.hosts = []
-        self.engines = []
 
         # an instrument was synchronised at some UNIX time
         self.synchronisation_epoch = -1
 
         if self.config_source is not None:
-            self._read_config()
-        LOGGER.info('%s %s initialised' % (self.classname, self.descriptor))
+            if not self._read_config():
+                raise RuntimeError('Failed to configure using %s' % self.config_source)
+
+        LOGGER.info('%s %s created.' % (self.classname, self.descriptor))
 
     def _read_config(self):
         """
         Read the instrument configuration from self.config_source.
-        :return: <nothing>
+        :return: True if the instrument read a config successfully, raise an error if not?
         """
         if self.config_source is None:
             raise RuntimeError('Running _read_config with no config source. Explosions.')
-        # is it a file?
-        try:
-            open(self.config_source, 'r').close()
-            file_io = True
-        except IOError:
-            file_io = False
-            pass
-        if file_io:
-            self._read_config_file()
-            return
+        # file?
+        if self._read_config_file():
+            return True
         # or is it a (host,port) tuple?
-        if isinstance(self.config_source, tuple):
-            if isinstance(self.config_source[0], basestring) and isinstance(self.config_source[1], int):
-                self._read_config_server()
-        else:
-            raise RuntimeError('config_source %s is invalid' % self.config_source)
-        return
+        elif self._read_config_server():
+            return True
+        raise RuntimeError('Supplied config_source %s is invalid' % self.config_source)
 
+    def set_synch_time(self, new_synch_time):
+        """
+        Set the last sync time for this system
+        :param new_synch_time: UNIX time
+        :return: <nothing>
+        """
+        if new_synch_time > time.time():
+            raise RuntimeError('Synch time in the future makes no sense?')
+        self.synchronisation_epoch = new_synch_time
 
+    def _read_config_file(self):
+        """
+        To be implemented by the child class.
+        :return: True if we read the file successfully, False if not
+        """
+        raise NotImplementedError
 
     def _read_config_server(self):
         """
         To be implemented by the child class.
-        :return:
+        :return: True if we read the config successfully, False if not
         """
         raise NotImplementedError
 

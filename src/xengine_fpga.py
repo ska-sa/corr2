@@ -25,7 +25,6 @@ class XengineCasperFpga(Xengine, EngineCasperFpga):
         """
         Xengine.__init__(self, fpga_host, engine_id, config_source)
         EngineCasperFpga.__init__(self, fpga_host, engine_id, config_source)
-
         LOGGER.info('%s %s initialised', self.__class__.__name__, str(self))
 
     def update_config(self, config_source):
@@ -33,36 +32,24 @@ class XengineCasperFpga(Xengine, EngineCasperFpga):
         Update necessary values from a config dictionary/server
         :return:
         """
-        self.acc_len = int(config_source['xengine']['accumulation_len'])
+        self.vacc_len = int(config_source['xengine']['xeng_accumulation_len'])
 
-    # def __getattribute__(self, name):
-    #     """ Overload __getattribute__ to make shortcuts for getting object data.
-    #     """
-    #     if name == 'control':
-    #         return self.host.device_by_name('ctrl')
-    #     elif name == 'status':
-    #         return self.host.device_by_name('status%i'%(self.id))
-    #     elif name == 'vacc_len':
-    #         return self.host.device_by_name('acc_len')
-    #     #default is to get useful stuff from ancestor
-    #     return EngineFpga.__getattribute__(self, name)
+        # TODO
+        # self.control_reg = self.host.registers['control%d' % self.engine_id]
+        # self.status_reg = self.host.registers['status%d' % self.engine_id]
+        self.control_reg = None
+        self.status_reg = None
 
-    def set_accumulation_length(self, accumulation_length=None, issue_meta=True):
+    def set_accumulation_length(self, accumulation_length, issue_meta=True):
         """ Set the accumulation time for the vector accumulator
-        @param accumulation_length: the accumulation time in spectra. If None default used.
+        @param accumulation_length: the accumulation time in spectra.
         @param issue_meta: issue SPEAD meta data indicating the change in time
         @returns: the actual accumulation time in seconds
         """
-        if not isinstance(accumulation_length, int):
-            LOGGER.error('accumulation length %d must be an integer number of spectra' %accumulation_length)
-            raise ValueError('accumulation length %d must be an integer number of spectra' %accumulation_length)
-
-        if accumulation_length is None:
-            accumulation_length=self.config['vacc_len']
-        
+        vacc_len = self.config['vacc_len']
         acc_len = self.config['acc_len']
         # figure out how many pre-accumulated spectra this is (rounding up)
-        vacc_len = numpy.ceil(float(accumulation_length)/float(acc_len))
+        vacc_len = numpy.ceil(float(vacc_len)/float(acc_len))
         self.vacc_len.write(reg=vacc_len)
 
         return vacc_len*acc_len

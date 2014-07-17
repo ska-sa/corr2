@@ -45,10 +45,10 @@ class Host(object):
         :param new_engine:
         :return: <nothing>
         """
-        if new_engine in self.engines:
+        if new_engine.engine_id in self.engines.keys():
             raise ValueError('engine_id %s already on host %s' % (new_engine.engine_id, self.host))
         new_engine.set_host(self)
-        self.engines[new_engine.id] = new_engine
+        self.engines[new_engine.engine_id] = new_engine
 
     def get_engine(self, engine_id):
         """

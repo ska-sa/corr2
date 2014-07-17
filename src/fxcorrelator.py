@@ -9,6 +9,9 @@ Created on Feb 28, 2013
 import logging
 from host_fpga import FpgaHost
 from instrument import Instrument
+from xengine_fpga import XengineCasperFpga
+from fengine_fpga import FengineCasperFpga
+import utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,55 +29,34 @@ class FxCorrelator(Instrument):
         :param config_source: The instrument configuration source, can be a text file, hostname, whatever.
         :return: <nothing>
         """
-        super(FxCorrelator, self).__init__(descriptor, identifier, config_source)
-
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []
         self.xengines = []
         self.fengines = []
 
-        self.initialise()
+        # parent constructor
+        Instrument.__init__(self, descriptor, identifier, config_source)
 
     def initialise(self):
         """
         Set up the correlator using the information in the config file
         :return:
         """
-        # set up the hosts
-        for host in self.config['fengine']['hosts']:
-            fpga = FpgaHost(host)
-            for neng in range(0, self.config['fengine']['num_f_per_fpga']):
-                eng =
+        utils.program_fpgas(self.bitstream_x, self.xhosts)
+        utils.program_fpgas(self.bitstream_f, self.fhosts)
 
-            self.fhosts.append(fpga)
-            self.hosts.append(fpga)
+    ##############################
+    ## Configuration information #
+    ##############################
 
-        for host in self.config['xengine']['hosts']:
-            fpga = FpgaHost(host)
-            self.xhosts.append(fpga)
-            self.hosts.append(fpga)
-
-        # probe a host to find out the configuration
-        dummy = FpgaHost('127.0.0.1')
-        dummy.get_system_information(self.config['fengine']['bitstream'])
-        print dummy.memory_devices
-
-        dummy = FpgaHost('127.0.0.1')
-        dummy.get_system_information(self.config['xengine']['bitstream'])
-        print dummy.memory_devices
-
-        # set up the engines
-
-        # program_fpgas(self.bitstream_x, self.xfpgas)
-        # program_fpgas(self.bitstream_f, self.ffpgas)
-
-    def _read_config_file(self):
+    def _read_config(self):
         """
         Read the instrument configuration from self.config_source.
-        :return: <nothing>
+        :return: True if the instrument read a config successfully, raise an error if not?
         """
-        super(FxCorrelator, self)._read_config_file()
+        Instrument._read_config(self)
+
         # check that the bitstream names are present
         try:
             open(self.config['fengine']['bitstream'], 'r').close()
@@ -82,7 +64,57 @@ class FxCorrelator(Instrument):
         except IOError:
             LOGGER.error('One or more bitstream files not found.')
             raise IOError('One or more bitstream files not found.')
-        return
+
+        # TODO: Load config values from the bitstream meta information
+
+        self.katcp_port = int(self.config['FxCorrelator']['katcp_port'])
+        self.f_per_fpga = int(self.config['fengine']['f_per_fpga'])
+        self.x_per_fpga = int(self.config['xengine']['x_per_fpga'])
+
+        # TODO: Work on the logic of sources->engines->hosts
+
+        self.num_pols = int(self.config['xengine']['x_per_fpga'])
+        if self.num_pols != self.f_per_fpga:
+            raise RuntimeError('Polarisations != f/fpga is confusing.')
+
+        # what antenna ids have we been allocated?
+        self.source_names = self.config['fengine']['source_names'].strip().split(',')
+        self.source_mcast = self.config['fengine']['source_mcast_ips'].strip().split(',')
+        if len(self.source_names) != len(self.source_mcast):
+            raise RuntimeError('We have different numbers of sources and multicast groups. Problem.')
+
+        # set up the hosts and engines based on the config
+        self.fhosts = []
+        self.xhosts = []
+        for hostconfig, hostlist in [(self.config['fengine'], self.fhosts), (self.config['xengine'], self.xhosts)]:
+            hosts = hostconfig['hosts'].strip().split(',')
+            for host in hosts:
+                host = host.strip()
+                fpgahost = FpgaHost(host, self.katcp_port, hostconfig['bitstream'], )
+                hostlist.append(fpgahost)
+        if len(self.source_names) != len(self.fhosts):
+            raise RuntimeError('We have different numbers of sources and f-engine hosts. Problem.')
+        for fnum, fhost in enumerate(self.fhosts):
+            for ctr in range(0, self.f_per_fpga):
+                engine = FengineCasperFpga(fhost, ctr, self.source_names[fnum], self.config)
+                fhost.add_engine(engine)
+        for xnum, xhost in enumerate(self.xhosts):
+            for ctr in range(0, self.x_per_fpga):
+                engine = XengineCasperFpga(xhost, ctr, self.config)
+                xhost.add_engine(engine)
+
+        return True
+
+    def _read_config_file(self):
+        """
+        Read the instrument configuration from self.config_source.
+        :return: True if we read the file successfully, False if not
+        """
+        try:
+            self.config = utils.parse_ini_file(self.config_source)
+        except IOError:
+            return False
+        return True
 
     def _read_config_server(self):
         """
@@ -90,10 +122,6 @@ class FxCorrelator(Instrument):
         :return:
         """
         raise NotImplementedError('Still have to do this')
-
-    ##############################
-    ## Configuration information #
-    ##############################
 
     def _get_fxcorrelator_config(self):
         """

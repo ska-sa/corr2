@@ -6,25 +6,25 @@ from ConfigParser import SafeConfigParser
 
 
 def parse_ini_file(ini_file, required_sections=None):
-        """
-        Parse an ini file into a dictionary. No checking done at all.
-        :return:
-        """
-        if required_sections is None:
-            required_sections = []
-        parser = SafeConfigParser()
-        files = parser.read(ini_file)
-        if len(files) == 0:
-            raise IOError('Could not read the config file, %s' % ini_file)
-        for check_section in required_sections:
-            if not parser.has_section(check_section):
-                raise ValueError('The config file does not seem to have the required %s section?' % check_section)
-        config = {}
-        for section in parser.sections():
-            config[section] = {}
-            for items in parser.items(section):
-                config[section][items[0]] = items[1]
-        return config
+    """
+    Parse an ini file into a dictionary. No checking done at all.
+    :return: a dictionary containing the configuration
+    """
+    if required_sections is None:
+        required_sections = []
+    parser = SafeConfigParser()
+    files = parser.read(ini_file)
+    if len(files) == 0:
+        raise IOError('Could not read the config file, %s' % ini_file)
+    for check_section in required_sections:
+        if not parser.has_section(check_section):
+            raise ValueError('The config file does not seem to have the required %s section?' % check_section)
+    config = {}
+    for section in parser.sections():
+        config[section] = {}
+        for items in parser.items(section):
+            config[section][items[0]] = items[1]
+    return config
 
 
 def program_fpgas(progfile, fpgas, timeout=10):

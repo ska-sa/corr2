@@ -3,8 +3,6 @@ __author__ = 'paulp'
 from casperfpga import KatcpClientFpga
 from host import Host
 
-FORCED_PORT = 3333
-
 
 class FpgaHost(Host, KatcpClientFpga):
     """
@@ -15,13 +13,13 @@ class FpgaHost(Host, KatcpClientFpga):
         KatcpClientFpga.__init__(self, host, katcp_port, connect=connect)
         self.boffile = boffile
 
-    def initialise(self, program=True):
+    def initialise(self, program=True, program_port=-1):
         """
         Initialise this host node to its normal running state.
         """
         self.connect()
         if program:
-            self.upload_to_ram_and_program(self.boffile, port=FORCED_PORT)
+            self.upload_to_ram_and_program(self.boffile, port=program_port)
         return self.is_running()
 
     def ping(self):
