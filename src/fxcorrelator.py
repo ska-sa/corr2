@@ -46,6 +46,26 @@ class FxCorrelator(Instrument):
         utils.program_fpgas(self.bitstream_x, self.xhosts)
         utils.program_fpgas(self.bitstream_f, self.fhosts)
 
+        program
+
+        fengine init:
+            fft shift
+            eq
+            set up interfaces (10gbe) - remember the sequence of holding in reset
+            check feng rx
+            check producing data?
+            enable feng tx
+            (check status?)
+            check qdr cal?
+
+        xengine init:
+            vacc
+            set up interfaces (10gbe) - remember the sequence of holding in reset
+            check rx
+            errors?
+            check producing
+            enable tx
+
     ##############################
     ## Configuration information #
     ##############################
@@ -73,8 +93,8 @@ class FxCorrelator(Instrument):
 
         # TODO: Work on the logic of sources->engines->hosts
 
-        self.num_pols = int(self.config['xengine']['x_per_fpga'])
-        if self.num_pols != self.f_per_fpga:
+        self.num_inputs = int(self.config['xengine']['num_inputs'])
+        if self.num_inputs != self.f_per_fpga:
             raise RuntimeError('Polarisations != f/fpga is confusing.')
 
         # what antenna ids have we been allocated?
