@@ -43,7 +43,8 @@ class FxCorrelator(Instrument):
         :return:
         """
         # TODO
-        if False:
+        if True:
+            logging.info('Programming FPGA hosts.')
             utils.program_fpgas(self.xhosts[0].boffile, self.xhosts)
             utils.program_fpgas(self.fhosts[0].boffile, self.fhosts)
 
@@ -72,9 +73,9 @@ class FxCorrelator(Instrument):
         Set up f-engines on this device.
         :return:
         """
-        feng_ip_octets = self.configd['fengine']['10gbe_start_ip'].split('.')
+        feng_ip_octets = [int(bit) for bit in self.configd['fengine']['10gbe_start_ip'].split('.')]
         assert len(feng_ip_octets) == 4, 'That\'s an odd IP address.'
-        feng_ip_base = [3]
+        feng_ip_base = feng_ip_octets[3]
         feng_ip_prefix = '%d.%d.%d.' % (feng_ip_octets[0], feng_ip_octets[1], feng_ip_octets[2])
         macbase = 10
         board_id = 0
@@ -84,7 +85,7 @@ class FxCorrelator(Instrument):
 
         for ctr, f in enumerate(self.fhosts):
             f.registers.control.write(comms_rst=False)
-            f.registers.control.write(status_rst='pulse', comms_status_clr='pulse')
+            f.registers.control.write(status_clr='pulse', comms_status_clr='pulse')
             # comms stuff
             for gbe in f.tengbes:
                 gbe.setup(mac='02:02:00:00:01:%02x' % macbase, ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base), port=7777)
@@ -92,7 +93,7 @@ class FxCorrelator(Instrument):
                 feng_ip_base += 1
             f.registers.board_id.write_int(board_id)
             f.registers.txip.write_int(tengbe.str2ip(self.configd['xengine']['10gbe_start_ip']))
-            f.registers.txport.write_int(tengbe.str2ip(self.configd['xengine']['10gbe_start_port']))
+            f.registers.txport.write_int(int(self.configd['xengine']['10gbe_start_port']))
             board_id += 1
 
         # start tap on the f-engines

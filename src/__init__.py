@@ -3,22 +3,18 @@ corr2 - control and monitoring for casper-based instruments.
 """
 
 # import the base corr2 modules
-import engine
-import instrument
-import host
-import configuration_katcp_client
 import engine_fpga
-import digitiser
-import fengine
-import xengine
+import engine
 import fengine_fpga
-import xengine_fpga
-import wb_rts_fengine
-import rts_xengine
-import mock_rts
-import instrument
+import fengine
 import fxcorrelator
-import fxcorrelator_fpga
+import host_fpga
+import host
+import instrument
+import numbers
+import utils
+import xengine_fpga
+import xengine
 # corr2 requires casperfpga
 
 # end

@@ -11,10 +11,10 @@ import time, sys, logging, argparse
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-#sys.path.insert(0, '/home/paulp/code/corr2.ska.github/src')
+sys.path.insert(0, '/home/paulp/code/corr2.ska.github/src')
 
 from casperfpga import KatcpClientFpga
-from corr2.digitiser import Digitiser
+from digitiser import Digitiser
 from casperfpga import tengbe
 import casperfpga.misc as misc
 
