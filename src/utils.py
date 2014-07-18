@@ -38,7 +38,6 @@ def program_fpgas(progfile, fpgas, timeout=10):
             raise TypeError('This function only runs on CASPER FGPAs.')
     waiting = []
     for fpga in fpgas:
-        fpga = casperfpga.KatcpClientFpga()
         fpga.upload_to_ram_and_program(progfile, wait_complete=False)
         waiting.append(fpga)
     starttime = time.time()

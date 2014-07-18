@@ -32,7 +32,7 @@ class Instrument(object):
         self.descriptor = descriptor
         self.identifier = identifier
         self.config_source = config_source
-        self.config = None
+        self.configd = None
 
         # an instrument knows about hosts, but specifics are left to child classes
         self.hosts = []

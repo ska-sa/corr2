@@ -16,10 +16,16 @@ class FpgaHost(Host, KatcpClientFpga):
     def initialise(self, program=True, program_port=-1):
         """
         Initialise this host node to its normal running state.
+        :param program: Should the FPGA be reprogrammed?
+        :param program_port: Which port should be used for programming. -1 means random.
+        :return: True if the FPGA client is running and connected.
         """
-        self.connect()
+        if not self.is_connected():
+            self.connect()
         if program:
             self.upload_to_ram_and_program(self.boffile, port=program_port)
+        self.test_connection()
+        self.get_system_information()
         return self.is_running()
 
     def ping(self):
@@ -34,3 +40,10 @@ class FpgaHost(Host, KatcpClientFpga):
         @return: True or False
         """
         return KatcpClientFpga.is_running(self)
+
+    def tx_stop(self):
+        """
+        Stop the Gbe TX.
+        :return:
+        """
+        self.registers.control.write('comms_en=False')

@@ -31,6 +31,7 @@ class Fengine(Engine):
         assert hasattr(self, 'n_chans'), 'f-engine must have a specified number of output channels'
         assert hasattr(self, 'min_load_time'), 'f-engine must have a minimum load time for delay tracking'
         assert hasattr(self, 'network_latency_adjust'), 'f-engine, network_latency_adjust config item missing'
+        assert hasattr(self, 'inputs_per_fengine'), 'f-engine, inputs_per_fengine config item missing'
 
     def set_delay(self, delay=0, delay_delta=0, phase=0, phase_delta=0, load_time=None):
         """ Apply delay correction coefficients to polarisation specified from time specified

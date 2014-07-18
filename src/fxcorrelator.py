@@ -12,6 +12,7 @@ from instrument import Instrument
 from xengine_fpga import XengineCasperFpga
 from fengine_fpga import FengineCasperFpga
 import utils
+from casperfpga import tengbe
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,14 +27,12 @@ class FxCorrelator(Instrument):
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
         :param identifier: An optional integer identifier.
-        :param config_source: The instrument configuration source, can be a text file, hostname, whatever.
+        :param config_source: The instrument configuration source. Can be a text file, hostname, whatever.
         :return: <nothing>
         """
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []
-        self.xengines = []
-        self.fengines = []
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
@@ -43,13 +42,14 @@ class FxCorrelator(Instrument):
         Set up the correlator using the information in the config file
         :return:
         """
-        utils.program_fpgas(self.bitstream_x, self.xhosts)
-        utils.program_fpgas(self.bitstream_f, self.fhosts)
+        # TODO
+        if False:
+            utils.program_fpgas(self.xhosts[0].boffile, self.xhosts)
+            utils.program_fpgas(self.fhosts[0].boffile, self.fhosts)
 
-        program
-
+        self._fengine_initialise()
+        '''
         fengine init:
-            fft shift
             eq
             set up interfaces (10gbe) - remember the sequence of holding in reset
             check feng rx
@@ -65,6 +65,53 @@ class FxCorrelator(Instrument):
             errors?
             check producing
             enable tx
+        '''
+
+    def _fengine_initialise(self):
+        """
+        Set up f-engines on this device.
+        :return:
+        """
+        feng_ip_octets = self.configd['fengine']['10gbe_start_ip'].split('.')
+        assert len(feng_ip_octets) == 4, 'That\'s an odd IP address.'
+        feng_ip_base = [3]
+        feng_ip_prefix = '%d.%d.%d.' % (feng_ip_octets[0], feng_ip_octets[1], feng_ip_octets[2])
+        macbase = 10
+        board_id = 0
+        for ctr, f in enumerate(self.fhosts):
+            f.initialise(program=False)
+            f.registers.control.write(comms_en=False)
+
+        for ctr, f in enumerate(self.fhosts):
+            f.registers.control.write(comms_rst=False)
+            f.registers.control.write(status_rst='pulse', comms_status_clr='pulse')
+            # comms stuff
+            for gbe in f.tengbes:
+                gbe.setup(mac='02:02:00:00:01:%02x' % macbase, ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base), port=7777)
+                macbase += 1
+                feng_ip_base += 1
+            f.registers.board_id.write_int(board_id)
+            f.registers.txip.write_int(tengbe.str2ip(self.configd['xengine']['10gbe_start_ip']))
+            f.registers.txport.write_int(tengbe.str2ip(self.configd['xengine']['10gbe_start_port']))
+            board_id += 1
+
+        # start tap on the f-engines
+        for ctr, f in enumerate(self.fhosts):
+            for gbe in f.tengbes:
+                gbe.tap_start(True)
+
+        # release from reset
+        for ctr, f in enumerate(self.fhosts):
+            f.registers.control.write(comms_rst=False)
+
+        # subscribe to multicast data
+        for ctr, f in enumerate(self.fhosts):
+            for gbe in f.tengbes:
+                gbe.multicast_receive('239.2.0.64', 0)
+
+        # start f-engine TX
+        for ctr, f in enumerate(self.fhosts):
+            f.registers.control.write(comms_en=True)
 
     ##############################
     ## Configuration information #
@@ -79,48 +126,58 @@ class FxCorrelator(Instrument):
 
         # check that the bitstream names are present
         try:
-            open(self.config['fengine']['bitstream'], 'r').close()
-            open(self.config['xengine']['bitstream'], 'r').close()
+            open(self.configd['fengine']['bitstream'], 'r').close()
+            open(self.configd['xengine']['bitstream'], 'r').close()
         except IOError:
             LOGGER.error('One or more bitstream files not found.')
             raise IOError('One or more bitstream files not found.')
 
         # TODO: Load config values from the bitstream meta information
 
-        self.katcp_port = int(self.config['FxCorrelator']['katcp_port'])
-        self.f_per_fpga = int(self.config['fengine']['f_per_fpga'])
-        self.x_per_fpga = int(self.config['xengine']['x_per_fpga'])
+        self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
+        self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
+        self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
 
         # TODO: Work on the logic of sources->engines->hosts
 
-        self.num_inputs = int(self.config['xengine']['num_inputs'])
-        if self.num_inputs != self.f_per_fpga:
-            raise RuntimeError('Polarisations != f/fpga is confusing.')
+        # 2 pols per FPGA on this initial design, but should be mutable
+        self.inputs_per_fpga = int(self.configd['fengine']['inputs_per_fengine'])
 
         # what antenna ids have we been allocated?
-        self.source_names = self.config['fengine']['source_names'].strip().split(',')
-        self.source_mcast = self.config['fengine']['source_mcast_ips'].strip().split(',')
+        self.source_names = self.configd['fengine']['source_names'].strip().split(',')
+        self.source_mcast = []
+        mcast = self.configd['fengine']['source_mcast_ips'].strip().split(',')
+        for address in mcast:
+            bits = address.split(':')
+            port = int(bits[1])
+            address, number = bits[0].split('+')
+            self.source_mcast.append((address, int(number), int(port)))
+        comparo = self.source_mcast[0][1]
+        assert comparo == 3, 'F-engines should be receiving from 4 streams.'
+        for mcast_addresses in self.source_mcast:
+            assert mcast_addresses[1] == comparo, 'All f-engines should be receiving from 4 streams.'
+
         if len(self.source_names) != len(self.source_mcast):
             raise RuntimeError('We have different numbers of sources and multicast groups. Problem.')
 
         # set up the hosts and engines based on the config
         self.fhosts = []
         self.xhosts = []
-        for hostconfig, hostlist in [(self.config['fengine'], self.fhosts), (self.config['xengine'], self.xhosts)]:
+        for hostconfig, hostlist in [(self.configd['fengine'], self.fhosts), (self.configd['xengine'], self.xhosts)]:
             hosts = hostconfig['hosts'].strip().split(',')
             for host in hosts:
                 host = host.strip()
-                fpgahost = FpgaHost(host, self.katcp_port, hostconfig['bitstream'], )
+                fpgahost = FpgaHost(host, self.katcp_port, hostconfig['bitstream'], connect=True)
                 hostlist.append(fpgahost)
         if len(self.source_names) != len(self.fhosts):
             raise RuntimeError('We have different numbers of sources and f-engine hosts. Problem.')
         for fnum, fhost in enumerate(self.fhosts):
             for ctr in range(0, self.f_per_fpga):
-                engine = FengineCasperFpga(fhost, ctr, self.source_names[fnum], self.config)
+                engine = FengineCasperFpga(fhost, ctr, self.source_names[fnum], self.configd)
                 fhost.add_engine(engine)
         for xnum, xhost in enumerate(self.xhosts):
             for ctr in range(0, self.x_per_fpga):
-                engine = XengineCasperFpga(xhost, ctr, self.config)
+                engine = XengineCasperFpga(xhost, ctr, self.configd)
                 xhost.add_engine(engine)
 
         return True
@@ -131,7 +188,7 @@ class FxCorrelator(Instrument):
         :return: True if we read the file successfully, False if not
         """
         try:
-            self.config = utils.parse_ini_file(self.config_source)
+            self.configd = utils.parse_ini_file(self.config_source)
         except IOError:
             return False
         return True
@@ -245,10 +302,10 @@ class FxCorrelator(Instrument):
         """Set destination for output of fxcorrelator.
         """
         if txip_str is None:
-            txip_str = self.config['txip_str']
+            txip_str = self.configd['txip_str']
 
         if txport is None:
-            txport = self.config['txport']
+            txport = self.configd['txport']
 
         #set destinations for all xengines
         for xengine in self.xengines:

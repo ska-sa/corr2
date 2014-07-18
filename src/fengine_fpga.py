@@ -32,13 +32,52 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
         self.n_chans = int(config_source['fengine']['n_chans'])
         self.min_load_time = int(config_source['fengine']['min_load_time'])
         self.network_latency_adjust = int(config_source['fengine']['network_latency_adjust'])
-        self.n_pols = int(config_source['fengine']['num_pols'])
+        self.inputs_per_fengine = int(config_source['fengine']['inputs_per_fengine'])
+        self.fft_shift = int(config_source['fengine']['fft_shift'])
 
         # TODO
         # self.control_reg = self.host.registers['control%d' % self.engine_id]
         # self.status_reg = self.host.registers['status%d' % self.engine_id]
         self.control_reg = None
         self.status_reg = None
+
+    def initialise(self):
+        """
+        Set the f-engine up to a running state.
+        :return:
+        """
+        self.set_fft_shift()
+
+    #######################
+    # FFT shift schedule  #
+    #######################
+
+    def set_fft_shift(self, shift_schedule=None, issue_meta=True):
+        """
+        Set the FFT shift schedule.
+        :param shift_schedule: int representing bit mask. '1' represents a shift for that stage. First stage is MSB.
+        Use default if None provided
+        :param issue_meta: Should SPEAD meta data be sent after the value is changed?
+        :return: <nothing>
+        """
+        """
+        @param shift_schedule:
+        """
+        if shift_schedule is None:
+            shift_schedule = self.fft_shift
+        self.host.registers.fft_shift.write(fft_shift=shift_schedule)
+
+        # TODO issue_meta
+
+    def get_fft_shift(self):
+        """
+        Get the current FFT shift schedule from the FPGA.
+        :return: integer representing the FFT shift schedule for all the FFTs on this engine.
+        """
+        """
+        @return bit mask in the form of an unsigned integer
+        """
+        return self.host.registers.fft_shift.read()['data']['fft_shift']
 
 '''
     def _get_fengine_fpga_config(self):
@@ -101,26 +140,6 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
 
         # if attribute name not here try parent class        
         return EngineFpga.__getattribute__(self, name)
-
-    #######################
-    # FFT shift schedule  #
-    #######################
-
-    def set_fft_shift(self, shift_schedule=None, issue_meta=True):
-        """ Set the FFT shift schedule
-        @param shift_schedule: int representing bit mask. '1' represents a shift for that stage. First stage is MSB. Use default if None provided
-        """
-        if shift_schedule is None:
-            shift_schedule = self.config['fft_shift']
-        self.fft_shift.write(fft_shift=shift_schedule)
-
-        # TODO issue_meta
-
-    def get_fft_shift(self):
-        """ Get the current FFT shift schedule
-        @return bit mask in the form of an unsigned integer
-        """
-        return self.fft_shift.read()['data']['fft_shift']
     
     ##############################################
     # Equalisation before re-quantisation stuff  #
