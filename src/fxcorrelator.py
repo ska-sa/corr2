@@ -60,8 +60,8 @@ class FxCorrelator(Instrument):
         if program:
             logging.info('Programming FPGA hosts.')
             ftups = []
-            # for f in self.xhosts:
-            #     ftups.append((f, f.boffile))
+            for f in self.xhosts:
+                ftups.append((f, f.boffile))
             for f in self.fhosts:
                 ftups.append((f, f.boffile))
             utils.program_fpgas(None, ftups)
@@ -140,7 +140,7 @@ class FxCorrelator(Instrument):
                 ctr += 1
 
         # start f-engine TX
-        for ctr, f in enumerate(self.fhosts):
+        for f in self.fhosts:
             f.registers.control.write(comms_en=True)
 
     def _xengine_initialise(self, program=True):
@@ -319,6 +319,9 @@ class FxCorrelator(Instrument):
                                                                int(self.configd['xengine']['rx_udp_port'])))
         self.spead_ig = spead.ItemGroup()
 
+        # issue the metadata
+        self.spead_issue_meta()
+
         # done
         return True
 
@@ -375,7 +378,7 @@ class FxCorrelator(Instrument):
                 fengine.start_tx()
 
         if issue_meta:
-            self.fxcorrelator_issue_meta()
+            self.spead_issue_meta()
 
     ###########################
     # f and x engine creation #
@@ -474,7 +477,7 @@ class FxCorrelator(Instrument):
 #            xengine.start_tx()
 
         for f in self.xhosts:
-            f.registers.ctrl.write(comms_en = True)
+            f.registers.control.write(comms_en=True)
     
     def stop_tx(self, stop_f=False, issue_meta=True):
         """Turns off output pipes to start data flow from xengines
@@ -489,11 +492,11 @@ class FxCorrelator(Instrument):
         #        fengine.stop_tx()
 
         for f in self.xhosts:
-            f.registers.ctrl.write(comms_en = False)
+            f.registers.control.write(comms_en=False)
     
         if stop_f:
             for f in self.fhosts:
-                f.registers.control.write(comms_en = False)
+                f.registers.control.write(comms_en=False)
 
     def spead_issue_meta(self):
         """
