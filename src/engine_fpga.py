@@ -81,7 +81,7 @@ class EngineCasperFpga(Engine):
     def is_receiving_valid_data(self):
         """ Is receiving valid data
         """
-        return self.status.read()['data']['rxing_data']
+        return self.status_reg.read()['data']['rxing_data']
 
     ################
     # Comms stuff  #

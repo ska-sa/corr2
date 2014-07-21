@@ -35,10 +35,8 @@ class XengineCasperFpga(Xengine, EngineCasperFpga):
         self.vacc_len = int(config_source['xengine']['xeng_accumulation_len'])
 
         # TODO
-        # self.control_reg = self.host.registers['control%d' % self.engine_id]
-        # self.status_reg = self.host.registers['status%d' % self.engine_id]
-        self.control_reg = None
-        self.status_reg = None
+        self.control_reg = None #self.host.registers['ctrl%d' % self.engine_id]
+        self.status_reg = None #self.host.registers['status%d' % self.engine_id]
 
     def set_accumulation_length(self, accumulation_length, issue_meta=True):
         """ Set the accumulation time for the vector accumulator
@@ -61,5 +59,6 @@ class XengineCasperFpga(Xengine, EngineCasperFpga):
         acc_len = self.config['acc_len']
         vacc_len = self.vacc_len.read()['data']['reg'] 
         return vacc_len * acc_len
+
 
 # end

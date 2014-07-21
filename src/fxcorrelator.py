@@ -6,7 +6,7 @@ Created on Feb 28, 2013
 
 # things all fxcorrelators Instruments do
 
-import logging
+import logging, time
 from host_fpga import FpgaHost
 from instrument import Instrument
 from xengine_fpga import XengineCasperFpga
@@ -37,18 +37,21 @@ class FxCorrelator(Instrument):
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
 
-    def initialise(self):
+    def initialise(self, program=True):
         """
         Set up the correlator using the information in the config file
         :return:
         """
         # TODO
-        if True:
+        if program == True:
             logging.info('Programming FPGA hosts.')
             utils.program_fpgas(self.xhosts[0].boffile, self.xhosts)
             utils.program_fpgas(self.fhosts[0].boffile, self.fhosts)
 
         self._fengine_initialise()
+        
+        self._xengine_initialise(program=program)
+
         '''
         fengine init:
             eq
@@ -113,6 +116,77 @@ class FxCorrelator(Instrument):
         # start f-engine TX
         for ctr, f in enumerate(self.fhosts):
             f.registers.control.write(comms_en=True)
+
+    def _xengine_initialise(self, program=True):
+        """
+        Set up x-engines on this device.
+        :return:
+        """
+        #disable transmission and place cores in reset
+        for f in self.xhosts:
+            f.initialise(program=False)
+
+        #disable transmission and place cores in reset
+        for f in self.xhosts:
+            f.registers.ctrl.write(comms_en = False)
+            f.registers.ctrl.write(comms_rst = True)
+       
+        #set up 10gbe cores 
+        xipbase = 110
+        macbase = 10
+        if program:
+            for f in self.xhosts:
+                for gbe in f.tengbes:
+                    gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.0.0.%d' % xipbase, port=8778)
+                    macbase += 1
+                    xipbase += 1
+
+        # tap start
+        for f in self.xhosts:
+            for gbe in f.tengbes:
+                gbe.tap_start(True)
+       
+        # start the tap devices
+        # and note the time
+        arptime = 200
+        stime = time.time()
+
+        board_id = 0
+        for f in self.xhosts:
+            f.registers.board_id.write(reg=board_id)
+            board_id += 1
+
+        # set up board id
+        for f in self.xhosts:
+            f.registers.board_id.write(reg=board_id)
+            board_id += 1
+        
+        if program:
+            print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
+            while time.time() < stime + arptime:
+                print '.'
+                sys.stdout.flush()
+                time.sleep(1)
+            print 'done.'
+ 
+        # release cores from reset
+        for f in self.xhosts:
+            f.registers.ctrl.write(comms_rst = False)
+      
+        # check for errors
+        for f in self.xhosts:
+            for eng_index in range(4):
+                xeng = f.get_engine(eng_index)
+                status = xeng.host.registers['status%d' % eng_index].read()['data']
+
+                # check that all engines are receiving data
+                if (status['rxing_data'] == False):
+                    print 'xengine %d on host %s is not receiving valid data' %(eng_index, str(f))
+
+                # check that there are no other errors
+                #TODO
+                
+
 
     ##############################
     ## Configuration information #
@@ -302,37 +376,59 @@ class FxCorrelator(Instrument):
     def set_destination(self, txip_str=None, txport=None, issue_meta=True):
         """Set destination for output of fxcorrelator.
         """
+#        if txip_str is None:
+#            txip_str = self.configd['txip_str']
+#
+#        if txport is None:
+#            txport = self.configd['txport']
+
+#        #set destinations for all xengines
+#        for xengine in self.xengines:
+#            xengine.set_txip(txip_str)
+#            xengine.set_txport(txport)
+#TODO   
+#        if issue_meta:
+        
         if txip_str is None:
-            txip_str = self.configd['txip_str']
+            txip = tengbe.str2ip(self.configd['txip_str'])
+        else:
+            txip = tengbe.str2ip(txip_str)
 
         if txport is None:
             txport = self.configd['txport']
+        
+        for f in self.xhosts: 
+            f.registers.txip.write(txip=txip)
+            f.registers.txport.write(txport=txport)
 
-        #set destinations for all xengines
-        for xengine in self.xengines:
-            xengine.set_txip(txip_str)
-            xengine.set_txport(txport)
-#TODO   
-#        if issue_meta:
- 
     def start_tx(self):
         """ Turns on xengine output pipes needed to start data flow from xengines
         """
         #turn on xengine outputs
-        for xengine in self.xengines:
-            xengine.start_tx()
+#        for xengine in self.xengines:
+#            xengine.start_tx()
+
+        for f in self.xhosts:
+            f.registers.ctrl.write(comms_en = True)
     
     def stop_tx(self, stop_f=False, issue_meta=True):
         """Turns off output pipes to start data flow from xengines
         @param stop_f: stop output of fengines too
         """
         # does not make sense to stop only certain xengines
-        for xengine in self.xengines:
-            xengine.stop_tx()
+        #for xengine in self.xengines:
+        #    xengine.stop_tx()
 
+        #if stop_f:
+        #    for fengine in self.fengines:
+        #        fengine.stop_tx()
+
+        for f in self.xhosts:
+            f.registers.ctrl.write(comms_en = False)
+    
         if stop_f:
-            for fengine in self.fengines:
-                fengine.stop_tx()
+            for f in self.fhosts:
+                f.registers.control.write(comms_en = False)
 
     def fxcorrelator_issue_meta(self):
         """All fxcorrelators issued SPEAD in the same way, with tweakings that
