@@ -21,6 +21,9 @@ from casperfpga import tengbe
 LOGGER = logging.getLogger(__name__)
 
 
+use_demo_fengine = True
+
+
 class FxCorrelator(Instrument):
     """
     A generic FxCorrelator composed of fengines that channelise antenna inputs and xengines that each produce cross products
@@ -72,19 +75,13 @@ class FxCorrelator(Instrument):
         # init the x engines
         self._xengine_initialise()
 
+        arptime = 180
+        stime = time.time()
         if program:
             print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
             while time.time() < stime + arptime:
-                print '.'
-                sys.stdout.flush()
                 time.sleep(1)
             print 'done.'
-
-        return
-
-        # wait for ARP
-        if program:
-            time.sleep(180)
 
         '''
         fengine init:
