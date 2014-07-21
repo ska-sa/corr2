@@ -27,24 +27,36 @@ def parse_ini_file(ini_file, required_sections=None):
     return config
 
 
+def get_information_threaded(fpgas):
+    """
+    Get system information from running Fpga hosts, threaded to go quicker.
+    :param fpgas: A list of FPGA hosts.
+    :return: <nothing>
+    """
+    return True
+
+
 def program_fpgas(progfile, fpgas, timeout=10):
     """Program more than one FPGA at the same time.
-    :param progfile: the file to use to program the FPGAs
-    :param fpgas: a list of host names for the FPGAs to be programmed
+    :param progfile: string, the filename of the file to use to program the FPGAs
+    :param fpgas: a list of objects for the FPGAs to be programmed
     :return: True if all went well, False if not
     """
-    for fpga in fpgas:
-        if not isinstance(fpga, casperfpga.KatcpClientFpga):
-            raise TypeError('This function only runs on CASPER FGPAs.')
+    chilltime = 0.1
     waiting = []
     for fpga in fpgas:
-        fpga.upload_to_ram_and_program(progfile, wait_complete=False)
-        waiting.append(fpga)
+        if len(fpga) == 1:
+            fpga.upload_to_ram_and_program(progfile, wait_complete=False)
+            waiting.append(fpga)
+        else:
+            fpga[0].upload_to_ram_and_program(fpga[1], wait_complete=False)
+            waiting.append(fpga[0])
     starttime = time.time()
     while (len(waiting) > 0) and (time.time()-starttime < timeout):
         for fpga in waiting:
             if fpga.is_running():
                 waiting.pop(waiting.index(fpga))
+        time.sleep(chilltime)
     if len(waiting) > 0:
         return False
     return True
