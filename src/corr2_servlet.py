@@ -4,9 +4,9 @@ import logging
 import sys
 import argparse
 import Queue
-
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
+from fxcorrelator import FxCorrelator
 
 logging.basicConfig(level=logging.WARN,
                     stream=sys.stderr,
@@ -30,7 +30,7 @@ class Corr2Server(katcp.DeviceServer):
 
     def __init__(self, *args, **kwargs):
         super(Corr2Server, self).__init__(*args, **kwargs)
-        self.instr = None
+        self.instrument = None
 
     @request()
     @return_reply()
@@ -52,8 +52,7 @@ class Corr2Server(katcp.DeviceServer):
         :param log_len:
         :return:
         """
-        self.lh = corr.log_handlers.DebugLogHandler(log_len)
-        self.c = corr.corr_functions.Correlator(config_file=config_file,log_handler=self.lh,log_level=logging.INFO)
+        self.instrument = FxCorrelator('RTS correlator', config_source=config_file)
         return 'ok',
 
     @request()
@@ -109,6 +108,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
+        self.instrument.start_tx()
         return 'ok',
 
     @request()
@@ -119,6 +119,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
+        self.instrument.stop_tx()
         return 'ok',
 
     @request()
@@ -129,6 +130,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
+        self.instrument.fxcorrelator_issue_meta()
         return 'ok',
 
     @request()
