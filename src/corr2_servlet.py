@@ -75,7 +75,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         try:
-            self.instr.set_synch_time(synch_time)
+            self.instrument.set_synch_time(synch_time)
         except:
             return 'fail', 'request %s did not succeed, check the log' % 'digitiser_synch_epoch'
         return 'ok',
@@ -130,7 +130,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        self.instrument.fxcorrelator_issue_meta()
+        self.instrument.spead_issue_meta()
         return 'ok',
 
     @request()
