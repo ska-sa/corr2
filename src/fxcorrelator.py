@@ -73,9 +73,10 @@ class FxCorrelator(Instrument):
         self._xengine_initialise()
 
         if program:
+            arptime = 200
+            stime = time.time()
             print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
             while time.time() < stime + arptime:
-                print '.'
                 sys.stdout.flush()
                 time.sleep(1)
             print 'done.'
@@ -197,14 +198,19 @@ class FxCorrelator(Instrument):
        
         # start accumulating
         for f in self.xhosts:
-            f.registers.vacc_time_lsw.write(reg=0)
-            f.registers.vacc_time_msw.write(msw=0, arm=0, immediate=0)
-            f.registers.vacc_time_msw.write(msw=0, arm=1, immediate=1)
+            f.registers.vacc_time_msw.write(arm=0, immediate=0)
+            f.registers.vacc_time_msw.write(arm=1, immediate=1)
  
-        # turn on tvgs
+        # check accumulations are happening
+        vacc_cnts = []
         for f in self.xhosts:
-            f.registers.tvg_sel.write(xeng=2)
-          
+            for eng_index in range(4):
+                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
+                vacc_cnts.append(vacc_cnt)
+
+        print 'pausing while data sloshes around a bit' 
+        time.sleep(1)
+
         # check for errors
         for f in self.xhosts:
             for eng_index in range(4):
@@ -220,20 +226,18 @@ class FxCorrelator(Instrument):
                 # check that all engines are producing data ready for transmission
                 if (status['txing_data'] == False):
                     print 'xengine %d on host %s is not producing valid data' %(eng_index, str(f))
-
-        # check accumulations are happening
-        for f in self.xhosts:
-            for eng_index in range(4):
-                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
-                print '%s:xeng %d had %d accumulations before' %(str(f), eng_index, vacc_cnt)
         
         print 'waiting for an accumulation' 
         time.sleep(1)
 
+        vacc_cnts.reverse()
         for f in self.xhosts:
             for eng_index in range(4):
                 vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
-                print '%s:xeng %d had %d accumulations after' %(str(f), eng_index, vacc_cnt)
+                vacc_cnt_before = vacc_cnts.pop()                
+
+                if (vacc_cnt_before == vacc_cnt): 
+                    print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
 
     ##############################
     ## Configuration information #
