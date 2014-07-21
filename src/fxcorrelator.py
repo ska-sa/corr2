@@ -70,7 +70,15 @@ class FxCorrelator(Instrument):
         self._fengine_initialise()
 
         # init the x engines
-        self._xengine_initialise(program=False)
+        self._xengine_initialise()
+
+        if program:
+            print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
+            while time.time() < stime + arptime:
+                print '.'
+                sys.stdout.flush()
+                time.sleep(1)
+            print 'done.'
 
         return
 
@@ -143,7 +151,7 @@ class FxCorrelator(Instrument):
         for f in self.fhosts:
             f.registers.control.write(comms_en=True)
 
-    def _xengine_initialise(self, program=True):
+    def _xengine_initialise(self):
         """
         Set up x-engines on this device.
         :return:
@@ -154,42 +162,36 @@ class FxCorrelator(Instrument):
 
         #disable transmission and place cores in reset
         for f in self.xhosts:
-            f.registers.ctrl.write(comms_en = False)
-            f.registers.ctrl.write(comms_rst = True)
-       
+            f.registers.ctrl.write(comms_en=False)
+            f.registers.ctrl.write(comms_rst=True)
+               
         #set up 10gbe cores 
         xipbase = 110
         macbase = 10
-        if program:
-            for f in self.xhosts:
-                for gbe in f.tengbes:
-                    gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.0.0.%d' % xipbase, port=8778)
-                    macbase += 1
-                    xipbase += 1
+        for f in self.xhosts:
+           for gbe in f.tengbes:
+               gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.0.0.%d' % xipbase, port=8778)
+               macbase += 1
+               xipbase += 1
 
         # tap start
         for f in self.xhosts:
             for gbe in f.tengbes:
                 gbe.tap_start(True)
        
-        # start the tap devices
-        # and note the time
-        arptime = 200
-        stime = time.time()
+        # release cores from reset
+        for f in self.xhosts:
+            f.registers.ctrl.write(comms_rst = False)
 
+        # set up board id
         board_id = 0
         for f in self.xhosts:
             f.registers.board_id.write(reg=board_id)
             board_id += 1
 
-        # set up board id
-        for f in self.xhosts:
-            f.registers.board_id.write(reg=board_id)
-            board_id += 1
-
-        #set up accumulation length
-        acc_len = self.xeng_accumulation_len
-
+        # set up accumulation length
+        # use default for now
+        acc_len = self.accumulation_len
         for f in self.xhosts:
             f.registers.acc_len.write(reg = acc_len)
        
@@ -201,19 +203,8 @@ class FxCorrelator(Instrument):
  
         # turn on tvgs
         for f in self.xhosts:
-            f.host.registers.tvg_sel.write(xeng=2)
-        
-        print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
-        while time.time() < stime + arptime:
-            print '.'
-            sys.stdout.flush()
-            time.sleep(1)
-        print 'done.'
- 
-        # release cores from reset
-        for f in self.xhosts:
-            f.registers.ctrl.write(comms_rst = False)
-         
+            f.registers.tvg_sel.write(xeng=2)
+          
         # check for errors
         for f in self.xhosts:
             for eng_index in range(4):
@@ -233,7 +224,7 @@ class FxCorrelator(Instrument):
         # check accumulations are happening
         for f in self.xhosts:
             for eng_index in range(4):
-                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()
+                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
                 print '%s:xeng %d had %d accumulations before' %(str(f), eng_index, vacc_cnt)
         
         print 'waiting for an accumulation' 
@@ -241,7 +232,7 @@ class FxCorrelator(Instrument):
 
         for f in self.xhosts:
             for eng_index in range(4):
-                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()
+                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
                 print '%s:xeng %d had %d accumulations after' %(str(f), eng_index, vacc_cnt)
 
     ##############################
@@ -269,7 +260,7 @@ class FxCorrelator(Instrument):
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
         self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
         self.sample_rate_hz = int(self.configd['FxCorrelator']['sample_rate_hz'])
-        self.xeng_accumulation_len = int(self.configd['xengine']['xeng_accumulation_len'])
+        self.accumulation_len = int(self.configd['xengine']['accumulation_len'])
 
         # TODO: Work on the logic of sources->engines->hosts
 
