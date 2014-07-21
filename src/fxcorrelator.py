@@ -75,11 +75,12 @@ class FxCorrelator(Instrument):
         # init the x engines
         self._xengine_initialise()
 
-        arptime = 180
-        stime = time.time()
         if program:
+            arptime = 200
+            stime = time.time()
             print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
-            while time.time() < stime + arptime:
+            sys.stdout.flush()
+            while time.time() - stime < arptime:
                 time.sleep(1)
             print 'done.'
 
@@ -116,20 +117,31 @@ class FxCorrelator(Instrument):
 
         for ctr, f in enumerate(self.fhosts):
             f.initialise(program=False)
-            f.registers.control.write(comms_en=False)
+            if use_demo_fengine:
+                f.registers.control.write(gbe_txen=False)
+            else:
+                f.registers.control.write(comms_en=False)
 
         for ctr, f in enumerate(self.fhosts):
-            f.registers.control.write(comms_rst=True)
-            f.registers.control.write(status_clr='pulse', comms_status_clr='pulse')
+            if use_demo_fengine:
+                f.registers.control.write(gbe_rst=False)
+                f.registers.control.write(clr_status='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
+            else:
+                f.registers.control.write(comms_rst=True)
+                f.registers.control.write(status_clr='pulse', comms_status_clr='pulse')
             # comms stuff
             for gbe in f.tengbes:
                 gbe.setup(mac='02:02:00:00:01:%02x' % macbase, ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base),
                           port=7777)
                 macbase += 1
                 feng_ip_base += 1
-            f.registers.board_id.write_int(board_id)
-            f.registers.txip.write_int(tengbe.str2ip(self.configd['xengine']['10gbe_start_ip']))
-            f.registers.txport.write_int(int(self.configd['xengine']['10gbe_start_port']))
+            if use_demo_fengine:
+                f.registers.iptx_base.write_int(tengbe.str2ip(self.configd['xengine']['10gbe_start_ip']))
+                f.registers.tx_metadata.write(board_id=board_id, porttx=int(self.configd['xengine']['10gbe_start_port']))
+            else:
+                f.registers.board_id.write_int(board_id)
+                f.registers.txip.write_int(tengbe.str2ip(self.configd['xengine']['10gbe_start_ip']))
+                f.registers.txport.write_int(int(self.configd['xengine']['10gbe_start_port']))
             board_id += 1
 
         # start tap on the f-engines
@@ -139,7 +151,10 @@ class FxCorrelator(Instrument):
 
         # release from reset
         for ctr, f in enumerate(self.fhosts):
-            f.registers.control.write(comms_rst=False)
+            if use_demo_fengine:
+                f.registers.control.write(gbe_rst=False)
+            else:
+                f.registers.control.write(comms_rst=False)
 
         # subscribe to multicast data
         for ctr, f in enumerate(self.fhosts):
@@ -150,7 +165,10 @@ class FxCorrelator(Instrument):
 
         # start f-engine TX
         for f in self.fhosts:
-            f.registers.control.write(comms_en=True)
+            if use_demo_fengine:
+                f.registers.control.write(gbe_txen=True)
+            else:
+                f.registers.control.write(comms_en=True)
 
     def _xengine_initialise(self):
         """
@@ -198,14 +216,19 @@ class FxCorrelator(Instrument):
        
         # start accumulating
         for f in self.xhosts:
-            f.registers.vacc_time_lsw.write(reg=0)
-            f.registers.vacc_time_msw.write(msw=0, arm=0, immediate=0)
-            f.registers.vacc_time_msw.write(msw=0, arm=1, immediate=1)
+            f.registers.vacc_time_msw.write(arm=0, immediate=0)
+            f.registers.vacc_time_msw.write(arm=1, immediate=1)
  
-        # turn on tvgs
+        # check accumulations are happening
+        vacc_cnts = []
         for f in self.xhosts:
-            f.registers.tvg_sel.write(xeng=2)
-          
+            for eng_index in range(4):
+                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
+                vacc_cnts.append(vacc_cnt)
+
+        print 'pausing while data sloshes around a bit' 
+        time.sleep(1)
+
         # check for errors
         for f in self.xhosts:
             for eng_index in range(4):
@@ -221,20 +244,18 @@ class FxCorrelator(Instrument):
                 # check that all engines are producing data ready for transmission
                 if (status['txing_data'] == False):
                     print 'xengine %d on host %s is not producing valid data' %(eng_index, str(f))
-
-        # check accumulations are happening
-        for f in self.xhosts:
-            for eng_index in range(4):
-                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
-                print '%s:xeng %d had %d accumulations before' %(str(f), eng_index, vacc_cnt)
         
         print 'waiting for an accumulation' 
         time.sleep(1)
 
+        vacc_cnts.reverse()
         for f in self.xhosts:
             for eng_index in range(4):
                 vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
-                print '%s:xeng %d had %d accumulations after' %(str(f), eng_index, vacc_cnt)
+                vacc_cnt_before = vacc_cnts.pop()                
+
+                if (vacc_cnt_before == vacc_cnt): 
+                    print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
 
     ##############################
     ## Configuration information #
@@ -246,6 +267,9 @@ class FxCorrelator(Instrument):
         :return: True if the instrument read a config successfully, raise an error if not?
         """
         Instrument._read_config(self)
+
+        if use_demo_fengine:
+            self.configd['fengine']['bitstream'] = '/srv/bofs/feng/feng_rx_test_2014_Jun_05_1818.fpg'
 
         # check that the bitstream names are present
         try:
@@ -349,7 +373,7 @@ class FxCorrelator(Instrument):
     ###################################
     # Host creation and configuration #
     ###################################
-
+    '''
     def fxcorrelator_initialise(self, start_tx_f=True, issue_meta=True):
         """
         @param start_tx_f: start f engine transmission
@@ -405,13 +429,11 @@ class FxCorrelator(Instrument):
         """ Create an xengine.
         """
         raise NotImplementedError('%s.create_xengine not implemented'%self.descriptor)
-
     ########################
     # operational commands #
     ########################
     
     # These can all be done with generic f and xengine commands
-
     def check_host_links(self):
         """Ping hosts to see if katcp connections are functioning.
         """
@@ -432,7 +454,7 @@ class FxCorrelator(Instrument):
         """Connect to the correlator and test connections to all the nodes.
         """
         return self.ping_hosts()
-
+    '''
     def set_destination(self, txip_str=None, txport=None, issue_meta=True):
         """Set destination for output of fxcorrelator.
         """
