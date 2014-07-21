@@ -14,7 +14,6 @@ logging.basicConfig(level=logging.INFO)
 sys.path.insert(0, '/home/paulp/code/corr2.ska.github/src')
 
 from casperfpga import KatcpClientFpga
-from digitiser import Digitiser
 from casperfpga import tengbe
 import casperfpga.misc as misc
 
@@ -37,6 +36,7 @@ parser.add_argument('-u', '--unicast', dest='unicast', action='store_true',
                     help='transmit unicast to the first f-engine, not multicast to all of them')
 args = parser.parse_args()
 
+#hosts = ['roach020958', 'roach02091b', 'roach020914', 'roach020922', 'roach020921', 'roach020927', 'roach020919', 'roach020925', 'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
 andrewhost = 'roach020915'
 dhost = 'roach020959'
 fhosts = ['roach020958', 'roach02091b', 'roach020914', 'roach020922']
@@ -47,7 +47,7 @@ dfpg = '/srv/bofs/deng/r2_deng_tvg_2014_May_30_1123.fpg'
 ffpg = '/srv/bofs/feng/feng_rx_test_2014_Jun_05_1818.fpg'
 xfpg = '/srv/bofs/xeng/x_rx_reorder_2014_Jun_02_1913.fpg'
 
-fdig = Digitiser(dhost)
+fdig = KatcpClientFpga(dhost)
 ffpgas = []
 for host in fhosts:
     fpga = KatcpClientFpga(host)
@@ -98,11 +98,11 @@ for fpga in all_fpgas:
 
 if setup_gbe:
     # stop sending data
-    fdig.registers.control.write(gbe_txen = False)
+    fdig.registers.control.write(gbe_txen=False)
     for fpga in ffpgas:
-        fpga.registers.control.write(gbe_txen = False)
+        fpga.registers.control.write(gbe_txen=False)
     for fpga in xfpgas:
-        fpga.registers.control.write(gbe_txen = False)
+        fpga.registers.control.write(gbe_txen=False)
 
     # pulse the cores reset lines from False to True
     fdig.registers.control.write(gbe_rst = False)
@@ -205,14 +205,14 @@ if setup_gbe:
     print 'Starting TX...',
     sys.stdout.flush()
     fdig.registers.control.write(gbe_txen=True)
-#    sleeptime = 5
-#    stime = time.time()
-#    while time.time() < stime + sleeptime:
-#        print '\rStarting TX... %ds   ' % (sleeptime-(time.time()-stime)),
-#        sys.stdout.flush()
-#        time.sleep(1)
-#    for fpga in ffpgas:
-#        fpga.registers.control.write(gbe_txen=True)
+    sleeptime = 5
+    stime = time.time()
+    while time.time() < stime + sleeptime:
+        print '\rStarting TX... %ds   ' % (sleeptime-(time.time()-stime)),
+        sys.stdout.flush()
+        time.sleep(1)
+    for fpga in ffpgas:
+        fpga.registers.control.write(gbe_txen=True)
     print 'done.'
 
 ## print 10gbe core details

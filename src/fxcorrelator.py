@@ -7,15 +7,16 @@ Created on Feb 28, 2013
 # things all fxcorrelators Instruments do
 
 import logging
-import numpy
+import socket
 import time
+import sys
+import spead
 from host_fpga import FpgaHost
 from instrument import Instrument
 from xengine_fpga import XengineCasperFpga
 from fengine_fpga import FengineCasperFpga
 import utils
 from casperfpga import tengbe
-import spead
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,14 +57,22 @@ class FxCorrelator(Instrument):
         :return:
         """
         # TODO
-        if program == True:
+        if program:
             logging.info('Programming FPGA hosts.')
-            utils.program_fpgas(self.xhosts[0].boffile, self.xhosts)
-            utils.program_fpgas(self.fhosts[0].boffile, self.fhosts)
+            ftups = []
+            # for f in self.xhosts:
+            #     ftups.append((f, f.boffile))
+            for f in self.fhosts:
+                ftups.append((f, f.boffile))
+            utils.program_fpgas(None, ftups)
 
+        # init the f engines
         self._fengine_initialise()
-        
-        self._xengine_initialise(program=program)
+
+        return
+
+        # init the x engines
+        self._xengine_initialise(program=False)
 
         '''
         fengine init:
@@ -95,16 +104,18 @@ class FxCorrelator(Instrument):
         feng_ip_prefix = '%d.%d.%d.' % (feng_ip_octets[0], feng_ip_octets[1], feng_ip_octets[2])
         macbase = 10
         board_id = 0
+
         for ctr, f in enumerate(self.fhosts):
             f.initialise(program=False)
             f.registers.control.write(comms_en=False)
 
         for ctr, f in enumerate(self.fhosts):
-            f.registers.control.write(comms_rst=False)
+            f.registers.control.write(comms_rst=True)
             f.registers.control.write(status_clr='pulse', comms_status_clr='pulse')
             # comms stuff
             for gbe in f.tengbes:
-                gbe.setup(mac='02:02:00:00:01:%02x' % macbase, ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base), port=7777)
+                gbe.setup(mac='02:02:00:00:01:%02x' % macbase, ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base),
+                          port=7777)
                 macbase += 1
                 feng_ip_base += 1
             f.registers.board_id.write_int(board_id)
@@ -123,8 +134,10 @@ class FxCorrelator(Instrument):
 
         # subscribe to multicast data
         for ctr, f in enumerate(self.fhosts):
+            ctr = 0
             for gbe in f.tengbes:
-                gbe.multicast_receive('239.2.0.64', 0)
+                gbe.multicast_receive('239.2.0.%2d' % (64 + ctr), 0)
+                ctr += 1
 
         # start f-engine TX
         for ctr, f in enumerate(self.fhosts):
@@ -262,7 +275,7 @@ class FxCorrelator(Instrument):
         # TODO: Work on the logic of sources->engines->hosts
 
         # 2 pols per FPGA on this initial design, but should be mutable
-        self.inputs_per_fpga = int(self.configd['fengine']['inputs_per_fengine'])
+        self.inputs_per_fengine = int(self.configd['fengine']['inputs_per_fengine'])
 
         # what antenna ids have we been allocated?
         self.source_names = self.configd['fengine']['source_names'].strip().split(',')
@@ -303,7 +316,8 @@ class FxCorrelator(Instrument):
                 xhost.add_engine(engine)
 
         # SPEAD receiver
-        self.spead_tx = spead.Transmitter(spead.TransportUDPtx(self.config['xengine']['rx_meta_ip'], self.config['xengine']['rx_udp_port']))
+        self.spead_tx = spead.Transmitter(spead.TransportUDPtx(self.configd['xengine']['rx_meta_ip'],
+                                                               int(self.configd['xengine']['rx_udp_port'])))
         self.spead_ig = spead.ItemGroup()
 
         # done
@@ -482,33 +496,37 @@ class FxCorrelator(Instrument):
             for f in self.fhosts:
                 f.registers.control.write(comms_en = False)
 
-    def fxcorrelator_issue_meta(self):
+    def spead_issue_meta(self):
         """
         All FxCorrelators issued SPEAD in the same way, with tweakings that are implemented by the child class.
         :return:
         """
 
+        sample_rate = int(self.configd['FxCorrelator']['sample_rate_hz'])
         self.spead_ig.add_item(name='adc_sample_rate', id=0x1007,
                                description='The ADC sample rate (samples per second) ',
-                               shape=[],fmt=spead.mkfmt(('u',64)),
-                               init_val=self.config['FxCorrelator']['sample_rate_hz'])
+                               shape=[],fmt=spead.mkfmt(('u', 64)),
+                               init_val=sample_rate)
 
+        n_ants = int(self.configd['fengine']['n_ants'])
+        n_bls = (n_ants*(n_ants+1)/2)*4
         self.spead_ig.add_item(name='n_bls', id=0x1008,
                                description='Number of baselines in the cross correlation product.',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=self.number_of_baselines)
+                               init_val=n_bls)
 
+        n_chans = int(self.configd['fengine']['n_chans'])
         self.spead_ig.add_item(name='n_chans', id=0x1009,
                                description='Number of frequency channels in an integration.',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=self.config['fengine']['n_chans'])
+                               init_val=n_chans)
 
         # TODO - the number of inputs, cos antennas can be single or multiple pol?
         # f-engines now have only got inputs, they don't know what or from where.
         self.spead_ig.add_item(name='n_ants', id=0x100A,
                                description='The number of antennas.',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=self.config['fengine']['n_ants'])
+                               init_val=n_ants)
 
         self.spead_ig.add_item(name='n_xengs', id=0x100B,
                                description='',
@@ -516,19 +534,19 @@ class FxCorrelator(Instrument):
                                init_val=(len(self.xhosts) * self.x_per_fpga))
 
         # TODO
-        self.spead_ig.add_item(name='bls_ordering', id=0x100C,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=numpy.array([bl for bl in self.get_bl_order()]))
+        # self.spead_ig.add_item(name='bls_ordering', id=0x100C,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=numpy.array([bl for bl in self.get_bl_order()]))
 
         # self.spead_ig.add_item(name='crosspol_ordering', id=0x100D,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
-        self.spead_ig.add_item(name='input_labelling', id=0x100E,
-                               description='',
-                               init_val=self.antenna_mapping)
+        # self.spead_ig.add_item(name='input_labelling', id=0x100E,
+        #                        description='',
+        #                        init_val=self.configd['fengine']['source_names'])
 
         # self.spead_ig.add_item(name='n_bengs', id=0x100F,
         #                        description='',
@@ -538,24 +556,25 @@ class FxCorrelator(Instrument):
         self.spead_ig.add_item(name='center_freq', id=0x1011,
                                description='',
                                shape=[],fmt=spead.mkfmt(('f', 64)),
-                               init_val=int(self.config['fengine']['true_cf']))
+                               init_val=int(self.configd['fengine']['true_cf']))
 
         self.spead_ig.add_item(name='bandwidth', id=0x1013,
                                description='',
                                shape=[],fmt=spead.mkfmt(('f', 64)),
-                               init_val=int(self.config['fengine']['bandwidth']))
+                               init_val=int(self.configd['fengine']['bandwidth']))
 
-        # TODO
+        acc_len = int(self.configd['xengine']['accumulation_len'])
+        xeng_acc_len = int(self.configd['xengine']['xeng_accumulation_len'])
         self.spead_ig.add_item(name='n_accs', id=0x1015,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=(acc_len * xeng_acc_len))
 
-        # TODO
+        int_time = ((acc_len * xeng_acc_len) * int(self.configd['fengine']['n_chans'])) / int(self.configd['fengine']['bandwidth'])
         self.spead_ig.add_item(name='int_time', id=0x1016,
                                description='',
                                shape=[],fmt=spead.mkfmt(('f', 64)),
-                               init_val=)
+                               init_val=int_time)
 
         # self.spead_ig.add_item(name='coarse_chans', id=0x1017,
         #                        description='',
@@ -580,192 +599,207 @@ class FxCorrelator(Instrument):
         self.spead_ig.add_item(name='fft_shift', id=0x101E,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=int(self.config['fengine']['fft_shift']))
+                               init_val=int(self.configd['fengine']['fft_shift']))
 
         self.spead_ig.add_item(name='xeng_acc_len', id=0x101F,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=int(self.config['xengine']['accumulation_len']))
+                               init_val=int(self.configd['xengine']['accumulation_len']))
 
+        quant_format = self.configd['fengine']['quant_format']
+        quant_bits = int(quant_format.split('.')[0])
         self.spead_ig.add_item(name='requant_bits', id=0x1020,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=quant_bits)
 
+        pkt_len = int(self.configd['fengine']['10gbe_pkt_len'])
         self.spead_ig.add_item(name='feng_pkt_len', id=0x1021,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=pkt_len)
 
+        port = int(self.configd['xengine']['output_destination_port'])
         self.spead_ig.add_item(name='rx_udp_port', id=0x1022,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=port)
 
+        port = int(self.configd['fengine']['10gbe_start_port'])
         self.spead_ig.add_item(name='feng_udp_port', id=0x1023,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=port)
 
+        ip = self.configd['xengine']['output_destination_ip']
         self.spead_ig.add_item(name='rx_udp_ip_str', id=0x1024,
                                description='',
                                shape=[-1],fmt=spead.STR_FMT,
-                               init_val=)
+                               init_val=ip)
 
+
+        import struct
+        ip = struct.unpack('>I', socket.inet_aton(self.configd['fengine']['10gbe_start_ip']))[0]
         self.spead_ig.add_item(name='feng_start_ip', id=0x1025,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=ip)
 
+        xeng_clk = 217000000
         self.spead_ig.add_item(name='xeng_rate', id=0x1026,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=xeng_clk)
 
         self.spead_ig.add_item(name='sync_time', id=0x1027,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=self.synchronisation_epoch)
 
-        self.spead_ig.add_item(name='n_stokes', id=0x1040,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='n_stokes', id=0x1040,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
+        x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
         self.spead_ig.add_item(name='x_per_fpga', id=0x1041,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=x_per_fpga)
 
+        n_ants_per_xaui = 1
         self.spead_ig.add_item(name='n_ants_per_xaui', id=0x1042,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=n_ants_per_xaui)
 
-        self.spead_ig.add_item(name='ddc_mix_freq', id=0x1043,
-                               description='',
-                               shape=[],fmt=spead.mkfmt(('f', 64)),
-                               init_val=)
+        # self.spead_ig.add_item(name='ddc_mix_freq', id=0x1043,
+        #                        description='',
+        #                        shape=[],fmt=spead.mkfmt(('f', 64)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='ddc_bandwidth', id=0x1044,
-                               description='',
-                               shape=[],fmt=spead.mkfmt(('f', 64)),
-                               init_val=)
+        # self.spead_ig.add_item(name='ddc_bandwidth', id=0x1044,
+        #                        description='',
+        #                        shape=[],fmt=spead.mkfmt(('f', 64)),
+        #                        init_val=)
 
+        sample_bits = int(self.configd['fengine']['sample_bits'])
         self.spead_ig.add_item(name='adc_bits', id=0x1045,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=sample_bits)
 
-        self.spead_ig.add_item(name='scale_factor_timestamp', id=0x1046,
-                               description='',
-                               shape=[],fmt=spead.mkfmt(('f', 64)),
-                               init_val=)
+        # self.spead_ig.add_item(name='scale_factor_timestamp', id=0x1046,
+        #                        description='',
+        #                        shape=[],fmt=spead.mkfmt(('f', 64)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='b_per_fpga', id=0x1047,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='b_per_fpga', id=0x1047,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
+        xeng_sample_bits = 32
         self.spead_ig.add_item(name='xeng_out_bits_per_sample', id=0x1048,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=xeng_sample_bits)
 
+        f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
         self.spead_ig.add_item(name='f_per_fpga', id=0x1049,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+                               init_val=f_per_fpga)
 
-        self.spead_ig.add_item(name='beng_out_bits_per_sample', id=0x1050,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='beng_out_bits_per_sample', id=0x1050,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='rf_gain_MyAntStr ', id=0x1200+inputN,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('f', 64)),
-                               init_val=)
+        # self.spead_ig.add_item(name='rf_gain_MyAntStr ', id=0x1200+inputN,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('f', 64)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='eq_coef_MyAntStr', id=0x1400+inputN,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', 32)),
-                               init_val=)
+        # self.spead_ig.add_item(name='eq_coef_MyAntStr', id=0x1400+inputN,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', 32)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='timestamp', id=0x1600,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='timestamp', id=0x1600,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='xeng_raw', id=0x1800,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='xeng_raw', id=0x1800,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='beamweight_MyAntStr', id=0x2000+inputN,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', 32)),
-                               init_val=)
+        # self.spead_ig.add_item(name='beamweight_MyAntStr', id=0x2000+inputN,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', 32)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='incoherent_sum', id=0x3000,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', 32)),
-                               init_val=)
+        # self.spead_ig.add_item(name='incoherent_sum', id=0x3000,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', 32)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='n_inputs', id=0x3100,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='n_inputs', id=0x3100,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='digitiser_id', id=0x3101,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='digitiser_id', id=0x3101,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='digitiser_status', id=0x3102,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='digitiser_status', id=0x3102,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='pld_len', id=0x3103,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='pld_len', id=0x3103,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='raw_data_MyAntStr', id=0x3300+inputN,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='raw_data_MyAntStr', id=0x3300+inputN,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='Reserved for SP-CAM meta-data', id=0x7000-0x7fff,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='Reserved for SP-CAM meta-data', id=0x7000-0x7fff,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='feng_id', id=0xf101,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='feng_id', id=0xf101,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='feng_status', id=0xf102,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='feng_status', id=0xf102,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='frequency', id=0xf103,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='frequency', id=0xf103,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='raw_freq_MyAntStr', id=0xf300+inputN,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='raw_freq_MyAntStr', id=0xf300+inputN,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
-        self.spead_ig.add_item(name='bf_MyBeamName', id=0xb000+beamN,
-                               description='',
-                               shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=)
+        # self.spead_ig.add_item(name='bf_MyBeamName', id=0xb000+beamN,
+        #                        description='',
+        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                        init_val=)
 
         # and send everything
         self.spead_tx.send_heap(self.spead_ig.get_heap())

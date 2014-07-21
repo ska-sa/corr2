@@ -43,6 +43,8 @@ feng_hosts = args.hosts.lstrip().rstrip().replace(' ', '').split(',')
 
 feng_hosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']
 
+feng_hosts = ['roach02091b']
+
 # create the devices and connect to them
 ffpgas = []
 for host in feng_hosts:
@@ -70,6 +72,7 @@ def fengine_gbe(fpga):
     return returndata
 
 def fengine_rxtime(fpga):
+    return 3
     return (fpga.registers.local_time_msw.read()['data']['reg'] << 32) + \
         fpga.registers.local_time_lsw.read()['data']['reg']
 
@@ -77,7 +80,7 @@ def get_fpga_data(fpga):
     data = {}
     data['gbe'] = fengine_gbe(fpga)
     data['rxtime'] = fengine_rxtime(fpga)
-    data['mcnt_nolock'] = fpga.registers.mcnt_nolock.read_uint()
+    data['mcnt_nolock'] = 555 #fpga.registers.mcnt_nolock.read_uint()
     return data
 
 # work out tables for each fpga
@@ -105,7 +108,7 @@ for cnt, fpga in enumerate(ffpgas):
 if all_the_same:
     fpga_headers = [fpga_headers[0]]
 
-fpga_headers = [['gbe_rxctr', 'gbe_rxofctr', 'gbe_rxerrctr', 'gbe_rxbadctr', 'gbe_txerrctr', 'gbe_txfullctr', 'gbe_txofctr', 'gbe_txctr', 'gbe_txvldctr']]
+fpga_headers = [['gbe_rxctr', 'gbe_rxofctr', 'gbe_rxerrctr', 'gbe_rxeofctr', 'gbe_txerrctr', 'gbe_txfullctr', 'gbe_txofctr', 'gbe_txctr', 'gbe_txvldctr']]
 
 import signal
 def signal_handler(sig, frame):
@@ -163,7 +166,10 @@ try:
                     for header_register in fpga_headers[0]:
                         core_register_name = header_register.replace('gbe', core)
                         if start_pos < 200:
-                            regval = '%10d' % core_data[core_register_name]['data']['reg']
+                            try:
+                                regval = '%10d' % core_data[core_register_name]['data']['reg']
+                            except KeyError:
+                                regval = '-1'
                             scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
                             start_pos += pos_increment
             scroller.draw_screen()
