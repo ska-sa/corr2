@@ -83,6 +83,10 @@ class FxCorrelator(Instrument):
 
         return
 
+        # wait for ARP
+        if program:
+            time.sleep(180)
+
         '''
         fengine init:
             eq
