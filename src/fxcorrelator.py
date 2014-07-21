@@ -72,6 +72,10 @@ class FxCorrelator(Instrument):
         # init the x engines
         self._xengine_initialise(program=False)
 
+        # wait for ARP
+        if program:
+            time.sleep(180)
+
         '''
         fengine init:
             eq
