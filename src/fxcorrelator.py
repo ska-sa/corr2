@@ -69,10 +69,10 @@ class FxCorrelator(Instrument):
         # init the f engines
         self._fengine_initialise()
 
-        return
-
         # init the x engines
         self._xengine_initialise(program=False)
+
+        return
 
         '''
         fengine init:
@@ -203,13 +203,12 @@ class FxCorrelator(Instrument):
         for f in self.xhosts:
             f.host.registers.tvg_sel.write(xeng=2)
         
-        if program:
-            print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
-            while time.time() < stime + arptime:
-                print '.'
-                sys.stdout.flush()
-                time.sleep(1)
-            print 'done.'
+        print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
+        while time.time() < stime + arptime:
+            print '.'
+            sys.stdout.flush()
+            time.sleep(1)
+        print 'done.'
  
         # release cores from reset
         for f in self.xhosts:
@@ -269,7 +268,7 @@ class FxCorrelator(Instrument):
         self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
         self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
-        self.sample_rate_hz = int(self.configd['xengine']['sample_rate_hz'])
+        self.sample_rate_hz = int(self.configd['FxCorrelator']['sample_rate_hz'])
         self.xeng_accumulation_len = int(self.configd['xengine']['xeng_accumulation_len'])
 
         # TODO: Work on the logic of sources->engines->hosts
