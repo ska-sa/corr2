@@ -184,6 +184,22 @@ class FxCorrelator(Instrument):
         for f in self.xhosts:
             f.registers.board_id.write(reg=board_id)
             board_id += 1
+
+        #set up accumulation length
+        acc_len = self.xeng_accumulation_len
+
+        for f in self.xhosts:
+            f.registers.acc_len.write(reg = acc_len)
+       
+        # start accumulating
+        for f in self.xhosts:
+            f.registers.vacc_time_lsw.write(reg=0)
+            f.registers.vacc_time_msw.write(msw=0, arm=0, immediate=0)
+            f.registers.vacc_time_msw.write(msw=0, arm=1, immediate=1)
+ 
+        # turn on tvgs
+        for f in self.xhosts:
+            f.host.registers.tvg_sel.write(xeng=2)
         
         if program:
             print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
@@ -196,7 +212,7 @@ class FxCorrelator(Instrument):
         # release cores from reset
         for f in self.xhosts:
             f.registers.ctrl.write(comms_rst = False)
-      
+         
         # check for errors
         for f in self.xhosts:
             for eng_index in range(4):
@@ -207,8 +223,25 @@ class FxCorrelator(Instrument):
                 if (status['rxing_data'] == False):
                     print 'xengine %d on host %s is not receiving valid data' %(eng_index, str(f))
 
-                # check that there are no other errors
-                #TODO
+                # TODO check that there are no other errors
+                
+                # check that all engines are producing data ready for transmission
+                if (status['txing_data'] == False):
+                    print 'xengine %d on host %s is not producing valid data' %(eng_index, str(f))
+
+        # check accumulations are happening
+        for f in self.xhosts:
+            for eng_index in range(4):
+                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()
+                print '%s:xeng %d had %d accumulations before' %(str(f), eng_index, vacc_cnt)
+        
+        print 'waiting for an accumulation' 
+        time.sleep(1)
+
+        for f in self.xhosts:
+            for eng_index in range(4):
+                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()
+                print '%s:xeng %d had %d accumulations after' %(str(f), eng_index, vacc_cnt)
 
     ##############################
     ## Configuration information #
@@ -234,6 +267,8 @@ class FxCorrelator(Instrument):
         self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
         self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
+        self.sample_rate_hz = int(self.configd['xengine']['sample_rate_hz'])
+        self.xeng_accumulation_len = int(self.configd['xengine']['xeng_accumulation_len'])
 
         # TODO: Work on the logic of sources->engines->hosts
 
