@@ -90,14 +90,15 @@ class Corr2Server(katcp.DeviceServer):
         """
         return 'ok',
 
-    @request()
+    @request(Str(), Int())
     @return_reply()
-    def request_capture_destination(self, sock):
+    def request_capture_destination(self, sock, ipstr, port):
         """
 
         :param sock:
         :return:
         """
+        self.instrument.set_destination(self, txip_str=ipstr, txport=port)
         return 'ok',
 
     @request()
@@ -203,8 +204,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         return 'ok',
 
-    @request(Str(default='a string woohoo'), Int(default=777))  # arguments to this request,
-                                                                # create the message with these args
+    @request(Str(default='a string woohoo'), Int(default=777))  # arguments to this request, # create the message with these args
     @return_reply()
     def request_pang(self, sock, astring, anint):
         """

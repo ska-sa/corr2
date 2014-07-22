@@ -103,6 +103,14 @@ class FxCorrelator(Instrument):
             enable tx
         '''
 
+    def feng_status_clear(self):
+        for f in self.fhosts:
+            f.registers.control.write(clr_status='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
+
+    def xeng_status_clear(self):
+        for f in self.xhosts:
+            f.registers.ctrl.write(comms_status_clr='pulse')
+
     def _fengine_initialise(self):
         """
         Set up f-engines on this device.
@@ -203,10 +211,7 @@ class FxCorrelator(Instrument):
             f.registers.ctrl.write(comms_rst = False)
 
         # set up accumulation length
-        # use default for now
-        acc_len = self.accumulation_len
-        for f in self.xhosts:
-            f.registers.acc_len.write(reg = acc_len)
+        self.xeng_set_acc_len()
        
         # start accumulating
         for f in self.xhosts:
@@ -259,6 +264,17 @@ class FxCorrelator(Instrument):
 
                 if (vacc_cnt_before == vacc_cnt): 
                     print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
+
+    def xeng_set_acc_len(self, new_acc_len=-1):
+        """
+        Set the QDR vector accumulation length.
+        :param new_acc_len:
+        :return:
+        """
+        if new_acc_len == -1:
+            acc_len = self.accumulation_len
+        for f in self.xhosts:
+            f.registers.acc_len.write_int(acc_len)
 
     ##############################
     ## Configuration information #
@@ -463,19 +479,6 @@ class FxCorrelator(Instrument):
     def set_destination(self, txip_str=None, txport=None, issue_meta=True):
         """Set destination for output of fxcorrelator.
         """
-#        if txip_str is None:
-#            txip_str = self.configd['txip_str']
-#
-#        if txport is None:
-#            txport = self.configd['txport']
-
-#        #set destinations for all xengines
-#        for xengine in self.xengines:
-#            xengine.set_txip(txip_str)
-#            xengine.set_txport(txport)
-#TODO   
-#        if issue_meta:
-        
         if txip_str is None:
             txip = tengbe.str2ip(self.txip_str)
         else:
@@ -487,6 +490,9 @@ class FxCorrelator(Instrument):
         for f in self.xhosts: 
             f.registers.txip.write(txip=txip)
             f.registers.txport.write(txport=txport)
+
+        if issue_meta:
+            self.spead_issue_meta()
 
     def start_tx(self):
         """ Turns on xengine output pipes needed to start data flow from xengines
