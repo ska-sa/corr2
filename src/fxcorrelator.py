@@ -17,11 +17,78 @@ from xengine_fpga import XengineCasperFpga
 from fengine_fpga import FengineCasperFpga
 import utils
 from casperfpga import tengbe
+from casperfpga import KatcpClientFpga
 
 LOGGER = logging.getLogger(__name__)
 
 
 use_demo_fengine = True
+dbof = '/srv/bofs/deng/r2_deng_tvg_2014_Jul_21_0838.fpg'
+dhost = 'roach020959'
+dip_start = '10.0.0.70'
+dmac_start = '02:02:00:00:00:01'
+
+
+def digitiser_stop():
+    print 'Stopping digitiser'
+    fdig = KatcpClientFpga(dhost)
+    if fdig.is_running():
+        fdig.test_connection()
+        fdig.get_system_information()
+        fdig.registers.control.write(gbe_txen = False)
+        fdig.deprogram()
+    fdig.disconnect()
+
+
+def digitiser_start(dig_tx_tuple):
+    fdig = KatcpClientFpga(dhost)
+    fdig.deprogram()
+    stime = time.time()
+    print 'Programming digitiser',
+    sys.stdout.flush()
+    fdig.upload_to_ram_and_program(dbof)
+    print time.time() - stime
+    fdig.test_connection()
+    fdig.get_system_information()
+    # stop sending data
+    fdig.registers.control.write(gbe_txen = False)
+    # start the local timer on the test d-engine - mrst, then a fake sync
+    fdig.registers.control.write(mrst = 'pulse')
+    fdig.registers.control.write(msync = 'pulse')
+    # the all_fpgas have tengbe cores, so set them up
+    ip_bits = dip_start.split('.')
+    ipbase = int(ip_bits[3])
+    mac_bits = dmac_start.split(':')
+    macbase = int(mac_bits[5])
+    for ctr in range(0,4):
+        mac = '%s:%s:%s:%s:%s:%d' % (mac_bits[0], mac_bits[1], mac_bits[2], mac_bits[3], mac_bits[4], macbase + ctr)
+        ip = '%s.%s.%s.%d' % (ip_bits[0], ip_bits[1], ip_bits[2], ipbase + ctr)
+        fdig.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=7777)
+    for gbe in fdig.tengbes:
+        gbe.tap_start(True)
+    # set the destination IP and port for the tx
+    txaddr = dig_tx_tuple[0]
+    txaddr_bits = txaddr.split('.')
+    txaddr_base = int(txaddr_bits[3])
+    txaddr_prefix = '%s.%s.%s.' % (txaddr_bits[0], txaddr_bits[1], txaddr_bits[2])
+    print 'digitisers sending to: %s%d port %d' % (txaddr_prefix, txaddr_base + 0, dig_tx_tuple[2])
+    fdig.write_int('gbe_iptx0', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 0)))
+    fdig.write_int('gbe_iptx1', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 1)))
+    fdig.write_int('gbe_iptx2', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 2)))
+    fdig.write_int('gbe_iptx3', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 3)))
+    fdig.write_int('gbe_porttx', dig_tx_tuple[2])
+    fdig.registers.control.write(gbe_rst=False)
+    # enable the tvg on the digitiser and set up the pol id bits
+    fdig.registers.control.write(tvg_select0=True)
+    fdig.registers.control.write(tvg_select1=True)
+    fdig.registers.id2.write(pol1_id=1)
+    # start tx
+    print 'Starting dig TX...',
+    sys.stdout.flush()
+    fdig.registers.control.write(gbe_txen=True)
+    print 'done.'
+    sys.stdout.flush()
+    fdig.disconnect()
 
 
 class FxCorrelator(Instrument):
@@ -59,7 +126,10 @@ class FxCorrelator(Instrument):
         Set up the correlator using the information in the config file
         :return:
         """
+
         # TODO
+        digitiser_stop()
+
         if program:
             logging.info('Programming FPGA hosts.')
             ftups = []
@@ -69,20 +139,35 @@ class FxCorrelator(Instrument):
                 ftups.append((f, f.boffile))
             utils.program_fpgas(None, ftups)
 
-        # init the f engines
-        self._fengine_initialise()
+        for f in self.fhosts:
+            f.initialise(program=False)
+        for f in self.xhosts:
+            f.initialise(program=False)
 
-        # init the x engines
-        self._xengine_initialise()
+        if program:
+            # init the f engines
+            self._fengine_initialise()
+            # init the x engines
+            self._xengine_initialise()
 
         if program:
             arptime = 200
             stime = time.time()
-            print 'Waiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
+            print 'Waiting %ds for ARP...' % arptime,
             sys.stdout.flush()
             while time.time() - stime < arptime:
                 time.sleep(1)
             print 'done.'
+
+        # TODO
+        digitiser_start(self.source_mcast[0])
+
+        # start f-engine TX
+        for f in self.fhosts:
+            if use_demo_fengine:
+                f.registers.control.write(gbe_txen=True)
+            else:
+                f.registers.control.write(comms_en=True)
 
         '''
         fengine init:
@@ -124,7 +209,6 @@ class FxCorrelator(Instrument):
         board_id = 0
 
         for ctr, f in enumerate(self.fhosts):
-            f.initialise(program=False)
             if use_demo_fengine:
                 f.registers.control.write(gbe_txen=False)
             else:
@@ -166,27 +250,22 @@ class FxCorrelator(Instrument):
 
         # subscribe to multicast data
         for ctr, f in enumerate(self.fhosts):
+            rxaddr = self.source_mcast[0][0]
+            rxaddr_bits = rxaddr.split('.')
+            rxaddr_base = int(rxaddr_bits[3])
+            rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
             ctr = 0
             for gbe in f.tengbes:
-                gbe.multicast_receive('239.2.0.%2d' % (64 + ctr), 0)
+                rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
+                print 'host %s %s subscribing to address %s' % (f.host, gbe.name, rxaddress)
+                gbe.multicast_receive(rxaddress, 0)
                 ctr += 1
-
-        # start f-engine TX
-        for f in self.fhosts:
-            if use_demo_fengine:
-                f.registers.control.write(gbe_txen=True)
-            else:
-                f.registers.control.write(comms_en=True)
 
     def _xengine_initialise(self):
         """
         Set up x-engines on this device.
         :return:
         """
-        #disable transmission and place cores in reset
-        for f in self.xhosts:
-            f.initialise(program=False)
-
         #disable transmission and place cores in reset
         for f in self.xhosts:
             f.registers.ctrl.write(comms_en=False)
@@ -225,7 +304,7 @@ class FxCorrelator(Instrument):
             board_id += 1
         
         # set up default destination ip and port
-        self.set_destination()
+        self.set_destination(issue_meta = False)
  
         # check accumulations are happening
         vacc_cnts = []
@@ -355,9 +434,6 @@ class FxCorrelator(Instrument):
         self.spead_tx = spead.Transmitter(spead.TransportUDPtx(self.configd['xengine']['rx_meta_ip'],
                                                                int(self.configd['xengine']['rx_udp_port'])))
         self.spead_ig = spead.ItemGroup()
-
-        # issue the metadata
-        self.spead_issue_meta()
 
         # done
         return True
@@ -494,17 +570,17 @@ class FxCorrelator(Instrument):
         if issue_meta:
             self.spead_issue_meta()
 
-    def start_tx(self):
+    def tx_start(self, issue_spead=True):
         """ Turns on xengine output pipes needed to start data flow from xengines
         """
-        #turn on xengine outputs
-#        for xengine in self.xengines:
-#            xengine.start_tx()
+        if issue_spead:
+            self.spead_issue_meta()
 
+        # start tx on the x-engines
         for f in self.xhosts:
             f.registers.ctrl.write(comms_en=True)
     
-    def stop_tx(self, stop_f=False, issue_meta=True):
+    def tx_stop(self, stop_f=False):
         """Turns off output pipes to start data flow from xengines
         @param stop_f: stop output of fengines too
         """
@@ -517,7 +593,7 @@ class FxCorrelator(Instrument):
         #        fengine.stop_tx()
 
         for f in self.xhosts:
-            f.registers.control.write(comms_en=False)
+            f.registers.ctrl.write(comms_en=False)
     
         if stop_f:
             for f in self.fhosts:

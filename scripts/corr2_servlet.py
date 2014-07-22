@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 __author__ = 'paulp'
 
 import logging
@@ -6,11 +8,9 @@ import argparse
 import Queue
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
-from fxcorrelator import FxCorrelator
+from corr2 import fxcorrelator
 
-logging.basicConfig(level=logging.WARN,
-                    stream=sys.stderr,
-                    format='%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.WARN, stream=sys.stderr, format='%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
 
 
 class Corr2Server(katcp.DeviceServer):
@@ -21,16 +21,16 @@ class Corr2Server(katcp.DeviceServer):
     ## Device server build / instance information.
     BUILD_INFO = ('corr2', 0, 1, 'alpha')
 
+    def __init__(self, *args, **kwargs):
+        super(Corr2Server, self).__init__(*args, **kwargs)
+        self.instrument = None
+
     def setup_sensors(self):
         """
         Must be implemented in interface.
         :return: nothing
         """
         pass
-
-    def __init__(self, *args, **kwargs):
-        super(Corr2Server, self).__init__(*args, **kwargs)
-        self.instrument = None
 
     @request()
     @return_reply()
@@ -52,7 +52,7 @@ class Corr2Server(katcp.DeviceServer):
         :param log_len:
         :return:
         """
-        self.instrument = FxCorrelator('RTS correlator', config_source=config_file)
+        self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
         return 'ok',
 
     @request()
@@ -109,7 +109,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        self.instrument.start_tx()
+        self.instrument.tx_start()
         return 'ok',
 
     @request()
@@ -120,7 +120,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        self.instrument.stop_tx()
+        self.instrument.tx_stop()
         return 'ok',
 
     @request()
@@ -221,6 +221,9 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--port', dest='port', action='store',
                         default=1235, type=int,
                         help='bind to this port to receive KATCP messages')
+    # parser.add_argument('-c', '--config', dest='configfile', action='store',
+    #                     default='', type=str,
+    #                     help='config file location')
     args = parser.parse_args()
 
     print 'Server listening on port %d, ' % args.port,
