@@ -188,12 +188,6 @@ class FxCorrelator(Instrument):
         for f in self.xhosts:
             f.registers.ctrl.write(comms_rst = False)
 
-        # set up board id
-        board_id = 0
-        for f in self.xhosts:
-            f.registers.board_id.write(reg=board_id)
-            board_id += 1
-
         # set up accumulation length
         # use default for now
         acc_len = self.accumulation_len
@@ -204,6 +198,15 @@ class FxCorrelator(Instrument):
         for f in self.xhosts:
             f.registers.vacc_time_msw.write(arm=0, immediate=0)
             f.registers.vacc_time_msw.write(arm=1, immediate=1)
+
+        # set up board id
+        board_id = 0
+        for f in self.xhosts:
+            f.registers.board_id.write(reg=board_id)
+            board_id += 1
+        
+        # set up default destination ip and port
+        self.set_destination()
  
         # check accumulations are happening
         vacc_cnts = []
@@ -269,6 +272,8 @@ class FxCorrelator(Instrument):
         self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
         self.sample_rate_hz = int(self.configd['FxCorrelator']['sample_rate_hz'])
         self.accumulation_len = int(self.configd['xengine']['accumulation_len'])
+        self.txip_str = self.configd['xengine']['output_destination_ip']
+        self.txport = int(self.configd['xengine']['output_destination_port'])
 
         # TODO: Work on the logic of sources->engines->hosts
 
@@ -457,12 +462,12 @@ class FxCorrelator(Instrument):
 #        if issue_meta:
         
         if txip_str is None:
-            txip = tengbe.str2ip(self.configd['txip_str'])
+            txip = tengbe.str2ip(self.txip_str)
         else:
             txip = tengbe.str2ip(txip_str)
 
         if txport is None:
-            txport = self.configd['txport']
+            txport = self.txport
         
         for f in self.xhosts: 
             f.registers.txip.write(txip=txip)
@@ -476,7 +481,7 @@ class FxCorrelator(Instrument):
 #            xengine.start_tx()
 
         for f in self.xhosts:
-            f.registers.control.write(comms_en=True)
+            f.registers.ctrl.write(comms_en=True)
     
     def stop_tx(self, stop_f=False, issue_meta=True):
         """Turns off output pipes to start data flow from xengines
