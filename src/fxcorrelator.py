@@ -552,6 +552,7 @@ class FxCorrelator(Instrument):
         """
         return self.ping_hosts()
     '''
+
     def set_destination(self, txip_str=None, txport=None, issue_meta=True):
         """Set destination for output of fxcorrelator.
         """
@@ -566,6 +567,9 @@ class FxCorrelator(Instrument):
         for f in self.xhosts: 
             f.registers.txip.write(txip=txip)
             f.registers.txport.write(txport=txport)
+
+        self.txip_str = tengbe.ip2str(txip)
+        self.txport = txport
 
         if issue_meta:
             self.spead_issue_meta()

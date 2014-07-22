@@ -81,14 +81,14 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok',
 
     @request()
-    @return_reply()
+    @return_reply(Str(), Str())
     def request_capture_list(self, sock):
         """
 
         :param sock:
         :return:
         """
-        return 'ok',
+        return 'ok', self.configd['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
 
     @request(Str(), Int())
     @return_reply()
