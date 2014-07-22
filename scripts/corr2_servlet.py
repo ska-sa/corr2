@@ -88,7 +88,9 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        return 'ok', self.configd['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
+        inform_string = self.instrument.configd['xengine']['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
+        sock.inform(inform_string)
+        return 'ok', self.instrument.configd['xengine']['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
 
     @request(Str(), Int())
     @return_reply()
