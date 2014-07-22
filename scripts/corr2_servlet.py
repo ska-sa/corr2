@@ -167,14 +167,14 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok',
 
     @request()
-    @return_reply()
+    @return_reply(Float())
     def request_accumulation_length(self, sock):
         """
 
         :param sock:
         :return:
         """
-        return 'ok',
+        return 'ok', (self.instrument.accumulation_len * 1.0)
 
     @request()
     @return_reply()
