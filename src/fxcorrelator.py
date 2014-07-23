@@ -128,7 +128,7 @@ class FxCorrelator(Instrument):
         """
 
         # TODO
-        digitiser_stop()
+        #digitiser_stop()
 
         if program:
             logging.info('Programming FPGA hosts.')
@@ -160,7 +160,7 @@ class FxCorrelator(Instrument):
             print 'done.'
 
         # TODO
-        digitiser_start(self.source_mcast[0])
+        #digitiser_start(self.source_mcast[0])
 
         # start f-engine TX
         for f in self.fhosts:
@@ -367,7 +367,7 @@ class FxCorrelator(Instrument):
         Instrument._read_config(self)
 
         if use_demo_fengine:
-            self.configd['fengine']['bitstream'] = '/srv/bofs/feng/feng_rx_test_2014_Jun_05_1818.fpg'
+            self.configd['fengine']['bitstream'] = '/srv/bofs/feng/feng_rx_test_2014_Jul_22_1556.fpg'
 
         # check that the bitstream names are present
         try:
