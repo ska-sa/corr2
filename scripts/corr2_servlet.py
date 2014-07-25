@@ -81,14 +81,16 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok',
 
     @request()
-    @return_reply()
+    @return_reply(Str(), Str())
     def request_capture_list(self, sock):
         """
 
         :param sock:
         :return:
         """
-        return 'ok',
+        inform_string = self.instrument.configd['xengine']['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
+        sock.inform(inform_string)
+        return 'ok', self.instrument.configd['xengine']['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
 
     @request(Str(), Int())
     @return_reply()
@@ -165,14 +167,14 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok',
 
     @request()
-    @return_reply()
+    @return_reply(Float())
     def request_accumulation_length(self, sock):
         """
 
         :param sock:
         :return:
         """
-        return 'ok',
+        return 'ok', (self.instrument.accumulation_len * 1.0)
 
     @request()
     @return_reply()
