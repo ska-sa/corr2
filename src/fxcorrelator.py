@@ -121,7 +121,7 @@ class FxCorrelator(Instrument):
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
 
-    def initialise(self, program=True):
+    def initialise(self, program=True, tvg=False):
         """
         Set up the correlator using the information in the config file
         :return:
@@ -148,7 +148,7 @@ class FxCorrelator(Instrument):
             # init the f engines
             self._fengine_initialise()
             # init the x engines
-            self._xengine_initialise()
+            self._xengine_initialise(tvg=tvg)
 
         if program:
             arptime = 200
@@ -261,15 +261,26 @@ class FxCorrelator(Instrument):
                 gbe.multicast_receive(rxaddress, 0)
                 ctr += 1
 
-    def _xengine_initialise(self):
+    def _xengine_initialise(self, tvg=False):
         """
         Set up x-engines on this device.
         :return:
         """
-        #disable transmission and place cores in reset
+        #disable transmission, place cores in reset, and give control register a known state
         for f in self.xhosts:
-            f.registers.ctrl.write(comms_en=False)
-            f.registers.ctrl.write(comms_rst=True)
+            f.registers.ctrl.write(comms_en=False, comms_rst=True, leds_en=False, status_clr=False, comms_status_clr=False)
+
+        # set up board id
+        board_id = 0
+        for f in self.xhosts:
+            f.registers.board_id.write(reg=board_id)
+            board_id += 1
+
+        # set up accumulation length
+        self.xeng_set_acc_len()
+
+        # set up default destination ip and port
+        self.set_destination(issue_meta = False)
                
         #set up 10gbe cores 
         xipbase = 110
@@ -279,42 +290,27 @@ class FxCorrelator(Instrument):
                gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.0.0.%d' % xipbase, port=8778)
                macbase += 1
                xipbase += 1
+               #tap start
+               gbe.tap_start(True)
+        # tvg
+        if tvg:
+            for f in self.xhosts:
+                f.registers.tvg_sel.write(xeng = 2)
+        else:
+            for f in self.xhosts:
+                f.registers.tvg_sel.write(xaui=0, vacc=0, descr=0, xeng = 0)
 
-        # tap start
+        # clear gbe status
         for f in self.xhosts:
-            for gbe in f.tengbes:
-                gbe.tap_start(True)
-       
+            f.registers.ctrl.write(comms_status_clr = 'pulse')
+
         # release cores from reset
         for f in self.xhosts:
             f.registers.ctrl.write(comms_rst = False)
 
-        # set up accumulation length
-        self.xeng_set_acc_len()
-       
-        # start accumulating
+        # clear general status
         for f in self.xhosts:
-            f.registers.vacc_time_msw.write(arm=0, immediate=0)
-            f.registers.vacc_time_msw.write(arm=1, immediate=1)
-
-        # set up board id
-        board_id = 0
-        for f in self.xhosts:
-            f.registers.board_id.write(reg=board_id)
-            board_id += 1
-        
-        # set up default destination ip and port
-        self.set_destination(issue_meta = False)
- 
-        # check accumulations are happening
-        vacc_cnts = []
-        for f in self.xhosts:
-            for eng_index in range(4):
-                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
-                vacc_cnts.append(vacc_cnt)
-
-        print 'pausing while data sloshes around a bit' 
-        time.sleep(1)
+            f.registers.ctrl.write(status_clr='pulse', leds_en=True)
 
         # check for errors
         for f in self.xhosts:
@@ -331,10 +327,23 @@ class FxCorrelator(Instrument):
                 # check that all engines are producing data ready for transmission
                 if (status['txing_data'] == False):
                     print 'xengine %d on host %s is not producing valid data' %(eng_index, str(f))
-        
-        print 'waiting for an accumulation' 
-        time.sleep(1)
+       
+        # start accumulating
+        for f in self.xhosts:
+            f.registers.vacc_time_msw.write(arm=0, immediate=0)
+            f.registers.vacc_time_msw.write(arm=1, immediate=1)
 
+        # read accumulation count before starting accumulations
+        vacc_cnts = []
+        for f in self.xhosts:
+            for eng_index in range(4):
+                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
+                vacc_cnts.append(vacc_cnt)
+
+        print 'waiting for an accumulation' 
+        time.sleep(1.5)
+
+        # check accumulations are happening
         vacc_cnts.reverse()
         for f in self.xhosts:
             for eng_index in range(4):
@@ -343,6 +352,7 @@ class FxCorrelator(Instrument):
 
                 if (vacc_cnt_before == vacc_cnt): 
                     print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
+
 
     def xeng_set_acc_len(self, new_acc_len=-1):
         """
