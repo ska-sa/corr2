@@ -280,7 +280,7 @@ class FxCorrelator(Instrument):
         self.xeng_set_acc_len()
 
         # set up default destination ip and port
-        self.set_destination(issue_meta = False)
+        self.set_destination(issue_meta=False)
                
         #set up 10gbe cores 
         xipbase = 110
@@ -350,7 +350,7 @@ class FxCorrelator(Instrument):
                 vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
                 vacc_cnt_before = vacc_cnts.pop()                
 
-                if (vacc_cnt_before == vacc_cnt): 
+                if vacc_cnt_before == vacc_cnt:
                     print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
 
 
@@ -842,6 +842,16 @@ class FxCorrelator(Instrument):
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('u', 32)),
         #                        init_val=)
+
+        self.spead_ig.add_item(name=('timestamp'), id=0x1600,
+                               description='Timestamp',
+                               shape=[], fmt=spead.mkfmt(('u',spead.ADDRSIZE)),
+                               init_val=0)
+
+        import numpy
+        ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
+        self.spead_ig.add_item(name='xeng_raw_sim', id=0x1800, description='X-engine RTS simulation data.',
+                               ndarray=ndarray)
 
         # self.spead_ig.add_item(name='timestamp', id=0x1600,
         #                        description='',
