@@ -45,7 +45,9 @@ def program_fpgas(progfile, fpgas, timeout=10):
     chilltime = 0.1
     waiting = []
     for fpga in fpgas:
-        if len(fpga) == 1:
+        try:
+            len(fpga)
+        except TypeError:
             fpga.upload_to_ram_and_program(progfile, wait_complete=False)
             waiting.append(fpga)
         else:
