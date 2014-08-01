@@ -11,6 +11,7 @@ import socket
 import time
 import sys
 import spead
+import numpy
 from host_fpga import FpgaHost
 from instrument import Instrument
 from xengine_fpga import XengineCasperFpga
@@ -128,7 +129,7 @@ class FxCorrelator(Instrument):
         """
 
         # TODO
-        #digitiser_stop()
+        digitiser_stop()
 
         if program:
             logging.info('Programming FPGA hosts.')
@@ -160,7 +161,7 @@ class FxCorrelator(Instrument):
             print 'done.'
 
         # TODO
-        #digitiser_start(self.source_mcast[0])
+        digitiser_start(self.source_mcast[0])
 
         # start f-engine TX
         for f in self.fhosts:
@@ -848,7 +849,12 @@ class FxCorrelator(Instrument):
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
-        # self.spead_ig.add_item(name='xeng_raw', id=0x1800,
+        #TODO hard-coded !!!!!!! :(
+        self.spead_ig.add_item(name=("xeng_raw"),id=0x1800,
+                               description="Raw data for %i xengines in the system. This item represents a full spectrum (all frequency channels) assembled from lowest frequency to highest frequency. Each frequency channel contains the data for all baselines (n_bls given by SPEAD ID 0x100B). Each value is a complex number -- two (real and imaginary) unsigned integers."%(32),
+                                ndarray=(numpy.dtype(numpy.int32),(4096,((4*(4+1))/2)*4,2)))
+
+        #self.spead_ig.add_item(name='xeng_raw', id=0x1800,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
