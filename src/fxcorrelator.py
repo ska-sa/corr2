@@ -122,14 +122,14 @@ class FxCorrelator(Instrument):
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
 
-    def initialise(self, program=True, tvg=False):
+    def initialise(self, program=True, tvg=False, fake_digitiser=False):
         """
         Set up the correlator using the information in the config file
         :return:
         """
 
-        # TODO
-        digitiser_stop()
+        if fake_digitiser == True:
+            digitiser_stop()
 
         if program:
             logging.info('Programming FPGA hosts.')
@@ -160,8 +160,8 @@ class FxCorrelator(Instrument):
                 time.sleep(1)
             print 'done.'
 
-        # TODO
-        digitiser_start(self.source_mcast[0])
+        if fake_digitiser == True:
+            digitiser_start(self.source_mcast[0])
 
         # start f-engine TX
         for f in self.fhosts:
