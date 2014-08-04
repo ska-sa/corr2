@@ -29,6 +29,13 @@ dip_start = '10.0.0.70'
 dmac_start = '02:02:00:00:00:01'
 
 
+class DataSource(object):
+    def __init__(self, name, ip, iprange, port):
+        self.name = name
+        self.ip = ip
+        self.iprange = iprange
+        self.port = port
+
 def digitiser_stop():
     print 'Stopping digitiser'
     fdig = KatcpClientFpga(dhost)
@@ -112,16 +119,14 @@ class FxCorrelator(Instrument):
         self.katcp_port = None
         self.f_per_fpga = None
         self.x_per_fpga = None
-        self.inputs_per_fpga = None
-        self.source_names = None
-        self.source_mcast = None
+        self.sources = None
         self.spead_tx = None
         self.spead_ig = None
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
 
-    def initialise(self, program=True, tvg=False):
+    def initialise(self, program=True, tvg=False, skip_arp_wait=False):
         """
         Set up the correlator using the information in the config file
         :return:
@@ -155,12 +160,13 @@ class FxCorrelator(Instrument):
             stime = time.time()
             print 'Waiting %ds for ARP...' % arptime,
             sys.stdout.flush()
-            while time.time() - stime < arptime:
-                time.sleep(1)
+            if not skip_arp_wait:
+                while time.time() - stime < arptime:
+                    time.sleep(1)
             print 'done.'
 
         # TODO
-        #digitiser_start(self.source_mcast[0])
+        #digitiser_start(self.sources[0])
 
         # start f-engine TX
         for f in self.fhosts:
@@ -249,17 +255,26 @@ class FxCorrelator(Instrument):
                 f.registers.control.write(comms_rst=False)
 
         # subscribe to multicast data
-        for ctr, f in enumerate(self.fhosts):
-            rxaddr = self.source_mcast[0][0]
-            rxaddr_bits = rxaddr.split('.')
-            rxaddr_base = int(rxaddr_bits[3])
-            rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
-            ctr = 0
-            for gbe in f.tengbes:
-                rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-                print 'host %s %s subscribing to address %s' % (f.host, gbe.name, rxaddress)
-                gbe.multicast_receive(rxaddress, 0)
-                ctr += 1
+        source_ctr = 0
+        for host_ctr, host in enumerate(self.fhosts):
+            gbe_ctr = 0
+            for fengine_ctr in range(0, self.f_per_fpga):
+                source = self.sources[source_ctr]
+                #print 'host %s(%d) fengine(%d) source %s %s %d' % (host.host, host_ctr, fengine_ctr, source.name, source.ip, source_ctr)
+                rxaddr = source.ip
+                rxaddr_bits = rxaddr.split('.')
+                rxaddr_base = int(rxaddr_bits[3])
+                rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
+                if (len(host.tengbes) / self.f_per_fpga) != source.iprange:
+                    raise RuntimeError('10Gbe ports (%d) do not match sources IPs (%d)' % (len(host.tengbes), source.iprange))
+                for ctr in range(0, source.iprange):
+                    gbename = host.tengbes.names()[gbe_ctr]
+                    gbe = host.tengbes[gbename]
+                    rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
+                    LOGGER.debug('host %s %s subscribing to address %s', host.host, gbe.name, rxaddress)
+                    gbe.multicast_receive(rxaddress, 0)
+                    gbe_ctr += 1
+                source_ctr += 1
 
     def _xengine_initialise(self, tvg=False):
         """
@@ -362,12 +377,30 @@ class FxCorrelator(Instrument):
         """
         if new_acc_len == -1:
             acc_len = self.accumulation_len
-        for f in self.xhosts:
-            f.registers.acc_len.write_int(acc_len)
+        else:
+            acc_len = new_acc_len
+        for host in self.xhosts:
+            host.registers.acc_len.write_int(acc_len)
 
     ##############################
     ## Configuration information #
     ##############################
+
+    def set_labels(self, newlist, newmcast=None):
+        new_source_names = newlist.strip().split(',')
+        if len(new_source_names) != len(self.sources):
+            LOGGER.error('Number of supplied source labels does not match number of configured sources.')
+            return False
+        for ctr, source in enumerate(self.sources):
+            source.name = new_source_names[ctr]
+        return True
+
+    def get_labels(self):
+        source_names = ''
+        for source in self.sources:
+            source_names += source.name + ','
+        source_names = source_names.rstrip(',')
+        return source_names
 
     def _read_config(self):
         """
@@ -397,27 +430,27 @@ class FxCorrelator(Instrument):
         self.txip_str = self.configd['xengine']['output_destination_ip']
         self.txport = int(self.configd['xengine']['output_destination_port'])
 
-        # TODO: Work on the logic of sources->engines->hosts
-
-        # 2 pols per FPGA on this initial design, but should be mutable
-        self.inputs_per_fengine = int(self.configd['fengine']['inputs_per_fengine'])
+        # the f-engines have this many 10Gbe ports per f-engine unit of operation
+        self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
 
         # what antenna ids have we been allocated?
-        self.source_names = self.configd['fengine']['source_names'].strip().split(',')
-        self.source_mcast = []
-        mcast = self.configd['fengine']['source_mcast_ips'].strip().split(',')
-        for address in mcast:
+        self.sources = []
+        source_names = self.configd['fengine']['source_names'].strip().split(',')
+        source_mcast = self.configd['fengine']['source_mcast_ips'].strip().split(',')
+        assert len(source_mcast) == len(source_names),\
+            'Source names (%d) must be paired with multicast source addresses (%d)' % (len(source_names),
+                                                                                       len(source_mcast))
+        for counter, address in enumerate(source_mcast):
             bits = address.split(':')
             port = int(bits[1])
             address, number = bits[0].split('+')
-            self.source_mcast.append((address, int(number), int(port)))
-        comparo = self.source_mcast[0][1]
-        assert comparo == 3, 'F-engines should be receiving from 4 streams.'
-        for mcast_addresses in self.source_mcast:
-            assert mcast_addresses[1] == comparo, 'All f-engines should be receiving from 4 streams.'
-
-        if len(self.source_names) != len(self.source_mcast):
-            raise RuntimeError('We have different numbers of sources and multicast groups. Problem.')
+            self.sources.append(DataSource(source_names[counter], address, int(number)+1, int(port)))
+        comparo = self.sources[0].iprange
+        assert comparo == self.ports_per_fengine,\
+            'F-engines should be receiving from %d streams.' % self.ports_per_fengine
+        for mcast_address in self.sources:
+            assert mcast_address.iprange == comparo,\
+                'All f-engines should be receiving from %d streams.' % self.ports_per_fengine
 
         # set up the hosts and engines based on the config
         self.fhosts = []
@@ -428,17 +461,21 @@ class FxCorrelator(Instrument):
                 host = host.strip()
                 fpgahost = FpgaHost(host, self.katcp_port, hostconfig['bitstream'], connect=True)
                 hostlist.append(fpgahost)
-        if len(self.source_names) != len(self.fhosts):
-            raise RuntimeError('We have different numbers of sources and f-engine hosts. Problem.')
+        if len(self.sources) != len(self.fhosts) * self.f_per_fpga:
+            raise RuntimeError('We have different numbers of sources (%d) and f-engines (%d). Problem.',
+                               len(self.sources), len(self.fhosts))
         for fnum, fhost in enumerate(self.fhosts):
             # TODO - logic for inputs vs fengines
-            for ctr in range(0, self.inputs_per_fengine):
-                engine = FengineCasperFpga(fhost, ctr, self.source_names[fnum], self.configd)
+            for ctr in range(0, self.f_per_fpga):
+                engine = FengineCasperFpga(fhost, ctr, self.sources[fnum].name, self.configd)
                 fhost.add_engine(engine)
         for xnum, xhost in enumerate(self.xhosts):
             for ctr in range(0, self.x_per_fpga):
                 engine = XengineCasperFpga(xhost, ctr, self.configd)
                 xhost.add_engine(engine)
+
+        # turn the product names into a list
+        self.configd['xengine']['output_products'] = self.configd['xengine']['output_products'].split(',')
 
         # SPEAD receiver
         self.spead_tx = spead.Transmitter(spead.TransportUDPtx(self.configd['xengine']['rx_meta_ip'],
@@ -625,7 +662,9 @@ class FxCorrelator(Instrument):
                                shape=[],fmt=spead.mkfmt(('u', 64)),
                                init_val=sample_rate)
 
-        n_ants = int(self.configd['fengine']['n_ants'])
+        #n_ants = int(self.configd['fengine']['n_ants'])
+        # TODO
+        n_ants = 4
         n_bls = (n_ants*(n_ants+1)/2)*4
         self.spead_ig.add_item(name='n_bls', id=0x1008,
                                description='Number of baselines in the cross correlation product.',

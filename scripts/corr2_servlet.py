@@ -52,8 +52,28 @@ class Corr2Server(katcp.DeviceServer):
         :param log_len:
         :return:
         """
-        self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
-        return 'ok',
+        try:
+            self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
+            return 'ok',
+        except:
+            pass
+        return 'fail',
+
+
+    @request(Int(default=-1))
+    @return_reply()
+    def request_initialise(self, sock, skip):
+        """
+
+        :param sock:
+        :return:
+        """
+        try:
+            self.instrument.initialise(program=True, tvg=False, skip_arp_wait=True if skip == 1 else False)
+            return 'ok',
+        except:
+            pass
+        return 'fail',
 
     @request()
     @return_reply()
@@ -80,48 +100,57 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', 'request %s did not succeed, check the log' % 'digitiser_synch_epoch'
         return 'ok',
 
-    @request()
-    @return_reply(Str(), Str())
-    def request_capture_list(self, sock):
-        """
-
-        :param sock:
-        :return:
-        """
-        inform_string = self.instrument.configd['xengine']['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
-        sock.inform(inform_string)
-        return 'ok', self.instrument.configd['xengine']['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
-
-    @request(Str(), Int())
+    @request(Str(), Str())
     @return_reply()
-    def request_capture_destination(self, sock, ipstr, port):
+    def request_capture_destination(self, sock, stream, ipportstr):
         """
 
         :param sock:
         :return:
         """
-        self.instrument.set_destination(self, txip_str=ipstr, txport=port)
+        temp = ipportstr.split(':')
+        txipstr = temp[0]
+        txport = int(temp[1])
+        self.instrument.set_destination(txip_str=txipstr, txport=txport)
         return 'ok',
 
-    @request()
+    @request(Str(default=''))
     @return_reply()
-    def request_capture_start(self, sock):
+    def request_capture_list(self, sock, product_name):
         """
-
         :param sock:
         :return:
         """
+        if product_name == '':
+            product_string = str(self.instrument.configd['xengine']['output_products']).replace('[', '').replace(']', '')
+        else:
+            product_string = product_name
+            if product_name not in self.instrument.configd['xengine']['output_products']:
+                return 'fail', 'requested product name not found'
+        sock.inform(product_string, '%s:%d' % (self.instrument.txip_str, self.instrument.txport))
+        return 'ok',
+
+    @request(Str(default=''))
+    @return_reply()
+    def request_capture_start(self, sock, product_name):
+        """
+        :param sock:
+        :return:
+        """
+        if product_name not in self.instrument.configd['xengine']['output_products']:
+            return 'fail', 'requested product name not found'
         self.instrument.tx_start()
         return 'ok',
 
-    @request()
+    @request(Str(default=''))
     @return_reply()
-    def request_capture_stop(self, sock):
+    def request_capture_stop(self, sock, product_name):
         """
-
         :param sock:
         :return:
         """
+        if product_name not in self.instrument.configd['xengine']['output_products']:
+            return 'fail', 'requested product name not found'
         self.instrument.tx_stop()
         return 'ok',
 
@@ -136,15 +165,18 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.spead_issue_meta()
         return 'ok',
 
-    @request()
-    @return_reply()
-    def request_input_labels(self, sock):
+    @request(Str(default=''))
+    @return_reply(Str())
+    def request_input_labels(self, sock, newlist):
         """
 
         :param sock:
         :return:
         """
-        return 'ok',
+        if newlist != '':
+            if not self.instrument.set_labels(newlist):
+                return 'fail', 'provided input labels were not correct'
+        return 'ok', self.instrument.get_labels()
 
     @request()
     @return_reply()

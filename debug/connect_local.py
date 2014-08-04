@@ -91,13 +91,54 @@ if __name__ == "__main__":
     print reply_msg.mtype
     print informs
 
+    reply_msg, informs = client.katcprequest('initialise', request_timeout=240.0, require_ok=True, request_args=[1])
+    print reply_msg.arguments
+    print reply_msg.mid
+    print reply_msg.mtype
+    print informs
+
     reply_msg, informs = client.katcprequest('capture-list', request_timeout=-1.0, require_ok=True)
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype
     print informs
 
+    reply_msg, informs = client.katcprequest('capture-list', request_timeout=-1.0, require_ok=True, request_args=['cross_products'])
+    print reply_msg.arguments
+    print reply_msg.mid
+    print reply_msg.mtype
+    print informs
 
+    reply_msg, informs = client.katcprequest('capture-destination', request_timeout=-1.0, require_ok=True, request_args=['bob', '12.13.14.15:6666'])
+    print reply_msg.arguments
+    print reply_msg.mid
+    print reply_msg.mtype
+    print informs
+
+    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=[])
+    print reply_msg.arguments
+    print reply_msg.mid
+    print reply_msg.mtype
+    print informs
+
+    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=['bob,sally,margaret,steve,arthur,kevin,jane,jim'])
+    print reply_msg.arguments
+    print reply_msg.mid
+    print reply_msg.mtype
+    print informs
+
+    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=['bob,sally,margaret,steve,arthur,kevin,jane'])
+    print reply_msg.arguments
+    print reply_msg.mid
+    print reply_msg.mtype
+    print informs
+
+
+    # reply_msg, informs = client.katcprequest('capture-start', request_timeout=-1.0, require_ok=True, request_args=['asdasdasd'])
+    # print reply_msg.arguments
+    # print reply_msg.mid
+    # print reply_msg.mtype
+    # print informs
 
     client.katcprequest('digitiser-synch-epoch', request_timeout=-1.0, require_ok=True, request_args=(23,))
 
