@@ -79,7 +79,8 @@ if __name__ == "__main__":
     client = KatcpClient('127.0.0.1', args.port)
 
     reply_msg, informs = client.katcprequest('ping', request_timeout=-1.0, require_ok=True)
-    reply_msg, informs = client.katcprequest('testfail', request_timeout=-1.0, require_ok=False)
+
+    reply_msg, informs = client.katcprequest('testfail', request_timeout=-1.0, require_ok=False, request_args=['lots', 'of', 'arguments', 'go', 'here'])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype
@@ -103,7 +104,7 @@ if __name__ == "__main__":
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('capture-list', request_timeout=-1.0, require_ok=True, request_args=['cross_products'])
+    reply_msg, informs = client.katcprequest('capture-list', request_timeout=-1.0, require_ok=False, request_args=['boobs!'])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype
@@ -115,19 +116,19 @@ if __name__ == "__main__":
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=[])
+    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True)
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=['bob,sally,margaret,steve,arthur,kevin,jane,jim'])
+    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=['bob', 'sally', 'margaret', 'steve', 'arthur', 'kevin', 'jane', 'jim'])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=['bob,sally,margaret,steve,arthur,kevin,jane'])
+    reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=['bob', 'sally', 'margaret', 'steve', 'arthur', 'kevin', 'jane'])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype

@@ -7,7 +7,7 @@ import sys
 import argparse
 import Queue
 import katcp
-from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
+from katcp.kattypes import request, return_reply, Float, Int, Str, Discrete
 from corr2 import fxcorrelator
 
 logging.basicConfig(level=logging.WARN, stream=sys.stderr, format='%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
@@ -75,14 +75,15 @@ class Corr2Server(katcp.DeviceServer):
             pass
         return 'fail',
 
-    @request()
+    @request(Str(multiple=True))
     @return_reply()
-    def request_testfail(self, sock):
+    def request_testfail(self, sock, *multiargs):
         """
 
         :param sock:
         :return: 'fail' and a test fail message
         """
+        print multiargs
         return 'fail', 'a test failure, like it should'
 
     @request(Int())
@@ -165,15 +166,18 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.spead_issue_meta()
         return 'ok',
 
-    @request(Str(default=''))
-    @return_reply(Str())
-    def request_input_labels(self, sock, newlist):
+    @request(Str(default='', multiple=True))
+    @return_reply(Str(multiple=True))
+    def request_input_labels(self, sock, *newlist):
         """
 
         :param sock:
         :return:
         """
-        if newlist != '':
+        if len(newlist) == 1:
+            if newlist[0] == '':
+                newlist = []
+        if len(newlist) > 0:
             if not self.instrument.set_labels(newlist):
                 return 'fail', 'provided input labels were not correct'
         return 'ok', self.instrument.get_labels()

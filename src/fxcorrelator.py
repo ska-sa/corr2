@@ -387,19 +387,18 @@ class FxCorrelator(Instrument):
     ##############################
 
     def set_labels(self, newlist, newmcast=None):
-        new_source_names = newlist.strip().split(',')
-        if len(new_source_names) != len(self.sources):
+        if len(newlist) != len(self.sources):
             LOGGER.error('Number of supplied source labels does not match number of configured sources.')
             return False
         for ctr, source in enumerate(self.sources):
-            source.name = new_source_names[ctr]
+            source.name = newlist[ctr]
         return True
 
     def get_labels(self):
         source_names = ''
         for source in self.sources:
-            source_names += source.name + ','
-        source_names = source_names.rstrip(',')
+            source_names += source.name + ' '
+        source_names = source_names.rstrip(' ')
         return source_names
 
     def _read_config(self):
