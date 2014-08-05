@@ -54,7 +54,7 @@ def program_fpgas(progfile, fpgas, timeout=10):
             fpga[0].upload_to_ram_and_program(fpga[1], wait_complete=False)
             waiting.append(fpga[0])
     starttime = time.time()
-    while (len(waiting) > 0) and (time.time()-starttime < timeout):
+    while (len(waiting) > 0) and (time.time() - starttime < timeout):
         for fpga in waiting:
             if fpga.is_running():
                 waiting.pop(waiting.index(fpga))

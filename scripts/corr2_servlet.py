@@ -202,15 +202,20 @@ class Corr2Server(katcp.DeviceServer):
         """
         return 'ok',
 
-    @request()
+    @request(Int(default=-1))
     @return_reply(Float())
-    def request_accumulation_length(self, sock):
+    def request_accumulation_length(self, sock, newacclen):
         """
 
         :param sock:
         :return:
         """
-        return 'ok', (self.instrument.accumulation_len * 1.0)
+        if newacclen != -1:
+            try:
+                self.instrument.xeng_set_acc_len(newacclen)
+            except:
+                return 'fail', 'could not set accumulation length'
+        return 'ok', (self.instrument.xeng_get_acc_len() * 1.0)
 
     @request()
     @return_reply()

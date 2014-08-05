@@ -37,7 +37,7 @@ class DataSource(object):
         self.port = port
 
 def digitiser_stop():
-    print 'Stopping digitiser'
+    LOGGER.info('Stopping digitiser')
     fdig = KatcpClientFpga(dhost)
     if fdig.is_running():
         fdig.test_connection()
@@ -47,11 +47,11 @@ def digitiser_stop():
     fdig.disconnect()
 
 
-def digitiser_start(dig_tx_tuple):
+def digitiser_start(dig_tx_source):
     fdig = KatcpClientFpga(dhost)
     fdig.deprogram()
     stime = time.time()
-    print 'Programming digitiser',
+    LOGGER.info('Programming digitiser')
     sys.stdout.flush()
     fdig.upload_to_ram_and_program(dbof)
     print time.time() - stime
@@ -74,16 +74,16 @@ def digitiser_start(dig_tx_tuple):
     for gbe in fdig.tengbes:
         gbe.tap_start(True)
     # set the destination IP and port for the tx
-    txaddr = dig_tx_tuple[0]
+    txaddr = dig_tx_source.ip
     txaddr_bits = txaddr.split('.')
     txaddr_base = int(txaddr_bits[3])
     txaddr_prefix = '%s.%s.%s.' % (txaddr_bits[0], txaddr_bits[1], txaddr_bits[2])
-    print 'digitisers sending to: %s%d port %d' % (txaddr_prefix, txaddr_base + 0, dig_tx_tuple[2])
+    print 'digitisers sending to: %s%d port %d' % (txaddr_prefix, txaddr_base + 0, dig_tx_source.port)
     fdig.write_int('gbe_iptx0', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 0)))
     fdig.write_int('gbe_iptx1', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 1)))
     fdig.write_int('gbe_iptx2', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 2)))
     fdig.write_int('gbe_iptx3', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 3)))
-    fdig.write_int('gbe_porttx', dig_tx_tuple[2])
+    fdig.write_int('gbe_porttx', dig_tx_source.port)
     fdig.registers.control.write(gbe_rst=False)
     # enable the tvg on the digitiser and set up the pol id bits
     fdig.registers.control.write(tvg_select0=True)
@@ -122,6 +122,7 @@ class FxCorrelator(Instrument):
         self.sources = None
         self.spead_tx = None
         self.spead_ig = None
+        self.accumulation_len = -1
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
@@ -133,7 +134,7 @@ class FxCorrelator(Instrument):
         """
 
         # TODO
-        #digitiser_stop()
+        # digitiser_stop()
 
         if program:
             logging.info('Programming FPGA hosts.')
@@ -156,19 +157,27 @@ class FxCorrelator(Instrument):
             self._xengine_initialise(tvg=tvg)
 
         if program:
-            arptime = 200
-            stime = time.time()
-            print 'Waiting %ds for ARP...' % arptime,
-            sys.stdout.flush()
-            if not skip_arp_wait:
-                while time.time() - stime < arptime:
-                    time.sleep(1)
+            for fpga_ in self.fhosts:
+                fpga_.tap_arp_reload()
+            for fpga_ in self.xhosts:
+                fpga_.tap_arp_reload()
+            print 'Waiting 10 seconds for ARP to settle...',
+            time.sleep(10)
             print 'done.'
+            # arptime = 200
+            # stime = time.time()
+            # print 'Waiting %ds for ARP...' % arptime,
+            # sys.stdout.flush()
+            # if not skip_arp_wait:
+            #     while time.time() - stime < arptime:
+            #         time.sleep(1)
+            # print 'done.'
 
         # TODO
-        #digitiser_start(self.sources[0])
+        # digitiser_start(self.sources[0])
 
         # start f-engine TX
+        logging.info('Starting f-engine datastream')
         for f in self.fhosts:
             if use_demo_fengine:
                 f.registers.control.write(gbe_txen=True)
@@ -281,9 +290,20 @@ class FxCorrelator(Instrument):
         Set up x-engines on this device.
         :return:
         """
+        # simulator
+        for fpga_ in self.xhosts:
+            fpga_.registers.simulator.write(en=False, rst='pulse')
+
         #disable transmission, place cores in reset, and give control register a known state
         for f in self.xhosts:
-            f.registers.ctrl.write(comms_en=False, comms_rst=True, leds_en=False, status_clr=False, comms_status_clr=False)
+            f.registers.ctrl.write(comms_en=False, comms_rst=True, leds_en=False,
+                                   status_clr='pulse', comms_status_clr='pulse')
+
+        # set up accumulation length
+        self.xeng_set_acc_len(200)
+
+        # set up default destination ip and port
+        self.set_destination(issue_meta=False)
 
         # set up board id
         board_id = 0
@@ -291,22 +311,15 @@ class FxCorrelator(Instrument):
             f.registers.board_id.write(reg=board_id)
             board_id += 1
 
-        # set up accumulation length
-        self.xeng_set_acc_len()
-
-        # set up default destination ip and port
-        self.set_destination(issue_meta=False)
-               
         #set up 10gbe cores 
         xipbase = 110
         macbase = 10
         for f in self.xhosts:
-           for gbe in f.tengbes:
-               gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.0.0.%d' % xipbase, port=8778)
-               macbase += 1
-               xipbase += 1
-               #tap start
-               gbe.tap_start(True)
+            for gbe in f.tengbes:
+                gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.1.0.%d' % xipbase, port=8778)
+                macbase += 1
+                xipbase += 1
+                gbe.tap_start()
         # tvg
         if tvg:
             for f in self.xhosts:
@@ -321,13 +334,18 @@ class FxCorrelator(Instrument):
 
         # release cores from reset
         for f in self.xhosts:
-            f.registers.ctrl.write(comms_rst = False)
+            f.registers.ctrl.write(comms_rst=False)
+
+         # simulator
+        for fpga_ in self.xhosts:
+            fpga_.registers.simulator.write(en=True)
 
         # clear general status
         for f in self.xhosts:
             f.registers.ctrl.write(status_clr='pulse', leds_en=True)
 
         # check for errors
+        """
         for f in self.xhosts:
             for eng_index in range(4):
                 xeng = f.get_engine(eng_index)
@@ -342,12 +360,14 @@ class FxCorrelator(Instrument):
                 # check that all engines are producing data ready for transmission
                 if (status['txing_data'] == False):
                     print 'xengine %d on host %s is not producing valid data' %(eng_index, str(f))
+        """
        
         # start accumulating
         for f in self.xhosts:
             f.registers.vacc_time_msw.write(arm=0, immediate=0)
             f.registers.vacc_time_msw.write(arm=1, immediate=1)
 
+        '''
         # read accumulation count before starting accumulations
         vacc_cnts = []
         for f in self.xhosts:
@@ -357,8 +377,10 @@ class FxCorrelator(Instrument):
 
         print 'waiting for an accumulation' 
         time.sleep(1.5)
+        '''
 
         # check accumulations are happening
+        '''
         vacc_cnts.reverse()
         for f in self.xhosts:
             for eng_index in range(4):
@@ -367,7 +389,7 @@ class FxCorrelator(Instrument):
 
                 if vacc_cnt_before == vacc_cnt:
                     print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
-
+        '''
 
     def xeng_set_acc_len(self, new_acc_len=-1):
         """
@@ -375,12 +397,13 @@ class FxCorrelator(Instrument):
         :param new_acc_len:
         :return:
         """
-        if new_acc_len == -1:
-            acc_len = self.accumulation_len
-        else:
-            acc_len = new_acc_len
+        if new_acc_len != -1:
+            self.accumulation_len = new_acc_len
         for host in self.xhosts:
-            host.registers.acc_len.write_int(acc_len)
+            host.registers.acc_len.write_int(self.accumulation_len)
+
+    def xeng_get_acc_len(self):
+        return self.accumulation_len
 
     ##############################
     ## Configuration information #
@@ -609,8 +632,9 @@ class FxCorrelator(Instrument):
 
         if txport is None:
             txport = self.txport
-        
-        for f in self.xhosts: 
+
+        LOGGER.info('Setting destination to %s:%d', self.txip_str, self.txport)
+        for f in self.xhosts:
             f.registers.txip.write(txip=txip)
             f.registers.txport.write(txport=txport)
 
