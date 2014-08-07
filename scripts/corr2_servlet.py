@@ -7,7 +7,7 @@ import sys
 import argparse
 import Queue
 import katcp
-from katcp.kattypes import request, return_reply, Float, Int, Str, Discrete
+from katcp.kattypes import request, return_reply, Float, Int, Str
 from corr2 import fxcorrelator
 
 logging.basicConfig(level=logging.WARN, stream=sys.stderr, format='%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
@@ -202,20 +202,20 @@ class Corr2Server(katcp.DeviceServer):
         """
         return 'ok',
 
-    @request(Int(default=-1))
+    @request(Float(default=-1.0))
     @return_reply(Float())
-    def request_accumulation_length(self, sock, newacclen):
+    def request_accumulation_length(self, sock, new_acc_time):
         """
 
         :param sock:
         :return:
         """
-        if newacclen != -1:
+        if new_acc_time != -1.0:
             try:
-                self.instrument.xeng_set_acc_len(newacclen)
+                self.instrument.xeng_set_acc_time(new_acc_time)
             except:
                 return 'fail', 'could not set accumulation length'
-        return 'ok', (self.instrument.xeng_get_acc_len() * 1.0)
+        return 'ok', self.instrument.xeng_get_acc_time()
 
     @request()
     @return_reply()

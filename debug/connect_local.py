@@ -105,7 +105,7 @@ if __name__ == "__main__":
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('accumulation-length', request_timeout=-1.0, require_ok=True, request_args=[200])
+    reply_msg, informs = client.katcprequest('accumulation-length', request_timeout=-1.0, require_ok=True, request_args=[1.0])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype

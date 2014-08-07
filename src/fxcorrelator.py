@@ -10,7 +10,7 @@ import logging
 import socket
 import time
 import sys
-import spead
+import spead64_48 as spead
 from host_fpga import FpgaHost
 from instrument import Instrument
 from xengine_fpga import XengineCasperFpga
@@ -22,6 +22,7 @@ from casperfpga import KatcpClientFpga
 LOGGER = logging.getLogger(__name__)
 
 
+use_xeng_sim = True
 use_demo_fengine = True
 dbof = '/srv/bofs/deng/r2_deng_tvg_2014_Jul_21_0838.fpg'
 dhost = 'roach020959'
@@ -291,8 +292,9 @@ class FxCorrelator(Instrument):
         :return:
         """
         # simulator
-        for fpga_ in self.xhosts:
-            fpga_.registers.simulator.write(en=False, rst='pulse')
+        if use_xeng_sim:
+            for fpga_ in self.xhosts:
+                fpga_.registers.simulator.write(en=False, rst='pulse')
 
         #disable transmission, place cores in reset, and give control register a known state
         for f in self.xhosts:
@@ -337,8 +339,9 @@ class FxCorrelator(Instrument):
             f.registers.ctrl.write(comms_rst=False)
 
          # simulator
-        for fpga_ in self.xhosts:
-            fpga_.registers.simulator.write(en=True)
+        if use_xeng_sim:
+            for fpga_ in self.xhosts:
+                fpga_.registers.simulator.write(en=True)
 
         # clear general status
         for f in self.xhosts:
@@ -391,6 +394,20 @@ class FxCorrelator(Instrument):
                     print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
         '''
 
+    def xeng_set_acc_time(self, acc_time_s):
+        # calculate the acc_len to write for the required time
+        if use_xeng_sim:
+            new_acc_len = round((acc_time_s * self.xeng_clk) / (self.xeng_accumulation_len * self.n_chans))
+            if new_acc_len == 0:
+                raise RuntimeError('Accumulation length of zero makes no sense')
+            LOGGER.info('New accumulation time %.2f becomes accumulation length %d' % (acc_time_s, new_acc_len))
+            self.xeng_set_acc_len(new_acc_len)
+        else:
+            raise NotImplementedError('Not done for real x-engines yet')
+
+    def xeng_get_acc_time(self):
+        return (self.accumulation_len * self.xeng_accumulation_len * self.n_chans) / (self.xeng_clk * 1.0)
+
     def xeng_set_acc_len(self, new_acc_len=-1):
         """
         Set the QDR vector accumulation length.
@@ -398,6 +415,7 @@ class FxCorrelator(Instrument):
         :return:
         """
         if new_acc_len != -1:
+            LOGGER.debug('Setting new accumulation length %d' % new_acc_len)
             self.accumulation_len = new_acc_len
         for host in self.xhosts:
             host.registers.acc_len.write_int(self.accumulation_len)
@@ -449,8 +467,15 @@ class FxCorrelator(Instrument):
         self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
         self.sample_rate_hz = int(self.configd['FxCorrelator']['sample_rate_hz'])
         self.accumulation_len = int(self.configd['xengine']['accumulation_len'])
+        self.xeng_accumulation_len = int(self.configd['xengine']['xeng_accumulation_len'])
         self.txip_str = self.configd['xengine']['output_destination_ip']
         self.txport = int(self.configd['xengine']['output_destination_port'])
+        self.n_chans = int(self.configd['fengine']['n_chans'])
+
+        if use_xeng_sim:
+            self.xeng_clk = 225000000
+        else:
+            raise NotImplementedError
 
         # the f-engines have this many 10Gbe ports per f-engine unit of operation
         self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
@@ -694,11 +719,10 @@ class FxCorrelator(Instrument):
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                                init_val=n_bls)
 
-        n_chans = int(self.configd['fengine']['n_chans'])
         self.spead_ig.add_item(name='n_chans', id=0x1009,
                                description='Number of frequency channels in an integration.',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=n_chans)
+                               init_val=self.n_chans)
 
         # TODO - the number of inputs, cos antennas can be single or multiple pol?
         # f-engines now have only got inputs, they don't know what or from where.
@@ -742,14 +766,13 @@ class FxCorrelator(Instrument):
                                shape=[],fmt=spead.mkfmt(('f', 64)),
                                init_val=int(self.configd['fengine']['bandwidth']))
 
-        acc_len = int(self.configd['xengine']['accumulation_len'])
-        xeng_acc_len = int(self.configd['xengine']['xeng_accumulation_len'])
+        number_accs = self.accumulation_len * self.xeng_accumulation_len
         self.spead_ig.add_item(name='n_accs', id=0x1015,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=(acc_len * xeng_acc_len))
+                               init_val=number_accs)
 
-        int_time = ((acc_len * xeng_acc_len) * int(self.configd['fengine']['n_chans'])) / int(self.configd['fengine']['bandwidth'])
+        int_time = (number_accs * self.n_chans) / self.xeng_clk
         self.spead_ig.add_item(name='int_time', id=0x1016,
                                description='',
                                shape=[],fmt=spead.mkfmt(('f', 64)),
@@ -783,7 +806,7 @@ class FxCorrelator(Instrument):
         self.spead_ig.add_item(name='xeng_acc_len', id=0x101F,
                                description='',
                                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                               init_val=int(self.configd['xengine']['accumulation_len']))
+                               init_val=self.xeng_accumulation_len)
 
         quant_format = self.configd['fengine']['quant_format']
         quant_bits = int(quant_format.split('.')[0])
