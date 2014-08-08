@@ -966,8 +966,9 @@ class FxCorrelator(Instrument):
 
         import numpy
 
-        ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
-        spead_ig.add_item(name='xeng_raw_sim', id=0x1800, description='X-engine RTS simulation data.',
+        #ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
+        ndarray = numpy.dtype(numpy.int32), (4096, 40, 2)
+        spead_ig.add_item(name='xeng_raw', id=0x1800, description='X-engine RTS simulation data.',
                           ndarray=ndarray)
 
         # spead_ig.add_item(name='timestamp', id=0x1600,
