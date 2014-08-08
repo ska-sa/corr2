@@ -86,7 +86,8 @@ if __name__ == "__main__":
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('create', request_timeout=-1.0, require_ok=True, request_args=['/home/paulp/code/corr2.ska.github/src/fxcorr.ini'])
+    #reply_msg, informs = client.katcprequest('create', request_timeout=-1.0, require_ok=True, request_args=['/home/paulp/code/corr2.ska.github/src/fxcorr.ini'])
+    reply_msg, informs = client.katcprequest('create', request_timeout=-1.0, require_ok=True, request_args=['/etc/corr/x'])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype
@@ -111,14 +112,14 @@ if __name__ == "__main__":
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('capture-start', request_timeout=-1.0, require_ok=True,
-                                             request_args=['cross_products'])
+    reply_msg, informs = client.katcprequest('capture-destination', request_timeout=-1.0, require_ok=True, request_args=['cross_products', '10.100.0.1:8888'])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('capture-destination', request_timeout=-1.0, require_ok=True, request_args=['cross_products', '10.1.0.1:8888'])
+    reply_msg, informs = client.katcprequest('capture-start', request_timeout=-1.0, require_ok=True,
+                                             request_args=['cross_products'])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype

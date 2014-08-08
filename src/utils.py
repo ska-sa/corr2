@@ -1,7 +1,6 @@
 __author__ = 'paulp'
 
 import time
-import casperfpga
 from ConfigParser import SafeConfigParser
 
 

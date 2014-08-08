@@ -112,7 +112,8 @@ class Corr2Server(katcp.DeviceServer):
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
-        self.instrument.set_destination(txip_str=txipstr, txport=txport)
+        self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
+        self.instrument.set_stream_destination(txip_str=txipstr, txport=txport, issue_meta=True)
         return 'ok',
 
     @request(Str(default=''))
