@@ -9,33 +9,44 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
-import sys, logging, time, argparse
+import sys
+import logging
+import time
+import argparse
+import signal
+from casperfpga import KatcpClientFpga
+import casperfpga.scroll as scroll
+from corr2 import utils
 
 logger = logging.getLogger(__name__)
 #logging.basicConfig(level=logging.INFO)
 
-from casperfpga import KatcpClientFpga
-import casperfpga.scroll as scroll
-
-parser = argparse.ArgumentParser(description='Display information about a MeerKAT xengine.',
+parser = argparse.ArgumentParser(description='Display information about a MeerKAT x-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hosts', type=str, action='store',
-                    help='comma-delimited list of x-engine hosts')
-parser.add_argument('-p', '--polltime', dest='polltime', action='store',
-                    default=1, type=int,
-                    help='time at which to poll xengine data, in seconds')
-#parser.add_argument('-s', '--payloadsize', dest='payloadsize', action='store',
-#                    default=5120, type=int,
-#                    help='the 10GBE SPEAD payload size, in bytes')
+                    help='comma-delimited list of x-engine hosts, or a corr2 config file')
+parser.add_argument('-p', '--polltime', dest='polltime', action='store', default=1, type=int,
+                    help='time at which to poll x-engine data, in seconds')
 args = parser.parse_args()
 
 polltime = args.polltime
-num_spead_headers = 4
 
 xeng_hosts = args.hosts.lstrip().rstrip().replace(' ', '').split(',')
+if len(xeng_hosts) == 1:  # check to see it it's a file
+    try:
+        hosts = utils.hosts_from_config_file(xeng_hosts[0])
+        xeng_hosts = hosts['xengine']
+    except IOError:
+        # it's not a file so carry on
+        pass
+    except KeyError:
+        raise RuntimeError('That config file does not seem to have a x-engine section.')
 
-xeng_hosts = ['roach020921', 'roach020927', 'roach020919', 'roach020925',
-          'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
+if len(xeng_hosts) == 0:
+    raise RuntimeError('No good carrying on without hosts.')
+
+# xeng_hosts = ['roach020921', 'roach020927', 'roach020919', 'roach020925',
+#           'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
 
 # create the devices and connect to them
 xfpgas = []
@@ -48,13 +59,14 @@ for host in xeng_hosts:
     xeng_fpga.get_system_information()
     numgbes = len(xeng_fpga.tengbes)
     if numgbes < 1:
-        raise RuntimeError('Cannot have an xengine with no 10gbe cores?')
+        raise RuntimeError('Cannot have an x-engine with no 10gbe cores?')
     print '%s: found %i 10gbe core%s.' % (host, numgbes, '' if numgbes == 1 else 's')
     xfpgas.append(xeng_fpga)
 
+
 def print_headers(scr):
-    '''Print the table headers.
-    '''
+    """Print the table headers.
+    """
     scr.addstr(2, 2, 'xhost')
     scr.addstr(2, 20, 'tap')
     scr.addstr(2, 30, 'TX')
@@ -64,22 +76,19 @@ def print_headers(scr):
     scr.addstr(3, 50, 'cnt')
     scr.addstr(3, 60, 'err')
 
-def xengine_gbe(fpga):
-    cores = fpga.tengbes
+
+def xengine_gbe(fpga_):
+    cores = fpga_.tengbes
     returndata = {}
-    for core in cores:
-        returndata[core.name] = core.read_counters()
+    for core_ in cores:
+        returndata[core_.name] = core_.read_counters()
     return returndata
 
-def get_fpga_data(fpga):
-    data = {}
-    data['gbe'] = xengine_gbe(fpga)
-    return data
+
+def get_fpga_data(fpga_):
+    return {'gbe': xengine_gbe(fpga_)}
 
 fpga_data = get_fpga_data(xfpgas[0])
-print fpga_data
-
-#sys.exit()
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
@@ -97,10 +106,10 @@ try:
             scroller.draw_screen()
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
-            scroller.add_line('Polling %i xengine%s every %s - %is elapsed.' %
-                (len(xfpgas), '' if len(xfpgas) == 1 else 's',
-                'second' if polltime == 1 else ('%i seconds' % polltime),
-                time.time() - STARTTIME), 0, 0, absolute=True)
+            scroller.add_line('Polling %i x-engine%s every %s - %is elapsed.' %
+                              (len(xfpgas), '' if len(xfpgas) == 1 else 's',
+                               'second' if polltime == 1 else ('%i seconds' % polltime),
+                               time.time() - STARTTIME), 0, 0, absolute=True)
 #            scroller.add_line('hdr1', 10)
 #            scroller.add_line('hdr2', 30, scroller.get_current_line())
             scroller.add_line('Host', 0, 1, absolute=True)
@@ -131,9 +140,8 @@ except Exception, e:
     scroll.screen_teardown()
     raise
 
-# handle exits cleanly
-import signal
-def signal_handler(signal, frame):
+
+def signal_handler(signal_, frame):
     scroll.screen_teardown()
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
