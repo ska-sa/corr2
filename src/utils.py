@@ -62,4 +62,19 @@ def program_fpgas(progfile, fpgas, timeout=10):
         return False
     return True
 
+def hosts_from_config_file(config_file):
+    """
+    Make lists of hosts from a given correlator config file.
+    :return: a dictionary of hosts, by type
+    """
+    config = parse_ini_file(config_file)
+    rv = {}
+    for sectionkey in config.keys():
+        if 'hosts' in config[sectionkey].keys():
+            hosts = config[sectionkey]['hosts'].split(',')
+            for ctr, host_ in enumerate(hosts):
+                hosts[ctr] = host_.strip()
+            rv[sectionkey] = hosts
+    return rv
+
 # end
