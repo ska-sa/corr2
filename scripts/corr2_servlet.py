@@ -60,16 +60,16 @@ class Corr2Server(katcp.DeviceServer):
         return 'fail',
 
 
-    @request(Int(default=-1))
+    @request()
     @return_reply()
-    def request_initialise(self, sock, skip):
+    def request_initialise(self, sock):
         """
 
         :param sock:
         :return:
         """
         try:
-            self.instrument.initialise(program=True, tvg=False, skip_arp_wait=True if skip == 1 else False)
+            self.instrument.initialise(program=True, tvg=False)
             return 'ok',
         except:
             pass
@@ -246,6 +246,20 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
+        return 'ok',
+
+    @request(Str(), Str())
+    @return_reply()
+    def request_meta_destination(self, sock, stream, ipportstr):
+        """
+
+        :param sock:
+        :return:
+        """
+        temp = ipportstr.split(':')
+        txipstr = temp[0]
+        txport = int(temp[1])
+        self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
         return 'ok',
 
     @request(Str(default='a string woohoo'), Int(default=777))  # arguments to this request, # create the message with these args
