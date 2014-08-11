@@ -129,7 +129,8 @@ class Corr2Server(katcp.DeviceServer):
             product_string = product_name
             if product_name not in self.instrument.configd['xengine']['output_products']:
                 return 'fail', 'requested product name not found'
-        sock.inform(product_string, '%s:%d' % (self.instrument.txip_str, self.instrument.txport))
+        sock.inform(product_string, '%s:%d' % (self.instrument.xeng_tx_destination[0],
+                                               self.instrument.xeng_tx_destination[1]))
         return 'ok',
 
     @request(Str(default=''))
