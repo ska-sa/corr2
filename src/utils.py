@@ -1,7 +1,6 @@
 __author__ = 'paulp'
 
 import time
-import casperfpga
 from ConfigParser import SafeConfigParser
 
 
@@ -54,7 +53,7 @@ def program_fpgas(progfile, fpgas, timeout=10):
             fpga[0].upload_to_ram_and_program(fpga[1], wait_complete=False)
             waiting.append(fpga[0])
     starttime = time.time()
-    while (len(waiting) > 0) and (time.time()-starttime < timeout):
+    while (len(waiting) > 0) and (time.time() - starttime < timeout):
         for fpga in waiting:
             if fpga.is_running():
                 waiting.pop(waiting.index(fpga))
@@ -62,5 +61,20 @@ def program_fpgas(progfile, fpgas, timeout=10):
     if len(waiting) > 0:
         return False
     return True
+
+def hosts_from_config_file(config_file):
+    """
+    Make lists of hosts from a given correlator config file.
+    :return: a dictionary of hosts, by type
+    """
+    config = parse_ini_file(config_file)
+    rv = {}
+    for sectionkey in config.keys():
+        if 'hosts' in config[sectionkey].keys():
+            hosts = config[sectionkey]['hosts'].split(',')
+            for ctr, host_ in enumerate(hosts):
+                hosts[ctr] = host_.strip()
+            rv[sectionkey] = hosts
+    return rv
 
 # end

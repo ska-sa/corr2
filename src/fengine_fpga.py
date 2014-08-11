@@ -32,7 +32,6 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
         self.n_chans = int(config_source['fengine']['n_chans'])
         self.min_load_time = int(config_source['fengine']['min_load_time'])
         self.network_latency_adjust = int(config_source['fengine']['network_latency_adjust'])
-        self.inputs_per_fengine = int(config_source['fengine']['inputs_per_fengine'])
         self.fft_shift = int(config_source['fengine']['fft_shift'])
 
         # TODO

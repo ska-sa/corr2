@@ -7,7 +7,7 @@ import sys
 import argparse
 import Queue
 import katcp
-from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
+from katcp.kattypes import request, return_reply, Float, Int, Str
 from corr2 import fxcorrelator
 
 logging.basicConfig(level=logging.WARN, stream=sys.stderr, format='%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
@@ -52,17 +52,38 @@ class Corr2Server(katcp.DeviceServer):
         :param log_len:
         :return:
         """
-        self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
-        return 'ok',
+        try:
+            self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
+            return 'ok',
+        except:
+            pass
+        return 'fail',
+
 
     @request()
     @return_reply()
-    def request_testfail(self, sock):
+    def request_initialise(self, sock):
+        """
+
+        :param sock:
+        :return:
+        """
+        try:
+            self.instrument.initialise(program=True, tvg=False)
+            return 'ok',
+        except:
+            pass
+        return 'fail',
+
+    @request(Str(multiple=True))
+    @return_reply()
+    def request_testfail(self, sock, *multiargs):
         """
 
         :param sock:
         :return: 'fail' and a test fail message
         """
+        print multiargs
         return 'fail', 'a test failure, like it should'
 
     @request(Int())
@@ -80,48 +101,58 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', 'request %s did not succeed, check the log' % 'digitiser_synch_epoch'
         return 'ok',
 
-    @request()
-    @return_reply(Str(), Str())
-    def request_capture_list(self, sock):
-        """
-
-        :param sock:
-        :return:
-        """
-        inform_string = self.instrument.configd['xengine']['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
-        sock.inform(inform_string)
-        return 'ok', self.instrument.configd['xengine']['output_products'], '%s:%d' % (self.instrument.txip_str, self.instrument.txport)
-
-    @request(Str(), Int())
+    @request(Str(), Str())
     @return_reply()
-    def request_capture_destination(self, sock, ipstr, port):
+    def request_capture_destination(self, sock, stream, ipportstr):
         """
 
         :param sock:
         :return:
         """
-        self.instrument.set_destination(self, txip_str=ipstr, txport=port)
+        temp = ipportstr.split(':')
+        txipstr = temp[0]
+        txport = int(temp[1])
+        self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
+        self.instrument.set_stream_destination(txip_str=txipstr, txport=txport, issue_meta=True)
         return 'ok',
 
-    @request()
+    @request(Str(default=''))
     @return_reply()
-    def request_capture_start(self, sock):
+    def request_capture_list(self, sock, product_name):
         """
-
         :param sock:
         :return:
         """
+        if product_name == '':
+            product_string = str(self.instrument.configd['xengine']['output_products']).replace('[', '').replace(']', '')
+        else:
+            product_string = product_name
+            if product_name not in self.instrument.configd['xengine']['output_products']:
+                return 'fail', 'requested product name not found'
+        sock.inform(product_string, '%s:%d' % (self.instrument.xeng_tx_destination[0], self.instrument.xeng_tx_destination[1]))
+        return 'ok',
+
+    @request(Str(default=''))
+    @return_reply()
+    def request_capture_start(self, sock, product_name):
+        """
+        :param sock:
+        :return:
+        """
+        if product_name not in self.instrument.configd['xengine']['output_products']:
+            return 'fail', 'requested product name not found'
         self.instrument.tx_start()
         return 'ok',
 
-    @request()
+    @request(Str(default=''))
     @return_reply()
-    def request_capture_stop(self, sock):
+    def request_capture_stop(self, sock, product_name):
         """
-
         :param sock:
         :return:
         """
+        if product_name not in self.instrument.configd['xengine']['output_products']:
+            return 'fail', 'requested product name not found'
         self.instrument.tx_stop()
         return 'ok',
 
@@ -136,15 +167,21 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.spead_issue_meta()
         return 'ok',
 
-    @request()
-    @return_reply()
-    def request_input_labels(self, sock):
+    @request(Str(default='', multiple=True))
+    @return_reply(Str(multiple=True))
+    def request_input_labels(self, sock, *newlist):
         """
 
         :param sock:
         :return:
         """
-        return 'ok',
+        if len(newlist) == 1:
+            if newlist[0] == '':
+                newlist = []
+        if len(newlist) > 0:
+            if not self.instrument.set_labels(newlist):
+                return 'fail', 'provided input labels were not correct'
+        return 'ok', self.instrument.get_labels()
 
     @request()
     @return_reply()
@@ -166,15 +203,20 @@ class Corr2Server(katcp.DeviceServer):
         """
         return 'ok',
 
-    @request()
+    @request(Float(default=-1.0))
     @return_reply(Float())
-    def request_accumulation_length(self, sock):
+    def request_accumulation_length(self, sock, new_acc_time):
         """
 
         :param sock:
         :return:
         """
-        return 'ok', (self.instrument.accumulation_len * 1.0)
+        if new_acc_time != -1.0:
+            try:
+                self.instrument.xeng_set_acc_time(new_acc_time)
+            except:
+                return 'fail', 'could not set accumulation length'
+        return 'ok', self.instrument.xeng_get_acc_time()
 
     @request()
     @return_reply()
@@ -204,6 +246,20 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
+        return 'ok',
+
+    @request(Str(), Str())
+    @return_reply()
+    def request_meta_destination(self, sock, stream, ipportstr):
+        """
+
+        :param sock:
+        :return:
+        """
+        temp = ipportstr.split(':')
+        txipstr = temp[0]
+        txport = int(temp[1])
+        self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
         return 'ok',
 
     @request(Str(default='a string woohoo'), Int(default=777))  # arguments to this request, # create the message with these args
