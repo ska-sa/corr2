@@ -10,6 +10,8 @@ import logging
 import socket
 import time
 import sys
+import numpy
+import struct
 import spead64_48 as spead
 from host_fpga import FpgaHost
 from instrument import Instrument
@@ -720,6 +722,38 @@ class FxCorrelator(Instrument):
             for f in self.fhosts:
                 f.registers.control.write(comms_en=False)
 
+    def get_baseline_order(self):
+        """
+        Return the order of baseline data output by a CASPER correlator X engine.
+        :return:
+        """
+        # TODO
+        n_ants = 4
+        assert(len(self.sources)/2 == n_ants)
+        order1 = []
+        order2 = []
+        for ctr1 in range(n_ants):
+            # print 'ctr1(%d)' % ctr1
+            for ctr2 in range(int(n_ants/2), -1, -1):
+                temp = (ctr1 - ctr2) % n_ants
+                # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
+                if ctr1 >= temp:
+                    order1.append((temp, ctr1))
+                else:
+                    order2.append((ctr1, temp))
+        order2 = [order_ for order_ in order2 if order_ not in order1]
+        baseline_order = order1 + order2
+        source_names = []
+        for source_ in self.sources:
+            source_names.append(source_.name)
+        rv = []
+        for baseline in baseline_order:
+            rv.append((source_names[baseline[0] * 2],       source_names[baseline[1] * 2]))
+            rv.append((source_names[baseline[0] * 2 + 1],   source_names[baseline[1] * 2 + 1]))
+            rv.append((source_names[baseline[0] * 2],       source_names[baseline[1] * 2 + 1]))
+            rv.append((source_names[baseline[0] * 2 + 1],   source_names[baseline[1] * 2]))
+        return rv
+
     def spead_issue_meta(self):
         """
         All FxCorrelators issued SPEAD in the same way, with tweakings that are implemented by the child class.
@@ -768,11 +802,10 @@ class FxCorrelator(Instrument):
                           shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                           init_val=(len(self.xhosts) * self.x_per_fpga))
 
-        # TODO
-        # spead_ig.add_item(name='bls_ordering', id=0x100C,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=numpy.array([bl for bl in self.get_bl_order()]))
+        spead_ig.add_item(name='bls_ordering', id=0x100C,
+                          description='',
+                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=numpy.array([baseline for baseline in self.get_baseline_order()]))
 
         # spead_ig.add_item(name='crosspol_ordering', id=0x100D,
         #                        description='',
@@ -871,8 +904,6 @@ class FxCorrelator(Instrument):
                           shape=[-1], fmt=spead.STR_FMT,
                           init_val=ip)
 
-        import struct
-
         ip = struct.unpack('>I', socket.inet_aton(self.configd['fengine']['10gbe_start_ip']))[0]
         spead_ig.add_item(name='feng_start_ip', id=0x1025,
                           description='',
@@ -922,10 +953,11 @@ class FxCorrelator(Instrument):
                           shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                           init_val=sample_bits)
 
-        # spead_ig.add_item(name='scale_factor_timestamp', id=0x1046,
-        #                        description='',
-        #                        shape=[],fmt=spead.mkfmt(('f', 64)),
-        #                        init_val=)
+        # TODO - what is the scale factor going to be?
+        spead_ig.add_item(name='scale_factor_timestamp', id=0x1046,
+                               description='',
+                               shape=[],fmt=spead.mkfmt(('f', 64)),
+                               init_val=1)
 
         # spead_ig.add_item(name='b_per_fpga', id=0x1047,
         #                        description='',
@@ -963,8 +995,6 @@ class FxCorrelator(Instrument):
                           description='Timestamp',
                           shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                           init_val=0)
-
-        import numpy
 
         #ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
         ndarray = numpy.dtype(numpy.int32), (4096, 40, 2)
