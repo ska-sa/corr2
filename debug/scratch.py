@@ -5,6 +5,99 @@ Created on Mon Mar 31 13:10:05 2014
 @author: paulp
 """
 
+import logging, sys
+
+LOGGER = logging.getLogger(__name__)
+
+hosts = 'roach020958','roach02091b','roach020914','roach020922',\
+        'roach020921','roach020927','roach020919','roach020925',\
+        'roach02091a','roach02091e','roach020923','roach020924'
+
+import corr2.utils as utils
+import casperfpga
+import time
+import Queue
+import threading
+
+fpgas = []
+for h in hosts:
+    f = casperfpga.KatcpClientFpga(h)
+    fpgas.append(f)
+
+logging.basicConfig(level=logging.INFO)
+
+print utils.threaded_fpga_operation(fpgas, casperfpga.qdr.calibrate_qdrs, -1)
+
+sys.exit()
+
+stime = time.time()
+utils.threaded_fpga_operation(fpgas, hosthost, -1, 'zebra', 123456)
+etime = time.time()
+LOGGER.info('Request to %d FPGAs took %.3f seconds.' % (len(fpgas), etime - stime))
+
+# fpgas[0].deprogram()
+# stime = time.time()
+# fpgas[0].upload_to_ram_and_program('/srv/bofs/feng/r2_256w_4k_32x_r434_2014_Jul_21_1700.fpg')
+# etime = time.time()
+# LOGGER.info('Programming 1 FPGA took %.3f seconds.' % (etime - stime))
+
+# for f in fpgas:
+#     f.deprogram()
+# utils.program_fpgas('/srv/bofs/feng/r2_256w_4k_32x_r434_2014_Jul_21_1700.fpg', fpgas)
+
+
+stime = time.time()
+utils.non_blocking_request(fpgas, 2, 'listdev', [])
+etime = time.time()
+LOGGER.info('Request to %d FPGAs took %.3f seconds.' % (len(fpgas), etime - stime))
+
+stime = time.time()
+for f in fpgas:
+    f.listdev()
+etime = time.time()
+LOGGER.info('Request to %d FPGAs took %.3f seconds.' % (len(fpgas), etime - stime))
+
+sys.exit()
+
+
+import time
+import sys
+
+waitlist = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+waittime = 0.1
+
+iterations = 0
+stime = time.time()
+while len(waitlist) > 0:
+    print 'WHLOOP, %d items left' % len(waitlist)
+    for w in waitlist:
+        print '\t%d' % w
+        waitlist.pop(waitlist.index(w))
+        iterations += 1
+    if len(waitlist) > 0:
+        time.sleep(waittime)
+etime = time.time()
+print 'that took %d iterations and %0.3f seconds' % (iterations, etime - stime)
+
+waitlist = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+iterations = 0
+stime = time.time()
+while len(waitlist) > 0:
+    donelist = []
+    print 'WHLOOP, %d items left' % len(waitlist)
+    for w in waitlist:
+        print '\t%d' % w
+        donelist.append(w)
+        iterations += 1
+    for done in donelist:
+        waitlist.pop(waitlist.index(done))
+    if len(waitlist) > 0:
+        time.sleep(waittime)
+etime = time.time()
+print 'that took %d iterations and %0.3f seconds' % (iterations, etime - stime)
+
+sys.exit(0)
+
 import time, sys, logging, argparse
 
 logger = logging.getLogger(__name__)

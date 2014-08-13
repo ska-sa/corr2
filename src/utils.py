@@ -3,6 +3,9 @@ __author__ = 'paulp'
 import time
 from ConfigParser import SafeConfigParser
 import logging
+import Queue
+import threading
+from casperfpga import KatcpClientFpga, qdr
 
 LOGGER = logging.getLogger(__name__)
 
@@ -81,12 +84,107 @@ def hosts_from_config_file(config_file):
     return rv
 
 
+def calibrate_qdrs(fpgas, timeout):
+    """
+    Software calibrate all the QDRs on a list of FPGAs.
+    Threaded to save time.
+    :param fpgas: a List of CASPER FPGAs
+    :param timeout: how long to wait
+    :return: a dictionary containing the calibration status of all the FPGAs in the list.
+    """
+    return threaded_fpga_operation(fpgas, qdr.calibrate_qdrs, -1, timeout)
+
+
+def threaded_fpga_operation(fpga_list, job_function, num_threads=-1, *job_args):
+    """
+    Run a provided method on a list of FpgaClient objects in a specified number of threads.
+
+    @param fpga_list: list of FpgaClient objects
+    @param job_function: the function to be run - MUST take the FpgaClient object as its first argument
+    @param num_threads: how many threads should be used. Default is one per list item
+    @param *args: further arugments for the job_function
+
+    @return a dictionary of results from the functions, keyed on FpgaClient.host
+
+    """
+
+    """
+    Example:
+    def xread_all_new(self, register, bram_size, offset = 0):
+         import threaded
+         def xread_all_thread(host):
+             return host.read(register, bram_size, offset)
+         vals = threaded.fpga_operation(self.xfpgas, num_threads = -1, job_function = xread_all_thread)
+         rv = []
+         for x in self.xfpgas: rv.append(vals[x.host])
+         return rv
+    """
+
+    if job_function is None:
+        raise RuntimeError("No job_function? Not allowed!")
+
+    class CorrWorker(threading.Thread):
+        """
+        A thread that does a job on an FPGA - i.e. calls a function on an FPGA.
+        :param fpga_list:
+        :param job_function:
+        :param num_threads:
+        :param job_args:
+        :return:
+        """
+        def __init__(self, request_q, result_q, job_func, *jfunc_args):
+            self.request_queue = request_q
+            self.result_queue = result_q
+            self.job = job_func
+            self.job_args = jfunc_args
+            threading.Thread.__init__(self)
+
+        def run(self):
+            done = False
+            while not done:
+                try:
+                    # get a job from the queue - in this case, get a fpga host from the queue
+                    request_host = self.request_queue.get(block=False)
+                    # do some work - run the job function on the host
+                    try:
+                        res = self.job(request_host, *self.job_args)
+                    except Exception as exc:
+                        errstr = "Job %s internal error: %s, %s" % (self.job.func_name, type(exc), exc)
+                        res = RuntimeError(errstr)
+                    # put the result on the result queue
+                    self.result_queue.put((request_host.host, res))
+                    # and notify done
+                    self.request_queue.task_done()
+                except Queue.Empty:
+                    done = True
+
+    if num_threads == -1:
+        num_threads = len(fpga_list)
+    request_queue = Queue.Queue()
+    result_queue = Queue.Queue()
+    # put the fpgas into a Thread-safe Queue
+    for fpga_ in fpga_list:
+        if not isinstance(fpga_, KatcpClientFpga):
+            raise TypeError('Currently this function only supports FpgaClient objects.')
+        request_queue.put(fpga_)
+    # make as many worker threads a specified and start them off
+    workers = [CorrWorker(request_queue, result_queue, job_function, *job_args) for _ in range(0, num_threads)]
+    for w in workers:
+        w.daemon = True
+        w.start()
+    # join the last one to wait for completion
+    request_queue.join()
+    # format the result into a dictionary by host
+    rv = {}
+    while not result_queue.empty():
+        result = result_queue.get()
+        rv[result[0]] = result[1]
+    return rv
+
+
 def non_blocking_request(fpgas, timeout, request, request_args):
     """Make a non-blocking request to one or more FPGAs, using the Asynchronous FPGA client.
     """
-    import Queue
-    import threading
-
     reply_queue = Queue.Queue(maxsize=len(fpgas))
     requests = {}
     replies = {}
