@@ -11,7 +11,7 @@ LOGGER = logging.getLogger(__name__)
 
 hosts = 'roach020958','roach02091b','roach020914','roach020922',\
         'roach020921','roach020927','roach020919','roach020925',\
-        'roach02091a','roach02091e','roach020923','roach020924'
+        'roach02091a','roach02091e','roach020923','roach020924', 'roach020959', 'roach020915'
 
 import corr2.utils as utils
 import casperfpga
@@ -19,14 +19,52 @@ import time
 import Queue
 import threading
 
+fpgas = utils.threaded_create_fpgas_from_hosts(hosts)
+print fpgas
+
+stime = time.time()
+utils.program_fpgas(fpgas, '/home/paulp/test_2014_Aug_12_1438.fpg')
+print 'that took %.3f seconds' % (time.time() - stime)
+
+print utils.threaded_fpga_function(fpgas, 10, 'listdev')
+
+print utils.threaded_fpga_function(fpgas, 10, 'deprogram')
+
+print utils.threaded_fpga_function(fpgas, 10, 'disconnect')
+
+sys.exit()
+
+def countlettersinstrings(strings, funcname, *args):
+    for word in strings:
+        print eval('word.%s' % funcname)(*args)
+
+a = ['asddasdasdasd', 'bnmbnmbnmbnm', 'tyutyutyutyu']
+countlettersinstrings(a, 'capitalize')
+countlettersinstrings(a, 'count', 'a')
+
+sys.exit()
+
+
+stime = time.time()
 fpgas = []
 for h in hosts:
     f = casperfpga.KatcpClientFpga(h)
     fpgas.append(f)
+print 'that took %.3f' % (time.time() - stime)
+for fpga in fpgas:
+    print fpga.host, fpga.is_connected()
+
+stime = time.time()
+othefpgas = utils.create_fpgas_from_hosts(hosts)
+print 'and that took %.3f' % (time.time() - stime)
+for fpga in othefpgas:
+    print fpga.host, fpga.is_connected()
+
+sys.exit()
 
 logging.basicConfig(level=logging.INFO)
 
-print utils.threaded_fpga_operation(fpgas, casperfpga.qdr.calibrate_qdrs, -1)
+utils.non_blocking_request(fpgas, 600, 'update-romfs', [])
 
 sys.exit()
 
@@ -47,7 +85,7 @@ LOGGER.info('Request to %d FPGAs took %.3f seconds.' % (len(fpgas), etime - stim
 
 
 stime = time.time()
-utils.non_blocking_request(fpgas, 2, 'listdev', [])
+utils.non_blocking_request(fpgas, 600, 'listdev', [])
 etime = time.time()
 LOGGER.info('Request to %d FPGAs took %.3f seconds.' % (len(fpgas), etime - stime))
 

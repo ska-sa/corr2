@@ -13,13 +13,14 @@ import sys
 import numpy
 import struct
 import spead64_48 as spead
+import utils
 from host_fpga import FpgaHost
 from instrument import Instrument
 from xengine_fpga import XengineCasperFpga
 from fengine_fpga import FengineCasperFpga
-import utils
 from casperfpga import tengbe
 from casperfpga import KatcpClientFpga
+from casperfpga import utils as fpgautils
 
 use_xeng_sim = True
 use_demo_fengine = True
@@ -152,12 +153,15 @@ class FxCorrelator(Instrument):
                 ftups.append((f, f.boffile))
             for f in self.fhosts:
                 ftups.append((f, f.boffile))
-            utils.program_fpgas(None, ftups)
+            fpgautils.program_fpgas(ftups, None)
 
-        for f in self.fhosts:
-            f.initialise(program=False)
-        for f in self.xhosts:
-            f.initialise(program=False)
+        fpgautils.threaded_fpga_function(self.fhosts, 10, 'initialise', False)
+        fpgautils.threaded_fpga_function(self.xhosts, 10, 'initialise', False)
+
+        # for f in self.fhosts:
+        #     f.initialise(program=False)
+        # for f in self.xhosts:
+        #     f.initialise(program=False)
 
         if program:
             # init the f engines
