@@ -499,9 +499,13 @@ class FxCorrelator(Instrument):
             'Source names (%d) must be paired with multicast source addresses (%d)' % (len(source_names),
                                                                                        len(source_mcast))
         for counter, address in enumerate(source_mcast):
-            bits = address.split(':')
-            port = int(bits[1])
-            address, number = bits[0].split('+')
+            try:
+                bits = address.split(':')
+                port = int(bits[1])
+                address, number = bits[0].split('+')
+            except ValueError, err:
+                self.logger.error('The address %s is not correctly formed. Expect 1.2.3.4+50:7777. Bailing.', address)
+                raise err
             self.sources.append(DataSource(source_names[counter], address, int(number) + 1, int(port)))
         comparo = self.sources[0].iprange
         assert comparo == self.ports_per_fengine, \
