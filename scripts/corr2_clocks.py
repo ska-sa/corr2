@@ -1,0 +1,65 @@
+#! /usr/bin/env python
+""" 
+Script for checking the approximate clock rate of correlator FPGAs.
+"""
+import sys
+import argparse
+
+from casperfpga import utils as fpgautils
+from casperfpga import katcp_fpga
+from casperfpga import dcp_fpga
+from corr2 import utils
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Ping a list of hosts by connecting to them.',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(dest='hosts', type=str, action='store',
+                        help='comma-delimited list of hosts, or a corr2 config file')
+    parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
+                        help='katcp (default) or dcp?')
+    parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                        help='log level to use, default None, options INFO, DEBUG, ERROR')
+    args = parser.parse_args()
+
+    if args.log_level != '':
+        import logging
+        log_level = args.log_level.strip()
+        try:
+            logging.basicConfig(level=eval('logging.%s' % log_level))
+        except AttributeError:
+            raise RuntimeError('No such log level: %s' % log_level)
+
+    if args.comms == 'katcp':
+        HOSTCLASS = katcp_fpga.KatcpFpga
+    else:
+        HOSTCLASS = dcp_fpga.DcpFpga
+
+    hosts = utils.parse_hosts(args.hosts)
+    if len(hosts) == 0:
+        raise RuntimeError('No good carrying on without hosts.')
+try:
+    print 'Connecting...',
+    sys.stdout.flush()
+    fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+    print 'done.'
+
+    print('Calculating all clocks...'),
+    sys.stdout.flush()
+    results = fpgautils.threaded_fpga_function(fpgas, 'estimate_fpga_clock')
+    print 'done.'
+
+    for fpga_ in fpgas:
+        print '%s: %.0f Mhz' % (fpga_.host, results[fpga_.host])
+
+    fpgautils.threaded_fpga_function(fpgas, 'disconnect')
+
+except:
+    raise
+# except KeyboardInterrupt:
+#     exit_clean()
+# except:
+#     exit_fail()
+#
+# exit_clean()
+
+
