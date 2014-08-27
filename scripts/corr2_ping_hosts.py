@@ -7,35 +7,41 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
-import logging
 import time
 import argparse
-from casperfpga import utils as fpgautils
-from corr2 import utils
 
-logger = logging.getLogger(__name__)
-# logging.basicConfig(level=logging.INFO)
+from casperfpga import utils as fpgautils
+from casperfpga import katcp_fpga
+from casperfpga import dcp_fpga
+from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Ping a list of hosts by connecting to them.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hosts', type=str, action='store',
                     help='comma-delimited list of hosts, or a corr2 config file')
+parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
+                    help='katcp (default) or dcp?')
+parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
-hosts = args.hosts.strip().replace(' ', '').split(',')
-
-if len(hosts) == 1:  # check to see it it's a file
+if args.log_level != '':
+    import logging
+    log_level = args.log_level.strip()
     try:
-        hostsfromfile = utils.hosts_from_config_file(hosts[0])
-        hosts = []
-        for hostlist in hostsfromfile.values():
-            hosts.extend(hostlist)
-    except IOError:
-        # it's not a file so carry on
-        pass
+        logging.basicConfig(level=eval('logging.%s' % log_level))
+    except AttributeError:
+        raise RuntimeError('No such log level: %s' % log_level)
 
+if args.comms == 'katcp':
+    HOSTCLASS = katcp_fpga.KatcpFpga
+else:
+    HOSTCLASS = dcp_fpga.DcpFpga
+
+hosts = utils.parse_hosts(args.hosts)
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
+
 
 def pingfpga(fpga):
     timeout = 0.5
@@ -51,16 +57,14 @@ def pingfpga(fpga):
     except:
         return 'connected'
 
-# create the devices and connect to them
-print '%d hosts:' % len(hosts)
+# make the FPGA objects
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+
+# ping them
 connected = []
 programmed = []
 unavailable = []
-
-# make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
-
-responses = fpgautils.threaded_fpga_operation(fpgas, pingfpga, -1)
+responses = fpgautils.threaded_fpga_operation(fpgas, pingfpga)
 for host, response in responses.items():
     if response == 'unavailable':
         unavailable.append(host)
@@ -69,12 +73,14 @@ for host, response in responses.items():
     elif response == 'connected':
         connected.append(host)
 
-# disconnect
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+fpgautils.threaded_fpga_function(fpgas, 'disconnect')
 
 sconn = set(connected)
 sprog = set(programmed)
 connected = list(sconn.difference(sprog))
+print '%d hosts:' % len(hosts)
 print '\tProgrammed:', programmed
 print '\tConnected:', connected
 print '\tUnavailable:', unavailable
+
+# end
