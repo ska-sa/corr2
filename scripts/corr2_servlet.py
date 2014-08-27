@@ -159,7 +159,7 @@ class Corr2Server(katcp.DeviceServer):
 
     @request()
     @return_reply()
-    def request_issue_spead_metadata(self, sock):
+    def request_capture_meta(self, sock):
         """
 
         :param sock:
