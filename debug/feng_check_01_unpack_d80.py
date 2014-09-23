@@ -1,11 +1,21 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# pylint: disable-msg=C0103
-# pylint: disable-msg=C0301
 """
-View the status of a given xengine.
+Check the hardware error counters after the 64->80 bit conversion in the f-engine.
 
-Created on Fri Jan  3 10:40:53 2014
+Their output is ONLY valid when receiving TVG data from the digitisers.
+
+count_error: does the packet word counter inside the packet data correctly count packet words?
+time_error: does the packet-word time inside the packet data match the time from the
+            SPEAD header + the packet word counter?
+timestep_error: do timestamps for consecutive packets on a 10gbe interface increment correctly?
+                they should increment by 2.
+
+NOTE: the SPEAD timestamp from the digitiser is a PACKET timestamp!! The timestamp on the digitiser is a 80-bit word
+      counter (8 10-bit samples per word). The 9 least-significant bits are discarded before D->F transmission as
+      there are 512 consecutive 80-bit words in the 10Gbe packet. So to get to sample time:
+
+            sample_time = ((SPEAD timestamp << 9) << 3) + offset for offset in 10_bit_sample_0_to_7
 
 @author: paulp
 """
@@ -18,12 +28,13 @@ from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
-from casperfpga.tengbe import ip2str
 
-parser = argparse.ArgumentParser(description='Display the data unpack counters on the fengine.',
+parser = argparse.ArgumentParser(description='Check the hardware error counters after the 64->80 bit '
+                                             'conversion in the f-engine. NB: Their output is ONLY valid '
+                                             'when receiving TVG data from the digitisers.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hosts', type=str, action='store',
-                    help='comma-delimited list of f-engine hosts')
+                    help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
                     help='time at which to poll fengine data, in seconds')
@@ -35,8 +46,6 @@ parser.add_argument('--comms', dest='comms', action='store', default='katcp', ty
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
-
-polltime = args.polltime
 
 if args.log_level != '':
     import logging
@@ -55,9 +64,25 @@ hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-#hosts = ['roach02091b', 'roach020914', 'roach020958', 'roach020922']
 
-# create the devices and connect to them
+def get_fpga_data(fpga):
+    data = {}
+    for interface in [0, 1, 2, 3]:
+        unpack_errors = fpga.registers['updebug_d80_err%i' % interface].read()['data']
+        data['unpack%i' % interface] = (unpack_errors['cnt'], unpack_errors['time'], unpack_errors['timestep'])
+    return data
+
+
+def signal_handler(sig, frame):
+    print sig, frame
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+    scroll.screen_teardown()
+    sys.exit(0)
+import signal
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGHUP, signal_handler)
+
+# make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 registers_missing = []
@@ -65,7 +90,7 @@ max_hostname = -1
 for fpga_ in fpgas:
     max_hostname = max(len(fpga_.host), max_hostname)
     freg_error = False
-    for necreg in ['txip0', 'txip1', 'txip2', 'txip3', 'txpport01', 'txpport23']:
+    for necreg in ['updebug_d80_err0', 'updebug_d80_err1', 'updebug_d80_err2', 'updebug_d80_err3']:
         if necreg not in fpga_.registers.names():
             freg_error = True
             continue
@@ -87,35 +112,15 @@ if args.rstcnt:
         fpgautils.threaded_fpga_operation(fpgas, 10,
                                       lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
                                                                                   up_cnt_rst='pulse'))
-tx_ips = {}
-for fpga in fpgas:
-    tx_ips[fpga.host] = {'ip0': {}, 'ip1': {}, 'ip2': {}, 'ip3': {}, 'port0': {}, 'port1': {}, 'port2': {}, 'port3': {}}
-    print fpga.host, ip2str(fpga.registers.iptx_base.read()['data']['reg']), fpga.registers.tx_metadata.read()['data']
 
-
-def get_fpga_data(fpga):
-    txips = {'ip0': {}, 'ip1': {}, 'ip2': {}, 'ip3': {}, 'port0': {}, 'port1': {}, 'port2': {}, 'port3': {}}
-    for ctr in range(0, 4):
-        txip = fpga.registers['txip%i'%ctr].read()['data']['ip']
-        txips['ip%i' % ctr] = txip
-    txport = fpga.registers.txpport01.read()['data']
-    txport.update(fpga.registers.txpport23.read()['data'])
-    for ctr in range(0, 4):
-        txips['port%i' % ctr] = txport['port%i'%ctr]
-    return txips
-
-import signal
-def signal_handler(sig, frame):
-    print sig, frame
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    scroll.screen_teardown()
-    sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
+fpga_data = get_fpga_data(fpgas[0])
+reg_names = fpga_data.keys()
+reg_names.sort()
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
 scroller.screen_setup()
+
 # main program loop
 STARTTIME = time.time()
 last_refresh = STARTTIME - 3
@@ -126,44 +131,36 @@ try:
         if keypress == -1:
             break
         elif keypress > 0:
-#            if character == 'c':
-#                for f in ffpgas:
-#                    f.reset_counters()
+           # if character == 'c':
+           #     for f in fpgas:
+           #         f.reset_counters()
             scroller.draw_screen()
-        if time.time() > last_refresh + polltime:
+        if time.time() > last_refresh + args.polltime:
             scroller.clear_buffer()
             scroller.add_line('Polling %i fengine%s every %s - %is elapsed.' %
-                (len(fpgas), '' if len(fpgas) == 1 else 's',
-                'second' if polltime == 1 else ('%i seconds' % polltime),
-                time.time() - STARTTIME), 0, 0, absolute=True)
-            start_pos = 20
-            pos_increment = 15
-            scroller.set_ypos(newpos=1)
+                              (len(fpgas), '' if len(fpgas) == 1 else 's',
+                               'second' if args.polltime == 1 else ('%i seconds' % args.polltime),
+                               time.time() - STARTTIME), 0, 0, absolute=True)
+
+            scroller.add_line('UNPACK_ERROR(count, time, timestep)', 0, 1, absolute=True)
+
+            scroller.add_line('Host', 0, 2, absolute=True)
+            start_pos = max_hostname + 3
+            pos_increment = 20
+            for reg in reg_names:
+                scroller.add_line(new_line=reg.ljust(10), xpos=start_pos, ypos=2, absolute=True)
+                start_pos += pos_increment
+            scroller.set_ypos(newpos=3)
+            scroller.set_ylimits(ymin=3)
             all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, get_fpga_data)
-            for ctr, fpga in enumerate(fpgas):
-                fpga_data = all_fpga_data[fpga.host]
-                for key, ip_or_port in fpga_data.items():
-                    if ip_or_port not in tx_ips[fpga.host][key].keys():
-                        tx_ips[fpga.host][key][ip_or_port] = 0
-                    tx_ips[fpga.host][key][ip_or_port] += 1
-                fpga_data = tx_ips[fpga.host]
-                scroller.add_line(fpga.host)
-                for ctr in range(0,4):
-                    ipstr = '\tip%i: '%ctr
-                    ip_addresses = fpga_data['ip%i'%ctr].keys()
-                    ip_addresses.sort()
-                    cntmin = pow(2,32) - 1
-                    cntmax = -1
-                    for ip in ip_addresses:
-                        cntmin = min([fpga_data['ip%i'%ctr][ip], cntmin])
-                        cntmax = max([fpga_data['ip%i'%ctr][ip], cntmax])
-                        ipstr += ip2str(ip) + '[%5d], '%fpga_data['ip%i'%ctr][ip]
-                    ipstr += 'spread[%2.2f], '%((cntmax-cntmin)/(cntmax*1.0)*100.0)
-                    ports = fpga_data['port%i'%ctr].keys()
-                    ports.sort()
-                    for port in ports:
-                        ipstr += str(port) + '[%5d], '%fpga_data['port%i'%ctr][port]
-                    scroller.add_line(ipstr)
+            for ctr, ffpga in enumerate(fpgas):
+                fpga_data = all_fpga_data[ffpga.host]
+                scroller.add_line(ffpga.host)
+                start_pos = max_hostname + 3
+                for reg in ['unpack0', 'unpack1', 'unpack2', 'unpack3']:
+                    valstring = '(%d,%d,%d)' % (fpga_data[reg][0], fpga_data[reg][1], fpga_data[reg][2])
+                    scroller.add_line(valstring, start_pos, scroller.get_current_line() - 1) # all on the same line
+                    start_pos += pos_increment
             scroller.draw_screen()
             last_refresh = time.time()
 except Exception, e:

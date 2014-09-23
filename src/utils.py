@@ -28,7 +28,7 @@ def parse_ini_file(ini_file, required_sections=None):
     return config
 
 
-def hosts_from_config_file(config_file):
+def hosts_from_config_file(config_file, section=None):
     """
     Make lists of hosts from a given correlator config file.
     :return: a dictionary of hosts, by type
@@ -36,9 +36,29 @@ def hosts_from_config_file(config_file):
     config = parse_ini_file(config_file)
     rv = {}
     for sectionkey in config.keys():
-        if 'hosts' in config[sectionkey].keys():
-            hosts = config[sectionkey]['hosts'].split(',')
-            for ctr, host_ in enumerate(hosts):
-                hosts[ctr] = host_.strip()
-            rv[sectionkey] = hosts
+        if (section is None) or (section == sectionkey):
+            if 'hosts' in config[sectionkey].keys():
+                hosts = config[sectionkey]['hosts'].split(',')
+                for ctr, host_ in enumerate(hosts):
+                    hosts[ctr] = host_.strip()
+                rv[sectionkey] = hosts
     return rv
+
+
+def parse_hosts(list_or_file, section=None):
+    """
+    Make a list of hosts from the argument given to a script.
+    :param list_or_file:
+    :return:
+    """
+    hosts = list_or_file.strip().replace(' ', '').split(',')
+    if len(hosts) == 1:  # check to see it it's a file
+        try:
+            hostsfromfile = hosts_from_config_file(hosts[0], section=section)
+            hosts = []
+            for hostlist in hostsfromfile.values():
+                hosts.extend(hostlist)
+        except IOError:
+            # it's not a file so carry on
+            pass
+    return hosts

@@ -5,13 +5,10 @@
 """
 @author: paulp
 """
-import logging
 import argparse
 
-logger = logging.getLogger(__name__)
-#logging.basicConfig(level=logging.INFO)
-
-from casperfpga.katcp_fpga import KatcpFpga
+from casperfpga import katcp_fpga
+from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='Display reorder preprocess snapblock info.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -20,13 +17,33 @@ parser.add_argument(dest='host', type=str, action='store',
 parser.add_argument('--eof', dest='eof', action='store_true',
                     default=False,
                     help='show only eofs')
+parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
+                    help='katcp (default) or dcp?')
+parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
+
+if args.log_level != '':
+    import logging
+    log_level = args.log_level.strip()
+    try:
+        logging.basicConfig(level=eval('logging.%s' % log_level))
+    except AttributeError:
+        raise RuntimeError('No such log level: %s' % log_level)
+
+if args.comms == 'katcp':
+    HOSTCLASS = katcp_fpga.KatcpFpga
+else:
+    HOSTCLASS = dcp_fpga.DcpFpga
 
 xeng_host = args.host
 
 # create the device and connect to it
-xeng_fpga = KatcpFpga(xeng_host)
+xeng_fpga = HOSTCLASS(xeng_host)
 xeng_fpga.get_system_information()
+xeng_fpga.registers.control.
+
+
 board_id = xeng_fpga.registers.board_id.read()['data']['reg']
 numchans = 4096
 numx = 32

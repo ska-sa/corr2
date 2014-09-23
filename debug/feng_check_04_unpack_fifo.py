@@ -3,7 +3,7 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-View the status of a given xengine.
+Check the post-FIFO debug registers inside the f-engine unpack block.
 
 Created on Fri Jan  3 10:40:53 2014
 
@@ -19,13 +19,14 @@ from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Display reorder debug info on the xengines.',
+parser = argparse.ArgumentParser(description='Check the flags out of the FIFO section in the unpack block. They'
+                                             'should be zero of OFs and constantly incrementing for the VFIFOs.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hosts', type=str, action='store',
-                    help='comma-delimited list of x-engine hosts')
+                    help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
-                    help='time at which to poll xengine data, in seconds')
+                    help='time at which to poll fengine data, in seconds')
 parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
                     default=False,
                     help='reset all counters at script startup')
@@ -48,11 +49,37 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-hosts = utils.parse_hosts(args.hosts, section='xengine')
+hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-# create the devices and connect to them
+
+def get_fpga_data(fpga):
+    data = {}
+    valid_cnt_fifo0 = fpga.registers.updebug_fifo_vcnt0.read()['data']
+    valid_cnt_fifo1 = fpga.registers.updebug_fifo_vcnt1.read()['data']
+    data['vfifo0'] = valid_cnt_fifo0['fifo0']
+    data['vfifo1'] = valid_cnt_fifo0['fifo1']
+    data['vfifo2'] = valid_cnt_fifo1['fifo2']
+    data['vfifo3'] = valid_cnt_fifo1['fifo3']
+    fifoof = fpga.registers.updebug_fifo_of.read()['data']
+    fifopktof = fpga.registers.updebug_fifo_pktof.read()['data']
+    for ctr in range(0,4):
+        data['of%i'%ctr] = fifoof['input%i'%ctr]
+        data['pktof%i'%ctr] = fifopktof['input%i'%ctr]
+    return data
+
+
+def signal_handler(sig, frame):
+    print sig, frame
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+    scroll.screen_teardown()
+    sys.exit(0)
+import signal
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGHUP, signal_handler)
+
+# make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 registers_missing = []
@@ -60,10 +87,7 @@ max_hostname = -1
 for fpga_ in fpgas:
     max_hostname = max(len(fpga_.host), max_hostname)
     freg_error = False
-    for necreg in ['pkt_reord_cnt0', 'pkt_reord_cnt1', 'pkt_reord_cnt2', 'pkt_reord_cnt3',
-                   'pkt_reord_err0', 'pkt_reord_err1', 'pkt_reord_err2', 'pkt_reord_err3',
-                   'last_missing_ant0', 'last_missing_ant1', 'last_missing_ant2', 'last_missing_ant3',
-                   'reord_syncctr0', 'reord_syncctr1', 'reord_syncctr2', 'reord_syncctr3']:
+    for necreg in ['updebug_fifo_vcnt0', 'updebug_fifo_vcnt1', 'updebug_fifo_of', 'updebug_fifo_pktof']:
         if necreg not in fpga_.registers.names():
             freg_error = True
             continue
@@ -77,33 +101,18 @@ if len(registers_missing) > 0:
     raise RuntimeError
 
 if args.rstcnt:
-    fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse'))
+    if 'unpack_cnt_rst' in fpgas[0].registers.control.field_names():
+        fpgautils.threaded_fpga_operation(fpgas, 10,
+                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
+                                                                                  unpack_cnt_rst='pulse'))
+    else:
+        fpgautils.threaded_fpga_operation(fpgas, 10,
+                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
+                                                                                  up_cnt_rst='pulse'))
 
-def get_fpga_data(fpga):
-    data = {}
-    for ctr in range(0, 4):
-        data['re%i_cnt' % ctr] =  fpga.registers['pkt_reord_cnt%i' % ctr].read()['data']['reg']
-        data['re%i_err' % ctr] =  fpga.registers['pkt_reord_err%i' % ctr].read()['data']['reg']
-        data['missant%i' % ctr] = fpga.registers['last_missing_ant%i' % ctr].read()['data']['reg']
-        data['rsync%i' % ctr] = fpga.registers['reord_syncctr%i' % ctr].read()['data']['reg']
-    for ctr in range(0, 2):
-        data['rx%i_cnt' % ctr] =  fpga.registers['rx_cnt%i' % ctr].read()['data']['reg']
-        data['rx%i_err' % ctr] =  fpga.registers['rx_err_cnt%i' % ctr].read()['data']['reg']
-    return data
-
-data = get_fpga_data(fpgas[0])
-reg_names = data.keys()
+fpga_data = get_fpga_data(fpgas[0])
+reg_names = fpga_data.keys()
 reg_names.sort()
-
-import signal
-def signal_handler(sig, frame):
-    print sig, frame
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    scroll.screen_teardown()
-    sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
@@ -124,26 +133,25 @@ try:
             scroller.draw_screen()
         if time.time() > last_refresh + args.polltime:
             scroller.clear_buffer()
-            scroller.add_line('Polling %i xengine%s every %s - %is elapsed.' %
+            scroller.add_line('Polling %i fengine%s every %s - %is elapsed.' %
                 (len(fpgas), '' if len(fpgas) == 1 else 's',
                 'second' if args.polltime == 1 else ('%i seconds' % args.polltime),
                 time.time() - STARTTIME), 0, 0, absolute=True)
-            start_pos = 20
+            start_pos = max_hostname + 3
             pos_increment = 11
             scroller.add_line('Host', 0, 1, absolute=True)
             for reg in reg_names:
-                scroller.add_line(new_line=reg.rjust(9), xpos=start_pos, ypos=1, absolute=True)
+                scroller.add_line(new_line=reg.rjust(10), xpos=start_pos, ypos=1, absolute=True)
                 start_pos += pos_increment
             scroller.set_ypos(newpos=2)
             scroller.set_ylimits(ymin=2)
             all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, get_fpga_data)
-            for ctr, fpga in enumerate(fpgas):
-                fpga_data = all_fpga_data[fpga.host]
-                scroller.add_line(fpga.host)
-                start_pos = 20
-                pos_increment = 11
+            for ctr, ffpga in enumerate(fpgas):
+                fpga_data = all_fpga_data[ffpga.host]
+                scroller.add_line(ffpga.host)
+                start_pos = max_hostname + 3
                 for reg in reg_names:
-                    regval = '%9d' % fpga_data[reg]
+                    regval = '%10d' % fpga_data[reg]
                     scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
                     start_pos += pos_increment
             scroller.draw_screen()
