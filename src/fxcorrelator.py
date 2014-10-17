@@ -434,6 +434,9 @@ class FxCorrelator(Instrument):
         #     f.registers.vacc_time_msw.write(arm=0, immediate=0)
         #     f.registers.vacc_time_msw.write(arm=1, immediate=1)
 
+        if use_xeng_sim:
+            self.synchronisation_epoch = time.time()
+
         '''
         # read accumulation count before starting accumulations
         vacc_cnts = []
@@ -758,10 +761,13 @@ class FxCorrelator(Instrument):
         del self.spead_tx
         mcast_interface = self.configd['xengine']['multicast_interface_address']
         self.spead_tx = spead.Transmitter(spead.TransportUDPtx(txip_str, txport))
+
+        # update the multicast socket option
+        mcast_interface = self.configd['xengine']['multicast_interface_address']
         self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_IF,
                                             socket.inet_aton(mcast_interface))
         # self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
-        #                                     socket.inet_aton(mcast_interface) + socket.inet_aton(txip_str))
+        #                                     socket.inet_aton(txip_str) + socket.inet_aton(mcast_interface))
         # and update the meta destination
         self.meta_destination = (txip_str, txport)
 
