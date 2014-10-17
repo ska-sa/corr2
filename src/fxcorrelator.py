@@ -24,12 +24,11 @@ from casperfpga.katcp_fpga import KatcpFpga
 from casperfpga import utils as fpgautils
 
 use_xeng_sim = False
-use_demo_fengine = True
 START_DIGITISER = False
 FENG_TX = False
 
 #dbof = '/srv/bofs/deng/r2_deng_tvg_2014_Jul_21_0838.fpg'
-dbof = '/srv/bofs/deng/r2_deng_tvg_2014_Aug_27_1619.fpg'
+#dbof = '/srv/bofs/deng/r2_deng_tvg_2014_Aug_27_1619.fpg'
 dbof = '/home/paulp/r2_deng_tvg_2014_Sep_11_1230.fpg'
 dhost = 'roach020922'
 dip_start = '10.100.0.70'
@@ -37,6 +36,7 @@ dmac_start = '02:02:00:00:00:01'
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+
 
 class DataSource(object):
     def __init__(self, name, ip, iprange, port):
@@ -82,7 +82,7 @@ def digitiser_start(dig_tx_source):
     for ctr in range(0, 4):
         mac = '%s:%s:%s:%s:%s:%d' % (mac_bits[0], mac_bits[1], mac_bits[2], mac_bits[3], mac_bits[4], macbase + ctr)
         ip = '%s.%s.%s.%d' % (ip_bits[0], ip_bits[1], ip_bits[2], ipbase + ctr)
-        fdig.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=8888)
+        fdig.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=dig_tx_source.port)
     for gbe in fdig.tengbes:
         gbe.tap_start(True)
     # set the destination IP and port for the tx
@@ -211,10 +211,7 @@ class FxCorrelator(Instrument):
             logging.info('Starting f-engine datastream')
             for f in self.fhosts:
                 #f.registers.control.write(tvg_ct=True)
-                if use_demo_fengine:
-                    f.registers.control.write(gbe_txen=True)
-                else:
-                    f.registers.control.write(comms_en=True)
+                f.registers.control.write(gbe_txen=True)
 
         '''
         fengine init:
@@ -290,40 +287,30 @@ class FxCorrelator(Instrument):
         :return:
         """
         feng_ip_octets = [int(bit) for bit in self.configd['fengine']['10gbe_start_ip'].split('.')]
+        feng_port = self.configd['fengine']['10gbe_start_port']
         assert len(feng_ip_octets) == 4, 'That\'s an odd IP address.'
         feng_ip_base = feng_ip_octets[3]
         feng_ip_prefix = '%d.%d.%d.' % (feng_ip_octets[0], feng_ip_octets[1], feng_ip_octets[2])
-        macbase = 10
+        macprefix = self.configd['xengine']['10gbe_macprefix']
+        macbase = int(self.configd['fengine']['10gbe_macbase'])
         board_id = 0
         iptx = tengbe.str2ip(self.configd['xengine']['10gbe_start_ip'])
         porttx = int(self.configd['xengine']['10gbe_start_port'])
-
-        if use_demo_fengine:
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_txen=False))
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(status_clr='pulse',
-                                                                                          gbe_cnt_rst='pulse',
-                                                                                          cnt_rst='pulse'))
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.iptx_base.write_int(iptx))
-        else:
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(comms_en=False))
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(comms_rst=True))
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(status_clr='pulse',
-                                                                                          comms_status_clr='pulse'))
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.txip.write_int(iptx))
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.txport.write_int(porttx))
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_txen=False))
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(status_clr='pulse',
+                                                                                      gbe_cnt_rst='pulse',
+                                                                                      cnt_rst='pulse'))
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.iptx_base.write_int(iptx))
 
         for ctr, f in enumerate(self.fhosts):
             # comms stuff
             for gbe in f.tengbes:
-                gbe.setup(mac='02:02:00:00:01:%02x' % macbase, ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base),
-                          port=8888)
+                gbe.setup(mac='%s%02x' % (macprefix, macbase), ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base),
+                          port=feng_port)
                 macbase += 1
                 feng_ip_base += 1
-            if use_demo_fengine:
-                f.registers.tx_metadata.write(board_id=board_id, porttx=porttx)
-            else:
-                f.registers.board_id.write_int(board_id)
+            f.registers.tx_metadata.write(board_id=board_id, porttx=porttx)
             board_id += 1
 
         # start tap on the f-engines
@@ -332,10 +319,7 @@ class FxCorrelator(Instrument):
                 gbe.tap_start(True)
 
         # release from reset
-        if use_demo_fengine:
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
-        else:
-            THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(comms_rst=False))
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
 
         # subscribe to multicast data
         source_ctr = 0
@@ -390,14 +374,20 @@ class FxCorrelator(Instrument):
             f.registers.board_id.write(reg=board_id)
             board_id += 1  # 1 on new systems, 4 on old xeng_rx_reorder system
 
-        #set up 10gbe cores 
-        xipbase = 110
-        macbase = 10
+        # set up 10gbe cores
+        xeng_ip_octets = [int(bit) for bit in self.configd['xengine']['10gbe_start_ip'].split('.')]
+        assert len(xeng_ip_octets) == 4, 'That\'s an odd IP address.'
+        xeng_ip_base = xeng_ip_octets[3]
+        xeng_ip_prefix = '%d.%d.%d.' % (xeng_ip_octets[0], xeng_ip_octets[1], xeng_ip_octets[2])
+        xeng_port = self.configd['xengine']['10gbe_start_port']
+        macprefix = self.configd['xengine']['10gbe_macprefix']
+        macbase = int(self.configd['xengine']['10gbe_macbase'])
         for f in self.xhosts:
             for gbe in f.tengbes:
-                gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.100.0.%d' % xipbase, port=8888)
+                gbe.setup(mac='%s%02x' % (macprefix, macbase), ipaddress='%s%d' % (xeng_ip_prefix, xeng_ip_base),
+                          port=xeng_port)
                 macbase += 1
-                xipbase += 1
+                xeng_ip_base += 1
                 gbe.tap_start()
         # tvg
         # if tvg:
@@ -522,19 +512,6 @@ class FxCorrelator(Instrument):
         :return: True if the instrument read a config successfully, raise an error if not?
         """
         Instrument._read_config(self)
-
-        if use_demo_fengine:
-            self.configd['fengine']['bitstream'] = '/srv/bofs/feng/feng_rx_test_2014_Aug_27_1835.fpg'
-            # self.configd['fengine']['bitstream'] = '/home/paulp/frt_aa_2014_Sep_17_1242.fpg'
-            #self.configd['fengine']['bitstream'] = '/home/paulp/frt_aa_2014_Oct_06_1152.fpg'
-            # self.configd['fengine']['bitstream'] = '/home/paulp/frt_a_2014_Sep_17_1058.fpg'
-            self.configd['fengine']['bitstream'] = '/home/paulp/frt_a_2014_Oct_06_1702.fpg'
-            # self.configd['fengine']['bitstream'] = '/home/paulp/frt_b_2014_Sep_17_1110.fpg'
-       #     self.configd['fengine']['bitstream'] = '/home/paulp/frt_c_2014_Sep_17_1343.fpg'
-            self.configd['fengine']['bitstream'] = '/home/paulp/frt_e_2014_Oct_16_1632.fpg'
-            #self.configd['fengine']['bitstream'] = '/home/paulp/frt_e_txsnap_2014_Oct_03_1057.fpg'
-            # self.configd['fengine']['bitstream'] = '/home/paulp/feng_rx_test_2014_Sep_17_1442.fpg'
-
         # check that the bitstream names are present
         try:
             open(self.configd['fengine']['bitstream'], 'r').close()
@@ -564,7 +541,6 @@ class FxCorrelator(Instrument):
             self.xeng_clk = 225000000
         else:
             self.xeng_clk = 230000000
-            #raise NotImplementedError
 
         # the f-engines have this many 10Gbe ports per f-engine unit of operation
         self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
