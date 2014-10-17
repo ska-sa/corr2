@@ -82,7 +82,7 @@ def digitiser_start(dig_tx_source):
     for ctr in range(0, 4):
         mac = '%s:%s:%s:%s:%s:%d' % (mac_bits[0], mac_bits[1], mac_bits[2], mac_bits[3], mac_bits[4], macbase + ctr)
         ip = '%s.%s.%s.%d' % (ip_bits[0], ip_bits[1], ip_bits[2], ipbase + ctr)
-        fdig.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=8888)
+        fdig.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=7148)
     for gbe in fdig.tengbes:
         gbe.tap_start(True)
     # set the destination IP and port for the tx
@@ -317,7 +317,7 @@ class FxCorrelator(Instrument):
             # comms stuff
             for gbe in f.tengbes:
                 gbe.setup(mac='02:02:00:00:01:%02x' % macbase, ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base),
-                          port=8888)
+                          port=7148)
                 macbase += 1
                 feng_ip_base += 1
             if use_demo_fengine:
@@ -395,7 +395,7 @@ class FxCorrelator(Instrument):
         macbase = 10
         for f in self.xhosts:
             for gbe in f.tengbes:
-                gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.100.0.%d' % xipbase, port=8888)
+                gbe.setup(mac='02:02:00:00:02:%02x' % macbase, ipaddress='10.100.0.%d' % xipbase, port=7148)
                 macbase += 1
                 xipbase += 1
                 gbe.tap_start()
