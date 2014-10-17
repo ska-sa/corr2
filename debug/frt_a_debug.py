@@ -19,7 +19,9 @@ from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Display reorder debug info on the xengines.',
+COLUMN_WIDTH = 12
+
+parser = argparse.ArgumentParser(description='GAGAH.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hosts', type=str, action='store',
                     help='comma-delimited list of x-engine hosts')
@@ -29,6 +31,9 @@ parser.add_argument('-p', '--polltime', dest='polltime', action='store',
 parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
                     default=False,
                     help='reset all counters at script startup')
+parser.add_argument('--sys_rst', dest='sysrst', action='store_true',
+                    default=False,
+                    help='SYS RESET')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -48,65 +53,68 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-hosts = utils.parse_hosts(args.hosts, section='xengine')
+hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # create the devices and connect to them
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
+
+regs = ['mcnt_nolock', 'tmiss_p0','tmiss_p1', 'tmiss_ctr', 'recverr_ctr', 'maxcnt_terr_ctr', 'timestep_ages',
+        'sync_timestamp_msw', 'sync_timestamp_lsw']
+
+if args.rstcnt:
+    fpgautils.threaded_fpga_operation(fpgas, 10,
+                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
+                                                                                  unpack_cnt_rst='pulse'))
+
+if args.sysrst:
+    fpgautils.threaded_fpga_operation(fpgas, 10,
+                                      lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'))
+
+
+def checkregs(fpga_, necregs):
+    freg_error = 0
+    regnames = fpga_.registers.names()
+    for necreg in necregs:
+        if necreg not in regnames:
+            freg_error += 1
+    return freg_error > 0
+regcheck = fpgautils.threaded_fpga_operation(fpgas, 10, checkregs, regs)
 registers_missing = []
-max_hostname = -1
-for fpga_ in fpgas:
-    max_hostname = max(len(fpga_.host), max_hostname)
-    freg_error = False
-    for necreg in ['highmark01_0', 'highmark23_0',
-                   'highmark01_1', 'highmark23_1',
-                   'highmark01_2', 'highmark23_2',
-                   'highmark01_3', 'highmark23_3']:
-        if necreg not in fpga_.registers.names():
-            freg_error = True
-            continue
-    if freg_error:
-        registers_missing.append(fpga_.host)
-        continue
+for fpga, error in regcheck.items():
+    if error:
+        registers_missing.append(fpga)
 if len(registers_missing) > 0:
     print 'The following hosts are missing necessary registers. Bailing.'
     print registers_missing
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    raise RuntimeError
-
-if args.rstcnt:
-    fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse'))
+    sys.exit()
 
 
 def get_fpga_data(fpga):
     data = {}
-    regdata = fpga.registers.highmark01_0.read()['data']
-    data['high0_0'] = regdata['high0']
-    data['high0_1'] = regdata['high1']
-    regdata = fpga.registers.highmark23_0.read()['data']
-    data['high0_2'] = regdata['high2']
-    data['high0_3'] = regdata['high3']
-    regdata = fpga.registers.highmark01_1.read()['data']
-    data['high1_0'] = regdata['high0']
-    data['high1_1'] = regdata['high1']
-    regdata = fpga.registers.highmark23_1.read()['data']
-    data['high1_2'] = regdata['high2']
-    data['high1_3'] = regdata['high3']
-    regdata = fpga.registers.highmark01_2.read()['data']
-    data['high2_0'] = regdata['high0']
-    data['high2_1'] = regdata['high1']
-    regdata = fpga.registers.highmark23_2.read()['data']
-    data['high2_2'] = regdata['high2']
-    data['high2_3'] = regdata['high3']
-    regdata = fpga.registers.highmark01_3.read()['data']
-    data['high3_0'] = regdata['high0']
-    data['high3_1'] = regdata['high1']
-    regdata = fpga.registers.highmark23_3.read()['data']
-    data['high3_2'] = regdata['high2']
-    data['high3_3'] = regdata['high3']
+    data['mcnt_nlck'] = fpga.registers.mcnt_nolock.read()['data']['mcnt_nolock']
+    data['tmis_p0'] = fpga.registers.tmiss_p0.read()['data']['reg']
+    data['tmis_p1'] = fpga.registers.tmiss_p1.read()['data']['reg']
+    temp = fpga.registers.tmiss_ctr.read()['data']
+    data['tmis_ctr0'] = temp['p0']
+    data['tmis_ctr1'] = temp['p1']
+    temp = fpga.registers.recverr_ctr.read()['data']
+    data['rerr_ctr0'] = temp['p0']
+    data['rerr_ctr1'] = temp['p1']
+    temp = fpga.registers.timestep_ages.read()['data']
+    data['futuerr'] = temp['future']
+    data['pasterr'] = temp['past']
+    data['mxerr_ctr'] = fpga.registers.maxcnt_terr_ctr.read()['data']['reg']
+    data['tstmpmsw'] = fpga.registers.sync_timestamp_msw.read()['data']['reg']
+    temp = fpga.registers.sync_timestamp_lsw.read()['data']
+    data['tstmplsw'] = temp['time_lsw']
+    data['tstep_err'] = temp['tstep_err_ctr']
+    data['cnt_sync'] = temp['sync80_ctr']
+    data['cnt_val'] = temp['valid80_ctr']
+    data['pkt_sz'] = temp['pkt_size']
     return data
 
 data = get_fpga_data(fpgas[0])
@@ -141,12 +149,12 @@ try:
             scroller.draw_screen()
         if time.time() > last_refresh + args.polltime:
             scroller.clear_buffer()
-            scroller.add_line('Polling %i xengine%s every %s - %is elapsed.' %
+            scroller.add_line('Polling %i fengine%s every %s - %is elapsed.' %
                 (len(fpgas), '' if len(fpgas) == 1 else 's',
                 'second' if args.polltime == 1 else ('%i seconds' % args.polltime),
                 time.time() - STARTTIME), 0, 0, absolute=True)
-            start_pos = 20
-            pos_increment = 10
+            start_pos = 15
+            pos_increment = COLUMN_WIDTH
             scroller.add_line('Host', 0, 1, absolute=True)
             for reg in reg_names:
                 scroller.add_line(new_line=reg.rjust(8), xpos=start_pos, ypos=1, absolute=True)
@@ -157,8 +165,8 @@ try:
             for ctr, fpga in enumerate(fpgas):
                 fpga_data = all_fpga_data[fpga.host]
                 scroller.add_line(fpga.host)
-                start_pos = 20
-                pos_increment = 10
+                start_pos = 15
+                pos_increment = COLUMN_WIDTH
                 for reg in reg_names:
                     regval = '%8d' % fpga_data[reg]
                     scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line

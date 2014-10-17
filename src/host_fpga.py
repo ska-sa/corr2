@@ -1,16 +1,16 @@
 __author__ = 'paulp'
 
-from casperfpga import KatcpClientFpga
+from casperfpga.katcp_fpga import KatcpFpga
 from host import Host
 
 
-class FpgaHost(Host, KatcpClientFpga):
+class FpgaHost(Host, KatcpFpga):
     """
     A Host that is a CASPER KATCP FPGA.
     """
     def __init__(self, host, katcp_port=7147, boffile=None, connect=False):
         Host.__init__(self, host, katcp_port)
-        KatcpClientFpga.__init__(self, host, katcp_port, connect=connect)
+        KatcpFpga.__init__(self, host, katcp_port, connect=connect)
         self.boffile = boffile
 
     def initialise(self, program=True, program_port=-1):
@@ -39,7 +39,7 @@ class FpgaHost(Host, KatcpClientFpga):
         """All hosts must supply a is_running method that returns true or false.
         @return: True or False
         """
-        return KatcpClientFpga.is_running(self)
+        return KatcpFpga.is_running(self)
 
     def tx_stop(self):
         """

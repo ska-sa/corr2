@@ -118,7 +118,7 @@ if __name__ == "__main__":
     print reply_msg.mtype
     print informs
 
-    reply_msg, informs = client.katcprequest('capture-list', request_timeout=-1.0, require_ok=True)
+    reply_msg, informs = client.katcprequest('meta-destination', request_timeout=-1.0, require_ok=True, request_args=['cross_products', '127.0.0.1:8888'])
     print reply_msg.arguments
     print reply_msg.mid
     print reply_msg.mtype

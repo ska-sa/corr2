@@ -6,11 +6,13 @@ import logging
 import sys
 import argparse
 import Queue
+
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str
 from corr2 import fxcorrelator
 
-logging.basicConfig(level=logging.WARN, stream=sys.stderr, format='%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.WARN, stream=sys.stderr,
+                    format='%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
 
 
 class Corr2Server(katcp.DeviceServer):
@@ -58,7 +60,6 @@ class Corr2Server(katcp.DeviceServer):
         except:
             pass
         return 'fail',
-
 
     @request()
     @return_reply()
@@ -124,7 +125,8 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if product_name == '':
-            product_string = str(self.instrument.configd['xengine']['output_products']).replace('[', '').replace(']', '')
+            product_list = self.instrument.configd['xengine']['output_products']
+            product_string = str(product_list).replace('[', '').replace(']', '')
         else:
             product_string = product_name
             if product_name not in self.instrument.configd['xengine']['output_products']:
@@ -265,7 +267,7 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
         return 'ok',
 
-    @request(Str(default='a string woohoo'), Int(default=777))  # arguments to this request, # create the message with these args
+    @request(Str(default='a string woohoo'), Int(default=777))
     @return_reply()
     def request_pang(self, sock, astring, anint):
         """

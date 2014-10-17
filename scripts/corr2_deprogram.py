@@ -1,13 +1,9 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
-Ping a list of hosts by connecting to them.
-
-Created on Fri Jan  3 10:40:53 2014
+Deprogram one or more ROACHs.
 
 @author: paulp
 """
-import time
 import argparse
 
 from casperfpga import utils as fpgautils
@@ -15,10 +11,14 @@ from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Ping a list of hosts by connecting to them.',
+#allhosts = roach020958,roach02091b,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
+
+parser = argparse.ArgumentParser(description='Deprogram one or more CASPER devices',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hosts', type=str, action='store',
                     help='comma-delimited list of hosts, or a corr2 config file')
+parser.add_argument('--class', dest='hclass', action='store', default='',
+                    help='start/stop a class: fengine or xengine')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -38,49 +38,23 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-hosts = utils.parse_hosts(args.hosts)
+# are we doing it by class?
+if args.hclass != '':
+    if args.hclass == 'fengine':
+        hosts = utils.parse_hosts(args.hosts, section='fengine')
+    elif args.hclass == 'xengine':
+        hosts = utils.parse_hosts(args.hosts, section='xengine')
+    else:
+        raise RuntimeError('No such host class: %s' % args.hclass)
+else:
+    hosts = utils.parse_hosts(args.hosts)
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-
-def pingfpga(fpga):
-    timeout = 0.5
-    stime = time.time()
-    while (not fpga.is_connected()) and (time.time() - stime < timeout):
-        time.sleep(0.1)
-        fpga.connect()
-    if not fpga.is_connected():
-        return 'unavailable'
-    try:
-        fpga.test_connection()
-        return 'programmed'
-    except:
-        return 'connected'
-
-# make the FPGA objects
+# create the devices and deprogram them
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
-
-# ping them
-connected = []
-programmed = []
-unavailable = []
-responses = fpgautils.threaded_fpga_operation(fpgas, pingfpga)
-for host, response in responses.items():
-    if response == 'unavailable':
-        unavailable.append(host)
-    elif response == 'programmed':
-        programmed.append(host)
-    elif response == 'connected':
-        connected.append(host)
-
+fpgautils.threaded_fpga_function(fpgas, 'get_system_information')
+fpgautils.threaded_fpga_function(fpgas, 'deprogram')
 fpgautils.threaded_fpga_function(fpgas, 'disconnect')
-
-sconn = set(connected)
-sprog = set(programmed)
-connected = list(sconn.difference(sprog))
-print '%d hosts:' % len(hosts)
-print '\tProgrammed:', programmed
-print '\tConnected:', connected
-print '\tUnavailable:', unavailable
 
 # end

@@ -63,7 +63,7 @@ try:
             scroller.draw_screen()
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
-            scroller.add_line('Polling %i fengine%s every %s - %is elapsed. Any numbers indicate errors.' %
+            scroller.add_line('Polling %i xengine%s every %s - %is elapsed. Any numbers indicate errors.' %
                 (len(xfpgas), '' if len(xfpgas) == 1 else 's',
                 'second' if polltime == 1 else ('%i seconds' % polltime),
                 time.time() - STARTTIME), 0, 0, absolute=True)

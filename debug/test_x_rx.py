@@ -7,12 +7,15 @@
 Test the data received by an X-engine.
 
 """
-import sys, logging, time, argparse
+import sys
+import time
+import argparse
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-from casperfpga import KatcpClientFpga
+from casperfpga import utils as fpgautils
+from casperfpga import katcp_fpga
+from casperfpga import dcp_fpga
+import casperfpga.scroll as scroll
+from corr2 import utils
 from casperfpga import tengbe
 
 parser = argparse.ArgumentParser(description='Display the contents of an FPGA''s 10Gbe buffers.',
@@ -31,10 +34,27 @@ parser.add_argument('-d', '--direction', dest='direction', action='store',
 parser.add_argument('-s', '--spead', dest='spead', action='store_true',
                     default=False,
                     help='try and decode spead in this 10Gbe stream')
+parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
+                    help='katcp (default) or dcp?')
+parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
+if args.log_level != '':
+    import logging
+    log_level = args.log_level.strip()
+    try:
+        logging.basicConfig(level=eval('logging.%s' % log_level))
+    except AttributeError:
+        raise RuntimeError('No such log level: %s' % log_level)
+
+if args.comms == 'katcp':
+    HOSTCLASS = katcp_fpga.KatcpFpga
+else:
+    HOSTCLASS = dcp_fpga.DcpFpga
+
 # create the device and connect to it
-fpga = KatcpClientFpga(args.hostname, 7147)
+fpga = HOSTCLASS(args.hostname, 7147)
 time.sleep(0.2)
 if not fpga.is_connected():
     fpga.connect()
@@ -110,21 +130,21 @@ if args.direction == 'tx':
     data_key = 'data'
     ip_key = 'ip'
     eof_key = 'eof'
-    coredata = fpga.device_by_name(args.core).read_txsnap()
+    coredata = fpga.tengbes[args.core].read_txsnap()
 else:
     key_order = ['led_up', 'led_rx', 'valid_in', 'eof_in', 'bad_frame', 'overrun', 'ip_in', 'data_in']
     data_key = 'data_in'
     ip_key = 'ip_in'
     eof_key = 'eof_in'
-    coredata = fpga.device_by_name(args.core).read_rxsnap()
+    coredata = fpga.tengbes[args.core].read_rxsnap()
 
 # read the snap block
 spead_info = {}
 packet_counter = 1
 discovered_fchans = []
-for ppp in range(0,1000):
+for ppp in range(0, 10):
     current_fchan = -1
-    coredata = fpga.device_by_name(args.core).read_rxsnap()
+    coredata = fpga.tengbes[args.core].read_rxsnap()
     print '.',
     sys.stdout.flush()
     for ctr in range(0, len(coredata[coredata.keys()[0]])):

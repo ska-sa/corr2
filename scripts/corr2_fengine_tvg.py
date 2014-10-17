@@ -1,29 +1,32 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Ping a list of hosts by connecting to them.
-
-Created on Fri Jan  3 10:40:53 2014
-
 @author: paulp
 """
+import sys
 import time
 import argparse
+import signal
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
+import casperfpga.scroll as scroll
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Ping a list of hosts by connecting to them.',
+parser = argparse.ArgumentParser(description='Display information about a MeerKAT f-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hosts', type=str, action='store',
                     help='comma-delimited list of hosts, or a corr2 config file')
+parser.add_argument('--prect', dest='prect', action='store_true', default=False,
+                    help='turn on or off the pre corner turn TVG')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
+
+polltime = args.polltime
 
 if args.log_level != '':
     import logging
@@ -38,49 +41,19 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-hosts = utils.parse_hosts(args.hosts)
+hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-
-def pingfpga(fpga):
-    timeout = 0.5
-    stime = time.time()
-    while (not fpga.is_connected()) and (time.time() - stime < timeout):
-        time.sleep(0.1)
-        fpga.connect()
-    if not fpga.is_connected():
-        return 'unavailable'
-    try:
-        fpga.test_connection()
-        return 'programmed'
-    except:
-        return 'connected'
-
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgautils.threaded_fpga_function(fpgas, 'get_system_information')
 
-# ping them
-connected = []
-programmed = []
-unavailable = []
-responses = fpgautils.threaded_fpga_operation(fpgas, pingfpga)
-for host, response in responses.items():
-    if response == 'unavailable':
-        unavailable.append(host)
-    elif response == 'programmed':
-        programmed.append(host)
-    elif response == 'connected':
-        connected.append(host)
+# pre corner turn
+if args.prect:
+    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(tvg_ct=True))
+else:
+    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(tvg_ct=False))
 
 fpgautils.threaded_fpga_function(fpgas, 'disconnect')
-
-sconn = set(connected)
-sprog = set(programmed)
-connected = list(sconn.difference(sprog))
-print '%d hosts:' % len(hosts)
-print '\tProgrammed:', programmed
-print '\tConnected:', connected
-print '\tUnavailable:', unavailable
-
 # end
