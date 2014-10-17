@@ -41,9 +41,6 @@ xeng_host = args.host
 # create the device and connect to it
 xeng_fpga = HOSTCLASS(xeng_host)
 xeng_fpga.get_system_information()
-xeng_fpga.registers.control.
-
-
 board_id = xeng_fpga.registers.board_id.read()['data']['reg']
 numchans = 4096
 numx = 32

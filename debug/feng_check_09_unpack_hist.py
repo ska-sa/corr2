@@ -14,23 +14,17 @@ from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Perform an FFT on the post-coarse delay data.',
+parser = argparse.ArgumentParser(description='Display a histogram of the post-coarse delay data.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
-                    help='comma-delimited list of hosts, or a corr2 config file')
+parser.add_argument(dest='host', type=str, action='store',
+                    help='le host de fengine')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
                     help='time at which to poll fengine data, in seconds')
-parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
-                    default=False,
-                    help='reset all counters at script startup')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
-parser.add_argument('--checktvg', dest='checktvg', action='store_true', default='',
-                    help='if the TVG is enabled on the digitiser, check TVG data instead of generating'
-                         'an FFT on the data')
 args = parser.parse_args()
 
 if args.log_level != '':
@@ -46,7 +40,7 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-hosts = utils.parse_hosts(args.hosts, section='fengine')
+hosts = utils.parse_hosts(args.host, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
@@ -115,77 +109,30 @@ def get_data():
         unpacked_data[fpga]['p1'] = p1_unpacked[:]
     return unpacked_data
 
-unpacked_data = get_data()
+import matplotlib.pyplot as pyplot
+from casperfpga.memory import bin2fp
+def eighty_to_ten(eighty):
+    samples = []
+    for offset in range(70, -1, -10):
+        binnum = (eighty >> offset) & 0x3ff
+        samples.append(bin2fp(binnum, 10, 9, True))
+    return samples
 
-
-if args.checktvg:
-    def eighty_to_tvg(eighty):
-        timeramp = eighty >> 32
-        dataramp = (eighty & 0xffffffff) >> 1
-        pol = eighty & 0x01
-        return timeramp, dataramp, pol
+pyplot.interactive(True)
+while True:
+    unpacked_data = get_data()
     for fpga, fpga_data in unpacked_data.items():
-        print '%s data started at time %d' % (fpga, fpga_data['packettime48']),
-        timep0 = eighty_to_tvg(fpga_data['p0'][0])[0]
-        timep1 = eighty_to_tvg(fpga_data['p1'][0])[0]
-        assert timep0 == timep1, 'p0 and p1 start times do not agree, %d - %d' % (timep0, timep1)
-        assert fpga_data['packettime48'] == timep0, 'First time %d is not packet time %d?' % \
-                                                    (timep0, fpga_data['packettime48'])
-        for pol_data in [(fpga_data['p0'], 0), (fpga_data['p1'], 1)]:
-            lasttime = timep0 - 8
-            lastdata = -1
-            ctr = 0
-            for pdata in pol_data[0]:
-                timestamp, dataramp, pol = eighty_to_tvg(pdata)
-                # print ctr, timestamp, dataramp, pol
-                assert pol == pol_data[1], 'pol%d is not %d?' % (pol_data[1], pol_data[1])
-                assert timestamp == lasttime + 8, 'ctr_%d: Time stepped from %d to %d diff(%d)?' % \
-                                                  (ctr, lasttime, timestamp, timestamp - lasttime)
-                lasttime = timestamp
-                if (dataramp == 0) and (lastdata == 511):
-                    lastdata = -1
-                assert dataramp == lastdata + 1, 'ctr_%d: Data ramp went from %d to %d?' % (ctr, lastdata, dataramp)
-                lastdata = dataramp
-                ctr += 1
-        print 'and ended at %d %d samples later. All okay.' % (lasttime, ctr)
-else:
-    import numpy
-    import matplotlib.pyplot as pyplot
-    from casperfpga.memory import bin2fp
-    def eighty_to_ten(eighty):
-        samples = []
-        for offset in range(70, -1, -10):
-            binnum = (eighty >> offset) & 0x3ff
-            samples.append(bin2fp(binnum, 10, 9, True))
-        return samples
-
-    integrated_data = 4096*[0]
-    pyplot.interactive(True)
-    while True:
-        for fpga, fpga_data in unpacked_data.items():
-            print '%s data started at %d' % (fpga, fpga_data['packettime48']),
-            # for pol_data in [(fpga_data['p0'], 0), (fpga_data['p1'], 1)]:
-            for pol_data in [(fpga_data['p1'], 1)]:
-                allsamples = []
-                for dataword in pol_data[0]:
-                    samples = eighty_to_ten(dataword)
-                    allsamples.extend(samples)
-                fftdata = numpy.fft.fft(allsamples)
-                showdata = 8192*[0]
-                for ctr, sample in enumerate(fftdata):
-                    showdata[ctr] = pow(sample.real, 2) + pow(sample.imag, 2)
-
-                # showdata = numpy.abs()
-                #showdata = showdata[len(showdata)/2:]
-                showdata = showdata[0:len(showdata)/2]
-                for ctr, _ in enumerate(showdata):
-                    integrated_data[ctr] += showdata[ctr]
-                pyplot.cla()
-                #pyplot.plot(integrated_data)
-                pyplot.semilogy(integrated_data)
-                pyplot.draw()
-            print 'and ended %d samples later. All okay.' % (len(allsamples))
-        unpacked_data = get_data()
+        print '%s data started at %d' % (fpga, fpga_data['packettime48']),
+        # for pol_data in [(fpga_data['p0'], 0), (fpga_data['p1'], 1)]:
+        for pol_data in [(fpga_data['p1'], 1)]:
+            allsamples = []
+            for dataword in pol_data[0]:
+                samples = eighty_to_ten(dataword)
+                allsamples.extend(samples)
+            pyplot.cla()
+            pyplot.hist(allsamples, 1024, (-0.5, 0.5))
+            pyplot.draw()
+        print 'and ended %d samples later. All okay.' % (len(allsamples))
 
 # and exit
 fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')

@@ -27,6 +27,8 @@ parser.add_argument('--comms', dest='comms', action='store', default='katcp', ty
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
+parser.add_argument('--listhosts', dest='listhosts', action='store_true', default=False,
+                    help='list hosts and exit')
 args = parser.parse_args()
 
 if not (args.stop or args.start):
@@ -57,6 +59,11 @@ else:
         hosts = utils.parse_hosts(args.hosts)
     if len(hosts) == 0:
         raise RuntimeError('No good carrying on without hosts.')
+
+    if args.listhosts:
+        print hosts
+        import sys
+        sys.exit()
 
     # create the devices and start/stop tx
     fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)

@@ -78,7 +78,7 @@ if synced and args.noforce:
 # sync the f-engines
 tries = 0
 while tries < args.retry:
-    print 'Sycning...',
+    print 'Syncing...',
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'))
     print 'checking...',
     time.sleep(1)
@@ -86,7 +86,7 @@ while tries < args.retry:
     if synced:
         print 'done. Synced at %d.' % times[times.keys()[0]]
         break
-    print 'failed. Trying again.'
+    print 'failed. Trying again.', times
 if tries == args.retry:
     if args.log_level != '':
         logging.error('FAILED to sync!')

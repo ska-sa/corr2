@@ -61,9 +61,9 @@ for fpga_ in fpgas:
     max_hostname = max(len(fpga_.host), max_hostname)
     freg_error = False
     for necreg in ['pkt_reord_cnt0', 'pkt_reord_cnt1', 'pkt_reord_cnt2', 'pkt_reord_cnt3',
-                   'pkt_reord_err0', 'pkt_reord_err1', 'pkt_reord_err2', 'pkt_reord_err3',
+                   'reord_errcnt0', 'reord_errcnt1', 'reord_errcnt2', 'reord_errcnt3',
                    'last_missing_ant0', 'last_missing_ant1', 'last_missing_ant2', 'last_missing_ant3',
-                   'reord_syncctr0', 'reord_syncctr1', 'reord_syncctr2', 'reord_syncctr3']:
+                   'reord_recv_cnt0', 'reord_recv_cnt1', 'reord_recv_cnt2', 'reord_recv_cnt3',]:
         if necreg not in fpga_.registers.names():
             freg_error = True
             continue
@@ -84,12 +84,15 @@ def get_fpga_data(fpga):
     data = {}
     for ctr in range(0, 4):
         data['re%i_cnt' % ctr] =  fpga.registers['pkt_reord_cnt%i' % ctr].read()['data']['reg']
-        data['re%i_err' % ctr] =  fpga.registers['pkt_reord_err%i' % ctr].read()['data']['reg']
+        data['rcv%i_cnt' % ctr] =  fpga.registers['reord_recv_cnt%i' % ctr].read()['data']['reg']
         data['missant%i' % ctr] = fpga.registers['last_missing_ant%i' % ctr].read()['data']['reg']
-        data['rsync%i' % ctr] = fpga.registers['reord_syncctr%i' % ctr].read()['data']['reg']
-    for ctr in range(0, 2):
-        data['rx%i_cnt' % ctr] =  fpga.registers['rx_cnt%i' % ctr].read()['data']['reg']
-        data['rx%i_err' % ctr] =  fpga.registers['rx_err_cnt%i' % ctr].read()['data']['reg']
+        temp = fpga.registers['reord_errcnt%i' % ctr].read()['data']
+        data['rvcerr%i' % ctr] = temp['recv']
+        data['timerr%i' % ctr] = temp['timeout']
+        data['discerr%i' % ctr] = temp['disc']
+    # for ctr in range(0, 2):
+    #     data['rx%i_cnt' % ctr] =  fpga.registers['rx_cnt%i' % ctr].read()['data']['reg']
+    #     data['rx%i_err' % ctr] =  fpga.registers['rx_err_cnt%i' % ctr].read()['data']['reg']
     return data
 
 data = get_fpga_data(fpgas[0])

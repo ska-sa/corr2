@@ -60,10 +60,12 @@ max_hostname = -1
 for fpga_ in fpgas:
     max_hostname = max(len(fpga_.host), max_hostname)
     freg_error = False
-    for necreg in ['highmark01_0', 'highmark23_0',
-                   'highmark01_1', 'highmark23_1',
-                   'highmark01_2', 'highmark23_2',
-                   'highmark01_3', 'highmark23_3']:
+    for necreg in ['vaccerr0', 'vaccerr1', 'vaccerr2', 'vaccerr3',
+                   'vacccnt0', 'vacccnt1', 'vacccnt2', 'vacccnt3',
+                   'vacc_ld_status0', 'vacc_ld_status1', 'vacc_ld_status2', 'vacc_ld_status3',
+                   # 'packcnt_out0', 'reorderr_recv1', 'reorderr_recv2', 'reorderr_recv3',
+                   # 'packerr_0', 'reorderr_timeout1', 'reorderr_timeout2', 'reorderr_timeout3',
+                   ]:
         if necreg not in fpga_.registers.names():
             freg_error = True
             continue
@@ -80,33 +82,12 @@ if args.rstcnt:
     fpgautils.threaded_fpga_operation(fpgas, 10,
                                       lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse'))
 
-
 def get_fpga_data(fpga):
     data = {}
-    regdata = fpga.registers.highmark01_0.read()['data']
-    data['high0_0'] = regdata['high0']
-    data['high0_1'] = regdata['high1']
-    regdata = fpga.registers.highmark23_0.read()['data']
-    data['high0_2'] = regdata['high2']
-    data['high0_3'] = regdata['high3']
-    regdata = fpga.registers.highmark01_1.read()['data']
-    data['high1_0'] = regdata['high0']
-    data['high1_1'] = regdata['high1']
-    regdata = fpga.registers.highmark23_1.read()['data']
-    data['high1_2'] = regdata['high2']
-    data['high1_3'] = regdata['high3']
-    regdata = fpga.registers.highmark01_2.read()['data']
-    data['high2_0'] = regdata['high0']
-    data['high2_1'] = regdata['high1']
-    regdata = fpga.registers.highmark23_2.read()['data']
-    data['high2_2'] = regdata['high2']
-    data['high2_3'] = regdata['high3']
-    regdata = fpga.registers.highmark01_3.read()['data']
-    data['high3_0'] = regdata['high0']
-    data['high3_1'] = regdata['high1']
-    regdata = fpga.registers.highmark23_3.read()['data']
-    data['high3_2'] = regdata['high2']
-    data['high3_3'] = regdata['high3']
+    for ctr in range(0, 4):
+        data['verr%i' % ctr] = fpga.registers['vaccerr%i' % ctr].read()['data']['reg']
+        data['vcnt%i' % ctr] = fpga.registers['vacccnt%i' % ctr].read()['data']['reg']
+        data['vldstat%i' % ctr] = fpga.registers['vacc_ld_status%i' % ctr].read()['data']['reg']
     return data
 
 data = get_fpga_data(fpgas[0])
@@ -146,10 +127,10 @@ try:
                 'second' if args.polltime == 1 else ('%i seconds' % args.polltime),
                 time.time() - STARTTIME), 0, 0, absolute=True)
             start_pos = 20
-            pos_increment = 10
+            pos_increment = 11
             scroller.add_line('Host', 0, 1, absolute=True)
             for reg in reg_names:
-                scroller.add_line(new_line=reg.rjust(8), xpos=start_pos, ypos=1, absolute=True)
+                scroller.add_line(new_line=reg.rjust(9), xpos=start_pos, ypos=1, absolute=True)
                 start_pos += pos_increment
             scroller.set_ypos(newpos=2)
             scroller.set_ylimits(ymin=2)
@@ -158,9 +139,9 @@ try:
                 fpga_data = all_fpga_data[fpga.host]
                 scroller.add_line(fpga.host)
                 start_pos = 20
-                pos_increment = 10
+                pos_increment = 11
                 for reg in reg_names:
-                    regval = '%8d' % fpga_data[reg]
+                    regval = '%9d' % fpga_data[reg]
                     scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
                     start_pos += pos_increment
             scroller.draw_screen()
