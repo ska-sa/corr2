@@ -157,14 +157,16 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.tx_stop()
         return 'ok',
 
-    @request()
+    @request(Str(default=''))
     @return_reply()
-    def request_capture_meta(self, sock):
+    def request_capture_meta(self, sock, product_name):
         """
 
         :param sock:
         :return:
         """
+        if product_name not in self.instrument.configd['xengine']['output_products']:
+            return 'fail', 'requested product name not found'
         self.instrument.spead_issue_meta()
         return 'ok',
 
