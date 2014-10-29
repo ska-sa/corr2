@@ -4,6 +4,7 @@ Script for checking the approximate clock rate of correlator FPGAs.
 """
 import sys
 import argparse
+import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -13,8 +14,8 @@ from corr2 import utils
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Ping a list of hosts by connecting to them.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument(dest='hosts', type=str, action='store',
-                        help='comma-delimited list of hosts, or a corr2 config file')
+    parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
+                    help='comma-delimited list of hosts, or a corr2 config file')
     parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                         help='katcp (default) or dcp?')
     parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -34,6 +35,8 @@ if __name__ == '__main__':
     else:
         HOSTCLASS = dcp_fpga.DcpFpga
 
+    if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+        args.hosts = os.environ['CORR2INI']
     hosts = utils.parse_hosts(args.hosts)
     if len(hosts) == 0:
         raise RuntimeError('No good carrying on without hosts.')

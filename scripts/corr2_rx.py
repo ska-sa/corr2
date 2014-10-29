@@ -23,6 +23,7 @@ import sys
 import time
 import h5py
 import threading
+import os
 
 logging.basicConfig(level=logging.DEBUG)
 acc_scale = True

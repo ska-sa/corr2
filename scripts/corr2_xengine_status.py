@@ -13,6 +13,7 @@ import sys
 import time
 import argparse
 import signal
+import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -22,7 +23,7 @@ from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT x-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store', default=1, type=int,
                     help='time at which to poll x-engine data, in seconds')
@@ -47,6 +48,8 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='xengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
