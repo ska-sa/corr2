@@ -5,17 +5,16 @@ Deprogram one or more ROACHs.
 @author: paulp
 """
 import argparse
+import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 from corr2 import utils
 
-#allhosts = roach020958,roach02091b,roach020914,roach020922,roach020921,roach020927,roach020919,roach020925,roach02091a,roach02091e,roach020923,roach020924
-
 parser = argparse.ArgumentParser(description='Deprogram one or more CASPER devices',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('--class', dest='hclass', action='store', default='',
                     help='start/stop a class: fengine or xengine')
@@ -39,6 +38,8 @@ else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
 # are we doing it by class?
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 if args.hclass != '':
     if args.hclass == 'fengine':
         hosts = utils.parse_hosts(args.hosts, section='fengine')
@@ -53,8 +54,18 @@ if len(hosts) == 0:
 
 # create the devices and deprogram them
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
-fpgautils.threaded_fpga_function(fpgas, 'get_system_information')
-fpgautils.threaded_fpga_function(fpgas, 'deprogram')
-fpgautils.threaded_fpga_function(fpgas, 'disconnect')
-
+running = fpgautils.threaded_fpga_function(fpgas, 10, 'is_running')
+deprogrammed = []
+already_deprogrammed = []
+for fpga in fpgas:
+    if running[fpga.host]:
+        fpga.deprogram()
+        deprogrammed.append(fpga.host)
+    else:
+        already_deprogrammed.append(fpga.host)
+fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+if len(deprogrammed) != 0:
+    print deprogrammed, ': deprogrammed okay.'
+if len(already_deprogrammed) != 0:
+    print already_deprogrammed, ': already deprogrammed.'
 # end
