@@ -8,6 +8,7 @@ Collect the output of a post-unpack snapshot and do an FFT on it.
 import argparse
 import numpy
 import matplotlib.pyplot as pyplot
+import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -16,7 +17,7 @@ from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Display the output of the quantiser on an f-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
@@ -43,9 +44,9 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
-
-hosts = ['roach02091b']
 
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')

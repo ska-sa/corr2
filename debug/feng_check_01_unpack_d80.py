@@ -22,6 +22,7 @@ NOTE: the SPEAD timestamp from the digitiser is a PACKET timestamp!! The timesta
 import sys
 import time
 import argparse
+import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -33,7 +34,7 @@ parser = argparse.ArgumentParser(description='Check the hardware error counters 
                                              'conversion in the f-engine. NB: Their output is ONLY valid '
                                              'when receiving TVG data from the digitisers.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
@@ -60,6 +61,8 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
@@ -102,6 +105,10 @@ if len(registers_missing) > 0:
     print registers_missing
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
+
+# set the expected packet timestep
+fpgautils.threaded_fpga_operation(fpgas, 10,
+                                      lambda fpga_: fpga_.registers.up_debug.write(gbe_timestep=2))
 
 if args.rstcnt:
     if 'unpack_cnt_rst' in fpgas[0].registers.control.field_names():

@@ -18,6 +18,7 @@ Created on Fri Jan  3 10:40:53 2014
 import sys
 import time
 import argparse
+import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -28,7 +29,7 @@ from corr2 import utils
 parser = argparse.ArgumentParser(description='Check the flags out of the FIFO section in the unpack block. They'
                                              'should be zero of OFs and constantly incrementing for the VFIFOs.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
@@ -55,6 +56,8 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
@@ -70,7 +73,7 @@ def get_fpga_data(fpga):
     valid_cnt = fpga.registers.updebug_validcnt.read()['data']
     data['varbiter'] = valid_cnt['arb']
     data['vreord'] = valid_cnt['reord']
-    data['mcnt_nolock'] = fpga.registers.mcnt_nolock.read()['data']['mcnt_nolock']
+    data['mcnt_relock'] = fpga.registers.mcnt_relock.read()['data']['reg']
     return data
 
 
@@ -91,7 +94,7 @@ max_hostname = -1
 for fpga_ in fpgas:
     max_hostname = max(len(fpga_.host), max_hostname)
     freg_error = False
-    for necreg in ['updebug_reord_err0', 'updebug_reord_err1', 'updebug_validcnt', 'mcnt_nolock']:
+    for necreg in ['updebug_reord_err0', 'updebug_reord_err1', 'updebug_validcnt', 'mcnt_relock']:
         if necreg not in fpga_.registers.names():
             freg_error = True
             continue

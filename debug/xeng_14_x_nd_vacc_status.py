@@ -1,27 +1,21 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# pylint: disable-msg=C0103
-# pylint: disable-msg=C0301
 """
-View the status of a given xengine.
-
-Created on Fri Jan  3 10:40:53 2014
-
-@author: paulp
 """
 import sys
+import signal
 import time
 import argparse
+import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
+from corr2 import xhost_fpga
 
-parser = argparse.ArgumentParser(description='Display reorder debug info on the xengines.',
+parser = argparse.ArgumentParser(description='Display vector accumulator debug info on the xengines.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of x-engine hosts')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
@@ -29,8 +23,8 @@ parser.add_argument('-p', '--polltime', dest='polltime', action='store',
 parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
                     default=False,
                     help='reset all counters at script startup')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
+# parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
+#                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -43,58 +37,46 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
+# if args.comms == 'katcp':
+#     HOSTCLASS = katcp_fpga.KatcpFpga
+# else:
+#     HOSTCLASS = dcp_fpga.DcpFpga
 
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='xengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
+#TODO - sort out getting sys info from the config file
+
 # create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(xhost_fpga.FpgaXHost, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
-registers_missing = []
-max_hostname = -1
-for fpga_ in fpgas:
-    max_hostname = max(len(fpga_.host), max_hostname)
-    freg_error = False
-    for necreg in ['vaccerr0', 'vaccerr1', 'vaccerr2', 'vaccerr3',
-                   'vacccnt0', 'vacccnt1', 'vacccnt2', 'vacccnt3',
-                   'vacc_ld_status0', 'vacc_ld_status1', 'vacc_ld_status2', 'vacc_ld_status3',
-                   # 'packcnt_out0', 'reorderr_recv1', 'reorderr_recv2', 'reorderr_recv3',
-                   # 'packerr_0', 'reorderr_timeout1', 'reorderr_timeout2', 'reorderr_timeout3',
-                   ]:
-        if necreg not in fpga_.registers.names():
-            freg_error = True
-            continue
-    if freg_error:
-        registers_missing.append(fpga_.host)
-        continue
-if len(registers_missing) > 0:
-    print 'The following hosts are missing necessary registers. Bailing.'
-    print registers_missing
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    raise RuntimeError
 
 if args.rstcnt:
     fpgautils.threaded_fpga_operation(fpgas, 10,
                                       lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse'))
 
+
 def get_fpga_data(fpga):
-    data = {}
-    for ctr in range(0, 4):
-        data['verr%i' % ctr] = fpga.registers['vaccerr%i' % ctr].read()['data']['reg']
-        data['vcnt%i' % ctr] = fpga.registers['vacccnt%i' % ctr].read()['data']['reg']
-        data['vldstat%i' % ctr] = fpga.registers['vacc_ld_status%i' % ctr].read()['data']['reg']
-    return data
+    vaccstats = fpga.vacc_get_status()
+    _data = {}
+    for _ctr in range(0, 4):
+        _data['err%i' % _ctr] = vaccstats[_ctr]['errors']
+        _data['cnt%i' % _ctr] = vaccstats[_ctr]['count']
+        _data['armcnt%i' % _ctr] = vaccstats[_ctr]['armcount']
+        _data['ldcnt%i' % _ctr] = vaccstats[_ctr]['loadcount']
+    return _data
 
-data = get_fpga_data(fpgas[0])
-reg_names = data.keys()
-reg_names.sort()
+try:
+    data = get_fpga_data(fpgas[0])
+    reg_names = data.keys()
+    reg_names.sort()
+except Exception:
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+    raise
 
-import signal
 def signal_handler(sig, frame):
     print sig, frame
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')

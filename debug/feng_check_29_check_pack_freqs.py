@@ -10,13 +10,10 @@ Created on Fri Jan  3 10:40:53 2014
 @author: paulp
 """
 import sys
-import time
 import argparse
 
-from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
-from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Read a post-pack snapshot from an fengine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -32,7 +29,7 @@ if args.log_level != '':
     import logging
     log_level = args.log_level.strip()
     try:
-        logging.basicConfig(level=eval('logging.%s' % log_level))
+        logging.basicConfig(level=eval('logging. %s' % log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 

@@ -10,6 +10,7 @@ to see if it matches D-engine TVG data.
 
 import numpy
 import argparse
+import os
 
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
@@ -18,7 +19,7 @@ from corr2 import utils
 parser = argparse.ArgumentParser(description='Check the SPEAD error counter and valid counter in the '
                                              'unpack section of the F-engines.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
@@ -45,6 +46,8 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')

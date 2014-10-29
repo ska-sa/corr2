@@ -10,6 +10,7 @@ import numpy
 import matplotlib.pyplot as pyplot
 import sys
 import signal
+import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -20,7 +21,7 @@ EXPECTED_FREQS = 4096
 
 parser = argparse.ArgumentParser(description='Display the output of the PFB on an f-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('--pol', dest='pol', action='store', default=0, type=int,
                     help='polarisation, 0 or 1')
@@ -51,9 +52,9 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
-
-hosts = ['roach020a03']
 
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')

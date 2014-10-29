@@ -12,6 +12,7 @@ Created on Fri Jan  3 10:40:53 2014
 import sys
 import time
 import argparse
+import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -23,7 +24,7 @@ COLUMN_WIDTH = 12
 
 parser = argparse.ArgumentParser(description='GAGAH.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of x-engine hosts')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
@@ -53,6 +54,8 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
@@ -107,7 +110,7 @@ def get_fpga_data(fpga):
     temp = fpga.registers.timestep_ages.read()['data']
     data['futuerr'] = temp['future']
     data['pasterr'] = temp['past']
-    data['mxerr_ctr'] = fpga.registers.maxcnt_terr_ctr.read()['data']['reg']
+    data['maxerr_ctr'] = fpga.registers.maxcnt_terr_ctr.read()['data']['reg']
     data['tstmp'] = fpga.registers.sync_timestamp_msw.read()['data']['reg'] << 4
     temp = fpga.registers.sync_timestamp_lsw.read()['data']
     data['tstmp'] = data['tstmp'] | temp['time_lsw']

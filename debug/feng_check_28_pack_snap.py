@@ -9,18 +9,14 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
-import sys
-import time
 import argparse
 
-from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
-from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Read a post-pack snapshot from an fengine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='host', type=str, action='store',
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='the host from which to read')
 parser.add_argument('--wesel', dest='wesel', action='store', type=int, default=0,
                     help='write-enable select: 0 for window start, 1 for data_valid to SPEAD')
@@ -85,7 +81,7 @@ while (args.timestep and (not got_time_step)) or (not args.timestep):
             if args.wesel == 1:
                 ending += ' !!!!!!!!!!!!!!!!!!ERROR!!!!!!!!!!!!!!!!!!!'
             else:
-                if this_time - lasttime != 512:
+                if this_time - lasttime != 512:  # 2^9 - 2^8 from the corner turn and 2^1 from 4k PFB needing 8k samples
                     ending += ' !!!!!!!!!!!!!!!!!!ERROR!!!!!!!!!!!!!!!!!!!'
         print '%5d: freq(%5d) feng(%3d) time(%15d)%s' % (ctr, this_freq, this_feng, this_time, ending)
         lasttime = this_time

@@ -85,7 +85,7 @@ else:
         else:
             off64 = 0
             off32 = 0
-        for xengctr in range(0, 4):
+        for xengctr in range(0, 1):
             d0 = xeng_fpga.snapshots['snap_reord0_%d_ss' % xengctr].read(offset=off64)['data']
             d1 = xeng_fpga.snapshots['snap_reord1_%d_ss' % xengctr].read(offset=off32)['data']
             d0.update(d1)
@@ -94,7 +94,7 @@ else:
 xeng_fpga.disconnect()
 
 # print the results
-for snapctr in range(0, 4):
+for snapctr in range(0, 1):
     data = snapdata[snapctr]
     snapkeys = data.keys()
     snaplen = len(data[snapkeys[0]])
