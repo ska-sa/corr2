@@ -6,6 +6,13 @@ Created on Feb 28, 2013
 
 # things all fxcorrelators Instruments do
 
+# to start the digitiser in the lab:
+
+# paulp@dbertsc:/home/henno/work/projects/d_engine/scripts/svn/dig003$ ./m1130_2042sdp_rev1_of_start.py
+
+# if power cycles, then: ./config.py -b 1
+# this will configure the correct image on the digitiser, not the test one
+
 import logging
 import socket
 import time
@@ -15,24 +22,15 @@ import struct
 import spead64_48 as spead
 
 import utils
-from host_fpga import FpgaHost
+import xhost_fpga
+import fhost_fpga
 from instrument import Instrument
-from xengine_fpga import XengineCasperFpga
-from fengine_fpga import FengineCasperFpga
 from casperfpga import tengbe
 from casperfpga.katcp_fpga import KatcpFpga
 from casperfpga import utils as fpgautils
 
 use_xeng_sim = False
-START_DIGITISER = False
 FENG_TX = False
-
-#dbof = '/srv/bofs/deng/r2_deng_tvg_2014_Jul_21_0838.fpg'
-#dbof = '/srv/bofs/deng/r2_deng_tvg_2014_Aug_27_1619.fpg'
-dbof = '/home/paulp/r2_deng_tvg_2014_Sep_11_1230.fpg'
-dhost = 'roach020922'
-dip_start = '10.100.0.70'
-dmac_start = '02:02:00:00:00:01'
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -44,73 +42,6 @@ class DataSource(object):
         self.ip = ip
         self.iprange = iprange
         self.port = port
-
-
-def digitiser_stop():
-    logger = logging.getLogger(__name__)
-    logger.info('Stopping digitiser')
-    fdig = KatcpFpga(dhost)
-    if fdig.is_running():
-        fdig.test_connection()
-        fdig.get_system_information()
-        fdig.registers.control.write(gbe_txen=False)
-        fdig.deprogram()
-    fdig.disconnect()
-
-
-def digitiser_start(dig_tx_source):
-    logger = logging.getLogger(__name__)
-    logger.info('Programming digitiser')
-    fdig = KatcpFpga(dhost)
-    fdig.deprogram()
-    stime = time.time()
-    sys.stdout.flush()
-    fdig.upload_to_ram_and_program(dbof)
-    print time.time() - stime
-    fdig.test_connection()
-    fdig.get_system_information()
-    # stop sending data
-    fdig.registers.control.write(gbe_txen=False)
-    # start the local timer on the test d-engine - mrst, then a fake sync
-    fdig.registers.control.write(mrst='pulse')
-    fdig.registers.control.write(msync='pulse')
-    # the all_fpgas have tengbe cores, so set them up
-    ip_bits = dip_start.split('.')
-    ipbase = int(ip_bits[3])
-    mac_bits = dmac_start.split(':')
-    macbase = int(mac_bits[5])
-    for ctr in range(0, 4):
-        mac = '%s:%s:%s:%s:%s:%d' % (mac_bits[0], mac_bits[1], mac_bits[2], mac_bits[3], mac_bits[4], macbase + ctr)
-        ip = '%s.%s.%s.%d' % (ip_bits[0], ip_bits[1], ip_bits[2], ipbase + ctr)
-        fdig.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=dig_tx_source.port)
-    for gbe in fdig.tengbes:
-        gbe.tap_start(True)
-    # set the destination IP and port for the tx
-    txaddr = dig_tx_source.ip
-    txaddr_bits = txaddr.split('.')
-    txaddr_base = int(txaddr_bits[3])
-    txaddr_prefix = '%s.%s.%s.' % (txaddr_bits[0], txaddr_bits[1], txaddr_bits[2])
-    print 'digitisers sending to: %s%d port %d' % (txaddr_prefix, txaddr_base + 0, dig_tx_source.port)
-    print 'digitisers sending to: %s%d port %d' % (txaddr_prefix, txaddr_base + 1, dig_tx_source.port)
-    print 'digitisers sending to: %s%d port %d' % (txaddr_prefix, txaddr_base + 2, dig_tx_source.port)
-    print 'digitisers sending to: %s%d port %d' % (txaddr_prefix, txaddr_base + 3, dig_tx_source.port)
-    fdig.write_int('gbe_iptx0', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 0)))
-    fdig.write_int('gbe_iptx1', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 1)))
-    fdig.write_int('gbe_iptx2', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 2)))
-    fdig.write_int('gbe_iptx3', tengbe.str2ip('%s%d' % (txaddr_prefix, txaddr_base + 3)))
-    fdig.write_int('gbe_porttx', dig_tx_source.port)
-    fdig.registers.control.write(gbe_rst=False)
-    # enable the tvg on the digitiser and set up the pol id bits
-    fdig.registers.control.write(tvg_select0=1)
-    fdig.registers.control.write(tvg_select1=1)
-    fdig.registers.id2.write(pol1_id=1)
-    # start tx
-    print 'Starting dig TX...',
-    sys.stdout.flush()
-    fdig.registers.control.write(gbe_txen=True)
-    print 'done.'
-    sys.stdout.flush()
-    fdig.disconnect()
 
 
 class FxCorrelator(Instrument):
@@ -174,6 +105,25 @@ class FxCorrelator(Instrument):
         # for f in self.xhosts:
         #     f.initialise(program=False)
 
+        if program and True:
+            # cal the QDR specifically
+            def _qdr_cal(fpga):
+                results = {}
+                for qdr in fpga.qdrs:
+                    results[qdr.name] = qdr.qdr_cal(fail_hard=False)
+                return results
+            logging.info('Calibrating QDR on F- and X-engines, this takes a while.')
+            results = fpgautils.threaded_fpga_operation(self.fhosts, 30, _qdr_cal)
+            for fpga, result in results.items():
+                logging.info('FPGA %s QDR cal results:' % fpga)
+                for qdr, qdrres in result.items():
+                    logging.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+            results = fpgautils.threaded_fpga_operation(self.xhosts, 30, _qdr_cal)
+            for fpga, result in results.items():
+                logging.info('FPGA %s QDR cal results:' % fpga)
+                for qdr, qdrres in result.items():
+                    logging.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+
         if program:
             # init the f engines
             self._fengine_initialise()
@@ -194,10 +144,6 @@ class FxCorrelator(Instrument):
             end_time = time.time()
             print 'done. That took %d seconds.' % (end_time - starttime)
             sys.stdout.flush()
-
-        # TODO
-        if START_DIGITISER:
-            digitiser_start(self.sources[0])
 
         # check to see if the f engines are receiving all their data
         print 'Waiting up to 20 seconds for f engines to receive data',
@@ -291,7 +237,7 @@ class FxCorrelator(Instrument):
         assert len(feng_ip_octets) == 4, 'That\'s an odd IP address.'
         feng_ip_base = feng_ip_octets[3]
         feng_ip_prefix = '%d.%d.%d.' % (feng_ip_octets[0], feng_ip_octets[1], feng_ip_octets[2])
-        macprefix = self.configd['xengine']['10gbe_macprefix']
+        macprefix = self.configd['fengine']['10gbe_macprefix']
         macbase = int(self.configd['fengine']['10gbe_macbase'])
         board_id = 0
         iptx = tengbe.str2ip(self.configd['xengine']['10gbe_start_ip'])
@@ -362,7 +308,7 @@ class FxCorrelator(Instrument):
                                                                                       gbe_debug_rst='pulse'))
 
         # set up accumulation length
-        self.xeng_set_acc_len(200)
+        self.xeng_set_acc_len(800)
 
         # set up default destination ip and port
         self.set_stream_destination(issue_meta=False)
@@ -460,6 +406,54 @@ class FxCorrelator(Instrument):
                 if vacc_cnt_before == vacc_cnt:
                     print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
         '''
+
+    def xeng_vacc_sync(self):
+        """
+        Sync the vector accumulators on all the x-engines
+        :return:
+        """
+        # check if the vaccs need resetting
+        vaccstat = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_check_arm_load_counts')
+        reset_required = False
+        for xhost, result in vaccstat.items():
+            if result:
+                self.logger.info('%s has a vacc that needs resetting' % xhost)
+                reset_required = True
+
+        # if reset_required:
+        #     THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_reset')
+        #     vaccstat = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_check_reset_status')
+        #     for xhost, result in vaccstat.items():
+        #         if not result:
+        #             self.logger.error('Resetting vaccs on %s failed.' % (xhost))
+        #             raise RuntimeError
+
+        # get current time from f-engines
+        current_ftime = self.fhosts[0].get_local_time()
+        assert current_ftime & 0xfff == 0, 'Bottom 12 bits of timestamp from f-engine are not zero?!'
+        ldtime = current_ftime + (5 * 1712001024)
+
+        self.logger.info('Fengine time: %i' % ldtime)
+
+        # set that time on the xengines
+        THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_set_loadtime', ldtime)
+
+        # then arm them
+        THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_arm')
+
+        lsws = THREADED_FPGA_OP(self.xhosts, 10, lambda x: x.registers.vacc_time_lsw.read()['data'])
+        msws = THREADED_FPGA_OP(self.xhosts, 10, lambda x: x.registers.vacc_time_msw.read()['data'])
+        print lsws
+        print msws
+        lsw = lsws[self.xhosts[0].host]['lsw']
+        msw = msws[self.xhosts[0].host]['msw']
+        xldtime = (msw << 32) | lsw
+        self.logger.info('x engine %s has vacc ld time %i' % (self.xhosts[0].host, xldtime))
+
+        time.sleep(6)
+
+        print THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
+
 
     def xeng_set_acc_time(self, acc_time_s):
         # calculate the acc_len to write for the required time
@@ -573,25 +567,19 @@ class FxCorrelator(Instrument):
 
         # set up the hosts and engines based on the config
         self.fhosts = []
+        for host in self.configd['fengine']['hosts'].split(','):
+            host = host.strip()
+            fpgahost = fhost_fpga.FpgaFHost.from_config_source(host, self.katcp_port, config_source=self.configd['fengine'])
+            self.fhosts.append(fpgahost)
         self.xhosts = []
-        for hostconfig, hostlist in [(self.configd['fengine'], self.fhosts), (self.configd['xengine'], self.xhosts)]:
-            hosts = hostconfig['hosts'].strip().split(',')
-            for host in hosts:
-                host = host.strip()
-                fpgahost = FpgaHost(host, self.katcp_port, hostconfig['bitstream'], connect=True)
-                hostlist.append(fpgahost)
+        for host in self.configd['xengine']['hosts'].split(','):
+            host = host.strip()
+            fpgahost = xhost_fpga.FpgaXHost.from_config_source(host, self.katcp_port, config_source=self.configd['xengine'])
+            self.xhosts.append(fpgahost)
+
         if len(self.sources) != len(self.fhosts) * self.f_per_fpga:
             raise RuntimeError('We have different numbers of sources (%d) and f-engines (%d). Problem.',
                                len(self.sources), len(self.fhosts))
-        for fnum, fhost in enumerate(self.fhosts):
-            # TODO - logic for inputs vs fengines
-            for ctr in range(0, self.f_per_fpga):
-                engine = FengineCasperFpga(fhost, ctr, self.sources[fnum].name, self.configd)
-                fhost.add_engine(engine)
-        for xnum, xhost in enumerate(self.xhosts):
-            for ctr in range(0, self.x_per_fpga):
-                engine = XengineCasperFpga(xhost, ctr, self.configd)
-                xhost.add_engine(engine)
 
         # turn the product names into a list
         self.configd['xengine']['output_products'] = self.configd['xengine']['output_products'].split(',')

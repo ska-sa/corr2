@@ -46,4 +46,5 @@ class FpgaHost(Host, KatcpFpga):
         Stop the Gbe TX.
         :return:
         """
-        self.registers.control.write('comms_en=False')
+        raise NotImplementedError
+        # self.registers.control.write('comms_en=False')
