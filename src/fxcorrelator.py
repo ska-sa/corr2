@@ -43,6 +43,17 @@ class DataSource(object):
         self.iprange = iprange
         self.port = port
 
+    @classmethod
+    def from_mcast_string(cls, mcast_string):
+        try:
+            _bits = mcast_string.split(':')
+            port = int(_bits[1])
+            address, number = _bits[0].split('+')
+            number = int(number) + 1
+        except ValueError:
+            raise RuntimeError('The address %s is not correctly formed. Expect 1.2.3.4+50:7777. Bailing.', mcast_string)
+        return cls('foop', address, number, port)
+
 
 class FxCorrelator(Instrument):
     """
@@ -105,7 +116,7 @@ class FxCorrelator(Instrument):
         # for f in self.xhosts:
         #     f.initialise(program=False)
 
-        if program and True:
+        if program and True and False:
             # cal the QDR specifically
             def _qdr_cal(fpga):
                 results = {}
@@ -131,11 +142,11 @@ class FxCorrelator(Instrument):
             self._xengine_initialise(tvg=tvg)
 
         if program:
-            for fpga_ in self.fhosts:
-                fpga_.tap_arp_reload()
-            for fpga_ in self.xhosts:
-                fpga_.tap_arp_reload()
-            sleeptime = 80
+            # for fpga_ in self.fhosts:
+            #     fpga_.tap_arp_reload()
+            # for fpga_ in self.xhosts:
+            #     fpga_.tap_arp_reload()
+            sleeptime = 10
             print 'Waiting %d seconds for ARP to settle...' % sleeptime,
             sys.stdout.flush()
             starttime = time.time()
@@ -145,10 +156,16 @@ class FxCorrelator(Instrument):
             print 'done. That took %d seconds.' % (end_time - starttime)
             sys.stdout.flush()
 
+        # subscribe the interfaces to the multicast groups
+        if program:
+            self._fengine_subscribe_to_multicast()
+            self._xengine_subscribe_to_multicast()
+
         # check to see if the f engines are receiving all their data
-        print 'Waiting up to 20 seconds for f engines to receive data',
+        waittime = 30
+        print 'Waiting up to %i seconds for f engines to receive data' % waittime,
         sys.stdout.flush()
-        self._feng_check_rx_okay()
+        self._feng_check_rx_okay(waittime)
         print 'okay.'
         sys.stdout.flush()
 
@@ -186,7 +203,7 @@ class FxCorrelator(Instrument):
         for f in self.xhosts:
             f.registers.control.write(clr_status='pulse', gbe_debug_rst='pulse')
 
-    def _feng_check_rx_okay(self):
+    def _feng_check_rx_okay(self, waittime=20):
         # check to see if the f engines are receiving all their data
         def get_gbe_data(fpga_):
             """
@@ -196,7 +213,7 @@ class FxCorrelator(Instrument):
             for gbecore in fpga_.tengbes:
                 returndata[gbecore.name] = gbecore.read_counters()
             return returndata
-        timeout = 20
+        timeout = waittime
         stime = time.time()
         frxregs = THREADED_FPGA_OP(self.fhosts, 5, get_gbe_data)
         rx_okay = False
@@ -232,31 +249,39 @@ class FxCorrelator(Instrument):
         Set up f-engines on this device.
         :return:
         """
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_txen=False))
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(status_clr='pulse',
+                                                                                      gbe_cnt_rst='pulse',
+                                                                                      cnt_rst='pulse'))
+
+        # where does the f-engine data go?
+        self.fengine_output = DataSource.from_mcast_string(self.configd['fengine']['destination_mcast_ips'])
+        self.fengine_output.name = 'fengine_destination'
+        fdest_ip = tengbe.str2ip(self.fengine_output.ip)
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip))
+
+        # set up the cores
         feng_ip_octets = [int(bit) for bit in self.configd['fengine']['10gbe_start_ip'].split('.')]
-        feng_port = self.configd['fengine']['10gbe_start_port']
+        feng_port = int(self.configd['fengine']['10gbe_port'])
         assert len(feng_ip_octets) == 4, 'That\'s an odd IP address.'
         feng_ip_base = feng_ip_octets[3]
         feng_ip_prefix = '%d.%d.%d.' % (feng_ip_octets[0], feng_ip_octets[1], feng_ip_octets[2])
         macprefix = self.configd['fengine']['10gbe_macprefix']
         macbase = int(self.configd['fengine']['10gbe_macbase'])
         board_id = 0
-        iptx = tengbe.str2ip(self.configd['xengine']['10gbe_start_ip'])
-        porttx = int(self.configd['xengine']['10gbe_start_port'])
-        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_txen=False))
-        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
-        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(status_clr='pulse',
-                                                                                      gbe_cnt_rst='pulse',
-                                                                                      cnt_rst='pulse'))
-        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.iptx_base.write_int(iptx))
-
         for ctr, f in enumerate(self.fhosts):
-            # comms stuff
             for gbe in f.tengbes:
-                gbe.setup(mac='%s%02x' % (macprefix, macbase), ipaddress='%s%d' % (feng_ip_prefix, feng_ip_base),
+                this_mac = '%s%02x' % (macprefix, macbase)
+                this_ip = '%s%d' % (feng_ip_prefix, feng_ip_base)
+                gbe.setup(mac=this_mac, ipaddress=this_ip,
                           port=feng_port)
+                self.logger.info('fhost(%s) gbe(%s) MAC(%s) IP(%s) port(%i) board(%i) txIP(%s) txPort(%i)' %
+                                 (f.host, gbe.name, this_mac, this_ip, feng_port, board_id,
+                                 self.fengine_output.ip, self.fengine_output.port))
                 macbase += 1
                 feng_ip_base += 1
-            f.registers.tx_metadata.write(board_id=board_id, porttx=porttx)
+            f.registers.tx_metadata.write(board_id=board_id, porttx=self.fengine_output.port)
             board_id += 1
 
         # start tap on the f-engines
@@ -267,14 +292,13 @@ class FxCorrelator(Instrument):
         # release from reset
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
 
+    def _fengine_subscribe_to_multicast(self):
         # subscribe to multicast data
         source_ctr = 0
         for host_ctr, host in enumerate(self.fhosts):
             gbe_ctr = 0
             for fengine_ctr in range(0, self.f_per_fpga):
                 source = self.sources[source_ctr]
-                # print 'host %s(%d) fengine(%d) source %s %s %d' %
-                # (host.host, host_ctr, fengine_ctr, source.name, source.ip, source_ctr)
                 rxaddr = source.ip
                 rxaddr_bits = rxaddr.split('.')
                 rxaddr_base = int(rxaddr_bits[3])
@@ -314,35 +338,28 @@ class FxCorrelator(Instrument):
         self.set_stream_destination(issue_meta=False)
         self.set_meta_destination()
 
-        # set up board id
-        board_id = 0
-        for f in self.xhosts:
-            f.registers.board_id.write(reg=board_id)
-            board_id += 1  # 1 on new systems, 4 on old xeng_rx_reorder system
-
         # set up 10gbe cores
         xeng_ip_octets = [int(bit) for bit in self.configd['xengine']['10gbe_start_ip'].split('.')]
         assert len(xeng_ip_octets) == 4, 'That\'s an odd IP address.'
         xeng_ip_base = xeng_ip_octets[3]
         xeng_ip_prefix = '%d.%d.%d.' % (xeng_ip_octets[0], xeng_ip_octets[1], xeng_ip_octets[2])
-        xeng_port = self.configd['xengine']['10gbe_start_port']
+        xeng_port = int(self.configd['xengine']['10gbe_port'])
         macprefix = self.configd['xengine']['10gbe_macprefix']
         macbase = int(self.configd['xengine']['10gbe_macbase'])
+        board_id = 0
         for f in self.xhosts:
+            f.registers.board_id.write(reg=board_id)
             for gbe in f.tengbes:
+                this_mac = '%s%02x' % (macprefix, macbase)
+                this_ip = '%s%d' % (xeng_ip_prefix, xeng_ip_base)
                 gbe.setup(mac='%s%02x' % (macprefix, macbase), ipaddress='%s%d' % (xeng_ip_prefix, xeng_ip_base),
                           port=xeng_port)
+                self.logger.info('xhost(%s) gbe(%s) MAC(%s) IP(%s) port(%i) board(%i)' %
+                                 (f.host, gbe, this_mac, this_ip, xeng_port, board_id))
                 macbase += 1
                 xeng_ip_base += 1
                 gbe.tap_start()
-        # tvg
-        # if tvg:
-        #     for f in self.xhosts:
-        #         f.registers.tvg_select.write(xeng=2)
-        # else:
-        #     for f in self.xhosts:
-        #         f.registers.tvg_control.write(vacc=0, xeng=0)
-        #         # f.registers.tvg_sel.write(xaui=0, vacc=0, descr=0, xeng=0)
+            board_id += 1  # 1 on new systems, 4 on old xeng_rx_reorder system
 
         # clear gbe status
         THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_debug_rst='pulse'))
@@ -406,6 +423,25 @@ class FxCorrelator(Instrument):
                 if vacc_cnt_before == vacc_cnt:
                     print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
         '''
+
+    def _xengine_subscribe_to_multicast(self):
+        """
+        Subscribe the x-engines to the f-engine output multicast groups - each one subscribes to
+        only one group, with data meant only for it.
+        :return:
+        """
+        source_address = self.fengine_output.ip
+        source_bits = source_address.split('.')
+        source_base = int(source_bits[3])
+        source_prefix = '%s.%s.%s.' % (source_bits[0], source_bits[1], source_bits[2])
+        source_ctr = 0
+        for host_ctr, host in enumerate(self.xhosts):
+            for gbe in host.tengbes:
+                rxaddress = '%s%d' % (source_prefix, source_base + source_ctr)
+                gbe.multicast_receive(rxaddress, 0)
+                source_ctr += 1
+                self.logger.debug('xhost %s %s subscribing to address %s', host.host, gbe.name, rxaddress)
+                self.logger.info('xhost %s %s subscribing to address %s', host.host, gbe.name, rxaddress)
 
     def xeng_vacc_sync(self):
         """
@@ -534,10 +570,8 @@ class FxCorrelator(Instrument):
         self.set_meta_destination(self.configd['xengine']['output_destination_ip'],
                                   int(self.configd['xengine']['output_destination_port']))
 
-        if use_xeng_sim:
-            self.xeng_clk = 225000000
-        else:
-            self.xeng_clk = 230000000
+        # get this from the running x-engines?
+        self.xeng_clk = 230000000
 
         # the f-engines have this many 10Gbe ports per f-engine unit of operation
         self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
@@ -550,14 +584,10 @@ class FxCorrelator(Instrument):
             'Source names (%d) must be paired with multicast source addresses (%d)' % (len(source_names),
                                                                                        len(source_mcast))
         for counter, address in enumerate(source_mcast):
-            try:
-                bits = address.split(':')
-                port = int(bits[1])
-                address, number = bits[0].split('+')
-            except ValueError, err:
-                self.logger.error('The address %s is not correctly formed. Expect 1.2.3.4+50:7777. Bailing.', address)
-                raise err
-            self.sources.append(DataSource(source_names[counter], address, int(number) + 1, int(port)))
+            new_source = DataSource.from_mcast_string(address)
+            new_source.name = source_names[counter]
+            self.sources.append(new_source)
+
         comparo = self.sources[0].iprange
         assert comparo == self.ports_per_fengine, \
             'F-engines should be receiving from %d streams.' % self.ports_per_fengine
@@ -745,9 +775,8 @@ class FxCorrelator(Instrument):
             self.logger.error('Cannot set part of meta destination to None - %s:%d', txip_str, txport)
             raise RuntimeError('Cannot set part of meta destination to None - %s:%d', txip_str, txport)
         self.logger.info('Setting meta destination to %s:%d', txip_str, txport)
-        # make a new SPEAD receiver
+        # make a new SPEAD transmitter
         del self.spead_tx
-        mcast_interface = self.configd['xengine']['multicast_interface_address']
         self.spead_tx = spead.Transmitter(spead.TransportUDPtx(txip_str, txport))
 
         # update the multicast socket option
@@ -970,23 +999,23 @@ class FxCorrelator(Instrument):
                           shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                           init_val=pkt_len)
 
-        port = int(self.configd['xengine']['output_destination_port'])
-        spead_ig.add_item(name='rx_udp_port', id=0x1022,
-                          description='Destination UDP port for X engine output.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=port)
+        # port = int(self.configd['xengine']['output_destination_port'])
+        # spead_ig.add_item(name='rx_udp_port', id=0x1022,
+        #                   description='Destination UDP port for X engine output.',
+        #                   shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+        #                   init_val=port)
 
-        port = int(self.configd['fengine']['10gbe_start_port'])
+        port = int(self.configd['fengine']['10gbe_port'])
         spead_ig.add_item(name='feng_udp_port', id=0x1023,
                           description='Port for F-engines 10Gbe links in the system.',
                           shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                           init_val=port)
 
-        ip = self.configd['xengine']['output_destination_ip']
-        spead_ig.add_item(name='rx_udp_ip_str', id=0x1024,
-                          description='Destination UDP IP for X engine output.',
-                          shape=[-1], fmt=spead.STR_FMT,
-                          init_val=ip)
+        # ip = self.configd['xengine']['output_destination_ip']
+        # spead_ig.add_item(name='rx_udp_ip_str', id=0x1024,
+        #                   description='Destination UDP IP for X engine output.',
+        #                   shape=[-1], fmt=spead.STR_FMT,
+        #                   init_val=ip)
 
         ip = struct.unpack('>I', socket.inet_aton(self.configd['fengine']['10gbe_start_ip']))[0]
         spead_ig.add_item(name='feng_start_ip', id=0x1025,

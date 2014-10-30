@@ -51,7 +51,7 @@ hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-required_snaps = ['quantdata_ss']
+required_snaps = ['snapquant_ss']
 
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
@@ -69,7 +69,7 @@ if len(snapshot_missing) > 0:
 
 fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(1023))
 # fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse'))
-print fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.sync_ctr.read())
+# print fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.sync_ctr.read())
 # fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 # import sys
 # sys.exit()
@@ -82,16 +82,26 @@ coeffs[0::2] = creal
 coeffs[1::2] = cimag
 import struct
 ss = struct.pack('<8192h', *coeffs)
+fpgas[0].write('eq0', ss, 0)
 fpgas[0].write('eq1', ss, 0)
 
-for loopctr in range(0, 10):
+
+def exit_gracefully(sig, frame):
+    import sys
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+    sys.exit(0)
+import signal
+signal.signal(signal.SIGINT, exit_gracefully)
+signal.signal(signal.SIGHUP, exit_gracefully)
+
+while True:
 
     # arm the snaps
     for snap in required_snaps:
         fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots[snap].arm())
 
     # allow them to trigger
-    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(unpack_arm='pulse'))
+    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snapquant_arm='pulse'))
 
     # read the data
     snapdata = {}
