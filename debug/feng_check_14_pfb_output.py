@@ -25,11 +25,11 @@ parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('--pol', dest='pol', action='store', default=0, type=int,
                     help='polarisation, 0 or 1')
-parser.add_argument('--integrate', dest='integrate', action='store_true', default=True,
-                    help='integrate successive spectra')
+parser.add_argument('--integrate', dest='integrate', action='store', default=-1, type=int,
+                    help='integrate n successive spectra, -1 is infinite')
 parser.add_argument('--number', dest='number', action='store', default=-1, type=int,
                     help='number of spectra to fetch, -1 is unlimited')
-parser.add_argument('--fftshift', dest='fftshift', action='store', default=1023, type=int,
+parser.add_argument('--fftshift', dest='fftshift', action='store', default=-1, type=int,
                     help='the FFT shift to set')
 parser.add_argument('--log', dest='log', action='store_true', default=False,
                     help='True for log plots, False for linear')
@@ -82,13 +82,15 @@ def exit_gracefully(signal, frame):
 signal.signal(signal.SIGINT, exit_gracefully)
 
 # set the FFT shift
-fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(args.fftshift))
+if args.fftshift != -1:
+    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(args.fftshift))
 # print fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.sync_ctr.read())
 
 # select the polarisation
 fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snappfb_dsel=args.pol))
 
 loopctr = 0
+integrate_ctr = 0
 
 integrated_data = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
 integrated_power = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
@@ -142,14 +144,38 @@ while (args.number == -1) or (loopctr < args.number):
         pyplot.figure(fpga_ctr)
         pyplot.interactive(True)
         pyplot.subplot(1,1,1)
-        # pyplot.title('p0')
         pyplot.cla()
+
+        p_show_data = numpy.array(p_show_data)
+        p_show_data = p_show_data / (integrate_ctr+1)
+
+        p_show_data = p_show_data[:-10]
+
+        print '\tMean:   %.10f' % numpy.mean(p_show_data[1000:3000])
+        print '\tStddev: %.10f' % numpy.std(p_show_data[1000:3000])
+
         if args.log:
             pyplot.semilogy(p_show_data)
         else:
             pyplot.plot(p_show_data)
+
+        if integrate_ctr == 0:
+            ymin_max = (numpy.min(p_show_data), numpy.max(p_show_data))
+
+        pyplot.ylim(ymin_max)
+
         pyplot.draw()
+
+        if args.integrate != -1:
+            if integrate_ctr == args.integrate:
+                integrated_data = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
+                integrated_power = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
+                integrate_ctr = 0
+            else:
+                integrate_ctr += 1
+
         fpga_ctr += 1
+
     loopctr += 1
 
 # and exit

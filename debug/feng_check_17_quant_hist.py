@@ -23,9 +23,8 @@ parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
                     help='time at which to poll fengine data, in seconds')
-parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
-                    default=False,
-                    help='reset all counters at script startup')
+parser.add_argument('--pol', dest='pol', action='store', default=0, type=int,
+                    help='polarisation')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -68,25 +67,6 @@ if len(snapshot_missing) > 0:
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
 
-# fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(1023))
-
-# fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse'))
-# print fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.sync_ctr.read())
-# fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-# import sys
-# sys.exit()
-
-# how to write the eq values!
-# creal = 4096 * [1]
-# cimag = 4096 * [0]
-# coeffs = 8192 * [0]
-# coeffs[0::2] = creal
-# coeffs[1::2] = cimag
-# import struct
-# ss = struct.pack('<8192h', *coeffs)
-# fpgas[0].write('eq0', ss, 0)
-# fpgas[0].write('eq1', ss, 0)
-
 
 def exit_gracefully(sig, frame):
     import sys
@@ -124,24 +104,33 @@ while True:
             p1_data.append(numpy.complex(quant_data['r11'][ctr], quant_data['i11'][ctr]))
             p1_data.append(numpy.complex(quant_data['r12'][ctr], quant_data['i12'][ctr]))
             p1_data.append(numpy.complex(quant_data['r13'][ctr], quant_data['i13'][ctr]))
-
         print '%s data is %d points long.' % (fpga, len(p0_data))
 
-        pyplot.interactive(True)
-        pyplot.subplot(2,1,1)
-        pyplot.cla()
-        pyplot.semilogy(numpy.abs(p0_data))
-        # pyplot.plot(numpy.abs(p0_data))
+        if args.pol == 0:
+            plotdata = p0_data
+        else:
+            plotdata = p1_data
 
-        print numpy.mean(p0_data)
-        print numpy.mean(p1_data)
-        pyplot.subplot(2,1,2)
+        n_bins = 100
+
+        pyplot.interactive(True)
+        pyplot.subplot(3,1,1)
         pyplot.cla()
-        pyplot.semilogy(numpy.abs(p1_data))
-        # pyplot.plot(numpy.abs(p1_data))
+        pyplot.hist(numpy.real(plotdata), bins=n_bins)
+        pyplot.xlim((-1,1))
+
+        pyplot.subplot(3,1,2)
+        pyplot.cla()
+        pyplot.hist(numpy.imag(plotdata), bins=n_bins)
+        pyplot.xlim((-1,1))
+
+        pyplot.subplot(3,1,3)
+        pyplot.cla()
+        pyplot.hist(numpy.abs(plotdata), bins=n_bins)
+
         pyplot.draw()
 
-        powerdata = numpy.abs(p0_data)
+        powerdata = numpy.abs(plotdata)
         print '\tMean:   %.10f' % numpy.mean(powerdata[1000:3000])
         print '\tStddev: %.10f' % numpy.std(powerdata[1000:3000])
 

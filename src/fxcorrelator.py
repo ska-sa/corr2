@@ -116,7 +116,7 @@ class FxCorrelator(Instrument):
         # for f in self.xhosts:
         #     f.initialise(program=False)
 
-        if program and True and False:
+        if program and True:
             # cal the QDR specifically
             def _qdr_cal(fpga):
                 results = {}
@@ -170,11 +170,16 @@ class FxCorrelator(Instrument):
         sys.stdout.flush()
 
         # start f-engine TX
-        if FENG_TX:
+        if FENG_TX or True:
             logging.info('Starting f-engine datastream')
             for f in self.fhosts:
                 #f.registers.control.write(tvg_ct=True)
                 f.registers.control.write(gbe_txen=True)
+
+        # wait a bit and then arm the vacc on the x-engines
+        self.logger.info('arming vaccs on the xengines')
+        time.sleep(5)
+        self.xeng_vacc_sync()
 
         '''
         fengine init:
@@ -244,11 +249,35 @@ class FxCorrelator(Instrument):
         if not rx_okay:
             raise RuntimeError('F engine RX data error after %d seconds.' % timeout)
 
+    def feng_set_eq_all(self, real_gain=120, imag_gain=0):
+        # set the eq values on the fpgas
+        def seteq(fpga):
+            creal = 4096 * [real_gain]
+            cimag = 4096 * [imag_gain]
+            coeffs = 8192 * [0]
+            coeffs[0::2] = creal
+            coeffs[1::2] = cimag
+            ss = struct.pack('>8192h', *coeffs)
+            fpga.write('eq0', ss, 0)
+            fpga.write('eq1', ss, 0)
+        THREADED_FPGA_OP(self.fhosts, 10, seteq)
+        self.logger.info('Set EQ on fengines')
+
+    def feng_set_fft_shift_all(self, shift_value=2032):
+        # set the fft shift values
+        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(shift_value))
+
     def _fengine_initialise(self):
         """
         Set up f-engines on this device.
         :return:
         """
+
+        # set eq and shift
+        self.feng_set_eq_all()
+        self.feng_set_fft_shift_all()
+
+        # set up the fpga comms
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_txen=False))
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(status_clr='pulse',

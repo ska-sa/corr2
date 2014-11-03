@@ -22,6 +22,8 @@ parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
                     help='time at which to poll fengine data, in seconds')
+parser.add_argument('--pol', dest='pol', action='store', default=0, type=int,
+                    help='polarisation')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -43,7 +45,7 @@ else:
 
 if 'CORR2INI' in os.environ.keys() and args.hosts == '':
     args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.host, section='fengine')
+hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
@@ -126,16 +128,24 @@ while True:
     unpacked_data = get_data()
     for fpga, fpga_data in unpacked_data.items():
         print '%s data started at %d' % (fpga, fpga_data['packettime48']),
-        # for pol_data in [(fpga_data['p0'], 0), (fpga_data['p1'], 1)]:
-        for pol_data in [(fpga_data['p1'], 1)]:
+        if args.pol == 0:
+            plotdata = (fpga_data['p0'], 0)
+        else:
+            plotdata = (fpga_data['p1'], 1)
+        for pol_data in [plotdata]:
             allsamples = []
             for dataword in pol_data[0]:
                 samples = eighty_to_ten(dataword)
                 allsamples.extend(samples)
             pyplot.cla()
-            pyplot.hist(allsamples, 1024, (-0.5, 0.5))
+            pyplot.hist(allsamples, 100, (-0.5, 0.5))
+            pyplot.xlim((-0.5, 0.5))
             pyplot.draw()
         print 'and ended %d samples later. All okay.' % (len(allsamples))
+
+        import numpy
+        print '\tMean:  %.5f' % numpy.mean(allsamples)
+        print '\tStddev: %.10f' % numpy.std(allsamples)
 
 # and exit
 fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')

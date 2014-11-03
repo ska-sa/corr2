@@ -25,7 +25,7 @@ import os
 import logging
 import struct
 import socket
-
+import matplotlib.pyplot as pyplot
 
 class CorrRx(threading.Thread):
     def __init__(self, port=7148, log_handler=None, log_level=logging.INFO, spead_log_level=logging.DEBUG, **kwargs):
@@ -131,15 +131,19 @@ class CorrRx(threading.Thread):
                 # we have dealt with this item so continue...
                 item._changed = False
             if 'xeng_raw' in ig.keys():
-                import matplotlib.pyplot as pyplot
                 if ig['xeng_raw'] is not None:
                     print np.shape(ig['xeng_raw'])
                     for baseline in range(0, 40):
-                        if baseline == 19:  # 7, 8, 9, 10, 19, 20, 21, 22
-                            print 'baseline %i:' % baseline, ig['xeng_raw'][:, baseline]
+                        # print 'baseline %i:' % baseline, ig['xeng_raw'][:, baseline]
+                        if baseline == 0:  # 0, 1, 2, 20
+                            bdata = ig['xeng_raw'][:, baseline]
+                            powerdata = []
+                            for complex_tuple in bdata:
+                                pwr = np.sqrt(complex_tuple[0]**2 + complex_tuple[1]**2)
+                                powerdata.append(pwr)
                             pyplot.interactive(True)
                             pyplot.cla()
-                            pyplot.semilogy(ig['xeng_raw'][:, baseline])
+                            pyplot.semilogy(powerdata)
                             pyplot.draw()
             idx += 1
 
