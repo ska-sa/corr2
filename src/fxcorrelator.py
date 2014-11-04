@@ -10,7 +10,7 @@ Created on Feb 28, 2013
 
 # paulp@dbertsc:/home/henno/work/projects/d_engine/scripts/svn/dig003$ ./m1130_2042sdp_rev1_of_start.py
 
-# if power cycles, then: ./config.py -b 1
+# if power cycles, then: ./config.py -b 3
 # this will configure the correct image on the digitiser, not the test one
 
 import logging
@@ -26,11 +26,9 @@ import xhost_fpga
 import fhost_fpga
 from instrument import Instrument
 from casperfpga import tengbe
-from casperfpga.katcp_fpga import KatcpFpga
 from casperfpga import utils as fpgautils
 
 use_xeng_sim = False
-FENG_TX = False
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -83,7 +81,6 @@ class FxCorrelator(Instrument):
         self.sources = None
         self.spead_tx = None
         self.accumulation_len = -1
-
         self.xeng_tx_destination = None
         self.meta_destination = None
 
@@ -96,90 +93,77 @@ class FxCorrelator(Instrument):
         :return:
         """
 
-        # TODO
-        # digitiser_stop()
+        # connect to the hosts that make up this correlator
+        THREADED_FPGA_FUNC(self.fhosts, 5, 'connect')
+        THREADED_FPGA_FUNC(self.xhosts, 5, 'connect')
 
+        # if we need to program the FPGAs, do so
         if program:
-            logging.info('Programming FPGA hosts.')
+            self.logger.info('Programming FPGA hosts')
             ftups = []
             for f in self.xhosts:
                 ftups.append((f, f.boffile))
             for f in self.fhosts:
                 ftups.append((f, f.boffile))
             fpgautils.program_fpgas(ftups, None, 15)
+              #  this does not wait for the programming to complete, so it won't
+              #  get all the system information
 
-        fpgautils.threaded_fpga_function(self.fhosts, 10, 'initialise', False)
-        fpgautils.threaded_fpga_function(self.xhosts, 10, 'initialise', False)
-
-        # for f in self.fhosts:
-        #     f.initialise(program=False)
-        # for f in self.xhosts:
-        #     f.initialise(program=False)
-
-        if program and True:
-            # cal the QDR specifically
-            def _qdr_cal(fpga):
-                results = {}
-                for qdr in fpga.qdrs:
-                    results[qdr.name] = qdr.qdr_cal(fail_hard=False)
-                return results
-            logging.info('Calibrating QDR on F- and X-engines, this takes a while.')
-            results = fpgautils.threaded_fpga_operation(self.fhosts, 30, _qdr_cal)
-            for fpga, result in results.items():
-                logging.info('FPGA %s QDR cal results:' % fpga)
-                for qdr, qdrres in result.items():
-                    logging.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
-            results = fpgautils.threaded_fpga_operation(self.xhosts, 30, _qdr_cal)
-            for fpga, result in results.items():
-                logging.info('FPGA %s QDR cal results:' % fpga)
-                for qdr, qdrres in result.items():
-                    logging.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+        # load information from the running boffiles
+        self.logger.info('Loading design information')
+        THREADED_FPGA_FUNC(self.fhosts, 10, 'get_system_information')
+        THREADED_FPGA_FUNC(self.xhosts, 10, 'get_system_information')
 
         if program:
+            # cal the qdr on all boards
+            self.qdr_calibrate()
+
             # init the f engines
             self._fengine_initialise()
+
             # init the x engines
             self._xengine_initialise(tvg=tvg)
 
-        if program:
             # for fpga_ in self.fhosts:
             #     fpga_.tap_arp_reload()
             # for fpga_ in self.xhosts:
             #     fpga_.tap_arp_reload()
             sleeptime = 10
-            print 'Waiting %d seconds for ARP to settle...' % sleeptime,
+            self.logger.info('Waiting %d seconds for ARP to settle...' % sleeptime)
             sys.stdout.flush()
             starttime = time.time()
             time.sleep(sleeptime)
             # raw_input('wait for arp')
             end_time = time.time()
-            print 'done. That took %d seconds.' % (end_time - starttime)
+            self.logger.info('\tDone. That took %d seconds.' % (end_time - starttime))
             sys.stdout.flush()
 
-        # subscribe the interfaces to the multicast groups
-        if program:
+            # subscribe the f-engines  to the multicast groups
             self._fengine_subscribe_to_multicast()
-            self._xengine_subscribe_to_multicast()
 
         # check to see if the f engines are receiving all their data
         waittime = 30
-        print 'Waiting up to %i seconds for f engines to receive data' % waittime,
+        self.logger.info('Waiting up to %i seconds for f engines to receive data' % waittime)
         sys.stdout.flush()
         self._feng_check_rx_okay(waittime)
-        print 'okay.'
+        self.logger.info('\tOkay.')
         sys.stdout.flush()
 
-        # start f-engine TX
-        if FENG_TX or True:
-            logging.info('Starting f-engine datastream')
+        if program:
+            # start f-engine TX
+            self.logger.info('Starting f-engine datastream')
             for f in self.fhosts:
-                #f.registers.control.write(tvg_ct=True)
                 f.registers.control.write(gbe_txen=True)
 
-        # wait a bit and then arm the vacc on the x-engines
-        self.logger.info('arming vaccs on the xengines')
-        time.sleep(5)
-        self.xeng_vacc_sync()
+            # subscribe the x-engines to this data also
+            self._xengine_subscribe_to_multicast()
+
+            # check that they are receiving data correctly
+            time.sleep(10)
+
+            # wait a bit and then arm the vacc on the x-engines
+            self.logger.info('arming vaccs on the xengines')
+            self.xeng_vacc_sync()
 
         '''
         fengine init:
@@ -199,6 +183,25 @@ class FxCorrelator(Instrument):
             check producing
             enable tx
         '''
+
+    def qdr_calibrate(self):
+        # cal the QDR specifically
+        def _qdr_cal(fpga):
+            results = {}
+            for qdr in fpga.qdrs:
+                results[qdr.name] = qdr.qdr_cal(fail_hard=False)
+            return results
+        self.logger.info('Calibrating QDR on F- and X-engines, this takes a while.')
+        results = fpgautils.threaded_fpga_operation(self.fhosts, 30, _qdr_cal)
+        for fpga, result in results.items():
+            self.logger.info('FPGA %s QDR cal results:' % fpga)
+            for qdr, qdrres in result.items():
+                self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+        results = fpgautils.threaded_fpga_operation(self.xhosts, 30, _qdr_cal)
+        for fpga, result in results.items():
+            self.logger.info('FPGA %s QDR cal results:' % fpga)
+            for qdr, qdrres in result.items():
+                self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
 
     def feng_status_clear(self):
         for f in self.fhosts:
