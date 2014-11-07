@@ -269,6 +269,11 @@ class FxCorrelator(Instrument):
     def feng_set_fft_shift_all(self, shift_value=2032):
         # set the fft shift values
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(shift_value))
+        return shift_value
+
+    def feng_get_fft_shift_all(self):
+        # get the fft shift values
+        return THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.fft_shift.read()['data']['reg'])
 
     def _fengine_initialise(self):
         """

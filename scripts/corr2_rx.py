@@ -73,6 +73,18 @@ class CorrRx(threading.Thread):
         # we need these bits of meta data before being able to assemble and transmit signal display data
         meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
                          'center_freq', 'bls_ordering', 'n_accs']
+
+	#import signal
+	#def exit_gracefully(signal, frame):
+	#    h5_f.flush()
+        #    h5_f.close()
+        #    rx.stop()
+        #    logger.info("Files and sockets closed.")
+        #    sys.exit(0)
+
+	#signal.signal(signal.SIGINT, exit_gracefully)
+	#signal.signal(signal.SIGHUP, exit_gracefully)
+
         meta = {}
         for heap in spead.iterheaps(rx):
             ig.update(heap)
@@ -144,6 +156,7 @@ class CorrRx(threading.Thread):
                             pyplot.interactive(True)
                             pyplot.cla()
                             pyplot.semilogy(powerdata)
+                            #pyplot.semilogy(powerdata[3800:4095])
                             pyplot.draw()
             idx += 1
 

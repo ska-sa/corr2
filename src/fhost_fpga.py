@@ -12,6 +12,8 @@ class FpgaFHost(FpgaHost):
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
         FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
         self.config = config
+        self.fft_shift = -1
+        self.eq = []
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):

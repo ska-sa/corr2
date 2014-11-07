@@ -18,6 +18,9 @@ class Xengine(Engine):
     def __init__(self, host_device, engine_id, config_source):
         """
         """
+
+        raise NotImplementedError
+
         Engine.__init__(self, host_device, engine_id, config_source)
 
         # check that we have all the required attributes for an f-engine
