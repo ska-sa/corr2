@@ -19,6 +19,9 @@ class Fengine(Engine):
         :param ant_id: antenna input identity of data being processed
         :return: <nothing>
         """
+
+        raise NotImplementedError
+
         Engine.__init__(self, host_device, engine_id, config_source)
         self.ant_id = ant_id
 

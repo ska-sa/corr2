@@ -1,7 +1,9 @@
 __author__ = 'paulp'
 
-import time
 from ConfigParser import SafeConfigParser
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 
 def parse_ini_file(ini_file, required_sections=None):
@@ -26,43 +28,7 @@ def parse_ini_file(ini_file, required_sections=None):
     return config
 
 
-def get_information_threaded(fpgas):
-    """
-    Get system information from running Fpga hosts, threaded to go quicker.
-    :param fpgas: A list of FPGA hosts.
-    :return: <nothing>
-    """
-    return True
-
-
-def program_fpgas(progfile, fpgas, timeout=10):
-    """Program more than one FPGA at the same time.
-    :param progfile: string, the filename of the file to use to program the FPGAs
-    :param fpgas: a list of objects for the FPGAs to be programmed
-    :return: True if all went well, False if not
-    """
-    chilltime = 0.1
-    waiting = []
-    for fpga in fpgas:
-        try:
-            len(fpga)
-        except TypeError:
-            fpga.upload_to_ram_and_program(progfile, wait_complete=False)
-            waiting.append(fpga)
-        else:
-            fpga[0].upload_to_ram_and_program(fpga[1], wait_complete=False)
-            waiting.append(fpga[0])
-    starttime = time.time()
-    while (len(waiting) > 0) and (time.time() - starttime < timeout):
-        for fpga in waiting:
-            if fpga.is_running():
-                waiting.pop(waiting.index(fpga))
-        time.sleep(chilltime)
-    if len(waiting) > 0:
-        return False
-    return True
-
-def hosts_from_config_file(config_file):
+def hosts_from_config_file(config_file, section=None):
     """
     Make lists of hosts from a given correlator config file.
     :return: a dictionary of hosts, by type
@@ -70,11 +36,29 @@ def hosts_from_config_file(config_file):
     config = parse_ini_file(config_file)
     rv = {}
     for sectionkey in config.keys():
-        if 'hosts' in config[sectionkey].keys():
-            hosts = config[sectionkey]['hosts'].split(',')
-            for ctr, host_ in enumerate(hosts):
-                hosts[ctr] = host_.strip()
-            rv[sectionkey] = hosts
+        if (section is None) or (section == sectionkey):
+            if 'hosts' in config[sectionkey].keys():
+                hosts = config[sectionkey]['hosts'].split(',')
+                for ctr, host_ in enumerate(hosts):
+                    hosts[ctr] = host_.strip()
+                rv[sectionkey] = hosts
     return rv
 
-# end
+
+def parse_hosts(list_or_file, section=None):
+    """
+    Make a list of hosts from the argument given to a script.
+    :param list_or_file:
+    :return:
+    """
+    hosts = list_or_file.strip().replace(' ', '').split(',')
+    if len(hosts) == 1:  # check to see it it's a file
+        try:
+            hostsfromfile = hosts_from_config_file(hosts[0], section=section)
+            hosts = []
+            for hostlist in hostsfromfile.values():
+                hosts.extend(hostlist)
+        except IOError:
+            # it's not a file so carry on
+            pass
+    return hosts

@@ -15,39 +15,46 @@ def receive():
     print 'RX: Initializing...'
     t = spead.TransportUDPrx(PORT)
     ig = spead.ItemGroup()
+    last_timestamp = 0
+    timestamp = 0
     for heap in spead.iterheaps(t):
         #print spead.readable_heap(heap)
         ig.update(heap)
-        print 'Got heap:', ig.heap_cnt
+        print 'Got heap cnt(%d):' % ig.heap_cnt
         for name in ig.keys():
             print '   ', name
             item = ig.get_item(name)
             print '      Description: ', item.description
             print '           Format: ', item.format
             print '            Shape: ', item.shape
-            print '            Value: ', ig[name]
-            if (ig[name] is not None) and (name == 'xeng_raw_sim'):
-                global heapdata
-                heapdata = []
-                heapdata[:] = ig[name]
-                f = open('/tmp/woo', 'a')
-                for data in heapdata:
-                    for bls_ctr, data_ in enumerate(data):
-                        fstr = 'acc_ctr(%010d) baseline(%02d) freq(%04d) ' % (data_[1], data_[0] & 63,
-                                                                              (data_[0] >> 6) & 4095)
-                        f.write('%s\n' % fstr)
-                    #print data
-                    # data = int(data)
-                    # timestep = data & 0xffffffff
-                    # bls = (data >> 32) & 63
-                    # freq = (data >> 38) & 4095
-                    # f.write('%5i\t%3i\t%10i\n' % (freq, bls, timestep))
-                f.close()
-                timesdone += 1
-                if timesdone == 2:
-                    del ig
-                    del t
-                    return
+            # print '            Value: ', ig[name]
+            if ig[name] is not None:
+                if name == 'timestamp':
+                    last_timestamp = timestamp
+                    timestamp = ig[name]
+                elif name == 'xeng_raw':
+                    global heapdata
+                    heapdata = []
+                    heapdata[:] = ig[name]
+                    f = open('/tmp/woo', 'a')
+                    f.write('timestamp(%d) timediff(%d)\n' % (timestamp,  timestamp - last_timestamp))
+                    for data in heapdata:
+                        for bls_ctr, data_ in enumerate(data):
+                            fstr = 'acc_ctr(%010d) baseline(%02d) freq(%04d) ' % (data_[1], data_[0] & 63,
+                                                                                  (data_[0] >> 6) & 4095)
+                            f.write('%s\n' % fstr)
+                        # print data
+                        # data = int(data)
+                        # timestep = data & 0xffffffff
+                        # bls = (data >> 32) & 63
+                        # freq = (data >> 38) & 4095
+                        # f.write('%5i\t%3i\t%10i\n' % (freq, bls, timestep))
+                    f.close()
+                    timesdone += 1
+                    if timesdone == 2:
+                        del ig
+                        del t
+                        return
     print 'RX: Done.'
 
 

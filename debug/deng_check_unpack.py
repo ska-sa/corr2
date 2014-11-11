@@ -5,10 +5,12 @@ Created on Thu May  8 15:35:52 2014
 @author: paulp
 """
 
-from corr2.katcp_client_fpga import KatcpClientFpga
-import time, argparse
+import time
+import argparse
 
-dhost = 'roach020959'
+from casperfpga import katcp_fpga
+
+dhost = 'roach020958'
 #fhosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']
 
 parser = argparse.ArgumentParser(description='Display the data unpack counters on the dengine.',
@@ -23,7 +25,7 @@ parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
                     help='reset all counters at script startup')
 args = parser.parse_args()
 
-fdig = KatcpClientFpga(dhost)
+fdig = katcp_fpga.KatcpFpga(dhost)
 fdig.get_system_information()
 if args.rstcnt:
     fdig.registers.control.write(cnt_rst='pulse')
@@ -40,7 +42,7 @@ while True:
     got_errors = False
     print '%.2f' % (time.time() - start_time),
     for interface in [0,1,2,3]:
-        errors = fdig.device_by_name('up_err_%i' % interface).read()['data']
+        errors = fdig.registers['up_err_%i' % interface].read()['data']
         if (errors['cnt'] > 0) or (errors['time'] > 0) or (errors['timestep'] > 0):
             got_errors = True
             print '%s(%i,%i,%i)' % (fdig.host, errors['cnt'], errors['time'], errors['timestep']),

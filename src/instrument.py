@@ -39,6 +39,7 @@ class Instrument(object):
 
         # an instrument was synchronised at some UNIX time
         self.synchronisation_epoch = -1
+        self.synchronisation_epoch = time.time()
 
         if self.config_source is not None:
             if not self._read_config():

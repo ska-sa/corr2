@@ -9,35 +9,52 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
-import logging
 import time
 import curses
 import argparse
 import copy
+import threading
+import Queue
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-from corr2.digitiser import Digitiser
+#from corr2.digitiser import Digitiser
+from casperfpga import katcp_fpga
+from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT digitiser.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hostname', type=str, action='store',
                     help='the hostname of the digitiser')
-parser.add_argument('-p', '--polltime', dest='polltime', action='store',
-                    default=1, type=int,
+parser.add_argument('-p', '--polltime', dest='polltime', action='store', default=1, type=int,
                     help='time at which to poll digitiser data, in seconds')
-parser.add_argument('-s', '--payloadsize', dest='payloadsize', action='store',
-                    default=5120, type=int,
-                    help='the 10GBE SPEAD payload size, in bytes')
+parser.add_argument('-s', '--payloadsize', dest='payloadsize', action='store', default=5120, type=int,
+                    help='expected 10GBE SPEAD payload size, in bytes')
+parser.add_argument('--get_tx_ips', dest='get_tx_ips', action='store_true', default=False,
+                    help='query outgoing IPs, takes a few seconds')
+parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
+                    help='katcp (default) or dcp?')
+parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 polltime = args.polltime
 num_spead_headers = 4
 bytes_per_packet = args.payloadsize + (num_spead_headers*8)
 
+if args.log_level != '':
+    import logging
+    log_level = args.log_level.strip()
+    try:
+        logging.basicConfig(level=eval('logging.%s' % log_level))
+    except AttributeError:
+        raise RuntimeError('No such log level: %s' % log_level)
+
+if args.comms == 'katcp':
+    HOSTCLASS = katcp_fpga.KatcpFpga
+else:
+    HOSTCLASS = dcp_fpga.DcpFpga
+
 # create the device and connect to it
-digitiser_fpga = Digitiser(args.hostname, 7147)
+digitiser_fpga = HOSTCLASS(args.hostname, 7147)
 time.sleep(0.2)
 if not digitiser_fpga.is_connected():
     digitiser_fpga.connect()
@@ -50,9 +67,16 @@ if not numgbes == 4:
     raise RuntimeError('A digitiser must have four 10Gbe cores.')
 print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
 
+
+def get_tx_ips():
+    snapdata = {}
+    for device in digitiser_fpga.tengbes:
+        snapdata[device.name] = device.read_txsnap()
+
+
 def get_coredata():
-    '''Get the updated counters for all the cores.
-    '''
+    """Get the updated counters for all the cores.
+    """
     cdata = {}
     for device in digitiser_fpga.tengbes:
         cdata[device.name] = device.read_counters()
@@ -60,25 +84,59 @@ def get_coredata():
             cdata[device.name][key]['data'] = cdata[device.name][key]['data']['reg']
     return cdata
 
+
+def get_coredata_new():
+    """Get the updated counters for all the cores.
+    """
+    num_cores = len(digitiser_fpga.tengbes)
+    result_queue = Queue.Queue(maxsize=num_cores)
+    thread_list = []
+    for core_ in digitiser_fpga.tengbes:
+        thread = threading.Thread(target=lambda gbecore: result_queue.put_nowait((gbecore.name, gbecore.read_counters())),
+                                  args=(core_,))
+        thread.daemon = True
+        thread.start()
+        thread_list.append(thread)
+    for thread_ in thread_list:
+        thread_.join(10)
+    coredata = {}
+    while True:
+        try:
+            result = result_queue.get_nowait()
+            devicename = result[0]
+            counterdata = result[1]
+            coredata[devicename] = counterdata
+            for key in coredata[devicename].keys():
+                coredata[devicename][key]['data'] = coredata[devicename][key]['data']['reg']
+        except Queue.Empty:
+            break
+    if len(coredata) != num_cores:
+        print coredata
+        raise RuntimeError('Given %d cores, only got %d results' % (num_cores, len(coredata)))
+    return coredata
+
+
 def reset_counters(cdata):
-    '''Reset all core counters.
-    '''
+    """Reset all core counters.
+    """
     for device in digitiser_fpga.tengbes:
         for key in cdata[device.name].keys():
             cdata[device.name][key]['data'] = 0
             cdata[device.name][key]['timestamp'] = -1
     return cdata
 
+
 def print_top_str(stdscr, host, displaytime):
-    '''Print the top string of the display.
-    '''
+    """Print the top string of the display.
+    """
     stdscr.move(1, 2)
     stdscr.clrtoeol()
     stdscr.addnstr(1, 2,
-        'Polling %i core%s on %s every %i second%s - %is elapsed.' %
-        (numgbes, '' if numgbes == 1 else 's', host, polltime,
-        '' if polltime == 1 else 's', time.time() - displaytime), 100,
-        curses.A_REVERSE)
+                   'Polling %i core%s on %s every %i second%s - %is elapsed.' %
+                   (numgbes, '' if numgbes == 1 else 's', host, polltime,
+                    '' if polltime == 1 else 's', time.time() - displaytime), 100,
+                   curses.A_REVERSE)
+
 
 def print_bottom_str(stdscr):
     """
@@ -86,6 +144,7 @@ def print_bottom_str(stdscr):
     """
     (y, _) = stdscr.getmaxyx()
     stdscr.addstr(y - 2, 2, 'q to quit, r to refresh', curses.A_REVERSE)
+
 
 def print_headers(stdscr):
     """
@@ -103,6 +162,7 @@ def print_headers(stdscr):
     stdscr.addstr(2, 180, 'last_time')
     stdscr.addstr(2, 200, 'spead_time')
 
+
 def handle_keys(keyval):
     """
     Handle some key presses.
@@ -115,6 +175,13 @@ def handle_keys(keyval):
         #reset_counters(digitiser_fpga)
         return False, True
     return False, False
+
+
+def get_current_time():
+    msw = digitiser_fpga.registers.local_time_msw.read()['data']['reg']
+    lsw = digitiser_fpga.registers.local_time_lsw.read()['data']['reg']
+    return msw << 32 | lsw
+
 
 def mainloop(stdscr):
     counter_data = get_coredata()
@@ -129,12 +196,13 @@ def mainloop(stdscr):
         if time.time() > last_render + polltime:
             if stdscr is not None:
                 print_top_str(stdscr, digitiser_fpga.host, starttime)
-            digitiser_time = -1 #digitiser_fpga.get_current_time()
+            digitiser_time = get_current_time()
             spead_time = digitiser_time >> 9
             newdata = get_coredata()
             for ctr, core in enumerate(device_list):
                 packets = newdata[core][core + '_txctr']['data'] - counter_data[core][core + '_txctr']['data']
-                time_elapsed = newdata[core][core + '_txctr']['timestamp'] - counter_data[core][core + '_txctr']['timestamp']
+                time_elapsed = newdata[core][core + '_txctr']['timestamp'] - \
+                               counter_data[core][core + '_txctr']['timestamp']
                 errors = newdata[core][core + '_txerrctr']['data'] - counter_data[core][core + '_txerrctr']['data']
                 errors = newdata[core][core + '_txerrctr']['data']
                 rate = packets * (bytes_per_packet * 8) / (1000000000.0 * time_elapsed)
@@ -166,6 +234,7 @@ def mainloop(stdscr):
             counter_data = copy.deepcopy(newdata)
         time.sleep(0.1)
 
+
 def mainfunc(stdscr):
     """
     The main screen-drawing loop of the program.
@@ -196,12 +265,16 @@ counter_data = reset_counters(counter_data)
 starttime = time.time()
 device_list = digitiser_fpga.tengbes.names()
 for device in device_list:
-    if not (counter_data[device].has_key(device + '_txctr') and
-            counter_data[device].has_key(device + '_txerrctr') and
-            counter_data[device].has_key(device + '_txofctr') and
-            counter_data[device].has_key(device + '_txfullctr') and
-            counter_data[device].has_key(device + '_txvldctr')):
+    if not (((device + '_txctr') in counter_data[device].keys()) and
+            ((device + '_txerrctr') in counter_data[device].keys()) and
+            ((device + '_txofctr') in counter_data[device].keys()) and
+            ((device + '_txfullctr') in counter_data[device].keys()) and
+            ((device + '_txvldctr') in counter_data[device].keys())):
         raise RuntimeError('Core %s was not built with the required debug counters.', device)
+
+if args.get_tx_ips:
+    tx_ips = get_tx_ips()
+
 
 # start curses after setting up a clean teardown
 def teardown():
@@ -211,6 +284,8 @@ def teardown():
     curses.nocbreak()
     curses.echo()
     curses.endwin()
+
+
 def signal_handler(sig, frame):
     """
     Handle an os signal.
@@ -222,6 +297,7 @@ import signal
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGHUP, signal_handler)
 
+# start the main curses loop
 curses.wrapper(mainfunc)
 
 teardown()

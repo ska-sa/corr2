@@ -5,12 +5,13 @@
 """
 @author: paulp
 """
-import logging, argparse
+import logging
+import argparse
 
 logger = logging.getLogger(__name__)
 #logging.basicConfig(level=logging.INFO)
 
-from casperfpga import KatcpClientFpga
+from casperfpga.katcp_fpga import KatcpFpga
 
 parser = argparse.ArgumentParser(description='Display reorder preprocess snapblock info.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -24,8 +25,18 @@ args = parser.parse_args()
 xeng_host = args.host
 
 # create the device and connect to it
-xeng_fpga = KatcpClientFpga(xeng_host)
+xeng_fpga = KatcpFpga(xeng_host)
 xeng_fpga.get_system_information()
+board_id = xeng_fpga.registers.board_id.read()['data']['reg']
+numchans = 4096
+numx = 32
+fperx = numchans / numx
+frange = []
+for bid in range(board_id, board_id + 4):
+    fmin = bid * fperx
+    fmax = fmin + fperx - 1
+    frange.append((fmin, fmax))
+print frange
 snapdata = []
 snapdata.append(xeng_fpga.snapshots.snap_unpack0_ss.read()['data'])
 snapdata.append(xeng_fpga.snapshots.snap_unpack1_ss.read()['data'])
@@ -33,7 +44,9 @@ snapdata.append(xeng_fpga.snapshots.snap_unpack2_ss.read()['data'])
 snapdata.append(xeng_fpga.snapshots.snap_unpack3_ss.read()['data'])
 for ctr in range(0, len(snapdata[0]['eof'])):
     if (snapdata[0]['eof'][ctr] == 1) or (not args.eof):
-        for snap in snapdata:
+        for bid, snap in enumerate(snapdata):
+            assert snap['freq'][ctr] >= frange[bid][0]
+            assert snap['freq'][ctr] <= frange[bid][1]
             print 'valid(%i) fengid(%i) eof(%i) freq(%i) time(%i) |' % (
                 snap['valid'][ctr],
                 snap['feng_id'][ctr],

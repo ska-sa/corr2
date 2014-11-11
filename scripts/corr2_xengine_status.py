@@ -10,58 +10,63 @@ Created on Fri Jan  3 10:40:53 2014
 @author: paulp
 """
 import sys
-import logging
 import time
 import argparse
 import signal
-from casperfpga import KatcpClientFpga
+import os
+
+from casperfpga import utils as fpgautils
+from casperfpga import katcp_fpga
+from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
-logger = logging.getLogger(__name__)
-#logging.basicConfig(level=logging.INFO)
-
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT x-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
-                    help='comma-delimited list of x-engine hosts, or a corr2 config file')
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
+                    help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store', default=1, type=int,
                     help='time at which to poll x-engine data, in seconds')
+parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
+                    help='katcp (default) or dcp?')
+parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 polltime = args.polltime
 
-xeng_hosts = args.hosts.lstrip().rstrip().replace(' ', '').split(',')
-if len(xeng_hosts) == 1:  # check to see it it's a file
+if args.log_level != '':
+    import logging
+    log_level = args.log_level.strip()
     try:
-        hosts = utils.hosts_from_config_file(xeng_hosts[0])
-        xeng_hosts = hosts['xengine']
-    except IOError:
-        # it's not a file so carry on
-        pass
-    except KeyError:
-        raise RuntimeError('That config file does not seem to have a x-engine section.')
+        logging.basicConfig(level=eval('logging.%s' % log_level))
+    except AttributeError:
+        raise RuntimeError('No such log level: %s' % log_level)
 
-if len(xeng_hosts) == 0:
+if args.comms == 'katcp':
+    HOSTCLASS = katcp_fpga.KatcpFpga
+else:
+    HOSTCLASS = dcp_fpga.DcpFpga
+
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
+hosts = utils.parse_hosts(args.hosts, section='xengine')
+if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # xeng_hosts = ['roach020921', 'roach020927', 'roach020919', 'roach020925',
 #           'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
 
-# create the devices and connect to them
-xfpgas = []
-for host in xeng_hosts:
-    xeng_fpga = KatcpClientFpga(host)
-    time.sleep(0.3)
-    if not xeng_fpga.is_connected():
-        xeng_fpga.connect()
-    xeng_fpga.test_connection()
-    xeng_fpga.get_system_information()
-    numgbes = len(xeng_fpga.tengbes)
+# make the FPGA objects
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgautils.threaded_fpga_function(fpgas, 'get_system_information')
+
+# check for 10gbe cores
+for fpga_ in fpgas:
+    numgbes = len(fpga_.tengbes)
     if numgbes < 1:
-        raise RuntimeError('Cannot have an x-engine with no 10gbe cores?')
-    print '%s: found %i 10gbe core%s.' % (host, numgbes, '' if numgbes == 1 else 's')
-    xfpgas.append(xeng_fpga)
+        raise RuntimeError('Cannot have an x-engine with no 10gbe cores? %s' % fpga_.host)
+    print '%s: found %i 10gbe core%s.' % (fpga_.host, numgbes, '' if numgbes == 1 else 's')
 
 
 def print_headers(scr):
@@ -77,18 +82,17 @@ def print_headers(scr):
     scr.addstr(3, 60, 'err')
 
 
-def xengine_gbe(fpga_):
-    cores = fpga_.tengbes
-    returndata = {}
-    for core_ in cores:
-        returndata[core_.name] = core_.read_counters()
-    return returndata
-
-
 def get_fpga_data(fpga_):
-    return {'gbe': xengine_gbe(fpga_)}
+    return {'gbe': {core_.name: core_.read_counters() for core_ in fpga_.tengbes}}
 
-fpga_data = get_fpga_data(xfpgas[0])
+fpga_data = get_fpga_data(fpgas[0])
+
+def signal_handler(signal_, frame):
+    fpgautils.threaded_fpga_function(fpgas, 'disconnect')
+    scroll.screen_teardown()
+    sys.exit(0)
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGHUP, signal_handler)
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
@@ -107,7 +111,7 @@ try:
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
             scroller.add_line('Polling %i x-engine%s every %s - %is elapsed.' %
-                              (len(xfpgas), '' if len(xfpgas) == 1 else 's',
+                              (len(fpgas), '' if len(fpgas) == 1 else 's',
                                'second' if polltime == 1 else ('%i seconds' % polltime),
                                time.time() - STARTTIME), 0, 0, absolute=True)
 #            scroller.add_line('hdr1', 10)
@@ -119,9 +123,10 @@ try:
             scroller.add_line('GBE_txerror', 90, 1, absolute=True)
             scroller.set_ypos(2)
             scroller.set_ylimits(ymin=2)
-            for ctr, fpga in enumerate(xfpgas):
-                fpga_data = get_fpga_data(fpga)
-                scroller.add_line(fpga.host)
+            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, get_fpga_data)
+            for ctr, fpga_ in enumerate(fpgas):
+                fpga_data = all_fpga_data[fpga_.host]
+                scroller.add_line(fpga_.host)
                 for core, value in fpga_data['gbe'].items():
                     scroller.add_line(core, 5)
                     xpos = 30
@@ -135,18 +140,8 @@ try:
             scroller.draw_screen()
             last_refresh = time.time()
 except Exception, e:
-    for fpga in xfpgas:
-        fpga.disconnect()
-    scroll.screen_teardown()
+    signal_handler(None, None)
     raise
 
-
-def signal_handler(signal_, frame):
-    scroll.screen_teardown()
-    sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
-for fpga in xfpgas:
-    fpga.disconnect()
-scroll.screen_teardown()
+signal_handler(None, None)
 # end

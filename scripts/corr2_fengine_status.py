@@ -10,75 +10,67 @@ Created on Fri Jan  3 10:40:53 2014
 @author: paulp
 """
 import sys
-import logging
 import time
 import argparse
 import signal
-from casperfpga import KatcpClientFpga
+import os
+
+from casperfpga import utils as fpgautils
+from casperfpga import katcp_fpga
+from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
-logger = logging.getLogger(__name__)
-#logging.basicConfig(level=logging.INFO)
-
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT f-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
-                    help='comma-delimited list of f-engine hosts, or a corr2 config file')
+parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
+                    help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store', default=1, type=int,
                     help='time at which to poll f-engine data, in seconds')
 parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true', default=False,
                     help='reset all counters at script startup')
+parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
+                    help='katcp (default) or dcp?')
+parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 polltime = args.polltime
 
-feng_hosts = args.hosts.strip().replace(' ', '').split(',')
-if len(feng_hosts) == 1:  # check to see it it's a file
+if args.log_level != '':
+    import logging
+    log_level = args.log_level.strip()
     try:
-        hosts = utils.hosts_from_config_file(feng_hosts[0])
-        feng_hosts = hosts['fengine']
-    except IOError:
-        # it's not a file so carry on
-        pass
-    except KeyError:
-        raise RuntimeError('That config file does not seem to have a f-engine section.')
+        logging.basicConfig(level=eval('logging.%s' % log_level))
+    except AttributeError:
+        raise RuntimeError('No such log level: %s' % log_level)
 
-if len(feng_hosts) == 0:
+if args.comms == 'katcp':
+    HOSTCLASS = katcp_fpga.KatcpFpga
+else:
+    HOSTCLASS = dcp_fpga.DcpFpga
+
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
+hosts = utils.parse_hosts(args.hosts, section='fengine')
+if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 #feng_hosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']
 #feng_hosts = ['roach02091b']
 
-# create the devices and connect to them
-ffpgas = []
-for host in feng_hosts:
-    feng_fpga = KatcpClientFpga(host)
-    time.sleep(0.3)
-    if not feng_fpga.is_connected():
-        feng_fpga.connect()
-    feng_fpga.test_connection()
-    feng_fpga.get_system_information()
-    numgbes = len(feng_fpga.tengbes)
+# make the FPGA objects
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgautils.threaded_fpga_function(fpgas, 'get_system_information')
+
+# check for 10gbe cores
+for fpga_ in fpgas:
+    numgbes = len(fpga_.tengbes)
     if numgbes < 1:
-        raise RuntimeError('Cannot have an f-engine with no 10gbe cores?')
-    print '%s: found %i 10gbe core%s.' % (host, numgbes, '' if numgbes == 1 else 's')
+        raise RuntimeError('Cannot have an f-engine with no 10gbe cores? %s' % fpga_.host)
+    print '%s: found %i 10gbe core%s.' % (fpga_.host, numgbes, '' if numgbes == 1 else 's')
     if args.rstcnt:
-        feng_fpga.registers.control.write(cnt_rst='pulse')
-    ffpgas.append(feng_fpga)
-
-
-def fengine_gbe(fpga_):
-    """
-    Get 10gbe data from the fpga.
-    :param fpga_:
-    :return:
-    """
-    cores = fpga_.tengbes
-    returndata = {}
-    for core_ in cores:
-        returndata[core_.name] = core_.read_counters()
-    return returndata
+        fpga_.registers.control.write(cnt_rst='pulse')
 
 
 def fengine_rxtime(fpga_):
@@ -91,13 +83,16 @@ def fengine_rxtime(fpga_):
 
 
 def get_fpga_data(fpga_):
-    return {'gbe': fengine_gbe(fpga_), 'rxtime': fengine_rxtime(fpga_), 'mcnt_nolock': 555}
+    return {'gbe': {core_.name: core_.read_counters() for core_ in fpga_.tengbes},
+            'rxtime': fengine_rxtime(fpga_),
+            'mcnt_nolock': 555}
 
 # work out tables for each fpga
 fpga_headers = []
 master_list = []
-for cnt, fpga in enumerate(ffpgas):
-    gbedata = get_fpga_data(fpga)['gbe']
+fpga_data = fpgautils.threaded_fpga_operation(fpgas, get_fpga_data)
+for cnt, fpga_ in enumerate(fpgas):
+    gbedata = fpga_data[fpga_.host]['gbe']
     gbe0 = gbedata.keys()[0]
     core0_regs = [key.replace(gbe0, 'gbe') for key in gbedata[gbe0].keys()]
     if cnt == 0:
@@ -105,11 +100,11 @@ for cnt, fpga in enumerate(ffpgas):
     for core in gbedata:
         core_regs = [key.replace(core, 'gbe') for key in gbedata[core].keys()]
         if sorted(core0_regs) != sorted(core_regs):
-            raise RuntimeError('Not all GBE cores for FPGA %s have the same support registers. Problem.', fpga.host)
+            raise RuntimeError('Not all GBE cores for FPGA %s have the same support registers. Problem.', fpga_.host)
     fpga_headers.append(core0_regs)
 
 all_the_same = True
-for cnt, _ in enumerate(ffpgas):
+for cnt, _ in enumerate(fpgas):
     if sorted(master_list) != sorted(fpga_headers[cnt]):
         all_the_same = False
         raise RuntimeError('Warning: GBE cores across given FPGAs are NOT configured the same!')
@@ -121,9 +116,7 @@ fpga_headers = [['gbe_rxctr', 'gbe_rxofctr', 'gbe_rxerrctr', 'gbe_rxeofctr', 'gb
 
 
 def signal_handler(sig, frame):
-    print sig, frame
-    for fpga_ in ffpgas:
-        fpga_.disconnect()
+    fpgautils.threaded_fpga_function(fpgas, 'disconnect')
     scroll.screen_teardown()
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
@@ -149,7 +142,7 @@ try:
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
             scroller.add_line('Polling %i f-engine%s every %s - %is elapsed.' %
-                              (len(ffpgas), '' if len(ffpgas) == 1 else 's',
+                              (len(fpgas), '' if len(fpgas) == 1 else 's',
                                'second' if polltime == 1 else ('%i seconds' % polltime),
                                time.time() - STARTTIME), 0, 0, absolute=True)
             start_pos = 30
@@ -164,10 +157,11 @@ try:
             else:
                 scroller.set_ypos(1)
                 scroller.set_ylimits(ymin=1)
-            for ctr, fpga in enumerate(ffpgas):
-                fpga_data = get_fpga_data(fpga)
-#                scroller.add_line(fpga.host)
-                scroller.add_line(fpga.host + (' - %12d' % fpga_data['rxtime']) + (', %12d' % fpga_data['mcnt_nolock']))
+            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, get_fpga_data)
+            for ctr, fpga_ in enumerate(fpgas):
+                fpga_data = all_fpga_data[fpga_.host]
+#                scroller.add_line(fpga_.host)
+                scroller.add_line(fpga_.host + (' - %12d' % fpga_data['rxtime']) + (', %12d' % fpga_data['mcnt_nolock']))
                 for core, core_data in fpga_data['gbe'].items():
                     start_pos = 30
                     pos_increment = 20
@@ -184,13 +178,8 @@ try:
             scroller.draw_screen()
             last_refresh = time.time()
 except Exception, e:
-    for fpga in ffpgas:
-        fpga.disconnect()
-    scroll.screen_teardown()
+    signal_handler(None, None)
     raise
 
-# handle exits cleanly
-for fpga in ffpgas:
-    fpga.disconnect()
-scroll.screen_teardown()
+signal_handler(None, None)
 # end

@@ -6,11 +6,17 @@ import logging
 import sys
 import argparse
 import Queue
+
 import katcp
-from katcp.kattypes import request, return_reply, Float, Int, Str
+from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 from corr2 import fxcorrelator
 
-logging.basicConfig(level=logging.WARN, stream=sys.stderr, format='%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
+
+class KatcpLogFormatter(logging.Formatter):
+    def format(self, record):
+        record.msg = record.msg.replace(' ', '\_')
+        record.levelname = record.levelname.lower()
+        return super(KatcpLogFormatter, self).format(record)
 
 
 class Corr2Server(katcp.DeviceServer):
@@ -52,24 +58,27 @@ class Corr2Server(katcp.DeviceServer):
         :param log_len:
         :return:
         """
+        logging.info('got a create request with config file %s' % config_file)
         try:
             self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
+
+            logging.info('made correlator okay')
+
             return 'ok',
         except:
             pass
         return 'fail',
 
-
-    @request()
+    @request(Bool(default=True))
     @return_reply()
-    def request_initialise(self, sock):
+    def request_initialise(self, sock, program):
         """
 
         :param sock:
         :return:
         """
         try:
-            self.instrument.initialise(program=True, tvg=False)
+            self.instrument.initialise(program=program, tvg=False)
             return 'ok',
         except:
             pass
@@ -124,12 +133,14 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if product_name == '':
-            product_string = str(self.instrument.configd['xengine']['output_products']).replace('[', '').replace(']', '')
+            product_list = self.instrument.configd['xengine']['output_products']
+            product_string = str(product_list).replace('[', '').replace(']', '')
         else:
             product_string = product_name
             if product_name not in self.instrument.configd['xengine']['output_products']:
                 return 'fail', 'requested product name not found'
-        sock.inform(product_string, '%s:%d' % (self.instrument.xeng_tx_destination[0], self.instrument.xeng_tx_destination[1]))
+        sock.inform(product_string, '%s:%d' % (self.instrument.xeng_tx_destination[0],
+                                               self.instrument.xeng_tx_destination[1]))
         return 'ok',
 
     @request(Str(default=''))
@@ -156,14 +167,16 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.tx_stop()
         return 'ok',
 
-    @request()
+    @request(Str(default=''))
     @return_reply()
-    def request_issue_spead_metadata(self, sock):
+    def request_capture_meta(self, sock, product_name):
         """
 
         :param sock:
         :return:
         """
+        if product_name not in self.instrument.configd['xengine']['output_products']:
+            return 'fail', 'requested product name not found'
         self.instrument.spead_issue_meta()
         return 'ok',
 
@@ -191,6 +204,9 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
+
+        self.instrument.feng_set_eq_all()
+
         return 'ok',
 
     @request()
@@ -262,7 +278,48 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
         return 'ok',
 
-    @request(Str(default='a string woohoo'), Int(default=777))  # arguments to this request, # create the message with these args
+    @request()
+    @return_reply()
+    def request_vacc_sync(self, sock):
+        """
+
+        :param sock:
+        :return:
+        """
+        self.instrument.xeng_vacc_sync()
+        return 'ok',
+
+    @request(Int(default=-1))
+    @return_reply(Int())
+    def request_fft_shift(self, sock, new_shift):
+        """
+
+        :param sock:
+        :return:
+        """
+        if new_shift >= 0:
+            current_shift_value = self.instrument.feng_set_fft_shift_all(new_shift)
+        else:
+            current_shift_value = self.instrument.feng_get_fft_shift_all()
+            current_shift_value = current_shift_value[current_shift_value.keys()[0]]
+        return 'ok', current_shift_value
+
+    # @request(Int(default=-1), Int(default=-1))
+    # @return_reply(Int(), Int())
+    # def request_eq(self, sock, new_real, new_imag):
+    #     """
+    #
+    #     :param sock:
+    #     :return:
+    #     """
+    #     if new_shift >= 0:
+    #         current_shift_value = self.instrument.feng_set_eq_all(new_real, new_imag)
+    #     else:
+    #         current_shift_value = self.instrument.feng_get_fft_shift_all()
+    #         current_shift_value = current_shift_value[current_shift_value.keys()[0]]
+    #     return 'ok', current_shift_value
+
+    @request(Str(default='a string woohoo'), Int(default=777))
     @return_reply()
     def request_pang(self, sock, astring, anint):
         """
@@ -276,13 +333,40 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Start a corr2 instrument server.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-p', '--port', dest='port', action='store',
-                        default=1235, type=int,
+    parser.add_argument('-p', '--port', dest='port', action='store', default=1235, type=int,
                         help='bind to this port to receive KATCP messages')
+    parser.add_argument('--log_level', dest='loglevel', action='store', default='INFO',
+                        help='log level to set')
+    parser.add_argument('--log_format_marc', dest='lfm', action='store_true', default=False,
+                        help='format log messsages for marc')
     # parser.add_argument('-c', '--config', dest='configfile', action='store',
     #                     default='', type=str,
     #                     help='config file location')
     args = parser.parse_args()
+
+    try:
+        log_level = eval('logging.%s' % args.loglevel)
+    except:
+        raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
+
+    # set up the console logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(log_level)
+    if args.lfm:
+        formatter = KatcpLogFormatter('#log %(levelname)s %(created).3f %(filename)s_%(lineno)s %(message)s')
+    else:
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    # if args.lfm:
+    #     logging.basicConfig(level=log_level, stream=sys.stderr,
+    #                         format='#log %(levelname)s %(created).3f %(filename)s_%(lineno)s %(message)s')
+    # else:
+    #     logging.basicConfig(level=log_level, stream=sys.stderr,
+    #                         format='')
 
     print 'Server listening on port %d, ' % args.port,
     queue = Queue.Queue()

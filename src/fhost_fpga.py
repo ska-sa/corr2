@@ -1,51 +1,37 @@
-import logging
-from fengine import Fengine
-from engine_fpga import EngineCasperFpga
+__author__ = 'paulp'
 
-LOGGER = logging.getLogger(__name__)
+import time
+
+from host_fpga import FpgaHost
 
 
-class FengineCasperFpga(Fengine, EngineCasperFpga):
-    """ An fengine that is also an engine using an FPGA as a host
-        Data from two polarisations are received via SPEAD, channelised, equalised pre-requantisation, corner-turned
-        and transmitted via SPEAD. Delay correction is applied via coarse delay before channelisation and phase
-        rotation post channelisation.
+class FpgaFHost(FpgaHost):
     """
-    def __init__(self, fpga_host, engine_id, ant_id, config_source):
-        """
-        @param fpga_host: fpga-bsed Host device
-        @param engine_id: index of fengine on FPGA
-        """
-        Fengine.__init__(self, fpga_host, engine_id, ant_id, config_source)
-        EngineCasperFpga.__init__(self, fpga_host, engine_id, config_source)
-        LOGGER.info('%s %s initialised', self.__class__.__name__, str(self))
+    A Host, that hosts Fengines, that is a CASPER KATCP FPGA.
+    """
+    def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
+        FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
+        self.config = config
+        self.fft_shift = -1
+        self.eq = []
 
-    def update_config(self, config_source):
-        """
-        Update necessary values from a config dictionary/server
-        :return:
-        """
-        self.sample_bits = int(config_source['fengine']['sample_bits'])
-        self.adc_demux_factor = int(config_source['fengine']['adc_demux_factor'])
-        self.bandwidth = int(config_source['fengine']['bandwidth'])
-        self.true_cf = int(config_source['fengine']['true_cf'])
-        self.n_chans = int(config_source['fengine']['n_chans'])
-        self.min_load_time = int(config_source['fengine']['min_load_time'])
-        self.network_latency_adjust = int(config_source['fengine']['network_latency_adjust'])
-        self.fft_shift = int(config_source['fengine']['fft_shift'])
+    @classmethod
+    def from_config_source(cls, hostname, katcp_port, config_source):
+        boffile = config_source['bitstream']
+        return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
 
-        # TODO
-        # self.control_reg = self.host.registers['control%d' % self.engine_id]
-        # self.status_reg = self.host.registers['status%d' % self.engine_id]
-        self.control_reg = None
-        self.status_reg = None
-
-    def initialise(self):
+    def get_local_time(self):
         """
-        Set the f-engine up to a running state.
-        :return:
+        Get the local timestamp of this board, received from the digitiser
+        :return: time in samples since the digitiser epoch
         """
-        self.set_fft_shift()
+        first_msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
+        while self.registers.local_time_msw.read()['data']['timestamp_msw'] == first_msw:
+            time.sleep(0.01)
+        lsw = self.registers.local_time_lsw.read()['data']['timestamp_lsw']
+        msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
+        assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
+        return (msw << 32) | lsw
 
     #######################
     # FFT shift schedule  #
@@ -80,30 +66,30 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
 
 '''
     def _get_fengine_fpga_config(self):
-  
+
         # constants for accessing polarisation specific registers 'x' even, 'y' odd
         self.pol0_offset =  '%s' % (str(self.id*2))
         self.pol1_offset =  '%s' % (str(self.id*2+1))
 
-        # default fft shift schedule 
-        self.config['fft_shift']                        = self.config_portal.get_int([ '%s '%self.descriptor, 'fft_shift'])    
-        
+        # default fft shift schedule
+        self.config['fft_shift']                        = self.config_portal.get_int([ '%s '%self.descriptor, 'fft_shift'])
+
         # output data resolution after requantisation
-        self.config['n_bits_output']                    = self.config_portal.get_int([ '%s '%self.descriptor, 'n_bits_output'])    
-        self.config['bin_pt_output']                    = self.config_portal.get_int([ '%s '%self.descriptor, 'bin_pt_output'])    
+        self.config['n_bits_output']                    = self.config_portal.get_int([ '%s '%self.descriptor, 'n_bits_output'])
+        self.config['bin_pt_output']                    = self.config_portal.get_int([ '%s '%self.descriptor, 'bin_pt_output'])
 
         # equalisation (only necessary in FPGA based fengines)
         self.config['equalisation'] = {}
         # TODO this may not be constant across fengines (?)
-        self.config['equalisation']['decimation']       = self.config_portal.get_int(['equalisation', 'decimation'])    
+        self.config['equalisation']['decimation']       = self.config_portal.get_int(['equalisation', 'decimation'])
         # TODO what is this?
-        self.config['equalisation']['tolerance']        = self.config_portal.get_float(['equalisation', 'tolerance'])    
+        self.config['equalisation']['tolerance']        = self.config_portal.get_float(['equalisation', 'tolerance'])
         # coeffs
-        self.config['equalisation']['n_bytes_coeffs']   = self.config_portal.get_int(['equalisation', 'n_bytes_coeffs'])    
-        self.config['equalisation']['bin_pt_coeffs']    = self.config_portal.get_int(['equalisation', 'bin_pt_coeffs'])    
+        self.config['equalisation']['n_bytes_coeffs']   = self.config_portal.get_int(['equalisation', 'n_bytes_coeffs'])
+        self.config['equalisation']['bin_pt_coeffs']    = self.config_portal.get_int(['equalisation', 'bin_pt_coeffs'])
         # default equalisation polynomials for polarisations
-        self.config['equalisation']['poly0']            = self.config_portal.get_int_list([ '%s '%self.descriptor, 'poly0'])    
-        self.config['equalisation']['poly1']            = self.config_portal.get_int_list([ '%s '%self.descriptor, 'poly1'])    
+        self.config['equalisation']['poly0']            = self.config_portal.get_int_list([ '%s '%self.descriptor, 'poly0'])
+        self.config['equalisation']['poly1']            = self.config_portal.get_int_list([ '%s '%self.descriptor, 'poly1'])
 
     def __getattribute__(self, name):
         """Overload __getattribute__ to make shortcuts for getting object data.
@@ -137,9 +123,9 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
         elif name == 'snap_quant1':
             return self.host.device_by_name( '%sadc_quant  %s_ss' % (self.tag, self.pol1_offset))
 
-        # if attribute name not here try parent class        
+        # if attribute name not here try parent class
         return EngineFpga.__getattribute__(self, name)
-    
+
     ##############################################
     # Equalisation before re-quantisation stuff  #
     ##############################################
@@ -160,19 +146,19 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
         # we cant access brams like registers, so use old style read
         coeffs_raw = self.host.read(reg_name, n_coeffs*n_bytes)
 
-        coeffs = self.str2float(coeffs_raw, n_bytes*8, bin_pt)        
+        coeffs = self.str2float(coeffs_raw, n_bytes*8, bin_pt)
 
         #pad coeffs out by decimation factor
         coeffs_padded = numpy.reshape(numpy.tile(coeffs, [decimation, 1]), [1, n_chans], 'F')
-    
+
         return coeffs_padded[0]
-    
+
     def get_default_equalisation(self, pol_index):
         """ Get default equalisation settings
         """
-        
+
         decimation = self.config['equalisation']['decimation']
-        n_chans = self.config['n_chans']       
+        n_chans = self.config['n_chans']
         n_coeffs = n_chans/decimation
 
         poly = self.config['equalisation']['poly  %s'  % pol_index]
@@ -205,10 +191,10 @@ class FengineCasperFpga(Fengine, EngineCasperFpga):
             coeffs = numpy.polyval(init_poly, range(n_chans))[decimation/2::decimation]
             coeffs = numpy.array(coeffs, dtype=complex)
 
-        n_bytes = self.config['equalisation']['n_bytes_coeffs'] 
-        bin_pt = self.config['equalisation']['bin_pt_coeffs'] 
+        n_bytes = self.config['equalisation']['n_bytes_coeffs']
+        bin_pt = self.config['equalisation']['bin_pt_coeffs']
 
-        coeffs_str = self.float2str(coeffs, n_bytes*8, bin_pt) 
+        coeffs_str = self.float2str(coeffs, n_bytes*8, bin_pt)
 
         # finally write to the bram
         self.host.write(reg_name, coeffs_str)
