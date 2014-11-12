@@ -45,7 +45,6 @@ hosts = utils.parse_hosts(args.hosts)
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-
 def pingfpga(fpga):
     timeout = 0.5
     stime = time.time()
@@ -67,7 +66,7 @@ fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 connected = []
 programmed = []
 unavailable = []
-responses = fpgautils.threaded_fpga_operation(fpgas, pingfpga)
+responses = fpgautils.threaded_fpga_operation(fpgas, 10, pingfpga)
 for host, response in responses.items():
     if response == 'unavailable':
         unavailable.append(host)
@@ -76,7 +75,7 @@ for host, response in responses.items():
     elif response == 'connected':
         connected.append(host)
 
-fpgautils.threaded_fpga_function(fpgas, 'disconnect')
+fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 
 sconn = set(connected)
 sprog = set(programmed)

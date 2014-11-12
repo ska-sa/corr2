@@ -15,7 +15,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Ping a list of hosts by connecting to them.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='comma-delimited list of hosts, or a corr2 config file')
+                        help='comma-delimited list of hosts, or a corr2 config file')
     parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                         help='katcp (default) or dcp?')
     parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -48,13 +48,13 @@ try:
 
     print('Calculating all clocks...'),
     sys.stdout.flush()
-    results = fpgautils.threaded_fpga_function(fpgas, 'estimate_fpga_clock')
+    results = fpgautils.threaded_fpga_function(fpgas, 10, 'estimate_fpga_clock')
     print 'done.'
 
     for fpga_ in fpgas:
         print '%s: %.0f Mhz' % (fpga_.host, results[fpga_.host])
 
-    fpgautils.threaded_fpga_function(fpgas, 'disconnect')
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 
 except:
     raise

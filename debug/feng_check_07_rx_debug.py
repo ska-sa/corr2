@@ -64,7 +64,7 @@ if len(hosts) == 0:
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 
-regs = ['mcnt_nolock', 'tmiss_p0','tmiss_p1', 'tmiss_ctr', 'recverr_ctr', 'maxcnt_terr_ctr', 'timestep_ages',
+regs = ['mcnt_relock', 'tmiss_p0','tmiss_p1', 'tmiss_ctr', 'recverr_ctr', 'timestep_ages',
         'sync_timestamp_msw', 'sync_timestamp_lsw']
 
 if args.rstcnt:
@@ -98,7 +98,7 @@ if len(registers_missing) > 0:
 
 def get_fpga_data(fpga):
     data = {}
-    data['mcnt_nlck'] = fpga.registers.mcnt_nolock.read()['data']['mcnt_nolock']
+    data['mcnt_rlck'] = fpga.registers.mcnt_relock.read()['data']['reg']
     data['tmis_p0'] = fpga.registers.tmiss_p0.read()['data']['reg']
     data['tmis_p1'] = fpga.registers.tmiss_p1.read()['data']['reg']
     temp = fpga.registers.tmiss_ctr.read()['data']
@@ -110,10 +110,9 @@ def get_fpga_data(fpga):
     temp = fpga.registers.timestep_ages.read()['data']
     data['futuerr'] = temp['future']
     data['pasterr'] = temp['past']
-    data['maxerr_ctr'] = fpga.registers.maxcnt_terr_ctr.read()['data']['reg']
-    data['tstmp'] = fpga.registers.sync_timestamp_msw.read()['data']['reg'] << 4
+    data['sy_tstmp'] = fpga.registers.sync_timestamp_msw.read()['data']['reg'] << 4
     temp = fpga.registers.sync_timestamp_lsw.read()['data']
-    data['tstmp'] = data['tstmp'] | temp['time_lsw']
+    data['sy_tstmp'] = data['sy_tstmp'] | temp['time_lsw']
     data['tstep_err'] = temp['tstep_err_ctr']
     data['cnt_sync'] = temp['sync80_ctr']
     data['cnt_val'] = temp['valid80_ctr']
@@ -125,13 +124,13 @@ reg_names = data.keys()
 reg_names.sort()
 
 import signal
-def signal_handler(sig, frame):
+def exit_gracefully(sig, frame):
     print sig, frame
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
+signal.signal(signal.SIGINT, exit_gracefully)
+signal.signal(signal.SIGHUP, exit_gracefully)
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
@@ -176,12 +175,11 @@ try:
                     start_pos += pos_increment
             scroller.draw_screen()
             last_refresh = time.time()
+        else:
+            time.sleep(0.1)
 except Exception, e:
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    scroll.screen_teardown()
+    exit_gracefully(None, None)
     raise
 
-# handle exits cleanly
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-scroll.screen_teardown()
+exit_gracefully(None, None)
 # end

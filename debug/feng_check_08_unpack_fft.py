@@ -8,7 +8,6 @@ Collect the output of a post-unpack snapshot and do an FFT on it.
 import argparse
 import sys
 import signal
-import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -18,13 +17,9 @@ from corr2 import utils
 parser = argparse.ArgumentParser(description='Perform an FFT on the post-coarse delay data.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='comma-delimited list of hosts, or a corr2 config file')
-parser.add_argument('-p', '--polltime', dest='polltime', action='store',
-                    default=1, type=int,
-                    help='time at which to poll fengine data, in seconds')
-parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
-                    default=False,
-                    help='reset all counters at script startup')
+                    help='comma-delimited list of hosts, if you do not want all the fengine hosts in the config file')
+parser.add_argument('--config', dest='config', type=str, action='store', default='',
+                    help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -47,9 +42,16 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts, section='fengine')
+# read the config
+config = utils.parse_ini_file(args.config)
+
+EXPECTED_FREQS = int(config['fengine']['n_chans'])
+
+# parse the hosts
+if args.hosts != '':
+    hosts = utils.parse_hosts(args.hosts)
+else:
+    hosts = utils.parse_hosts(config, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
@@ -118,15 +120,13 @@ def get_data():
         unpacked_data[fpga]['p1'] = p1_unpacked[:]
     return unpacked_data
 
-unpacked_data = get_data()
-
-
 if args.checktvg:
     def eighty_to_tvg(eighty):
         timeramp = eighty >> 32
         dataramp = (eighty & 0xffffffff) >> 1
         pol = eighty & 0x01
         return timeramp, dataramp, pol
+    unpacked_data = get_data()
     for fpga, fpga_data in unpacked_data.items():
         print '%s data started at time %d' % (fpga, fpga_data['packettime48']),
         timep0 = eighty_to_tvg(fpga_data['p0'][0])[0]
@@ -155,6 +155,8 @@ else:
     import numpy
     import matplotlib.pyplot as pyplot
     from casperfpga.memory import bin2fp
+    import time
+
     def eighty_to_ten(eighty):
         samples = []
         for offset in range(70, -1, -10):
@@ -162,35 +164,47 @@ else:
             samples.append(bin2fp(binnum, 10, 9, True))
         return samples
 
-    integrated_data = 4096*[0]
-    pyplot.interactive(True)
-    while True:
+    integrated_data = EXPECTED_FREQS * [0]
+    pyplot.ion()
+    looplimit = args.number * args.integrate
+    loopctr = 0
+    starttime = time.time()
+    while (looplimit == -1) or (loopctr < looplimit):
+        unpacked_data = get_data()
         for fpga, fpga_data in unpacked_data.items():
-            print '%s data started at %d' % (fpga, fpga_data['packettime48']),
+            print '%i: %s data started at %d' % (loopctr, fpga, fpga_data['packettime48']),
             # for pol_data in [(fpga_data['p0'], 0), (fpga_data['p1'], 1)]:
             for pol_data in [(fpga_data['p1'], 1)]:
                 allsamples = []
                 for dataword in pol_data[0]:
                     samples = eighty_to_ten(dataword)
                     allsamples.extend(samples)
+                assert len(allsamples) == EXPECTED_FREQS * 2
+                # print 'A snapshot of length %i gave a sample array of length %i' % (len(pol_data[0]), len(allsamples))
                 fftdata = numpy.fft.fft(allsamples)
-                showdata = 8192*[0]
-                for ctr, sample in enumerate(fftdata):
+                # print 'The fft was then length %i' % len(fftdata)
+                showdata = EXPECTED_FREQS*[0]
+                for ctr, sample in enumerate(fftdata[:EXPECTED_FREQS]):
                     showdata[ctr] = pow(sample.real, 2) + pow(sample.imag, 2)
-
+                # print 'and showdata ended up being %i' % len(showdata)
                 # showdata = numpy.abs()
                 #showdata = showdata[len(showdata)/2:]
-                showdata = showdata[0:len(showdata)/2]
                 for ctr, _ in enumerate(showdata):
                     integrated_data[ctr] += showdata[ctr]
                 pyplot.cla()
                 #pyplot.plot(integrated_data)
-                pyplot.semilogy(integrated_data)
+                pyplot.semilogy(integrated_data[0:150])
                 pyplot.draw()
-            print 'and ended %d samples later. All okay.' % (len(allsamples))
-        unpacked_data = get_data()
+                loopctr += 1
+            rate = (time.time() - starttime) / (loopctr * 1.0)
+            time_remaining = (looplimit - loopctr) * rate
+            print 'and ended %d samples later. All okay. %.2fs remaining.' % (len(allsamples), time_remaining)
 
-# and exit
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+# wait here so that the plot can be viewed
+print 'Press Ctrl-C to exit...'
+sys.stdout.flush()
+import time
+while True:
+    time.sleep(1)
 
 # end

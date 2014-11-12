@@ -10,25 +10,24 @@ import numpy
 import matplotlib.pyplot as pyplot
 import sys
 import signal
-import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 from corr2 import utils
 
-EXPECTED_FREQS = 4096
-
 parser = argparse.ArgumentParser(description='Display the output of the PFB on an f-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='comma-delimited list of hosts, or a corr2 config file')
+                    help='comma-delimited list of hosts, if you do not want all the fengine hosts in the config file')
+parser.add_argument('--config', dest='config', type=str, action='store', default='',
+                    help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument('--pol', dest='pol', action='store', default=0, type=int,
                     help='polarisation, 0 or 1')
 parser.add_argument('--integrate', dest='integrate', action='store', default=-1, type=int,
                     help='integrate n successive spectra, -1 is infinite')
 parser.add_argument('--number', dest='number', action='store', default=-1, type=int,
-                    help='number of spectra to fetch, -1 is unlimited')
+                    help='number of spectra/integrations to fetch, -1 is unlimited')
 parser.add_argument('--fftshift', dest='fftshift', action='store', default=-1, type=int,
                     help='the FFT shift to set')
 parser.add_argument('--log', dest='log', action='store_true', default=False,
@@ -52,10 +51,16 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts, section='fengine')
+# read the config
+config = utils.parse_ini_file(args.config)
 
+EXPECTED_FREQS = int(config['fengine']['n_chans'])
+
+# parse the hosts
+if args.hosts != '':
+    hosts = utils.parse_hosts(args.hosts)
+else:
+    hosts = utils.parse_hosts(config, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
@@ -84,7 +89,8 @@ signal.signal(signal.SIGINT, exit_gracefully)
 # set the FFT shift
 if args.fftshift != -1:
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(args.fftshift))
-# print fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.sync_ctr.read())
+current_fft_shift = fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.read())
+print current_fft_shift
 
 # select the polarisation
 fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snappfb_dsel=args.pol))
@@ -95,7 +101,9 @@ integrate_ctr = 0
 integrated_data = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
 integrated_power = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
 
-while (args.number == -1) or (loopctr < args.number):
+looplimit = args.number * args.integrate
+
+while (looplimit == -1) or (loopctr < looplimit):
 
     # arm the snaps
     for snap in required_snaps:
@@ -142,12 +150,12 @@ while (args.number == -1) or (loopctr < args.number):
         else:
             p_show_data = p_data[0:EXPECTED_FREQS]
         pyplot.figure(fpga_ctr)
-        pyplot.interactive(True)
-        pyplot.subplot(1,1,1)
+        pyplot.ion()
+        pyplot.subplot(1, 1, 1)
         pyplot.cla()
 
         p_show_data = numpy.array(p_show_data)
-        p_show_data = p_show_data / (integrate_ctr+1)
+        # p_show_data /= (integrate_ctr+1)
 
         p_show_data = p_show_data[:-10]
 
@@ -159,10 +167,10 @@ while (args.number == -1) or (loopctr < args.number):
         else:
             pyplot.plot(p_show_data)
 
-        if integrate_ctr == 0:
-            ymin_max = (numpy.min(p_show_data), numpy.max(p_show_data))
+        # if integrate_ctr == 0:
+        #     ymin_max = (numpy.min(p_show_data), numpy.max(p_show_data))
 
-        pyplot.ylim(ymin_max)
+        # pyplot.ylim(ymin_max)
 
         pyplot.draw()
 
@@ -178,7 +186,11 @@ while (args.number == -1) or (loopctr < args.number):
 
     loopctr += 1
 
-# and exit
-exit_gracefully(None, None)
+# wait here so that the plot can be viewed
+print 'Press Ctrl-C to exit...'
+sys.stdout.flush()
+import time
+while True:
+    time.sleep(1)
 
 # end

@@ -141,13 +141,13 @@ class FxCorrelator(Instrument):
             # subscribe the f-engines  to the multicast groups
             self._fengine_subscribe_to_multicast()
 
-        # check to see if the f engines are receiving all their data
-        waittime = 30
-        self.logger.info('Waiting up to %i seconds for f engines to receive data' % waittime)
-        sys.stdout.flush()
-        self._feng_check_rx_okay(waittime)
-        self.logger.info('\tOkay.')
-        sys.stdout.flush()
+            # check to see if the f engines are receiving all their data
+            waittime = 30
+            self.logger.info('Waiting up to %i seconds for f engines to receive data' % waittime)
+            sys.stdout.flush()
+            self._feng_check_rx_okay(waittime)
+            self.logger.info('\tOkay.')
+            sys.stdout.flush()
 
         if program:
             # start f-engine TX
@@ -254,17 +254,49 @@ class FxCorrelator(Instrument):
 
     def feng_set_eq_all(self, real_gain=120, imag_gain=0):
         # set the eq values on the fpgas
+        n_chans = int(self.configd['fengine']['n_chans'])
         def seteq(fpga):
-            creal = 4096 * [real_gain]
-            cimag = 4096 * [imag_gain]
-            coeffs = 8192 * [0]
+            creal = n_chans * [real_gain]
+            cimag = n_chans * [imag_gain]
+            coeffs = (n_chans*2) * [0]
             coeffs[0::2] = creal
             coeffs[1::2] = cimag
-            ss = struct.pack('>8192h', *coeffs)
+            ss = struct.pack('>%ih' % (n_chans*2), *coeffs)
             fpga.write('eq0', ss, 0)
             fpga.write('eq1', ss, 0)
         THREADED_FPGA_OP(self.fhosts, 10, seteq)
         self.logger.info('Set EQ on fengines')
+
+    def feng_set_eq(self, fhost, real_gain=120, imag_gain=0):
+        n_chans = int(self.configd['fengine']['n_chans'])
+        creal = n_chans * [real_gain]
+        cimag = n_chans * [imag_gain]
+        coeffs = (n_chans*2) * [0]
+        coeffs[0::2] = creal
+        coeffs[1::2] = cimag
+        ss = struct.pack('>%ih' % (n_chans*2), *coeffs)
+        fhost.write('eq0', ss, 0)
+        fhost.write('eq1', ss, 0)
+        self.logger.info('Set EQ on fengine %s' % fhost)
+
+    def feng_set_eq_special(self, fhost, excl_width=20, real_gain=120, imag_gain=0):
+        n_chans = int(self.configd['fengine']['n_chans'])
+        creal = n_chans * [real_gain]
+        cimag = n_chans * [imag_gain]
+
+        for xctr in range(1, 32):
+            boundary = xctr * 128
+            print 'xctr(%i) boundary(%i)' % (xctr, boundary)
+            creal[boundary-excl_width/2:boundary+excl_width/2] = excl_width * [0]
+            cimag[boundary-excl_width/2:boundary+excl_width/2] = excl_width * [0]
+
+        coeffs = (n_chans*2) * [0]
+        coeffs[0::2] = creal
+        coeffs[1::2] = cimag
+        ss = struct.pack('>%ih' % (n_chans*2), *coeffs)
+        fhost.write('eq0', ss, 0)
+        fhost.write('eq1', ss, 0)
+        self.logger.info('Set EQ on fengine %s' % fhost)
 
     def feng_set_fft_shift_all(self, shift_value=2032):
         # set the fft shift values
@@ -849,23 +881,7 @@ class FxCorrelator(Instrument):
             self.logger.info('Stopping F transmission')
             THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(comms_en=False))
 
-    def set_eq(self):
-        """
-        Set the F-engine EQ by writing to BRAM
-        :return:
-        """
-        # how to write the eq values!
-        # creal = 4096 * [1]
-        # cimag = 4096 * [0]
-        # coeffs = 8192 * [0]
-        # coeffs[0::2] = creal
-        # coeffs[1::2] = cimag
-        # import struct
-        # ss = struct.pack('<8192h', *coeffs)
-        # fpgas[0].write('eq1', ss, 0)
-
-
-    def get_baseline_order(self):
+    def xeng_get_baseline_order(self):
         """
         Return the order of baseline data output by a CASPER correlator X engine.
         :return:
@@ -891,6 +907,7 @@ class FxCorrelator(Instrument):
             source_names.append(source_.name)
         rv = []
         for baseline in baseline_order:
+            # print baseline
             rv.append((source_names[baseline[0] * 2],       source_names[baseline[1] * 2]))
             rv.append((source_names[baseline[0] * 2 + 1],   source_names[baseline[1] * 2 + 1]))
             rv.append((source_names[baseline[0] * 2],       source_names[baseline[1] * 2 + 1]))
@@ -950,7 +967,7 @@ class FxCorrelator(Instrument):
         spead_ig.add_item(name='bls_ordering', id=0x100C,
                           description='The baseline ordering in the output data product.',
                           shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=numpy.array([baseline for baseline in self.get_baseline_order()]))
+                          init_val=numpy.array([baseline for baseline in self.xeng_get_baseline_order()]))
 
         # spead_ig.add_item(name='crosspol_ordering', id=0x100D,
         #                        description='',
@@ -1150,7 +1167,10 @@ class FxCorrelator(Instrument):
                           init_val=0)
 
         #ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
-        ndarray = numpy.dtype(numpy.int32), (4096, 40, 2)
+
+        n_chans = int(self.configd['fengine']['n_chans'])
+        n_bls = len(self.xeng_get_baseline_order())
+        ndarray = numpy.dtype(numpy.int32), (n_chans, n_bls, 2)
         spead_ig.add_item(name='xeng_raw', id=0x1800,
                           description='X-engine vector accumulator output data.',
                           ndarray=ndarray)

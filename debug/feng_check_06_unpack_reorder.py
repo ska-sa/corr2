@@ -67,12 +67,13 @@ def get_fpga_data(fpga):
     data = {}
     for pol in [0, 1]:
         reord_errors = fpga.registers['updebug_reord_err%i' % pol].read()['data']
-        data['re%i_cnt' % pol] = reord_errors['cnt']
-        data['re%i_time' % pol] = reord_errors['time']
-        data['re%i_tstep' % pol] = reord_errors['timestep']
+        # data['re%i_cnt' % pol] = reord_errors['cnt']
+        # data['re%i_time' % pol] = reord_errors['time']
+        # data['re%i_tstep' % pol] = reord_errors['timestep']
+        data['timerror%i' % pol] = reord_errors['timestep']
     valid_cnt = fpga.registers.updebug_validcnt.read()['data']
-    data['varbiter'] = valid_cnt['arb']
-    data['vreord'] = valid_cnt['reord']
+    data['valid_arb'] = valid_cnt['arb']
+    data['valid_reord'] = valid_cnt['reord']
     data['mcnt_relock'] = fpga.registers.mcnt_relock.read()['data']['reg']
     return data
 
@@ -145,7 +146,7 @@ try:
                 'second' if args.polltime == 1 else ('%i seconds' % args.polltime),
                 time.time() - STARTTIME), 0, 0, absolute=True)
             start_pos = max_hostname + 3
-            pos_increment = 15
+            pos_increment = 20
             scroller.add_line('Host', 0, 1, absolute=True)
             for reg in reg_names:
                 scroller.add_line(new_line=reg.rjust(13), xpos=start_pos, ypos=1, absolute=True)
@@ -157,13 +158,15 @@ try:
                 fpga_data = all_fpga_data[ffpga.host]
                 scroller.add_line(ffpga.host)
                 start_pos = max_hostname + 3
-                pos_increment = 15
+                pos_increment = 20
                 for reg in reg_names:
                     regval = '%13d' % fpga_data[reg]
                     scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
                     start_pos += pos_increment
             scroller.draw_screen()
             last_refresh = time.time()
+        else:
+            time.sleep(0.1)
 except Exception, e:
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
