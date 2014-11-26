@@ -33,6 +33,13 @@ class FpgaXHost(FpgaHost):
         """
         FpgaHost.get_system_information(self, filename, fpg_info)
 
+    def reset_count(self):
+        """
+        Pulse the count reset line, which should reset all counters connected to it.
+        :return: <Nothing>
+        """
+        self.registers.control.write(cnt_rst = 'pulse')
+
     def vacc_accumulations_per_second(self, xnum=-1):
         """
         Get the number of accumulatons per second.

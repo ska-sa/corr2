@@ -149,7 +149,7 @@ class FxCorrelator(Instrument):
             self.logger.info('\tOkay.')
             sys.stdout.flush()
 
-        if program:
+        if program and True:
             # start f-engine TX
             self.logger.info('Starting f-engine datastream')
             for f in self.fhosts:
@@ -162,7 +162,6 @@ class FxCorrelator(Instrument):
             time.sleep(10)
 
             # wait a bit and then arm the vacc on the x-engines
-            self.logger.info('arming vaccs on the xengines')
             self.xeng_vacc_sync()
 
         '''
@@ -298,14 +297,18 @@ class FxCorrelator(Instrument):
         fhost.write('eq1', ss, 0)
         self.logger.info('Set EQ on fengine %s' % fhost)
 
-    def feng_set_fft_shift_all(self, shift_value=2032):
+    def feng_set_fft_shift_all(self, shift_value=-1):
         # set the fft shift values
+        if shift_value == -1:
+            shift_value = int(self.configd['fengine']['fft_shift'])
+            assert shift_value > 0
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(shift_value))
+        self.logger.info('Set FFT shift to %i on all f-engine boards' % shift_value)
         return shift_value
 
     def feng_get_fft_shift_all(self):
         # get the fft shift values
-        return THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.fft_shift.read()['data']['reg'])
+        return THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.fft_shift.read()['data']['fft_shift'])
 
     def _fengine_initialise(self):
         """
@@ -517,6 +520,10 @@ class FxCorrelator(Instrument):
         Sync the vector accumulators on all the x-engines
         :return:
         """
+        vacc_load_time_wait = 5
+
+        self.logger.info('X-engine VACC sync:')
+
         # check if the vaccs need resetting
         vaccstat = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_check_arm_load_counts')
         reset_required = False
@@ -525,40 +532,105 @@ class FxCorrelator(Instrument):
                 self.logger.info('%s has a vacc that needs resetting' % xhost)
                 reset_required = True
 
-        # if reset_required:
-        #     THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_reset')
-        #     vaccstat = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_check_reset_status')
-        #     for xhost, result in vaccstat.items():
-        #         if not result:
-        #             self.logger.error('Resetting vaccs on %s failed.' % (xhost))
-        #             raise RuntimeError
+        if reset_required:
+            THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_reset')
+            vaccstat = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_check_reset_status')
+            for xhost, result in vaccstat.items():
+                if not result:
+                    self.logger.error('Resetting vaccs on %s failed.' % (xhost))
+                    raise RuntimeError
 
         # get current time from f-engines
         current_ftime = self.fhosts[0].get_local_time()
         assert current_ftime & 0xfff == 0, 'Bottom 12 bits of timestamp from f-engine are not zero?!'
-        ldtime = current_ftime + (5 * 1712001024)
+        self.logger.info('\tCurrent f engine time: %i' % current_ftime)
 
-        self.logger.info('Fengine time: %i' % ldtime)
-
+        # TODO - Sort out of the sampling freq from config, not hard coded
         # set that time on the xengines
+        ldtime = current_ftime + (vacc_load_time_wait * 1712001024)
+        self.logger.info('\tApplying load time: %i' % ldtime)
         THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_set_loadtime', ldtime)
+
+        def print_vacc_statuses(vstatus):
+            self.logger.info('VACC statii:')
+            for host in self.xhosts:
+                self.logger.info('\t%s:' % host.host)
+                for ctr, status in enumerate(vstatus[host.host]):
+                    self.logger.info('\t\t%i: %s' % (ctr, status))
+
+        # read the current arm and load counts
+        vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
+        for host in self.xhosts:
+            for status in vacc_status[host.host]:
+                if (status['loadcount'] != vacc_status[self.xhosts[0].host][0]['loadcount']) or \
+                   (status['armcount'] != vacc_status[self.xhosts[0].host][0]['armcount']):
+                    self.logger.error('All hosts do not have matching arm and load counts.')
+                    print_vacc_statuses(vacc_status)
+                    raise RuntimeError
+        arm_count = vacc_status[self.xhosts[0].host][0]['armcount']
+        load_count = vacc_status[self.xhosts[0].host][0]['loadcount']
+        self.logger.info('\tBefore arming: arm_count(%i) load_count(%i)' % (arm_count, load_count))
 
         # then arm them
         THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_arm')
 
+        # did the arm count increase?
+        vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
+        for host in self.xhosts:
+            for status in vacc_status[host.host]:
+                if (status['armcount'] != vacc_status[self.xhosts[0].host][0]['armcount']) or \
+                   (status['armcount'] != arm_count + 1):
+                    self.logger.error('All hosts do not have matching arm counts or arm count did not increase.')
+                    print_vacc_statuses(vacc_status)
+                    print arm_count
+                    raise RuntimeError
+        self.logger.info('\tAfter arming: arm_count(%i) load_count(%i)' % (arm_count+1, load_count))
+
+        # check the the load time was stored correctly
         lsws = THREADED_FPGA_OP(self.xhosts, 10, lambda x: x.registers.vacc_time_lsw.read()['data'])
         msws = THREADED_FPGA_OP(self.xhosts, 10, lambda x: x.registers.vacc_time_msw.read()['data'])
-        print lsws
-        print msws
+        for host in self.xhosts:
+            if (lsws[host.host]['lsw'] != lsws[self.xhosts[0].host]['lsw']) or \
+               (msws[host.host]['msw'] != msws[self.xhosts[0].host]['msw']):
+                self.logger.error('All hosts do not have matching VACC LSWs and MSWs')
+                print lsws
+                print msws
+                vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
+                print_vacc_statuses(vacc_status)
+                raise RuntimeError
         lsw = lsws[self.xhosts[0].host]['lsw']
         msw = msws[self.xhosts[0].host]['msw']
         xldtime = (msw << 32) | lsw
-        self.logger.info('x engine %s has vacc ld time %i' % (self.xhosts[0].host, xldtime))
+        self.logger.info('\tx engines have vacc ld time %i' % xldtime)
 
-        time.sleep(6)
+        # wait for the vaccs to arm
+        time.sleep(vacc_load_time_wait + 1)
 
-        print THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
+        # check the status to see that the load count increased
+        vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
+        for host in self.xhosts:
+            for status in vacc_status[host.host]:
+                if (status['loadcount'] != vacc_status[self.xhosts[0].host][0]['loadcount']) or \
+                   (status['loadcount'] != load_count + 1):
+                    self.logger.error('All hosts did not load the VACCs.')
+                    print_vacc_statuses(vacc_status)
+                    print load_count
+                    raise RuntimeError
+        self.logger.info('\tAfter trigger: arm_count(%i) load_count(%i)' % (arm_count+1, load_count+1))
+        self.logger.info('\tAll VACCs triggered correctly. Checking for errors & accumulations...')
 
+        THREADED_FPGA_FUNC(self.xhosts, 10, 'reset_count')
+        time.sleep(self.xeng_get_acc_time()+1)
+        vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
+        for host in self.xhosts:
+            for status in vacc_status[host.host]:
+                # TODO - reenable error checking once the QDRs are sorted out
+                # if (status['errors'] > 0) or (status['count'] <= 0):
+                if status['count'] <= 0:
+                    self.logger.error('\tErrors > 0 or counts <= 0. Que pasa?')
+                    print_vacc_statuses(vacc_status)
+                    raise RuntimeError
+        self.logger.info('\t...accumulations rolling in without error.')
 
     def xeng_set_acc_time(self, acc_time_s):
         # calculate the acc_len to write for the required time

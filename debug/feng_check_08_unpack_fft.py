@@ -166,7 +166,12 @@ else:
 
     integrated_data = EXPECTED_FREQS * [0]
     pyplot.ion()
-    looplimit = args.number * args.integrate
+
+    # looplimit = args.number * args.integrate
+
+    looplimit = -1
+
+
     loopctr = 0
     starttime = time.time()
     while (looplimit == -1) or (loopctr < looplimit):
@@ -193,7 +198,7 @@ else:
                     integrated_data[ctr] += showdata[ctr]
                 pyplot.cla()
                 #pyplot.plot(integrated_data)
-                pyplot.semilogy(integrated_data[0:150])
+                pyplot.semilogy(integrated_data)
                 pyplot.draw()
                 loopctr += 1
             rate = (time.time() - starttime) / (loopctr * 1.0)
