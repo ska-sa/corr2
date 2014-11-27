@@ -1,7 +1,11 @@
 __author__ = 'paulp'
 
+import logging
+
 from casperfpga.katcp_fpga import KatcpFpga
 from host import Host
+
+LOGGER = logging.getLogger(__name__)
 
 
 class FpgaHost(Host, KatcpFpga):
@@ -20,6 +24,7 @@ class FpgaHost(Host, KatcpFpga):
         :param program_port: Which port should be used for programming. -1 means random.
         :return: True if the FPGA client is running and connected.
         """
+        raise NotImplementedError
         if not self.is_connected():
             KatcpFpga.connect(self)
         if program:

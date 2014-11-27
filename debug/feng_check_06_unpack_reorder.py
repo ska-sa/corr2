@@ -75,6 +75,9 @@ def get_fpga_data(fpga):
     data['valid_arb'] = valid_cnt['arb']
     data['valid_reord'] = valid_cnt['reord']
     data['mcnt_relock'] = fpga.registers.mcnt_relock.read()['data']['reg']
+    temp = fpga.registers.pfb_of.read()['data']
+    data['pfb_of0'] = temp['of0']
+    data['pfb_of1'] = temp['of1']
     return data
 
 
@@ -95,7 +98,7 @@ max_hostname = -1
 for fpga_ in fpgas:
     max_hostname = max(len(fpga_.host), max_hostname)
     freg_error = False
-    for necreg in ['updebug_reord_err0', 'updebug_reord_err1', 'updebug_validcnt', 'mcnt_relock']:
+    for necreg in ['updebug_reord_err0', 'updebug_reord_err1', 'updebug_validcnt', 'mcnt_relock', 'pfb_of']:
         if necreg not in fpga_.registers.names():
             freg_error = True
             continue

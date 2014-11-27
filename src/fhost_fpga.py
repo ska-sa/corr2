@@ -1,8 +1,12 @@
 __author__ = 'paulp'
 
 import time
+import logging
+import struct
 
 from host_fpga import FpgaHost
+
+LOGGER = logging.getLogger(__name__)
 
 
 class FpgaFHost(FpgaHost):
@@ -11,9 +15,19 @@ class FpgaFHost(FpgaHost):
     """
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
         FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
-        self.config = config
-        self.fft_shift = -1
-        self.eq = []
+        self._config = config
+        self.data_sources = []
+
+        if config is not None:
+            self.num_fengines = int(config['f_per_fpga'])
+            self.ports_per_fengine = int(config['ports_per_fengine'])
+            self.fft_shift = int(config['fft_shift'])
+            self.n_chans = int(config['n_chans'])
+        else:
+            self.num_fengines = None
+            self.ports_per_fengine = None
+            self.fft_shift = None
+            self.n_chans = None
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -33,9 +47,69 @@ class FpgaFHost(FpgaHost):
         assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
         return (msw << 32) | lsw
 
-    #######################
-    # FFT shift schedule  #
-    #######################
+    def add_source(self, data_source):
+        """
+        Add a new data source to this fengine host
+        :param data_source: A DataSource object
+        :param eq_poly: The eq polynomial to apply to this source
+        :return:
+        """
+        for source in self.data_sources:
+            assert source.source_number != data_source.source_number
+            assert source.name != data_source.name
+        data_source.eq_bram = 'eq%i' % len(self.data_sources)
+        self.data_sources.append(data_source)
+
+    def get_source_eq_all(self):
+        rv = {}
+        for source in self.data_sources:
+            rv[source.name] = source.get_eq(hostdevice=self)
+        return rv
+
+    def set_source_eq_all(self, complex_gain_list=None):
+        """
+        Set the gains for all sources on this fhost from a provided complex gain table
+        :param complex_gain_list: a list of gains, ONE per source GLOBALLY,
+        :return:
+        """
+        for source in self.data_sources:
+            source.set_eq(complex_gain_list[source.source_number] if complex_gain_list is not None else None, self)
+        # TODO issue_meta
+
+    def read_eq(self, eq_bram):
+        """
+        Read a given EQ BRAM.
+        :param eq_bram:
+        :return:
+        """
+        # eq vals are packed as 32-bit complex (16 real, 16 imag)
+        eqvals = self.read(eq_bram, self.n_chans*4)
+        eqvals = struct.unpack('>%ih' % (self.n_chans*2), eqvals)
+        eqcomplex = []
+        for ctr in range(0, len(eqvals), 2):
+            eqcomplex.append(eqvals[ctr] + (1j * eqvals[ctr+1]))
+        return eqcomplex
+
+    def write_eq(self, eq_poly, bram):
+        """
+        Write a given complex eq to the given SBRAM.
+        :param eq_poly: an integer, complex number or list
+        :param bram: the bram to which to write
+        :return:
+        """
+        try:
+            assert len(eq_poly) == self.n_chans
+            creal = [num.real for num in eq_poly]
+            cimag = [num.imag for num in eq_poly]
+        except TypeError:
+            # the eq_poly is an int or complex
+            creal = self.n_chans * [int(eq_poly.real)]
+            cimag = self.n_chans * [int(eq_poly.imag)]
+        coeffs = (self.n_chans * 2) * [0]
+        coeffs[0::2] = creal
+        coeffs[1::2] = cimag
+        ss = struct.pack('>%ih' % (self.n_chans * 2), *coeffs)
+        self.write(bram, ss, 0)
 
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
@@ -45,22 +119,15 @@ class FpgaFHost(FpgaHost):
         :param issue_meta: Should SPEAD meta data be sent after the value is changed?
         :return: <nothing>
         """
-        """
-        @param shift_schedule:
-        """
         if shift_schedule is None:
             shift_schedule = self.fft_shift
-        self.host.registers.fft_shift.write(fft_shift=shift_schedule)
-
+        self.registers.fft_shift.write(fft_shift=shift_schedule)
         # TODO issue_meta
 
     def get_fft_shift(self):
         """
         Get the current FFT shift schedule from the FPGA.
         :return: integer representing the FFT shift schedule for all the FFTs on this engine.
-        """
-        """
-        @return bit mask in the form of an unsigned integer
         """
         return self.host.registers.fft_shift.read()['data']['fft_shift']
 
