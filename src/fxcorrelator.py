@@ -1045,7 +1045,7 @@ class FxCorrelator(Instrument):
                           init_val=self.xeng_clk)
 
         spead_ig.add_item(name='sync_time', id=0x1027,
-                          description='The time at which the digitiser\'s were synchronised.',
+                          description='The time at which the digitisers were synchronised.',
                           shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                           init_val=self.synchronisation_epoch)
 
