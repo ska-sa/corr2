@@ -72,8 +72,25 @@ class FxCorrelator(Instrument):
 
     def initialise(self, program=True, tvg=False):
         """
-        Set up the correlator using the information in the config file
+        Set up the correlator using the information in the config file.
         :return:
+
+        fengine init:
+            eq
+            set up interfaces (10gbe) - remember the sequence of holding in reset
+            check feng rx
+            check producing data?
+            enable feng tx
+            (check status?)
+            check qdr cal?
+
+        xengine init:
+            vacc
+            set up interfaces (10gbe) - remember the sequence of holding in reset
+            check rx
+            errors?
+            check producing
+            enable tx
         """
 
         # connect to the hosts that make up this correlator
@@ -121,17 +138,11 @@ class FxCorrelator(Instrument):
             self.logger.info('\tDone. That took %d seconds.' % (end_time - starttime))
             sys.stdout.flush()
 
-            # subscribe the f-engines  to the multicast groups
+            # subscribe the f-engines to the multicast groups
             self._fengine_subscribe_to_multicast()
 
-            # check to see if the f engines are receiving all their data
-            waittime = 30
-            self.logger.info('Waiting up to %i seconds for f engines to receive data' % waittime)
-            sys.stdout.flush()
-            self._feng_check_rx_okay(waittime)
-            self._feng_check_rx_spead()
-            self.logger.info('\tOkay.')
-            sys.stdout.flush()
+        # check to see if the f engines are receiving all their data
+        self._feng_check_rx()
 
         if program and True:
             # start f-engine TX
@@ -142,30 +153,15 @@ class FxCorrelator(Instrument):
             # subscribe the x-engines to this data also
             self._xengine_subscribe_to_multicast()
 
-            # check that they are receiving data correctly
-            time.sleep(10)
+            # check that they are receiving data
+            self._xeng_check_rx()
 
-            # wait a bit and then arm the vacc on the x-engines
+            # arm the vaccs on the x-engines
             self.xeng_vacc_sync()
 
-        '''
-        fengine init:
-            eq
-            set up interfaces (10gbe) - remember the sequence of holding in reset
-            check feng rx
-            check producing data?
-            enable feng tx
-            (check status?)
-            check qdr cal?
-
-        xengine init:
-            vacc
-            set up interfaces (10gbe) - remember the sequence of holding in reset
-            check rx
-            errors?
-            check producing
-            enable tx
-        '''
+        # reset all counters on fhosts and xhosts
+        self.feng_clear_status_all()
+        self.xeng_clear_status_all()
 
     def qdr_calibrate(self):
         # cal the QDR specifically
@@ -186,82 +182,15 @@ class FxCorrelator(Instrument):
             for qdr, qdrres in result.items():
                 self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
 
-    def feng_status_clear(self):
-        for f in self.fhosts:
-            f.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
-
-    def xeng_status_clear(self):
-        for f in self.xhosts:
-            f.registers.control.write(clr_status='pulse', gbe_debug_rst='pulse')
-
-    def _feng_check_rx_spead(self):
+    def _feng_check_rx(self, max_waittime=30):
         """
-        Check that all the fengines are receiving correct SPEAD data.
+        Check that the f-engines are receiving data correctly
+        :param waittime:
         :return:
         """
-        def read_spead_counters(fpga):
-            rv = []
-            for core_ctr in range(0, 4):
-                counter = fpga.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
-                error = fpga.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
-                rv.append((counter, error))
-            return rv
-        frxspead_ctrs0 = THREADED_FPGA_OP(self.fhosts, 5, read_spead_counters)
-        time.sleep(1)
-        frxspead_ctrs1 = THREADED_FPGA_OP(self.fhosts, 5, read_spead_counters)
-        for fpga in frxspead_ctrs0.keys():
-            for core_ctr in range(0, 4):
-                # ctrs must have incremented
-                if frxspead_ctrs1[fpga][core_ctr][0] <= frxspead_ctrs0[fpga][core_ctr][0]:
-                    self.logger.error('Fengine %s core %i is not receiving SPEAD data, bailing' % (fpga, core_ctr))
-                    raise RuntimeError('Fengine %s core %i is not receiving SPEAD data, bailing' % (fpga, core_ctr))
-                # but the errors must not
-                if frxspead_ctrs1[fpga][core_ctr][1] > frxspead_ctrs0[fpga][core_ctr][1]:
-                    self.logger.error('Fengine %s core %i has SPEAD errors, bailing' % (fpga, core_ctr))
-                    raise RuntimeError('Fengine %s core %i has SPEAD errors, bailing' % (fpga, core_ctr))
-        # done
-
-    def _feng_check_rx_okay(self, waittime=20):
-        # check to see if the f engines are receiving all their data
-        def get_gbe_data(fpga_):
-            """
-            Get 10gbe data counters from the fpga.
-            """
-            returndata = {}
-            for gbecore in fpga_.tengbes:
-                returndata[gbecore.name] = gbecore.read_counters()
-            return returndata
-        timeout = waittime
-        stime = time.time()
-        frxregs = THREADED_FPGA_OP(self.fhosts, 5, get_gbe_data)
-        rx_okay = False
-        while time.time() < stime + timeout:
-            time.sleep(1)
-            frxregs_new = THREADED_FPGA_OP(self.fhosts, 5, get_gbe_data)
-            still_the_same = False
-            for fpga in frxregs.keys():
-                for core in frxregs[fpga].keys():
-                    rxctr_old = frxregs[fpga][core]['%s_rxctr' % core]['data']['reg']
-                    rxctr_new = frxregs_new[fpga][core]['%s_rxctr' % core]['data']['reg']
-                    rxbad_old = frxregs[fpga][core]['%s_rxbadctr' % core]['data']['reg']
-                    rxbad_new = frxregs_new[fpga][core]['%s_rxbadctr' % core]['data']['reg']
-                    rxerr_old = frxregs[fpga][core]['%s_rxerrctr' % core]['data']['reg']
-                    rxerr_new = frxregs_new[fpga][core]['%s_rxerrctr' % core]['data']['reg']
-                    if (rxctr_old == rxctr_new) or (rxbad_old != rxbad_new) or (rxerr_old != rxerr_new):
-                        still_the_same = True
-                        continue
-                if still_the_same:
-                    continue
-            if not still_the_same:
-                # print 'all rx'
-                rx_okay = True
-                break
-            # else:
-            #     print 'nope', time.time()
-            frxregs = frxregs_new
-        if not rx_okay:
-            raise RuntimeError('F engine RX data error after %d seconds.' % timeout)
-        # done
+        self.logger.info('Checking F hosts are receiving data...')
+        THREADED_FPGA_FUNC(self.fhosts, 10, 'check_rx', max_waittime)
+        self.logger.info('\tdone.')
 
     def feng_get_eq_all(self):
         """
@@ -306,6 +235,13 @@ class FxCorrelator(Instrument):
         # get the fft shift values
         return THREADED_FPGA_FUNC(self.fhosts, 10, 'get_fft_shift')
 
+    def feng_clear_status_all(self):
+        """
+        Clear the various status registers and counters on all the fengines
+        :return:
+        """
+        THREADED_FPGA_FUNC(self.fhosts, 10, 'clear_status')
+
     def _fengine_initialise(self):
         """
         Set up f-engines on this device.
@@ -318,9 +254,7 @@ class FxCorrelator(Instrument):
         # set up the fpga comms
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_txen=False))
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_rst=False))
-        THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.control.write(status_clr='pulse',
-                                                                                      gbe_cnt_rst='pulse',
-                                                                                      cnt_rst='pulse'))
+        self.feng_clear_status_all()
 
         # where does the f-engine data go?
         self.fengine_output = DataSource.from_mcast_string(self.configd['fengine']['destination_mcast_ips'])
@@ -385,6 +319,10 @@ class FxCorrelator(Instrument):
                     gbe_ctr += 1
         self.logger.info('one.')
 
+    """
+    X-engine functionality
+    """
+
     def _xengine_initialise(self, tvg=False):
         """
         Set up x-engines on this device.
@@ -395,10 +333,8 @@ class FxCorrelator(Instrument):
             THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.simulator.write(en=False, rst='pulse'))
 
         # disable transmission, place cores in reset, and give control register a known state
-        THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_txen=False,
-                                                                                      gbe_rst=True,
-                                                                                      status_clr='pulse',
-                                                                                      gbe_debug_rst='pulse'))
+        THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.control.write(gbe_txen=False))
+        self.xeng_clear_status_all()
 
         # set up accumulation length
         self.xeng_set_acc_len()
@@ -493,6 +429,13 @@ class FxCorrelator(Instrument):
                     print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
         '''
 
+    def xeng_clear_status_all(self):
+        """
+        Clear the various status registers and counters on all the fengines
+        :return:
+        """
+        THREADED_FPGA_FUNC(self.xhosts, 10, 'clear_status')
+
     def _xengine_subscribe_to_multicast(self):
         """
         Subscribe the x-engines to the f-engine output multicast groups - each one subscribes to
@@ -512,13 +455,22 @@ class FxCorrelator(Instrument):
                 self.logger.debug('xhost %s %s subscribing to address %s', host.host, gbe.name, rxaddress)
                 self.logger.info('xhost %s %s subscribing to address %s', host.host, gbe.name, rxaddress)
 
-    def xeng_vacc_sync(self):
+    def _xeng_check_rx(self, max_waittime=30):
         """
-        Sync the vector accumulators on all the x-engines
+        Check that the x hosts are receiving data correctly
+        :param waittime:
         :return:
         """
-        vacc_load_time_wait = 5
+        self.logger.info('Checking X hosts are receiving data...')
+        THREADED_FPGA_FUNC(self.xhosts, 10, 'check_rx', max_waittime)
+        self.logger.info('\tdone.')
 
+    def xeng_vacc_sync(self, vacc_load_time=5):
+        """
+        Sync the vector accumulators on all the x-engines.
+        Assumes that the x-engines are all receiving data.
+        :return:
+        """
         self.logger.info('X-engine VACC sync:')
 
         # check if the vaccs need resetting
@@ -544,7 +496,7 @@ class FxCorrelator(Instrument):
 
         # TODO - Sort out of the sampling freq from config, not hard coded
         # set that time on the xengines
-        ldtime = current_ftime + (vacc_load_time_wait * 1712001024)
+        ldtime = current_ftime + (vacc_load_time * 1712001024)
         self.logger.info('\tApplying load time: %i' % ldtime)
         THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_set_loadtime', ldtime)
 
@@ -601,7 +553,7 @@ class FxCorrelator(Instrument):
         self.logger.info('\tx engines have vacc ld time %i' % xldtime)
 
         # wait for the vaccs to arm
-        time.sleep(vacc_load_time_wait + 1)
+        time.sleep(vacc_load_time + 1)
 
         # check the status to see that the load count increased
         vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
@@ -616,7 +568,7 @@ class FxCorrelator(Instrument):
         self.logger.info('\tAfter trigger: arm_count(%i) load_count(%i)' % (arm_count+1, load_count+1))
         self.logger.info('\tAll VACCs triggered correctly. Checking for errors & accumulations...')
 
-        THREADED_FPGA_FUNC(self.xhosts, 10, 'reset_count')
+        THREADED_FPGA_FUNC(self.xhosts, 10, 'clear_status')
         time.sleep(self.xeng_get_acc_time()+1)
         vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
         for host in self.xhosts:
@@ -859,7 +811,6 @@ class FxCorrelator(Instrument):
         # make a new SPEAD transmitter
         del self.spead_tx
         self.spead_tx = spead.Transmitter(spead.TransportUDPtx(txip_str, txport))
-
         # update the multicast socket option
         mcast_interface = self.configd['xengine']['multicast_interface_address']
         self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_IF,
@@ -876,7 +827,6 @@ class FxCorrelator(Instrument):
         self.logger.info('Starting transmission')
         if issue_spead:
             self.spead_issue_meta()
-
         # start tx on the x-engines
         for f in self.xhosts:
             f.registers.control.write(gbe_txen=True)
@@ -898,7 +848,7 @@ class FxCorrelator(Instrument):
         Return the order of baseline data output by a CASPER correlator X engine.
         :return:
         """
-        # TODO
+        # TODO - nants vs number of inputs?
         n_ants = 4
         assert len(self.fengine_sources)/2 == n_ants
         order1 = []

@@ -34,6 +34,38 @@ class FpgaFHost(FpgaHost):
         boffile = config_source['bitstream']
         return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
 
+    def clear_status(self):
+        """
+        Clear the status registers and counters on this f-engine host
+        :return:
+        """
+        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
+
+    def check_rx(self, max_waittime=30):
+        """
+        Check the receive path on this f host
+        :param max_waittime: the maximum time to wait for raw 10gbe data
+        :return:
+        """
+        self.check_rx_raw(max_waittime)
+        self.check_rx_spead()
+        self.check_rx_reorder()
+
+    def check_rx_reorder(self):
+        return
+
+    def read_spead_counters(self):
+        """
+        Read the SPEAD rx and error counters for this F host
+        :return:
+        """
+        rv = []
+        for core_ctr in range(0, 4):
+            counter = self.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
+            error = self.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
+            rv.append((counter, error))
+        return rv
+
     def get_local_time(self):
         """
         Get the local timestamp of this board, received from the digitiser

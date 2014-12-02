@@ -1,8 +1,12 @@
 __author__ = 'paulp'
 
+import logging
 import time
+import numpy
 
 from host_fpga import FpgaHost
+
+LOGGER = logging.getLogger(__name__)
 
 
 class FpgaXHost(FpgaHost):
@@ -24,21 +28,37 @@ class FpgaXHost(FpgaHost):
         boffile = config_source['bitstream']
         return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
 
-    def get_system_information(self, filename=None, fpg_info=None):
+    def clear_status(self):
         """
-        Overload the KatcpFpga function. We want more from the bof file.
-        :param filename:
-        :param fpg_info:
+        Clear the status registers and counters on this f-engine host
         :return:
         """
-        FpgaHost.get_system_information(self, filename, fpg_info)
+        self.registers.control.write(status_clr='pulse', cnt_rst='pulse', gbe_debug_rst='pulse')
 
-    def reset_count(self):
+    def check_rx(self, max_waittime=30):
         """
-        Pulse the count reset line, which should reset all counters connected to it.
-        :return: <Nothing>
+        Check the receive path on this X host
+        :param max_waittime: the maximum time to wait for raw 10gbe data
+        :return:
         """
-        self.registers.control.write(cnt_rst = 'pulse')
+        self.check_rx_raw(max_waittime)
+        self.check_rx_spead()
+        self.check_rx_reorder()
+
+    def check_rx_reorder(self):
+        return
+
+    def read_spead_counters(self):
+        """
+        Read the SPEAD rx and error counters for this X host
+        :return:
+        """
+        rv = []
+        for core_ctr in range(0, 2):
+            counter = self.registers['rx_cnt%i' % core_ctr].read()['data']['reg']
+            error = self.registers['rx_err_cnt%i' % core_ctr].read()['data']['reg']
+            rv.append((counter, error))
+        return rv
 
     def vacc_accumulations_per_second(self, xnum=-1):
         """
@@ -155,24 +175,24 @@ class FpgaXHost(FpgaHost):
         self.registers.vacc_time_lsw.write(lsw=ldtime_lsw)
         self.registers.vacc_time_msw.write(msw=ldtime_msw)
 
-    def set_accumulation_length(self, accumulation_length, issue_meta=True):
-        """ Set the accumulation time for the vector accumulator
-        @param accumulation_length: the accumulation time in spectra.
-        @param issue_meta: issue SPEAD meta data indicating the change in time
-        @returns: the actual accumulation time in seconds
-        """
-        vacc_len = self.config['vacc_len']
-        acc_len = self.config['acc_len']
-        # figure out how many pre-accumulated spectra this is (rounding up)
-        vacc_len = numpy.ceil(float(vacc_len)/float(acc_len))
-        self.vacc_len.write(reg=vacc_len)
-
-        return vacc_len*acc_len
-
-    def get_accumulation_length(self):
-        """ Get the current accumulation time of the vector accumulator
-        @returns: the accumulation time in spectra
-        """
-        acc_len = self.config['acc_len']
-        vacc_len = self.vacc_len.read()['data']['reg']
-        return vacc_len * acc_len
+    # def set_accumulation_length(self, accumulation_length, issue_meta=True):
+    #     """ Set the accumulation time for the vector accumulator
+    #     @param accumulation_length: the accumulation time in spectra.
+    #     @param issue_meta: issue SPEAD meta data indicating the change in time
+    #     @returns: the actual accumulation time in seconds
+    #     """
+    #     vacc_len = self.config['vacc_len']
+    #     acc_len = self.config['acc_len']
+    #     # figure out how many pre-accumulated spectra this is (rounding up)
+    #     vacc_len = numpy.ceil(float(vacc_len)/float(acc_len))
+    #     self.vacc_len.write(reg=vacc_len)
+    #
+    #     return vacc_len*acc_len
+    #
+    # def get_accumulation_length(self):
+    #     """ Get the current accumulation time of the vector accumulator
+    #     @returns: the accumulation time in spectra
+    #     """
+    #     acc_len = self.config['acc_len']
+    #     vacc_len = self.vacc_len.read()['data']['reg']
+    #     return vacc_len * acc_len
