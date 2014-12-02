@@ -129,7 +129,7 @@ class FxCorrelator(Instrument):
             self.logger.info('Waiting up to %i seconds for f engines to receive data' % waittime)
             sys.stdout.flush()
             self._feng_check_rx_okay(waittime)
-            # self._feng_check_rx_spead()
+            self._feng_check_rx_spead()
             self.logger.info('\tOkay.')
             sys.stdout.flush()
 
@@ -205,18 +205,21 @@ class FxCorrelator(Instrument):
                 counter = fpga.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
                 error = fpga.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
                 rv.append((counter, error))
+            return rv
         frxspead_ctrs0 = THREADED_FPGA_OP(self.fhosts, 5, read_spead_counters)
         time.sleep(1)
         frxspead_ctrs1 = THREADED_FPGA_OP(self.fhosts, 5, read_spead_counters)
         for fpga in frxspead_ctrs0.keys():
-            # ctrs must have incremented
-            if frxspead_ctrs1[fpga][0] <= frxspead_ctrs0[fpga][0]:
-                self.logger.error('Fengine %s is not receiving SPEAD data, bailing' % fpga)
-                raise RuntimeError('Fengine %s is not receiving SPEAD data, bailing' % fpga)
-            # no errors in either
-            if frxspead_ctrs1[fpga][1] > frxspead_ctrs0[fpga][1]:
-                self.logger.error('Fengine %s is has SPEAD errors, bailing' % fpga)
-                raise RuntimeError('Fengine %s is has SPEAD errors, bailing' % fpga)
+            for core_ctr in range(0, 4):
+                # ctrs must have incremented
+                if frxspead_ctrs1[fpga][core_ctr][0] <= frxspead_ctrs0[fpga][core_ctr][0]:
+                    self.logger.error('Fengine %s core %i is not receiving SPEAD data, bailing' % (fpga, core_ctr))
+                    raise RuntimeError('Fengine %s core %i is not receiving SPEAD data, bailing' % (fpga, core_ctr))
+                # but the errors must not
+                if frxspead_ctrs1[fpga][core_ctr][1] > frxspead_ctrs0[fpga][core_ctr][1]:
+                    self.logger.error('Fengine %s core %i has SPEAD errors, bailing' % (fpga, core_ctr))
+                    raise RuntimeError('Fengine %s core %i has SPEAD errors, bailing' % (fpga, core_ctr))
+        # done
 
     def _feng_check_rx_okay(self, waittime=20):
         # check to see if the f engines are receiving all their data
@@ -258,6 +261,7 @@ class FxCorrelator(Instrument):
             frxregs = frxregs_new
         if not rx_okay:
             raise RuntimeError('F engine RX data error after %d seconds.' % timeout)
+        # done
 
     def feng_get_eq_all(self):
         """
@@ -1128,7 +1132,6 @@ class FxCorrelator(Instrument):
                           shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                           init_val=sample_bits)
 
-        # TODO - what is the scale factor going to be?
         spead_ig.add_item(name='scale_factor_timestamp', id=0x1046,
                                description='Timestamp scaling factor. Divide the SPEAD data packet timestamp by '
                                            'this number to get back to seconds since last sync.',
