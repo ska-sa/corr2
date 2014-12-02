@@ -53,9 +53,9 @@ for bid in range(board_id, board_id + 4):
 print frange
 snapdata = []
 snapdata.append(xeng_fpga.snapshots.snap_unpack0_ss.read()['data'])
-snapdata.append(xeng_fpga.snapshots.snap_unpack1_ss.read()['data'])
-snapdata.append(xeng_fpga.snapshots.snap_unpack2_ss.read()['data'])
-snapdata.append(xeng_fpga.snapshots.snap_unpack3_ss.read()['data'])
+# snapdata.append(xeng_fpga.snapshots.snap_unpack1_ss.read()['data'])
+# snapdata.append(xeng_fpga.snapshots.snap_unpack2_ss.read()['data'])
+# snapdata.append(xeng_fpga.snapshots.snap_unpack3_ss.read()['data'])
 for ctr in range(0, len(snapdata[0]['eof'])):
     if (snapdata[0]['eof'][ctr] == 1) or (not args.eof):
         for bid, snap in enumerate(snapdata):

@@ -129,6 +129,7 @@ class FxCorrelator(Instrument):
             self.logger.info('Waiting up to %i seconds for f engines to receive data' % waittime)
             sys.stdout.flush()
             self._feng_check_rx_okay(waittime)
+            # self._feng_check_rx_spead()
             self.logger.info('\tOkay.')
             sys.stdout.flush()
 
@@ -192,6 +193,30 @@ class FxCorrelator(Instrument):
     def xeng_status_clear(self):
         for f in self.xhosts:
             f.registers.control.write(clr_status='pulse', gbe_debug_rst='pulse')
+
+    def _feng_check_rx_spead(self):
+        """
+        Check that all the fengines are receiving correct SPEAD data.
+        :return:
+        """
+        def read_spead_counters(fpga):
+            rv = []
+            for core_ctr in range(0, 4):
+                counter = fpga.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
+                error = fpga.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
+                rv.append((counter, error))
+        frxspead_ctrs0 = THREADED_FPGA_OP(self.fhosts, 5, read_spead_counters)
+        time.sleep(1)
+        frxspead_ctrs1 = THREADED_FPGA_OP(self.fhosts, 5, read_spead_counters)
+        for fpga in frxspead_ctrs0.keys():
+            # ctrs must have incremented
+            if frxspead_ctrs1[fpga][0] <= frxspead_ctrs0[fpga][0]:
+                self.logger.error('Fengine %s is not receiving SPEAD data, bailing' % fpga)
+                raise RuntimeError('Fengine %s is not receiving SPEAD data, bailing' % fpga)
+            # no errors in either
+            if frxspead_ctrs1[fpga][1] > frxspead_ctrs0[fpga][1]:
+                self.logger.error('Fengine %s is has SPEAD errors, bailing' % fpga)
+                raise RuntimeError('Fengine %s is has SPEAD errors, bailing' % fpga)
 
     def _feng_check_rx_okay(self, waittime=20):
         # check to see if the f engines are receiving all their data

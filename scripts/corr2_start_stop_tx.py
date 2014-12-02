@@ -78,10 +78,10 @@ else:
                 print '\tProduction control registers found.'
                 fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga: fpga.registers.control.write(gbe_out_en=stopstart))
             elif fpgas[0].registers.control.field_names().count('gbe_txen') > 0:
-                print '\tSim f-engine control registers found.'
+                print '\tSim-style control registers found.'
                 fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga: fpga.registers.control.write(gbe_txen=stopstart))
             elif fpgas[0].registers.control.field_names().count('comms_en') > 0:
-                print '\tOld-style fengine control registers found.'
+                print '\tOld-style control registers found.'
                 fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga: fpga.registers.control.write(comms_en=stopstart))
         elif fpgas[0].registers.names().count('ctrl') > 0:
             if fpgas[0].registers.ctrl.field_names().count('comms_en') > 0:
