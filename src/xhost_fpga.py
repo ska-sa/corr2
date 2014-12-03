@@ -46,7 +46,31 @@ class FpgaXHost(FpgaHost):
         self.check_rx_reorder()
 
     def check_rx_reorder(self):
-        return
+        """
+        Is this X host reordering received data correctly?
+        :return:
+        """
+        def get_gbe_data():
+            data = {}
+            for ctr in range(0, 4):
+                #data['reocnt%i' % ctr] = self.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
+                data['miss%i' % ctr] = self.registers['reord_missant%i' % ctr].read()['data']['reg']
+                data['rcvcnt%i' % ctr] = self.registers['reordcnt_recv%i' % ctr].read()['data']['reg']
+                data['ercv%i' % ctr] = self.registers['reorderr_recv%i' % ctr].read()['data']['reg']
+                data['etim%i' % ctr] = self.registers['reorderr_timeout%i' % ctr].read()['data']['reg']
+                data['edisc%i' % ctr] = self.registers['reorderr_disc%i' % ctr].read()['data']['reg']
+            return data
+        rxregs = get_gbe_data()
+        time.sleep(1)
+        rxregs_new = get_gbe_data()
+        for ctr in range(0, 4):
+            if rxregs_new['rcvcnt%i' % ctr] <= rxregs['rcvcnt%i' % ctr]:
+                raise RuntimeError('X host %s is not receiving reordered data.' % self.host)
+            if (rxregs_new['ercv%i' % ctr] > rxregs['ercv%i' % ctr]) or \
+               (rxregs_new['etim%i' % ctr] > rxregs['etim%i' % ctr]) or \
+               (rxregs_new['edisc%i' % ctr] > rxregs['edisc%i' % ctr]):
+                raise RuntimeError('X host %s reports reorder errors.' % self.host)
+        LOGGER.info('X host %s is reordering data okay.' % self.host)
 
     def read_spead_counters(self):
         """

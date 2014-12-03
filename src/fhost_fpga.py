@@ -52,7 +52,49 @@ class FpgaFHost(FpgaHost):
         self.check_rx_reorder()
 
     def check_rx_reorder(self):
-        return
+        """
+        Is this F host reordering received data correctly?
+        :return:
+        """
+        def get_gbe_data():
+            data = {}
+            for pol in [0, 1]:
+                reord_errors = self.registers['updebug_reord_err%i' % pol].read()['data']
+                data['re%i_cnt' % pol] = reord_errors['cnt']
+                data['re%i_time' % pol] = reord_errors['time']
+                data['re%i_tstep' % pol] = reord_errors['timestep']
+                data['timerror%i' % pol] = reord_errors['timestep']
+            valid_cnt = self.registers.updebug_validcnt.read()['data']
+            data['valid_arb'] = valid_cnt['arb']
+            data['valid_reord'] = valid_cnt['reord']
+            data['mcnt_relock'] = self.registers.mcnt_relock.read()['data']['reg']
+            temp = self.registers.pfb_of.read()['data']
+            data['pfb_of0'] = temp['of0']
+            data['pfb_of1'] = temp['of1']
+            return data
+        rxregs = get_gbe_data()
+        time.sleep(1)
+        rxregs_new = get_gbe_data()
+        if rxregs_new['valid_arb'] == rxregs['valid_arb']:
+            raise RuntimeError('F host %s arbiter is not counting packets.' % self.host)
+        if rxregs_new['valid_reord'] == rxregs['valid_reord']:
+            raise RuntimeError('F host %s reorder is not counting packets.' % self.host)
+        if rxregs_new['pfb_of1'] > rxregs['pfb_of1']:
+            raise RuntimeError('F host %s PFB 1 reports overflows.' % self.host)
+        if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
+            raise RuntimeError('F host %s mcnt_relock is triggering.' % self.host)
+        for pol in [0, 1]:
+            if rxregs_new['pfb_of%i' % pol] > rxregs['pfb_of%i' % pol]:
+                raise RuntimeError('F host %s PFB %i reports overflows.' % (self.host, pol))
+            if rxregs_new['re%i_cnt' % pol] > rxregs['re%i_cnt' % pol]:
+                raise RuntimeError('F host %s reorder count error.' % (self.host, pol))
+            if rxregs_new['re%i_time' % pol] > rxregs['re%i_time' % pol]:
+                raise RuntimeError('F host %s reorder time error.' % (self.host, pol))
+            if rxregs_new['re%i_tstep' % pol] > rxregs['re%i_tstep' % pol]:
+                raise RuntimeError('F host %s timestep error.' % (self.host, pol))
+            if rxregs_new['timerror%i' % pol] > rxregs['timerror%i' % pol]:
+                raise RuntimeError('F host %s time error?.' % (self.host, pol))
+        LOGGER.info('F host %s is reordering data okay.' % self.host)
 
     def read_spead_counters(self):
         """
@@ -142,6 +184,7 @@ class FpgaFHost(FpgaHost):
         coeffs[1::2] = cimag
         ss = struct.pack('>%ih' % (self.n_chans * 2), *coeffs)
         self.write(bram, ss, 0)
+        return len(ss)
 
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """

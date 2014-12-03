@@ -34,6 +34,7 @@ use_xeng_sim = False
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
+ARP_SLEEP_TIME = 10
 
 class FxCorrelator(Instrument):
     """
@@ -128,11 +129,10 @@ class FxCorrelator(Instrument):
             #     fpga_.tap_arp_reload()
             # for fpga_ in self.xhosts:
             #     fpga_.tap_arp_reload()
-            sleeptime = 10
-            self.logger.info('Waiting %d seconds for ARP to settle...' % sleeptime)
+            self.logger.info('Waiting %d seconds for ARP to settle...' % ARP_SLEEP_TIME)
             sys.stdout.flush()
             starttime = time.time()
-            time.sleep(sleeptime)
+            time.sleep(ARP_SLEEP_TIME)
             # raw_input('wait for arp')
             end_time = time.time()
             self.logger.info('\tDone. That took %d seconds.' % (end_time - starttime))
@@ -140,6 +140,10 @@ class FxCorrelator(Instrument):
 
             # subscribe the f-engines to the multicast groups
             self._fengine_subscribe_to_multicast()
+
+        # reset all counters on fhosts and xhosts
+        self.feng_clear_status_all()
+        self.xeng_clear_status_all()
 
         # check to see if the f engines are receiving all their data
         self._feng_check_rx()
@@ -189,7 +193,7 @@ class FxCorrelator(Instrument):
         :return:
         """
         self.logger.info('Checking F hosts are receiving data...')
-        THREADED_FPGA_FUNC(self.fhosts, 10, 'check_rx', max_waittime)
+        THREADED_FPGA_FUNC(self.fhosts, max_waittime+1, 'check_rx', max_waittime)
         self.logger.info('\tdone.')
 
     def feng_get_eq_all(self):
@@ -462,7 +466,7 @@ class FxCorrelator(Instrument):
         :return:
         """
         self.logger.info('Checking X hosts are receiving data...')
-        THREADED_FPGA_FUNC(self.xhosts, 10, 'check_rx', max_waittime)
+        THREADED_FPGA_FUNC(self.xhosts, max_waittime+1, 'check_rx', max_waittime)
         self.logger.info('\tdone.')
 
     def xeng_vacc_sync(self, vacc_load_time=5):

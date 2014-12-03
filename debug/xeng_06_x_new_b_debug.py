@@ -88,7 +88,7 @@ if args.rstcnt:
 def get_fpga_data(fpga):
     data = {}
     for ctr in range(0, 4):
-        data['reocnt%i' % ctr] = fpga.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
+        #data['reocnt%i' % ctr] = fpga.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
         data['miss%i' % ctr] = fpga.registers['reord_missant%i' % ctr].read()['data']['reg']
         data['rcvcnt%i' % ctr] = fpga.registers['reordcnt_recv%i' % ctr].read()['data']['reg']
         data['ercv%i' % ctr] = fpga.registers['reorderr_recv%i' % ctr].read()['data']['reg']

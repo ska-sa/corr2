@@ -82,8 +82,8 @@ class FengineSource(DataSource):
                 eq_poly = self.eq_poly
             LOGGER.info('\tSource %s updated gain to %s' % (self, eq_poly))
         if hostdevice is not None:
-            hostdevice.write_eq(self.eq_poly, self.eq_bram)
-            LOGGER.info('\tSource %s applied gain to hardware' % self)
+            length_written = hostdevice.write_eq(self.eq_poly, self.eq_bram)
+            LOGGER.info('\tSource %s applied gain to hardware - wrote %i bytes' % (self, length_written))
 
     def __str__(self):
         try:
