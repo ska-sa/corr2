@@ -215,6 +215,7 @@ class FxCorrelator(Instrument):
         self.logger.info('Setting EQ on fengines...')
         THREADED_FPGA_FUNC(self.fhosts, 10, 'set_source_eq_all', complex_gain_list)
         self.logger.info('done.')
+        #TODO: issue SPEAD metadata whenever EQs are changed.
 
     def feng_set_fft_shift_all(self, shift_value=None):
         """
@@ -618,6 +619,7 @@ class FxCorrelator(Instrument):
             self.accumulation_len = acc_len
         THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.acc_len.write_int(self.accumulation_len))
         self.logger.info('Set accumulation length %d system-wide (%.2f seconds)' % (self.accumulation_len, self.xeng_get_acc_time()))
+        #TODO: REISSUE metadata whenever anything related to timing changes!
 
     def xeng_get_acc_len(self):
         """
@@ -941,6 +943,7 @@ class FxCorrelator(Instrument):
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
+        #TODO: need to add this back:
         # spead_ig.add_item(name='input_labelling', id=0x100E,
         #                        description='',
         #                        init_val=self.configd['fengine']['source_names'])
