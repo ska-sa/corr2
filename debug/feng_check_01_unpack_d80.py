@@ -76,14 +76,14 @@ def get_fpga_data(fpga):
     return data
 
 
-def signal_handler(sig, frame):
+def exit_gracefully(sig, frame):
     print sig, frame
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)
 import signal
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
+signal.signal(signal.SIGINT, exit_gracefully)
+signal.signal(signal.SIGHUP, exit_gracefully)
 
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
@@ -170,12 +170,11 @@ try:
                     start_pos += pos_increment
             scroller.draw_screen()
             last_refresh = time.time()
+        else:
+            time.sleep(0.1)
 except Exception, e:
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    scroll.screen_teardown()
+    exit_gracefully(None, None)
     raise
 
-# handle exits cleanly
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-scroll.screen_teardown()
+exit_gracefully(None, None)
 # end

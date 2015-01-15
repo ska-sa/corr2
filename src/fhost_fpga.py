@@ -1,8 +1,12 @@
 __author__ = 'paulp'
 
 import time
+import logging
+import struct
 
 from host_fpga import FpgaHost
+
+LOGGER = logging.getLogger(__name__)
 
 
 class FpgaFHost(FpgaHost):
@@ -11,14 +15,98 @@ class FpgaFHost(FpgaHost):
     """
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
         FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
-        self.config = config
-        self.fft_shift = -1
-        self.eq = []
+        self._config = config
+        self.data_sources = []
+
+        if config is not None:
+            self.num_fengines = int(config['f_per_fpga'])
+            self.ports_per_fengine = int(config['ports_per_fengine'])
+            self.fft_shift = int(config['fft_shift'])
+            self.n_chans = int(config['n_chans'])
+        else:
+            self.num_fengines = None
+            self.ports_per_fengine = None
+            self.fft_shift = None
+            self.n_chans = None
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
         return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
+
+    def clear_status(self):
+        """
+        Clear the status registers and counters on this f-engine host
+        :return:
+        """
+        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
+
+    def check_rx(self, max_waittime=30):
+        """
+        Check the receive path on this f host
+        :param max_waittime: the maximum time to wait for raw 10gbe data
+        :return:
+        """
+        self.check_rx_raw(max_waittime)
+        self.check_rx_spead()
+        self.check_rx_reorder()
+
+    def check_rx_reorder(self):
+        """
+        Is this F host reordering received data correctly?
+        :return:
+        """
+        def get_gbe_data():
+            data = {}
+            for pol in [0, 1]:
+                reord_errors = self.registers['updebug_reord_err%i' % pol].read()['data']
+                data['re%i_cnt' % pol] = reord_errors['cnt']
+                data['re%i_time' % pol] = reord_errors['time']
+                data['re%i_tstep' % pol] = reord_errors['timestep']
+                data['timerror%i' % pol] = reord_errors['timestep']
+            valid_cnt = self.registers.updebug_validcnt.read()['data']
+            data['valid_arb'] = valid_cnt['arb']
+            data['valid_reord'] = valid_cnt['reord']
+            data['mcnt_relock'] = self.registers.mcnt_relock.read()['data']['reg']
+            temp = self.registers.pfb_of.read()['data']
+            data['pfb_of0'] = temp['of0']
+            data['pfb_of1'] = temp['of1']
+            return data
+        rxregs = get_gbe_data()
+        time.sleep(1)
+        rxregs_new = get_gbe_data()
+        if rxregs_new['valid_arb'] == rxregs['valid_arb']:
+            raise RuntimeError('F host %s arbiter is not counting packets.' % self.host)
+        if rxregs_new['valid_reord'] == rxregs['valid_reord']:
+            raise RuntimeError('F host %s reorder is not counting packets.' % self.host)
+        if rxregs_new['pfb_of1'] > rxregs['pfb_of1']:
+            raise RuntimeError('F host %s PFB 1 reports overflows.' % self.host)
+        if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
+            raise RuntimeError('F host %s mcnt_relock is triggering.' % self.host)
+        for pol in [0, 1]:
+            if rxregs_new['pfb_of%i' % pol] > rxregs['pfb_of%i' % pol]:
+                raise RuntimeError('F host %s PFB %i reports overflows.' % (self.host, pol))
+            if rxregs_new['re%i_cnt' % pol] > rxregs['re%i_cnt' % pol]:
+                raise RuntimeError('F host %s reorder count error.' % (self.host, pol))
+            if rxregs_new['re%i_time' % pol] > rxregs['re%i_time' % pol]:
+                raise RuntimeError('F host %s reorder time error.' % (self.host, pol))
+            if rxregs_new['re%i_tstep' % pol] > rxregs['re%i_tstep' % pol]:
+                raise RuntimeError('F host %s timestep error.' % (self.host, pol))
+            if rxregs_new['timerror%i' % pol] > rxregs['timerror%i' % pol]:
+                raise RuntimeError('F host %s time error?.' % (self.host, pol))
+        LOGGER.info('F host %s is reordering data okay.' % self.host)
+
+    def read_spead_counters(self):
+        """
+        Read the SPEAD rx and error counters for this F host
+        :return:
+        """
+        rv = []
+        for core_ctr in range(0, 4):
+            counter = self.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
+            error = self.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
+            rv.append((counter, error))
+        return rv
 
     def get_local_time(self):
         """
@@ -33,9 +121,70 @@ class FpgaFHost(FpgaHost):
         assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
         return (msw << 32) | lsw
 
-    #######################
-    # FFT shift schedule  #
-    #######################
+    def add_source(self, data_source):
+        """
+        Add a new data source to this fengine host
+        :param data_source: A DataSource object
+        :param eq_poly: The eq polynomial to apply to this source
+        :return:
+        """
+        for source in self.data_sources:
+            assert source.source_number != data_source.source_number
+            assert source.name != data_source.name
+        data_source.eq_bram = 'eq%i' % len(self.data_sources)
+        self.data_sources.append(data_source)
+
+    def get_source_eq_all(self):
+        rv = {}
+        for source in self.data_sources:
+            rv[source.name] = source.get_eq(hostdevice=self)
+        return rv
+
+    def set_source_eq_all(self, complex_gain_list=None):
+        """
+        Set the gains for all sources on this fhost from a provided complex gain table
+        :param complex_gain_list: a list of gains, ONE per source GLOBALLY,
+        :return:
+        """
+        for source in self.data_sources:
+            source.set_eq(complex_gain_list[source.source_number] if complex_gain_list is not None else None, self)
+        # TODO issue_meta
+
+    def read_eq(self, eq_bram):
+        """
+        Read a given EQ BRAM.
+        :param eq_bram:
+        :return:
+        """
+        # eq vals are packed as 32-bit complex (16 real, 16 imag)
+        eqvals = self.read(eq_bram, self.n_chans*4)
+        eqvals = struct.unpack('>%ih' % (self.n_chans*2), eqvals)
+        eqcomplex = []
+        for ctr in range(0, len(eqvals), 2):
+            eqcomplex.append(eqvals[ctr] + (1j * eqvals[ctr+1]))
+        return eqcomplex
+
+    def write_eq(self, eq_poly, bram):
+        """
+        Write a given complex eq to the given SBRAM.
+        :param eq_poly: an integer, complex number or list
+        :param bram: the bram to which to write
+        :return:
+        """
+        try:
+            assert len(eq_poly) == self.n_chans
+            creal = [num.real for num in eq_poly]
+            cimag = [num.imag for num in eq_poly]
+        except TypeError:
+            # the eq_poly is an int or complex
+            creal = self.n_chans * [int(eq_poly.real)]
+            cimag = self.n_chans * [int(eq_poly.imag)]
+        coeffs = (self.n_chans * 2) * [0]
+        coeffs[0::2] = creal
+        coeffs[1::2] = cimag
+        ss = struct.pack('>%ih' % (self.n_chans * 2), *coeffs)
+        self.write(bram, ss, 0)
+        return len(ss)
 
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
@@ -45,22 +194,15 @@ class FpgaFHost(FpgaHost):
         :param issue_meta: Should SPEAD meta data be sent after the value is changed?
         :return: <nothing>
         """
-        """
-        @param shift_schedule:
-        """
         if shift_schedule is None:
             shift_schedule = self.fft_shift
-        self.host.registers.fft_shift.write(fft_shift=shift_schedule)
-
+        self.registers.fft_shift.write(fft_shift=shift_schedule)
         # TODO issue_meta
 
     def get_fft_shift(self):
         """
         Get the current FFT shift schedule from the FPGA.
         :return: integer representing the FFT shift schedule for all the FFTs on this engine.
-        """
-        """
-        @return bit mask in the form of an unsigned integer
         """
         return self.host.registers.fft_shift.read()['data']['fft_shift']
 

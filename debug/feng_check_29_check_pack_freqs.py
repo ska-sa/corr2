@@ -14,11 +14,14 @@ import argparse
 
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
+from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Read a post-pack snapshot from an fengine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='host', type=str, action='store',
                     help='the host from which to read')
+parser.add_argument('--config', dest='config', type=str, action='store', default='',
+                    help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -38,6 +41,11 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
+# read the config
+config = utils.parse_ini_file(args.config)
+
+EXPECTED_FREQS = int(config['fengine']['n_chans'])
+
 # create the devices and connect to them
 fpga = HOSTCLASS(args.host)
 fpga.get_system_information()
@@ -56,17 +64,19 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGHUP, signal_handler)
 
+# determine the snap length
+snapdata = fpga.snapshots.wintime_snap_ss.read(offset=0)['data']
+SNAPLEN = len(snapdata['freqid0'])  # 64-bit (8-byte) words
+
 successes = 0
 while True:
-    FREQS = 4096
-    SNAPLEN = 8192  # 64-bit (8-byte) words
     WORDS_PER_FREQ = 256 / 2
     freqs_per_snap = SNAPLEN / WORDS_PER_FREQ
-    freqs_per_link = FREQS / 4
+    freqs_per_link = EXPECTED_FREQS / 4
     iterations = freqs_per_link / freqs_per_snap
     expected_freqs = []
     for ctr in range(0, 128, 4):
-        a = range(ctr, 4096, 128)
+        a = range(ctr, EXPECTED_FREQS, WORDS_PER_FREQ)
         expected_freqs.extend(a)
     for ctr in range(0, iterations):
         offset = ctr * SNAPLEN * 8
@@ -83,15 +93,17 @@ while True:
             this_feng = snapdata['fengid'][wordctr]
             this_time = snapdata['time36'][wordctr]
             if this_freq != expected_freqs[freq_offset + target_freq]:
-                print 'ctr', ctr
-                print 'offset', offset
-                print 'freq_offset', freq_offset
-                print 'wordctr', wordctr
-                print 'this_freq', this_freq
-                print 'expect', expected_freqs[freq_offset + target_freq]
-                print 'target_freq', target_freq
+                print 50*'#'
+                print 'Iteration ctr:', ctr
+                print 'Read offset:', offset
+                print 'Freq offset:', freq_offset
+                print 'Word ctr:', wordctr
+                print 'Snap freq:', this_freq
+                print 'Expected freq:', expected_freqs[freq_offset + target_freq]
+                print 'Target freq', target_freq
                 print expected_freqs
-                raise RuntimeError
+                print 50*'#'
+                raise RuntimeError('Something was wrong. Check the debug data above.')
     successes += 1
     print 'Run %d passes okay.' % successes
     sys.stdout.flush()

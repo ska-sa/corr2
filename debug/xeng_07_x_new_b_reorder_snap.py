@@ -44,24 +44,27 @@ xeng_fpga.get_system_information()
 # get the data
 if args.circular:
     xeng_fpga.registers.control.write(reord_snaptrigsel=0)
-    # # arm
+    # arm
     # for xengctr in range(0, 4):
-    #     for ctr in range(0, 2):
-    #         xeng_fpga.snapshots['snap_reord%d_%d_ss' % (ctr, xengctr)].arm()
-    # # trigger
-    # xeng_fpga.registers.control.write(reord_snaptrig='pulse')
+    for xengctr in range(0, 1):
+        for ctr in range(0, 2):
+            xeng_fpga.snapshots['snap_reord%d_%d_ss' % (ctr, xengctr)].arm()
+    # trigger
+    xeng_fpga.registers.control.write(reord_snaptrig='pulse')
     # read
     snapdata = []
-    for xengctr in range(0, 4):
-        d0 = xeng_fpga.snapshots['snap_reord0_%d_ss' % xengctr].read(circular_capture=True)['data']
-        # d1 = xeng_fpga.snapshots['snap_reord1_%d_ss' % xengctr].read(circular_capture=True)['data']
-        # d0.update(d1)
+    # for xengctr in range(0, 4):
+    for xengctr in range(0, 1):
+        d0 = xeng_fpga.snapshots['snap_reord%d_0_ss' % xengctr].read(circular_capture=True)['data']
+        d1 = xeng_fpga.snapshots['snap_reord%d_0_ss' % xengctr].read(circular_capture=True)['data']
+        d0.update(d1)
         snapdata.append(d0)
 else:
     if args.mantrigger:
         xeng_fpga.registers.control.write(reord_snaptrigsel=1)
         # arm
-        for xengctr in range(0, 4):
+        # for xengctr in range(0, 4):
+        for xengctr in range(0, 1):
             for ctr in range(0, 2):
                 xeng_fpga.snapshots['snap_reord%d_%d_ss' % (ctr, xengctr)].arm()
         # trigger

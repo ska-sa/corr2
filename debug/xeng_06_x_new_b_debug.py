@@ -88,7 +88,7 @@ if args.rstcnt:
 def get_fpga_data(fpga):
     data = {}
     for ctr in range(0, 4):
-        data['reocnt%i' % ctr] = fpga.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
+        #data['reocnt%i' % ctr] = fpga.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
         data['miss%i' % ctr] = fpga.registers['reord_missant%i' % ctr].read()['data']['reg']
         data['rcvcnt%i' % ctr] = fpga.registers['reordcnt_recv%i' % ctr].read()['data']['reg']
         data['ercv%i' % ctr] = fpga.registers['reorderr_recv%i' % ctr].read()['data']['reg']
@@ -101,13 +101,13 @@ reg_names = data.keys()
 reg_names.sort()
 
 import signal
-def signal_handler(sig, frame):
+def exit_gracefully(sig, frame):
     print sig, frame
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
     sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
+signal.signal(signal.SIGINT, exit_gracefully)
+signal.signal(signal.SIGHUP, exit_gracefully)
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
@@ -152,12 +152,11 @@ try:
                     start_pos += pos_increment
             scroller.draw_screen()
             last_refresh = time.time()
+        else:
+            time.sleep(0.1)
 except Exception, e:
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    scroll.screen_teardown()
+    exit_gracefully(None, None)
     raise
 
-# handle exits cleanly
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-scroll.screen_teardown()
+exit_gracefully(None, None)
 # end

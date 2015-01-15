@@ -8,7 +8,6 @@ Collect the output of a post-unpack snapshot and do an FFT on it.
 import argparse
 import numpy
 import matplotlib.pyplot as pyplot
-import os
 import time
 
 from casperfpga import utils as fpgautils
@@ -19,7 +18,9 @@ from corr2 import utils
 parser = argparse.ArgumentParser(description='Display the output of the quantiser on an f-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='comma-delimited list of hosts, or a corr2 config file')
+                    help='comma-delimited list of hosts, if you do not want all the fengine hosts in the config file')
+parser.add_argument('--config', dest='config', type=str, action='store', default='',
+                    help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
                     help='time at which to poll fengine data, in seconds')
@@ -45,10 +46,16 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts, section='fengine')
+# read the config
+config = utils.parse_ini_file(args.config)
 
+EXPECTED_FREQS = int(config['fengine']['n_chans'])
+
+# parse the hosts
+if args.hosts != '':
+    hosts = utils.parse_hosts(args.hosts)
+else:
+    hosts = utils.parse_hosts(config, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
@@ -75,17 +82,6 @@ if len(snapshot_missing) > 0:
 # fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 # import sys
 # sys.exit()
-
-# how to write the eq values!
-# creal = 4096 * [1]
-# cimag = 4096 * [0]
-# coeffs = 8192 * [0]
-# coeffs[0::2] = creal
-# coeffs[1::2] = cimag
-# import struct
-# ss = struct.pack('<8192h', *coeffs)
-# fpgas[0].write('eq0', ss, 0)
-# fpgas[0].write('eq1', ss, 0)
 
 
 def exit_gracefully(sig, frame):
@@ -130,15 +126,15 @@ while True:
         pyplot.interactive(True)
         pyplot.subplot(2,1,1)
         pyplot.cla()
-        pyplot.semilogy(numpy.abs(p0_data))
-        # pyplot.plot(numpy.abs(p0_data))
+        # pyplot.semilogy(numpy.abs(p0_data))
+        pyplot.plot(numpy.abs(p0_data))
 
         print numpy.mean(p0_data)
         print numpy.mean(p1_data)
         pyplot.subplot(2,1,2)
         pyplot.cla()
-        pyplot.semilogy(numpy.abs(p1_data))
-        # pyplot.plot(numpy.abs(p1_data))
+        # pyplot.semilogy(numpy.abs(p1_data))
+        pyplot.plot(numpy.abs(p1_data))
         pyplot.draw()
 
         powerdata = numpy.abs(p0_data)

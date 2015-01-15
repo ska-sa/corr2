@@ -204,9 +204,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-
         self.instrument.feng_set_eq_all()
-
         return 'ok',
 
     @request()
@@ -373,7 +371,7 @@ if __name__ == '__main__':
     server = Corr2Server('127.0.0.1', args.port)
     server.set_restart_queue(queue)
     server.start()
-    print 'started. Ctrl-C to exit.'
+    print 'started. Running somewhere in the ether... exit however you see fit.'
 
     try:
         while True:

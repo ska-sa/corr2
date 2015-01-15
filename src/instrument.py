@@ -42,8 +42,10 @@ class Instrument(object):
         self.synchronisation_epoch = time.time()
 
         if self.config_source is not None:
-            if not self._read_config():
-                raise RuntimeError('Failed to configure using %s' % self.config_source)
+            try:
+                self._read_config()
+            except:
+                raise
 
         LOGGER.info('%s %s created.' % (self.classname, self.descriptor))
 
@@ -54,12 +56,17 @@ class Instrument(object):
         """
         if self.config_source is None:
             raise RuntimeError('Running _read_config with no config source. Explosions.')
-        # file?
-        if self._read_config_file():
-            return True
-        # or is it a (host,port) tuple?
-        elif self._read_config_server():
-            return True
+        try:
+            # file?
+            self._read_config_file()
+            return
+        except (IOError, ValueError):
+            try:
+                # server?
+                self._read_config_server()
+                return
+            except:
+                raise
         raise RuntimeError('Supplied config_source %s is invalid' % self.config_source)
 
     def set_synch_time(self, new_synch_time):
