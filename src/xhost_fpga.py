@@ -52,7 +52,7 @@ class FpgaXHost(FpgaHost):
         """
         def get_gbe_data():
             data = {}
-            for ctr in range(0, 4):
+            for ctr in range(0, self.x_per_fpga):
                 #data['reocnt%i' % ctr] = self.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
                 data['miss%i' % ctr] = self.registers['reord_missant%i' % ctr].read()['data']['reg']
                 data['rcvcnt%i' % ctr] = self.registers['reordcnt_recv%i' % ctr].read()['data']['reg']
@@ -63,7 +63,7 @@ class FpgaXHost(FpgaHost):
         rxregs = get_gbe_data()
         time.sleep(1)
         rxregs_new = get_gbe_data()
-        for ctr in range(0, 4):
+        for ctr in range(0, self.x_per_fpga):
             if rxregs_new['rcvcnt%i' % ctr] <= rxregs['rcvcnt%i' % ctr]:
                 raise RuntimeError('X host %s is not receiving reordered data.' % self.host)
             if (rxregs_new['ercv%i' % ctr] > rxregs['ercv%i' % ctr]) or \
