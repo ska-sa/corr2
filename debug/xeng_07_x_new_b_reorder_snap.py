@@ -47,17 +47,14 @@ if args.circular:
     # arm
     # for xengctr in range(0, 4):
     for xengctr in range(0, 1):
-        for ctr in range(0, 2):
-            xeng_fpga.snapshots['snap_reord%d_%d_ss' % (ctr, xengctr)].arm()
+        xeng_fpga.snapshots['snap_reord%i_ss' % xengctr].arm()
     # trigger
     xeng_fpga.registers.control.write(reord_snaptrig='pulse')
     # read
     snapdata = []
     # for xengctr in range(0, 4):
     for xengctr in range(0, 1):
-        d0 = xeng_fpga.snapshots['snap_reord%d_0_ss' % xengctr].read(circular_capture=True)['data']
-        d1 = xeng_fpga.snapshots['snap_reord%d_0_ss' % xengctr].read(circular_capture=True)['data']
-        d0.update(d1)
+        d0 = xeng_fpga.snapshots['snap_reord%i_ss' % xengctr].read(circular_capture=True)['data']
         snapdata.append(d0)
 else:
     if args.mantrigger:
@@ -65,19 +62,19 @@ else:
         # arm
         # for xengctr in range(0, 4):
         for xengctr in range(0, 1):
-            for ctr in range(0, 2):
-                xeng_fpga.snapshots['snap_reord%d_%d_ss' % (ctr, xengctr)].arm()
+            xeng_fpga.snapshots['snap_reord%d_ss' % xengctr].arm()
         # trigger
         xeng_fpga.registers.control.write(reord_snaptrig='pulse')
         # read
         snapdata = []
-        for xengctr in range(0, 4):
-            d0 = xeng_fpga.snapshots['snap_reord0_%d_ss' % xengctr].read(arm=False)['data']
-            d1 = xeng_fpga.snapshots['snap_reord1_%d_ss' % xengctr].read(arm=False)['data']
-            d0.update(d1)
+        for xengctr in range(0, 1):
+            d0 = xeng_fpga.snapshots['snap_reord%d_ss' % xengctr].read(arm=False)['data']
             snapdata.append(d0)
     else:
-        xeng_fpga.registers.control.write(reord_snaptrigsel=0)
+        xeng_fpga.registers.control.write(reord_snaptrig=0)
+        xeng_fpga.registers.control.write(reord_snaptrigsel=1)
+        for xengctr in range(0, 1):
+            xeng_fpga.snapshots['snap_reord%d_ss' % xengctr].arm()
         snapdata = []
         if args.freqoffset > 0:
             off64 = 1024 * 8 * args.freqoffset
@@ -88,10 +85,9 @@ else:
         else:
             off64 = 0
             off32 = 0
+        xeng_fpga.registers.control.write(reord_snaptrigsel=0)
         for xengctr in range(0, 1):
-            d0 = xeng_fpga.snapshots['snap_reord0_%d_ss' % xengctr].read(offset=off64)['data']
-            d1 = xeng_fpga.snapshots['snap_reord1_%d_ss' % xengctr].read(offset=off32)['data']
-            d0.update(d1)
+            d0 = xeng_fpga.snapshots['snap_reord%d_ss' % xengctr].read(arm=False, offset=off64)['data']
             snapdata.append(d0)
 
 xeng_fpga.disconnect()

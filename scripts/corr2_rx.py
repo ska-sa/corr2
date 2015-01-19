@@ -142,7 +142,8 @@ class CorrRx(threading.Thread):
                         baseline_data = []
                         for baseline in range(0, 40):
                             # print 'baseline %i:' % baseline, ig['xeng_raw'][:, baseline]
-                            print 'f_100 bls_%i:' % baseline, ig['xeng_raw'][100, baseline]
+                            FREQ_TO_PLOT = 0
+                            print 'f_%i bls_%i:' % (FREQ_TO_PLOT, baseline), ig['xeng_raw'][FREQ_TO_PLOT, baseline]
                             # if baseline in [39, 9, 21, 33]:
                             if baseline in plot_baselines:
                                 bdata = ig['xeng_raw'][:, baseline]

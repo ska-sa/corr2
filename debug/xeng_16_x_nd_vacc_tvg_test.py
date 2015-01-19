@@ -87,28 +87,20 @@ def valid_select(fpga, valid_sel):
     fpga.registers.tvg_control.write(vacc=old_val)
 
 N_PULSES = (128 * 40)-1
+
+N_PULSES = (2**32)-1
+
 N_PER_GROUP = 40
 GROUP_PERIOD = 100
 
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.acc_len.write_int(1))
+# fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.acc_len.write_int(1))
 
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys0_vacc_tvg0_n_pulses.write_int(N_PULSES))
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys0_vacc_tvg0_n_per_group.write_int(N_PER_GROUP))
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys0_vacc_tvg0_group_period.write_int(GROUP_PERIOD))
+for ctr in range(0, 4):
+    fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers['sys%i_vacc_tvg0_n_pulses' % ctr].write_int(N_PULSES))
+    fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers['sys%i_vacc_tvg0_n_per_group' % ctr].write_int(N_PER_GROUP))
+    fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers['sys%i_vacc_tvg0_group_period' % ctr].write_int(GROUP_PERIOD))
 
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys1_vacc_tvg0_n_pulses.write_int(N_PULSES))
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys1_vacc_tvg0_n_per_group.write_int(N_PER_GROUP))
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys1_vacc_tvg0_group_period.write_int(GROUP_PERIOD))
-
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys2_vacc_tvg0_n_pulses.write_int(N_PULSES))
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys2_vacc_tvg0_n_per_group.write_int(N_PER_GROUP))
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys2_vacc_tvg0_group_period.write_int(GROUP_PERIOD))
-
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys3_vacc_tvg0_n_pulses.write_int(N_PULSES))
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys3_vacc_tvg0_n_per_group.write_int(N_PER_GROUP))
-fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.sys3_vacc_tvg0_group_period.write_int(GROUP_PERIOD))
-
-fpgautils.threaded_fpga_operation(c.xhosts, 10, valid_select, 1)
+fpgautils.threaded_fpga_operation(c.xhosts, 10, valid_select, 0)
 fpgautils.threaded_fpga_operation(c.xhosts, 10, enable_pulses, 0)
 fpgautils.threaded_fpga_operation(c.xhosts, 10, reset, 0)
 fpgautils.threaded_fpga_operation(c.xhosts, 10, reset, 1)
@@ -119,10 +111,12 @@ print fpgautils.threaded_fpga_operation(c.xhosts, 10,
                                         lambda fpga_:
                                         decode_vacc_ctrl(fpga_.registers.tvg_control.read()['data']['vacc']))
 
-fpgautils.threaded_fpga_operation(c.xhosts, 10, enable_pulses, 1)
+# fpgautils.threaded_fpga_operation(c.xhosts, 10, enable_pulses, 1)
 
-print ''
-print fpgautils.threaded_fpga_operation(c.xhosts, 10,
-                                        lambda fpga_:
-                                        decode_vacc_ctrl(fpga_.registers.tvg_control.read()['data']['vacc']))
-
+# print ''
+# print fpgautils.threaded_fpga_operation(c.xhosts, 10,
+#                                         lambda fpga_:
+#                                         decode_vacc_ctrl(fpga_.registers.tvg_control.read()['data']['vacc']))
+#
+# fpgautils.threaded_fpga_operation(c.xhosts, 10, valid_select, 0)
+# fpgautils.threaded_fpga_operation(c.xhosts, 10, disable_counter)

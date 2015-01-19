@@ -1,160 +1,143 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# pylint: disable-msg=C0103
-# pylint: disable-msg=C0301
-"""
-View the status of a given xengine.
+import casperfpga
+import struct
 
-Created on Fri Jan  3 10:40:53 2014
+for host in ['roach02095e','roach020960','roach020a0b','roach020927','roach020919','roach020925','roach02091a','roach020923']:
 
-@author: paulp
-"""
-import sys
+
+
+
+f = casperfpga.KatcpFpga('roach020923')
+# f = casperfpga.KatcpFpga('roach02095e')
+f.get_system_information()
+
+not_done = True
+attctr = 0
+
+mem_depth = 1024
+
+def par_check(num, bits):
+    par = 0
+    for bitct in range(0, bits):
+        thisbit = (num >> bitct) & 0x01
+        par ^= thisbit
+    par2 = len(bin(num).replace('0b', '').replace('0', '')) % 2
+    if par2 != par:
+        print ''
+        print num, bin(num), len(bin(num)), bits, par, par2
+        raise RuntimeError
+    return par
+
+print 4, par_check(4, 64)
+print 5, par_check(5, 64)
+
+# 'bram_qdr0' 'qdr0_memory'
+
+# # qdr
+# for ctr in range(0, mem_depth):
+#     d = f.read('qdr0_memory', 8, ctr*8)
+#     num = struct.unpack('>2L', d)
+#     num_0 = num[0]
+#     num_1 = num[1]
+#     num = (num[1] << 32) | num[0]
+#     for foo in range(0, 5):
+#         d2 = f.read('qdr0_memory', 8, ctr*8)
+#         #num2 = struct.unpack('>Q', d2)[0]
+#         num2 = struct.unpack('>2L', d)
+#         num2 = (num2[1] << 32) | num2[0]
+#         assert num2 == num
+#     num_masked = num & ((2**60)-1)
+#     print ctr, num, num_masked, par_check(num, 63), bin(num_0), bin(num_1)
+
+# # bram
+# for ctr in range(0, mem_depth):
+#     d = f.read('bram_qdr0', 8, ctr*8)
+#     num = struct.unpack('>Q', d)[0]
+#     for foo in range(0, 5):
+#         d2 = f.read('bram_qdr0', 8, ctr*8)
+#         num2 = struct.unpack('>Q', d2)[0]
+#         assert num2 == num
+#     num_masked = num & ((2**63)-1)
+#     print ctr, num, num_masked, len(bin(num)), par_check(num, 64)
+
+attctr = 0
+
 import time
-import argparse
 
-from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
-import casperfpga.scroll as scroll
-from corr2 import utils
+while True:
 
-parser = argparse.ArgumentParser(description='Display reorder debug info on the xengines.',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hosts', type=str, action='store',
-                    help='comma-delimited list of x-engine hosts')
-parser.add_argument('-p', '--polltime', dest='polltime', action='store',
-                    default=1, type=int,
-                    help='time at which to poll xengine data, in seconds')
-parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
-                    default=False,
-                    help='reset all counters at script startup')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                    help='log level to use, default None, options INFO, DEBUG, ERROR')
-args = parser.parse_args()
+    time.sleep(0.1)
 
-if args.log_level != '':
-    import logging
-    log_level = args.log_level.strip()
-    try:
-        logging.basicConfig(level=eval('logging.%s' % log_level))
-    except AttributeError:
-        raise RuntimeError('No such log level: %s' % log_level)
+    print 'attempt %i' % attctr
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
+    d = f.snapshots.sys3_vacc0_qv_sv_ss.read(man_trig=True)['data']
 
-hosts = utils.parse_hosts(args.hosts, section='xengine')
-if len(hosts) == 0:
-    raise RuntimeError('No good carrying on without hosts.')
+    for ctr in range(0, len(d['dv'])):
 
-# create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
-fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
-registers_missing = []
-max_hostname = -1
-for fpga_ in fpgas:
-    max_hostname = max(len(fpga_.host), max_hostname)
-    freg_error = False
-    for necreg in ['reordcnt_spec0',
-                   'reord_missant0',
-                   'reordcnt_recv0',
-                   'reorderr_recv0',
-                   'reorderr_timeout0',
-                   'reorderr_disc0', ]:
-        if necreg not in fpga_.registers.names():
-            freg_error = True
-            continue
-    if freg_error:
-        registers_missing.append(fpga_.host)
-        continue
-if len(registers_missing) > 0:
-    print 'The following hosts are missing necessary registers. Bailing.'
-    print registers_missing
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    raise RuntimeError
+        dataword = (d['datamid'][ctr] << 32) | d['datalsb'][ctr]
+        parbit = dataword >> 63
 
-if args.rstcnt:
-    fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse'))
+        for key in d.keys():
+            print '%s(%i)' % (key, d[key][ctr]),
 
-def get_fpga_data(fpga):
-    data = {}
-    for ctr in range(0, 1):
-        data['reocnt%i' % ctr] = fpga.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
-        data['miss%i' % ctr] = fpga.registers['reord_missant%i' % ctr].read()['data']['reg']
-        data['rcvcnt%i' % ctr] = fpga.registers['reordcnt_recv%i' % ctr].read()['data']['reg']
-        data['ercv%i' % ctr] = fpga.registers['reorderr_recv%i' % ctr].read()['data']['reg']
-        data['etim%i' % ctr] = fpga.registers['reorderr_timeout%i' % ctr].read()['data']['reg']
-        data['edisc%i' % ctr] = fpga.registers['reorderr_disc%i' % ctr].read()['data']['reg']
-    return data
+        softparerr = par_check(dataword, 64)
 
-data = get_fpga_data(fpgas[0])
-reg_names = data.keys()
-reg_names.sort()
+        print 'dataword(%i) softERR(%i) parbit(%i)' % (dataword, softparerr, parbit),
 
-import signal
-def signal_handler(sig, frame):
-    print sig, frame
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    scroll.screen_teardown()
-    sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
+        print ''
 
-# set up the curses scroll screen
-scroller = scroll.Scroll(debug=False)
-scroller.screen_setup()
-# main program loop
-STARTTIME = time.time()
-last_refresh = STARTTIME - 3
-try:
-    while True:
-        # get key presses from ncurses
-        keypress, character = scroller.on_keypress()
-        if keypress == -1:
-            break
-        elif keypress > 0:
-#            if character == 'c':
-#                for f in ffpgas:
-#                    f.reset_counters()
-            scroller.draw_screen()
-        if time.time() > last_refresh + args.polltime:
-            scroller.clear_buffer()
-            scroller.add_line('Polling %i xengine%s every %s - %is elapsed.' %
-                (len(fpgas), '' if len(fpgas) == 1 else 's',
-                'second' if args.polltime == 1 else ('%i seconds' % args.polltime),
-                time.time() - STARTTIME), 0, 0, absolute=True)
-            start_pos = 20
-            pos_increment = 11
-            scroller.add_line('Host', 0, 1, absolute=True)
-            for reg in reg_names:
-                scroller.add_line(new_line=reg.rjust(9), xpos=start_pos, ypos=1, absolute=True)
-                start_pos += pos_increment
-            scroller.set_ypos(newpos=2)
-            scroller.set_ylimits(ymin=2)
-            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, get_fpga_data)
-            for ctr, fpga in enumerate(fpgas):
-                fpga_data = all_fpga_data[fpga.host]
-                scroller.add_line(fpga.host)
-                start_pos = 20
-                pos_increment = 11
-                for reg in reg_names:
-                    regval = '%9d' % fpga_data[reg]
-                    scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
-                    start_pos += pos_increment
-            scroller.draw_screen()
-            last_refresh = time.time()
-except Exception, e:
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    scroll.screen_teardown()
-    raise
+        # if d['datamsb'][ctr] == 128:
+        #     assert softparerr == 0
+        #     assert d['parerr'][ctr] == 1
+        # else:
+        #     assert d['datamsb'][ctr] == 0
+        #     assert softparerr == d['parerr'][ctr]
+        #     assert softparerr == 0
 
-# handle exits cleanly
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-scroll.screen_teardown()
-# end
+        assert d['datamsb'][ctr] == 0
+        assert softparerr == d['parerr'][ctr]
+        assert softparerr == 0
+
+
+        # if d['parerr'][ctr] == 1 and d['dv'][ctr] == 0:
+        #     raise RuntimeError
+
+
+
+
+
+        attctr += 1
+
+
+# while not_done:
+#     print 'attempt', attctr
+#     d = f.snapshots.sys3_vacc0_qv_sv2_ss.read(man_trig=True, man_valid=True)['data']
+#     for ctr in range(0, len(d[d.keys()[0]])):
+#         if d['parerr'][ctr] == 1:
+#             not_done = False
+#             print 'got a parity error'
+#     attctr += 1
+#
+# raw = f.read('sys3_vacc0_qv_sv2_ss_bram', 32768)
+#
+# raw_bytes = struct.unpack('>32768B', raw)
+#
+# for byte in range(0, len(raw_bytes), 16):
+#     # for bytectr in range(0, 16):
+#     #     print raw_bytes[byte + bytectr],
+#     # print ''
+#     parerr = raw_bytes[byte + 15] & 0b1
+#     dv = (raw_bytes[byte + 15] >> 1) & 0b1
+#     address = (raw_bytes[byte + 15] >> 2) & 0b111111
+#     address |= raw_bytes[byte + 14] & 0b1111111
+#
+#     data = (raw_bytes[byte + 14] >> 7) & 0b1
+#     data |= raw_bytes[byte + 13] << 1
+#     data |= raw_bytes[byte + 12] << 9
+#     data |= raw_bytes[byte + 11] << 17
+#     data |= raw_bytes[byte + 10] << 25
+#     data |= raw_bytes[byte + 9] << 33
+#     data |= raw_bytes[byte + 8] << 41
+#     data |= raw_bytes[byte + 7] << 49
+#     data |= raw_bytes[byte + 6] << 57
+#
+#     print parerr, dv, address, data
