@@ -141,14 +141,14 @@ class FxCorrelator(Instrument):
             # subscribe the f-engines to the multicast groups
             self._fengine_subscribe_to_multicast()
 
-        # reset all counters on fhosts and xhosts
-        self.feng_clear_status_all()
-        self.xeng_clear_status_all()
-
-        # check to see if the f engines are receiving all their data
-        self._feng_check_rx()
-
         if program and True:
+            # reset all counters on fhosts and xhosts
+            self.feng_clear_status_all()
+            self.xeng_clear_status_all()
+
+            # check to see if the f engines are receiving all their data
+            self._feng_check_rx()
+
             # start f-engine TX
             self.logger.info('Starting f-engine datastream')
             for f in self.fhosts:
@@ -167,6 +167,13 @@ class FxCorrelator(Instrument):
         self.feng_clear_status_all()
         self.xeng_clear_status_all()
 
+    def qdr_calibrate_SERIAL(self):
+        for hostlist in [self.fhosts, self.xhosts]:
+            for host in hostlist:
+                print host.host
+                for qdr in host.qdrs:
+                    qdr.qdr_cal(fail_hard=False, verbosity=2)
+
     def qdr_calibrate(self):
         # cal the QDR specifically
         def _qdr_cal(fpga):
@@ -180,11 +187,21 @@ class FxCorrelator(Instrument):
             self.logger.info('FPGA %s QDR cal results:' % fpga)
             for qdr, qdrres in result.items():
                 self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+
+
         results = fpgautils.threaded_fpga_operation(self.xhosts, 30, _qdr_cal)
         for fpga, result in results.items():
             self.logger.info('FPGA %s QDR cal results:' % fpga)
             for qdr, qdrres in result.items():
                 self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+
+        # for host in self.fhosts:
+        #     for qdr in host.qdrs:
+        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
+        #
+        # for host in self.xhosts:
+        #     for qdr in host.qdrs:
+        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
 
     def _feng_check_rx(self, max_waittime=30):
         """
@@ -606,7 +623,7 @@ class FxCorrelator(Instrument):
         Get the dump time currently being used.
         :return:
         """
-        return self.sample_rate_hz / (self.xeng_accumulation_len * self.accumulation_len * self.n_chans * 2)
+        return (self.xeng_accumulation_len * self.accumulation_len * self.n_chans * 2.0) / self.sample_rate_hz
 
     def xeng_set_acc_len(self, acc_len=None):
         """
@@ -617,7 +634,8 @@ class FxCorrelator(Instrument):
         if acc_len is not None:
             self.accumulation_len = acc_len
         THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.acc_len.write_int(self.accumulation_len))
-        self.logger.info('Set accumulation length %d system-wide (%.2f seconds)' % (self.accumulation_len, self.xeng_get_acc_time()))
+        self.logger.info('Set accumulation length %d system-wide (%.2f seconds)' % (self.accumulation_len,
+                                                                                    self.xeng_get_acc_time()))
 
     def xeng_get_acc_len(self):
         """
