@@ -36,6 +36,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 ARP_SLEEP_TIME = 10
 
+
 class FxCorrelator(Instrument):
     """
     A generic FxCorrelator composed of fengines that channelise antenna inputs and
@@ -61,12 +62,14 @@ class FxCorrelator(Instrument):
         self.katcp_port = None
         self.f_per_fpga = None
         self.x_per_fpga = None
-        self.spead_tx = None
         self.accumulation_len = None
         self.xeng_accumulation_len = None
         self.xeng_tx_destination = None
         self.meta_destination = None
         self.fengine_sources = None
+
+        self.spead_tx = None
+        self.spead_meta_ig = None
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
@@ -107,8 +110,7 @@ class FxCorrelator(Instrument):
             for f in self.fhosts:
                 ftups.append((f, f.boffile))
             fpgautils.program_fpgas(ftups, None, 15)
-              #  this does not wait for the programming to complete, so it won't
-              #  get all the system information
+            # this does not wait for the programming to complete, so it won't get all the system information
 
         # load information from the running boffiles
         self.logger.info('Loading design information')
@@ -167,12 +169,12 @@ class FxCorrelator(Instrument):
         self.feng_clear_status_all()
         self.xeng_clear_status_all()
 
-    def qdr_calibrate_SERIAL(self):
-        for hostlist in [self.fhosts, self.xhosts]:
-            for host in hostlist:
-                print host.host
-                for qdr in host.qdrs:
-                    qdr.qdr_cal(fail_hard=False, verbosity=2)
+    # def qdr_calibrate_SERIAL(self):
+    #     for hostlist in [self.fhosts, self.xhosts]:
+    #         for host in hostlist:
+    #             print host.host
+    #             for qdr in host.qdrs:
+    #                 qdr.qdr_cal(fail_hard=False, verbosity=2)
 
     def qdr_calibrate(self):
         # cal the QDR specifically
@@ -187,14 +189,11 @@ class FxCorrelator(Instrument):
             self.logger.info('FPGA %s QDR cal results:' % fpga)
             for qdr, qdrres in result.items():
                 self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
-
-
         results = fpgautils.threaded_fpga_operation(self.xhosts, 30, _qdr_cal)
         for fpga, result in results.items():
             self.logger.info('FPGA %s QDR cal results:' % fpga)
             for qdr, qdrres in result.items():
                 self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
-
         # for host in self.fhosts:
         #     for qdr in host.qdrs:
         #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
@@ -206,7 +205,7 @@ class FxCorrelator(Instrument):
     def _feng_check_rx(self, max_waittime=30):
         """
         Check that the f-engines are receiving data correctly
-        :param waittime:
+        :param max_waittime:
         :return:
         """
         self.logger.info('Checking F hosts are receiving data...')
@@ -223,6 +222,16 @@ class FxCorrelator(Instrument):
             eq_table[fhost.host] = fhost.get_source_eq_all()
         return eq_table
 
+    def feng_get_eq_list(self):
+        """
+        Return the EQ arrays in a list, ordered by source number
+        :return:
+        """
+        eq_list = []
+        for source in self.fengine_sources:
+            eq_list.append(source.get_eq())
+        return eq_list
+
     def feng_set_eq_all(self, complex_gain_list=None):
         """
         Set the EQ gain for all sources.
@@ -231,8 +240,24 @@ class FxCorrelator(Instrument):
         """
         self.logger.info('Setting EQ on fengines...')
         THREADED_FPGA_FUNC(self.fhosts, 10, 'set_source_eq_all', complex_gain_list)
+        if self.spead_meta_ig is not None:
+            for source_ctr, eqs in enumerate(self.feng_get_eq_list()):
+                try:
+                    eqlen = len(eqs)
+                except TypeError:
+                    eqs = [eqs]
+                    eqlen = 1
+                self.spead_meta_ig.add_item(name='eq_coef_%s' % self.fengine_sources[source_ctr].name,
+                                            id=0x1400 + source_ctr,
+                                            description='The unitless per-channel digital scaling factors implemented '
+                                                        'prior to requantisation, post-FFT, for input %s. '
+                                                        'Complex number real,imag 32 bit integers.' %
+                                                        self.fengine_sources[source_ctr].name,
+                                            shape=[eqlen, 2],
+                                            fmt=spead.mkfmt(('u',32)),
+                                            init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for eq_coeff in eqs])
+            self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
         self.logger.info('done.')
-        #TODO: issue SPEAD metadata whenever EQs are changed.
 
     def feng_set_fft_shift_all(self, shift_value=None):
         """
@@ -247,6 +272,9 @@ class FxCorrelator(Instrument):
         self.logger.info('Setting FFT shift to %i on all f-engine boards...' % shift_value)
         THREADED_FPGA_FUNC(self.fhosts, 10, 'set_fft_shift', shift_value)
         self.logger.info('done.')
+        if self.spead_meta_ig is not None:
+            self.spead_meta_ig['fft_shift'] = int(self.configd['fengine']['fft_shift'])
+            self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
         return shift_value
 
     def feng_get_fft_shift_all(self):
@@ -280,7 +308,7 @@ class FxCorrelator(Instrument):
 
         # where does the f-engine data go?
         self.fengine_output = DataSource.from_mcast_string(self.configd['fengine']['destination_mcast_ips'])
-        self.fengine_output.name = 'fengine_destination'
+        self.fengine_output.name='fengine_destination'
         fdest_ip = tengbe.str2ip(self.fengine_output.ip)
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip))
 
@@ -362,7 +390,7 @@ class FxCorrelator(Instrument):
         self.xeng_set_acc_len()
 
         # set up default destination ip and port
-        self.set_stream_destination(issue_meta=False)
+        self.set_stream_destination()
         self.set_meta_destination()
 
         # set up 10gbe cores
@@ -516,20 +544,18 @@ class FxCorrelator(Instrument):
         assert current_ftime & 0xfff == 0, 'Bottom 12 bits of timestamp from f-engine are not zero?!'
         self.logger.info('\tCurrent f engine time: %i' % current_ftime)
 
-        # TODO - Sort out of the sampling freq from config, not hard coded
-        # set that time on the xengines
-        ldtime = current_ftime + (vacc_load_time * 1712001024)
+        # use that time to set the vacc load time on the xengines
+        ldtime = current_ftime + (vacc_load_time * self.sample_rate_hz)
         self.logger.info('\tApplying load time: %i' % ldtime)
         THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_set_loadtime', ldtime)
 
+        # read the current arm and load counts
         def print_vacc_statuses(vstatus):
             self.logger.info('VACC statii:')
             for host in self.xhosts:
                 self.logger.info('\t%s:' % host.host)
                 for ctr, status in enumerate(vstatus[host.host]):
                     self.logger.info('\t\t%i: %s' % (ctr, status))
-
-        # read the current arm and load counts
         vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
         for host in self.xhosts:
             for status in vacc_status[host.host]:
@@ -595,9 +621,7 @@ class FxCorrelator(Instrument):
         vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
         for host in self.xhosts:
             for status in vacc_status[host.host]:
-                # TODO - reenable error checking once the QDRs are sorted out
-                # if (status['errors'] > 0) or (status['count'] <= 0):
-                if status['count'] <= 0:
+                if (status['errors'] > 0) or (status['count'] <= 0):
                     self.logger.error('\tErrors > 0 or counts <= 0. Que pasa?')
                     print_vacc_statuses(vacc_status)
                     raise RuntimeError
@@ -609,15 +633,17 @@ class FxCorrelator(Instrument):
         :param acc_time_s: new dump time, in seconds
         :return:
         """
-        # calculate the acc_len to write for the required time
         if use_xeng_sim:
-            raise RuntimeError
+            raise RuntimeError('That\'s not an option anymore.')
         else:
-            # acc_time = sample_clock / (xeng_acc_len * acc_len * n_chans * 2.0)
             new_acc_len = (self.sample_rate_hz * acc_time_s) / (self.xeng_accumulation_len * self.n_chans * 2.0)
             new_acc_len = round(new_acc_len)
             self.logger.info('New accumulation time %.2f becomes accumulation length %d' % (acc_time_s, new_acc_len))
             self.xeng_set_acc_len(new_acc_len)
+        if self.spead_meta_ig is not None:
+            self.spead_meta_ig['n_accs'] = self.accumulation_len * self.xeng_accumulation_len
+            self.spead_meta_ig['int_time'] = self.xeng_get_acc_time()
+            self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
 
     def xeng_get_acc_time(self):
         """
@@ -637,14 +663,11 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.acc_len.write_int(self.accumulation_len))
         self.logger.info('Set accumulation length %d system-wide (%.2f seconds)' % (self.accumulation_len,
                                                                                     self.xeng_get_acc_time()))
-        # TODO: REISSUE metadata whenever anything related to timing changes!
+        if self.spead_meta_ig is not None:
+            self.spead_meta_ig['n_accs'] = self.accumulation_len * self.xeng_accumulation_len
+            self.spead_meta_ig['int_time'] = self.xeng_get_acc_time()
+            self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
 
-    def xeng_get_acc_len(self):
-        """
-        What is the current accumulation length set to on the vector accumulators?
-        :return:
-        """
-        return self.accumulation_len
 
     #################################
     # Configuration information     #
@@ -659,9 +682,13 @@ class FxCorrelator(Instrument):
         if len(newlist) != len(self.fengine_sources):
             self.logger.error('Number of supplied source labels does not match number of configured sources.')
             return False
+        metalist = []
         for ctr, source in enumerate(self.fengine_sources):
             source.name = newlist[ctr]
-        return True
+            metalist.append((source.name, ctr))
+        if self.spead_meta_ig is not None:
+            self.spead_meta_ig['input_labelling'] = numpy.array(metalist)
+            self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
 
     def get_labels(self):
         """
@@ -691,7 +718,7 @@ class FxCorrelator(Instrument):
             self.logger.error('One or more bitstream files not found.')
             raise IOError('One or more bitstream files not found.')
 
-        # TODO: Load config values from the bitstream meta information
+        # TODO: Load config values from the bitstream meta information - f per fpga, x per fpga, etc
 
         self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
@@ -700,6 +727,7 @@ class FxCorrelator(Instrument):
         self.accumulation_len = int(self.configd['xengine']['accumulation_len'])
         self.xeng_accumulation_len = int(self.configd['xengine']['xeng_accumulation_len'])
         self.n_chans = int(self.configd['fengine']['n_chans'])
+        self.n_antennas = int(self.configd['fengine']['n_antennas'])
 
         self.set_stream_destination(self.configd['xengine']['output_destination_ip'],
                                     int(self.configd['xengine']['output_destination_port']))
@@ -708,6 +736,7 @@ class FxCorrelator(Instrument):
 
         # get this from the running x-engines?
         self.xeng_clk = int(self.configd['xengine']['x_fpga_clock'])
+        self.xeng_outbits = int(self.configd['xengine']['xeng_outbits'])
 
         # the f-engines have this many 10Gbe ports per f-engine unit of operation
         self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
@@ -752,10 +781,10 @@ class FxCorrelator(Instrument):
             new_source = FengineSource.from_mcast_string(address)
             new_source.name = source_names[counter]
             new_source.source_number = source_ctr
+            assert new_source.iprange == self.ports_per_fengine, \
+                'F-engines should be receiving from %d streams.' % self.ports_per_fengine
             self.fengine_sources.append(new_source)
             source_ctr += 1
-        assert self.fengine_sources[0].iprange == self.ports_per_fengine, \
-            'F-engines should be receiving from %d streams.' % self.ports_per_fengine
 
         # assign sources to fhosts
         self.logger.info('Assigning data sources to f-engines...')
@@ -767,6 +796,7 @@ class FxCorrelator(Instrument):
                 assert _source.iprange == self.fengine_sources[0].iprange, \
                     'All f-engines should be receiving from %d streams.' % self.ports_per_fengine
                 _source.eq_poly = complex(int(self.configd['fengine']['eq_poly_%i' % source_ctr]))
+                _source.host = fhost
                 fhost.add_source(_source)
                 self.logger.info('\t\t%s' % _source)
                 source_ctr += 1
@@ -789,7 +819,7 @@ class FxCorrelator(Instrument):
         """
         raise NotImplementedError('Still have to do this')
 
-    def set_stream_destination(self, txip_str=None, txport=None, issue_meta=True):
+    def set_stream_destination(self, txip_str=None, txport=None):
         """
         Set destination for output of fxcorrelator.
         :param txip_str: A dotted-decimal string representation of the IP address. e.g. '1.2.3.4'
@@ -812,8 +842,6 @@ class FxCorrelator(Instrument):
         except AttributeError:
             self.logger.warning('Set SPEAD stream destination called, but devices NOT written! Have they been created?')
         self.xeng_tx_destination = (tengbe.ip2str(txip), txport)
-        if issue_meta:
-            self.spead_issue_meta()
 
     def set_meta_destination(self, txip_str=None, txport=None):
         """
@@ -831,18 +859,8 @@ class FxCorrelator(Instrument):
         if txport is None or txip_str is None:
             self.logger.error('Cannot set part of meta destination to None - %s:%d', txip_str, txport)
             raise RuntimeError('Cannot set part of meta destination to None - %s:%d', txip_str, txport)
-        self.logger.info('Setting meta destination to %s:%d', txip_str, txport)
-        # make a new SPEAD transmitter
-        del self.spead_tx
-        self.spead_tx = spead.Transmitter(spead.TransportUDPtx(txip_str, txport))
-        # update the multicast socket option
-        mcast_interface = self.configd['xengine']['multicast_interface_address']
-        self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_IF,
-                                            socket.inet_aton(mcast_interface))
-        # self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
-        #                                     socket.inet_aton(txip_str) + socket.inet_aton(mcast_interface))
-        # and update the meta destination
         self.meta_destination = (txip_str, txport)
+        self.logger.info('Setting meta destination to %s:%d', txip_str, txport)
 
     def tx_start(self, issue_spead=True):
         """
@@ -873,14 +891,13 @@ class FxCorrelator(Instrument):
         :return:
         """
         # TODO - nants vs number of inputs?
-        n_ants = 4
-        assert len(self.fengine_sources)/2 == n_ants
+        assert len(self.fengine_sources)/2 == self.n_antennas
         order1 = []
         order2 = []
-        for ctr1 in range(n_ants):
+        for ctr1 in range(self.n_antennas):
             # print 'ctr1(%d)' % ctr1
-            for ctr2 in range(int(n_ants/2), -1, -1):
-                temp = (ctr1 - ctr2) % n_ants
+            for ctr2 in range(int(self.n_antennas/2), -1, -1):
+                temp = (ctr1 - ctr2) % self.n_antennas
                 # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
                 if ctr1 >= temp:
                     order1.append((temp, ctr1))
@@ -893,7 +910,6 @@ class FxCorrelator(Instrument):
             source_names.append(source.name)
         rv = []
         for baseline in baseline_order:
-            # print baseline
             rv.append((source_names[baseline[0] * 2],       source_names[baseline[1] * 2]))
             rv.append((source_names[baseline[0] * 2 + 1],   source_names[baseline[1] * 2 + 1]))
             rv.append((source_names[baseline[0] * 2],       source_names[baseline[1] * 2 + 1]))
@@ -905,93 +921,87 @@ class FxCorrelator(Instrument):
         All FxCorrelators issued SPEAD in the same way, with tweakings that are implemented by the child class.
         :return: <nothing>
         """
-        # bail if we haven't set meta destination yet
-        if self.spead_tx is None:
-            self.logger.warning('Called spead_issue_meta but no transmitter instantiated. '
-                                'Your metadata has NOT gone out!')
-            return
         if self.meta_destination is None:
-            self.logger.warning('Called spead_issue_meta but no meta destination set. '
-                                'Your metadata has NOT gone out!')
+            logging.info('SPEAD meta destination is still unset, NOT sending metadata at this time.')
             return
+        # make a new SPEAD transmitter
+        del self.spead_tx, self.spead_meta_ig
+        self.spead_tx = spead.Transmitter(spead.TransportUDPtx(*self.meta_destination))
+        # update the multicast socket option
+        mcast_interface = self.configd['xengine']['multicast_interface_address']
+        self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_IF,
+                                            socket.inet_aton(mcast_interface))
+        # self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
+        #                                     socket.inet_aton(txip_str) + socket.inet_aton(mcast_interface))
+        # make the item group we're going to use
+        self.spead_meta_ig = spead.ItemGroup()
 
+        self.spead_meta_ig.add_item(name='adc_sample_rate', id=0x1007,
+                                    description='The expected ADC sample rate (samples per second) of incoming data.',
+                                    shape=[], fmt=spead.mkfmt(('u', 64)),
+                                    init_val=self.sample_rate_hz)
 
-        # make a new Item group
-        spead_ig = spead.ItemGroup()
+        self.spead_meta_ig.add_item(name='n_bls', id=0x1008,
+                                    description='Number of baselines in the data product.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=len(self.xeng_get_baseline_order()))
 
-        sample_rate = int(self.configd['FxCorrelator']['sample_rate_hz'])
-        spead_ig.add_item(name='adc_sample_rate', id=0x1007,
-                          description='The expected ADC sample rate (samples per second) of incoming data.',
-                          shape=[], fmt=spead.mkfmt(('u', 64)),
-                          init_val=sample_rate)
+        self.spead_meta_ig.add_item(name='n_chans', id=0x1009,
+                                    description='Number of frequency channels in an integration.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=self.n_chans)
 
-        #n_ants = int(self.configd['fengine']['n_ants'])
-        # TODO
-        n_ants = 4
-        n_bls = (n_ants * (n_ants + 1) / 2) * 4
-        spead_ig.add_item(name='n_bls', id=0x1008,
-                          description='Number of baselines in the data product.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=n_bls)
+        self.spead_meta_ig.add_item(name='n_ants', id=0x100A,
+                                    description='The number of antennas in the system.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=self.n_antennas)
 
-        spead_ig.add_item(name='n_chans', id=0x1009,
-                          description='Number of frequency channels in an integration.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=self.n_chans)
+        self.spead_meta_ig.add_item(name='n_xengs', id=0x100B,
+                                    description='The number of x-engines in the system.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=(len(self.xhosts) * self.x_per_fpga))
 
-        # TODO - the number of inputs, cos antennas can be single or multiple pol?
-        # f-engines now have only got inputs, they don't know what or from where.
-        spead_ig.add_item(name='n_ants', id=0x100A,
-                          description='The number of antennas in the system.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=n_ants)
-
-        spead_ig.add_item(name='n_xengs', id=0x100B,
-                          description='The number of x-engines in the system.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=(len(self.xhosts) * self.x_per_fpga))
-
-        spead_ig.add_item(name='bls_ordering', id=0x100C,
-                          description='The baseline ordering in the output data product.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=numpy.array([baseline for baseline in self.xeng_get_baseline_order()]))
+        self.spead_meta_ig.add_item(name='bls_ordering', id=0x100C,
+                                    description='The baseline ordering in the output data product.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=numpy.array([baseline for baseline in self.xeng_get_baseline_order()]))
 
         # spead_ig.add_item(name='crosspol_ordering', id=0x100D,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
-        #TODO: need to add this back:
-        # spead_ig.add_item(name='input_labelling', id=0x100E,
-        #                        description='',
-        #                        init_val=self.configd['fengine']['source_names'])
+        metalist = []
+        for ctr, source in enumerate(self.fengine_sources):
+            metalist.append((source.name, ctr))
+        self.spead_meta_ig.add_item(name='input_labelling', id=0x100E,
+                                    description='input labels and numbers',
+                                    init_val=numpy.array(metalist))
 
         # spead_ig.add_item(name='n_bengs', id=0x100F,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
-        spead_ig.add_item(name='center_freq', id=0x1011,
-                          description='The on-sky centre-frequency.',
-                          shape=[], fmt=spead.mkfmt(('f', 64)),
-                          init_val=int(self.configd['fengine']['true_cf']))
+        self.spead_meta_ig.add_item(name='center_freq', id=0x1011,
+                                    description='The on-sky centre-frequency.',
+                                    shape=[], fmt=spead.mkfmt(('f', 64)),
+                                    init_val=int(self.configd['fengine']['true_cf']))
 
-        spead_ig.add_item(name='bandwidth', id=0x1013,
-                          description='The input (analogue) bandwidth of the system.',
-                          shape=[], fmt=spead.mkfmt(('f', 64)),
-                          init_val=int(self.configd['fengine']['bandwidth']))
+        self.spead_meta_ig.add_item(name='bandwidth', id=0x1013,
+                                    description='The input (analogue) bandwidth of the system.',
+                                    shape=[], fmt=spead.mkfmt(('f', 64)),
+                                    init_val=int(self.configd['fengine']['bandwidth']))
 
-        number_accs = self.accumulation_len * self.xeng_accumulation_len
-        spead_ig.add_item(name='n_accs', id=0x1015,
-                          description='The number of spectra that are accumulated per X-engine dump.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=number_accs)
+        self.spead_meta_ig.add_item(name='n_accs', id=0x1015,
+                                    description='The number of spectra that are accumulated per X-engine dump.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=self.accumulation_len * self.xeng_accumulation_len)
 
-        int_time = self.xeng_get_acc_time()
-        spead_ig.add_item(name='int_time', id=0x1016,
-                          description='The time per integration, in seconds.',
-                          shape=[], fmt=spead.mkfmt(('f', 64)),
-                          init_val=int_time)
+        self.spead_meta_ig.add_item(name='int_time', id=0x1016,
+                                    description='The time per integration, in seconds.',
+                                    shape=[], fmt=spead.mkfmt(('f', 64)),
+                                    init_val=self.xeng_get_acc_time())
 
         # spead_ig.add_item(name='coarse_chans', id=0x1017,
         #                        description='',
@@ -1013,33 +1023,32 @@ class FxCorrelator(Instrument):
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
-        spead_ig.add_item(name='fft_shift', id=0x101E,
-                          description='The FFT bitshift pattern. F-engine correlator internals.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=int(self.configd['fengine']['fft_shift']))
+        self.spead_meta_ig.add_item(name='fft_shift', id=0x101E,
+                                    description='The FFT bitshift pattern. F-engine correlator internals.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=int(self.configd['fengine']['fft_shift']))
 
-        spead_ig.add_item(name='xeng_acc_len', id=0x101F,
-                          description='Number of spectra accumulated inside X engine. Determines minimum '
-                                      'integration time and user-configurable integration time stepsize. '
-                                      'X-engine correlator internals.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=self.xeng_accumulation_len)
+        self.spead_meta_ig.add_item(name='xeng_acc_len', id=0x101F,
+                                    description='Number of spectra accumulated inside X engine. Determines minimum '
+                                                'integration time and user-configurable integration time stepsize. '
+                                                'X-engine correlator internals.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=self.xeng_accumulation_len)
 
-        quant_format = self.configd['fengine']['quant_format']
-        quant_bits = int(quant_format.split('.')[0])
-        spead_ig.add_item(name='requant_bits', id=0x1020,
-                          description='Number of bits after requantisation in the F engines (post FFT and any '
-                                      'phasing stages).',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=quant_bits)
+        quant_bits = int(self.configd['fengine']['quant_format'].split('.')[0])
+        self.spead_meta_ig.add_item(name='requant_bits', id=0x1020,
+                                    description='Number of bits after requantisation in the F engines (post FFT and any '
+                                                'phasing stages).',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=quant_bits)
 
         pkt_len = int(self.configd['fengine']['10gbe_pkt_len'])
-        spead_ig.add_item(name='feng_pkt_len', id=0x1021,
-                          description='Payload size of 10GbE packet exchange between F and X engines '
-                                      'in 64 bit words. Usually equal to the number of spectra accumulated '
-                                      'inside X engine. F-engine correlator internals.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=pkt_len)
+        self.spead_meta_ig.add_item(name='feng_pkt_len', id=0x1021,
+                                    description='Payload size of 10GbE packet exchange between F and X engines '
+                                                'in 64 bit words. Usually equal to the number of spectra accumulated '
+                                                'inside X engine. F-engine correlator internals.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=pkt_len)
 
         # port = int(self.configd['xengine']['output_destination_port'])
         # spead_ig.add_item(name='rx_udp_port', id=0x1022,
@@ -1048,10 +1057,10 @@ class FxCorrelator(Instrument):
         #                   init_val=port)
 
         port = int(self.configd['fengine']['10gbe_port'])
-        spead_ig.add_item(name='feng_udp_port', id=0x1023,
-                          description='Port for F-engines 10Gbe links in the system.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=port)
+        self.spead_meta_ig.add_item(name='feng_udp_port', id=0x1023,
+                                    description='Port for F-engines 10Gbe links in the system.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=port)
 
         # ip = self.configd['xengine']['output_destination_ip']
         # spead_ig.add_item(name='rx_udp_ip_str', id=0x1024,
@@ -1060,20 +1069,21 @@ class FxCorrelator(Instrument):
         #                   init_val=ip)
 
         ip = struct.unpack('>I', socket.inet_aton(self.configd['fengine']['10gbe_start_ip']))[0]
-        spead_ig.add_item(name='feng_start_ip', id=0x1025,
-                          description='Start IP address for F-engines in the system.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=ip)
+        self.spead_meta_ig.add_item(name='feng_start_ip', id=0x1025,
+                                    description='Start IP address for F-engines in the system.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=ip)
 
-        spead_ig.add_item(name='xeng_rate', id=0x1026,
-                          description='Target clock rate of processing engines (xeng).',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=self.xeng_clk)
+        self.spead_meta_ig.add_item(name='xeng_rate', id=0x1026,
+                                    description='Target clock rate of processing engines (xeng).',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=self.xeng_clk)
 
-        spead_ig.add_item(name='sync_time', id=0x1027,
-                          description='The time at which the digitisers were synchronised. Seconds since the Unix Epoch.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=self.synchronisation_epoch)
+        self.spead_meta_ig.add_item(name='sync_time', id=0x1027,
+                                    description='The time at which the digitisers were synchronised. '
+                                                'Seconds since the Unix Epoch.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=self.synchronisation_epoch)
 
         # spead_ig.add_item(name='n_stokes', id=0x1040,
         #                        description='',
@@ -1081,10 +1091,10 @@ class FxCorrelator(Instrument):
         #                        init_val=)
 
         x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
-        spead_ig.add_item(name='x_per_fpga', id=0x1041,
-                          description='Number of X engines per FPGA host.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=x_per_fpga)
+        self.spead_meta_ig.add_item(name='x_per_fpga', id=0x1041,
+                                    description='Number of X engines per FPGA host.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=x_per_fpga)
 
         # n_ants_per_xaui = 1
         # spead_ig.add_item(name='n_ants_per_xaui', id=0x1042,
@@ -1103,34 +1113,32 @@ class FxCorrelator(Instrument):
         #                        init_val=)
 
         sample_bits = int(self.configd['fengine']['sample_bits'])
-        spead_ig.add_item(name='adc_bits', id=0x1045,
-                          description='How many bits per ADC sample.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=sample_bits)
+        self.spead_meta_ig.add_item(name='adc_bits', id=0x1045,
+                                    description='How many bits per ADC sample.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=sample_bits)
 
-        spead_ig.add_item(name='scale_factor_timestamp', id=0x1046,
-                               description='Timestamp scaling factor. Divide the SPEAD data packet timestamp by '
-                                           'this number to get back to seconds since last sync.',
-                               shape=[], fmt=spead.mkfmt(('f', 64)),
-                               init_val=self.sample_rate_hz)
+        self.spead_meta_ig.add_item(name='scale_factor_timestamp', id=0x1046,
+                                    description='Timestamp scaling factor. Divide the SPEAD data packet timestamp by '
+                                                'this number to get back to seconds since last sync.',
+                                    shape=[], fmt=spead.mkfmt(('f', 64)),
+                                    init_val=self.sample_rate_hz)
 
         # spead_ig.add_item(name='b_per_fpga', id=0x1047,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
-        #TODO: Fix hard-coding
-        xeng_sample_bits = 32
-        spead_ig.add_item(name='xeng_out_bits_per_sample', id=0x1048,
-                          description='The number of bits per value of the xeng accumulator output. '
-                                      'Note this is for a single value, not the combined complex size.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=xeng_sample_bits)
 
-        f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
-        spead_ig.add_item(name='f_per_fpga', id=0x1049,
-                          description='Number of F engines per FPGA host.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=f_per_fpga)
+        self.spead_meta_ig.add_item(name='xeng_out_bits_per_sample', id=0x1048,
+                                    description='The number of bits per value of the xeng accumulator output. '
+                                                'Note this is for a single value, not the combined complex size.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=self.xeng_outbits)
+
+        self.spead_meta_ig.add_item(name='f_per_fpga', id=0x1049,
+                                    description='Number of F engines per FPGA host.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                                    init_val=self.f_per_fpga)
 
         # spead_ig.add_item(name='beng_out_bits_per_sample', id=0x1050,
         #                        description='',
@@ -1142,24 +1150,46 @@ class FxCorrelator(Instrument):
         #                        shape=[], fmt=spead.mkfmt(('f', 64)),
         #                        init_val=)
 
+        for source_ctr, eqs in enumerate(self.feng_get_eq_list()):
+            try:
+                eqlen = len(eqs)
+            except TypeError:
+                eqs = [eqs]
+                eqlen = 1
+            self.spead_meta_ig.add_item(name='eq_coef_%s' % self.fengine_sources[source_ctr].name,
+                                        id=0x1400 + source_ctr,
+                                        description='The unitless per-channel digital scaling factors implemented '
+                                                    'prior to requantisation, post-FFT, for input %s. '
+                                                    'Complex number real,imag 32 bit integers.' %
+                                                    self.fengine_sources[source_ctr].name,
+                                        shape=[eqlen, 2],
+                                        fmt=spead.mkfmt(('u', 32)),
+                                        init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for eq_coeff in eqs])
+
         # spead_ig.add_item(name='eq_coef_MyAntStr', id=0x1400+inputN,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('u', 32)),
         #                        init_val=)
 
-        #ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
+        # ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
 
-        #do not issue timestamp here; will be wrong initial value.
-        spead_ig.add_item(name='timestamp', id=0x1600,
-                          description='Timestamp of start of this integration. uint counting multiples of ADC samples since last sync (sync_time,id=0x1027). Divide this number by timestamp_scale (id=0x1046) to get back to seconds since last sync when this integration was actually started.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
+        # do not issue timestamp here; will be wrong initial value.
+        self.spead_meta_ig.add_item(name='timestamp', id=0x1600,
+                                    description='Timestamp of start of this integration. uint counting multiples '
+                                                'of ADC samples since last sync (sync_time,id=0x1027). Divide this '
+                                                'number by timestamp_scale (id=0x1046) to get back to seconds since '
+                                                'last sync when this integration was actually started.',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
 
-        n_chans = int(self.configd['fengine']['n_chans'])
-        n_bls = len(self.xeng_get_baseline_order())
-        ndarray = numpy.dtype(numpy.int32), (n_chans, n_bls, 2)
-        spead_ig.add_item(name='xeng_raw', id=0x1800,
-                        description="Raw data for %i xengines in the system. This item represents a full spectrum (all frequency channels) assembled from lowest frequency to highest frequency. Each frequency channel contains the data for all baselines (n_bls given by SPEAD ID 0x100B). Each value is a complex number -- two (real and imaginary) unsigned integers."%(self.config['n_xeng']),
-                        ndarray=ndarray)
+        ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(self.xeng_get_baseline_order()), 2)
+        self.spead_meta_ig.add_item(name='xeng_raw', id=0x1800,
+                                    description='Raw data for %i xengines in the system. This item represents a '
+                                                'full spectrum (all frequency channels) assembled from lowest '
+                                                'frequency to highest frequency. Each frequency channel contains '
+                                                'the data for all baselines (n_bls given by SPEAD ID 0x100b). '
+                                                'Each value is a complex number -- two (real and imaginary) '
+                                                'unsigned integers.' % len(self.xhosts * self.x_per_fpga),
+                                    ndarray=ndarray)
 
         # spead_ig.add_item(name='xeng_raw', id=0x1800,
         #                        description='',
@@ -1231,9 +1261,9 @@ class FxCorrelator(Instrument):
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
-        # and send everything
-        self.spead_tx.send_heap(spead_ig.get_heap())
-        self.logger.info("Issued SPEAD data descriptor to %s:%i."%(self.meta_destination[0],self.meta_destination[1]))
+        self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
+        self.logger.info('Issued SPEAD data descriptor to %s:%i.' % (self.meta_destination[0],
+                                                                     self.meta_destination[1]))
 
     # def _get_fxcorrelator_config(self):
     #     """
