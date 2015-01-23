@@ -3,8 +3,8 @@ Created on Feb 28, 2013
 
 @author: paulp
 """
-
 import logging
+
 LOGGER = logging.getLogger(__name__)
 
 
