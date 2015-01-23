@@ -21,6 +21,7 @@ import numpy
 import struct
 import spead64_48 as spead
 
+import log
 import utils
 import xhost_fpga
 import fhost_fpga
@@ -34,8 +35,6 @@ use_xeng_sim = False
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
-ARP_SLEEP_TIME = 10
-
 
 class FxCorrelator(Instrument):
     """
@@ -43,16 +42,23 @@ class FxCorrelator(Instrument):
     xengines that each produce cross products from a continuous portion of the channels and accumulate the result.
     SPEAD data products are produced.
     """
-    def __init__(self, descriptor, identifier=-1, config_source=None, logger=None):
+    def __init__(self, descriptor, identifier=-1, config_source=None, logger=None, log_level=logging.INFO):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
         :param identifier: An optional integer identifier.
         :param config_source: The instrument configuration source. Can be a text file, hostname, whatever.
         :param logger: Use the module logger by default, unless something else is given.
+        :param logger: The loglevel to use by default, logging.INFO.
         :return: <nothing>
         """
+        # first thing to do is handle the logging - set the root logging handler - submodules loggers will
+        # automatically use it
+        self.loghandler = log.Corr2LogHandler()
+        logging.root.addHandler(self.loghandler)
+        logging.root.setLevel(log_level)
         self.logger = logger or logging.getLogger(__name__)
+        self.logger.setLevel(log_level)
 
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
@@ -131,10 +137,10 @@ class FxCorrelator(Instrument):
             #     fpga_.tap_arp_reload()
             # for fpga_ in self.xhosts:
             #     fpga_.tap_arp_reload()
-            self.logger.info('Waiting %d seconds for ARP to settle...' % ARP_SLEEP_TIME)
+            self.logger.info('Waiting %d seconds for ARP to settle...' % self.arp_wait_time)
             sys.stdout.flush()
             starttime = time.time()
-            time.sleep(ARP_SLEEP_TIME)
+            time.sleep(self.arp_wait_time)
             # raw_input('wait for arp')
             end_time = time.time()
             self.logger.info('\tDone. That took %d seconds.' % (end_time - starttime))
@@ -350,7 +356,7 @@ class FxCorrelator(Instrument):
         """
         self.logger.info('Subscribing f-engine datasources...')
         for fhost in self.fhosts:
-            self.logger.info('\t%s:', fhost.host)
+            self.logger.info('\t%s:' % fhost.host)
             gbe_ctr = 0
             for source in fhost.data_sources:
                 rxaddr = source.ip
@@ -364,7 +370,7 @@ class FxCorrelator(Instrument):
                     gbename = fhost.tengbes.names()[gbe_ctr]
                     gbe = fhost.tengbes[gbename]
                     rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-                    self.logger.info('\t\t%s subscribing to address %s', gbe.name, rxaddress)
+                    self.logger.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
                     gbe.multicast_receive(rxaddress, 0)
                     gbe_ctr += 1
         self.logger.info('one.')
@@ -502,8 +508,8 @@ class FxCorrelator(Instrument):
                 rxaddress = '%s%d' % (source_prefix, source_base + source_ctr)
                 gbe.multicast_receive(rxaddress, 0)
                 source_ctr += 1
-                self.logger.debug('xhost %s %s subscribing to address %s', host.host, gbe.name, rxaddress)
-                self.logger.info('xhost %s %s subscribing to address %s', host.host, gbe.name, rxaddress)
+                self.logger.debug('xhost %s %s subscribing to address %s' % (host.host, gbe.name, rxaddress))
+                self.logger.info('xhost %s %s subscribing to address %s' % (host.host, gbe.name, rxaddress))
 
     def _xeng_check_rx(self, max_waittime=30):
         """
@@ -536,7 +542,7 @@ class FxCorrelator(Instrument):
             vaccstat = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_check_reset_status')
             for xhost, result in vaccstat.items():
                 if not result:
-                    self.logger.error('Resetting vaccs on %s failed.' % (xhost))
+                    self.logger.error('Resetting vaccs on %s failed.' % xhost)
                     raise RuntimeError
 
         # get current time from f-engines
@@ -621,8 +627,10 @@ class FxCorrelator(Instrument):
         vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
         for host in self.xhosts:
             for status in vacc_status[host.host]:
-                if (status['errors'] > 0) or (status['count'] <= 0):
-                    self.logger.error('\tErrors > 0 or counts <= 0. Que pasa?')
+                if status['errors'] > 0:
+                    self.logger.error('\tVACC errors > 0. Que pasa?')
+                if status['count'] <= 0:
+                    self.logger.error('\tVACC counts <= 0. Que pasa?')
                     print_vacc_statuses(vacc_status)
                     raise RuntimeError
         self.logger.info('\t...accumulations rolling in without error.')
@@ -720,6 +728,7 @@ class FxCorrelator(Instrument):
 
         # TODO: Load config values from the bitstream meta information - f per fpga, x per fpga, etc
 
+        self.arp_wait_time = int(self.configd['FxCorrelator']['arp_wait_time'])
         self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
         self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
@@ -835,7 +844,7 @@ class FxCorrelator(Instrument):
             txport = self.xeng_tx_destination[1]
         else:
             txport = int(txport)
-        self.logger.info('Setting stream destination to %s:%d', tengbe.ip2str(txip), txport)
+        self.logger.info('Setting stream destination to %s:%d' % (tengbe.ip2str(txip), txport))
         try:
             THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.gbe_iptx.write(reg=txip))
             THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.gbe_porttx.write(reg=txport))
@@ -857,10 +866,10 @@ class FxCorrelator(Instrument):
         else:
             txport = int(txport)
         if txport is None or txip_str is None:
-            self.logger.error('Cannot set part of meta destination to None - %s:%d', txip_str, txport)
-            raise RuntimeError('Cannot set part of meta destination to None - %s:%d', txip_str, txport)
+            self.logger.error('Cannot set part of meta destination to None - %s:%d' % (txip_str, txport))
+            raise RuntimeError('Cannot set part of meta destination to None - %s:%d' % (txip_str, txport))
         self.meta_destination = (txip_str, txport)
-        self.logger.info('Setting meta destination to %s:%d', txip_str, txport)
+        self.logger.info('Setting meta destination to %s:%d' % (txip_str, txport))
 
     def tx_start(self, issue_spead=True):
         """

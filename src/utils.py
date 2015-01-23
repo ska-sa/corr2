@@ -14,7 +14,7 @@ def parse_ini_file(ini_file='', required_sections=None):
     """
     if (ini_file == '') and ('CORR2INI' in os.environ.keys()):
         ini_file = os.environ['CORR2INI']
-        LOGGER.info('Defaulting to config env var $CORR2INI=%s', ini_file)
+        LOGGER.info('Defaulting to config env var $CORR2INI=%s' % ini_file)
     if required_sections is None:
         required_sections = []
     parser = SafeConfigParser()
