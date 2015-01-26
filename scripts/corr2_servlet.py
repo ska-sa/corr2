@@ -191,7 +191,9 @@ class Corr2Server(katcp.DeviceServer):
             if newlist[0] == '':
                 newlist = []
         if len(newlist) > 0:
-            if not self.instrument.set_labels(newlist):
+            try:
+                self.instrument.set_labels(newlist)
+            except:
                 return 'fail', 'provided input labels were not correct'
         return 'ok', self.instrument.get_labels()
 
