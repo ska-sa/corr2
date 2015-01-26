@@ -40,7 +40,22 @@ class Corr2LogHandler(logging.Handler):
         """
         self._max_len = max_len
 
-    def print_messages(self, num_to_print = -1):
+    def get_log_strings(self, num_to_print=-1):
+        """
+        Get the log record as strings
+        :return:
+        """
+        log_list = []
+        for ctr, record in enumerate(self._records):
+            if ctr == num_to_print:
+                break
+            if record.exc_info:
+                log_list.append('%s: %s Exception: ' % (record.name, record.msg))
+            else:
+                log_list.append('%s: %s' % (record.name, record.msg))
+        return log_list
+
+    def print_messages(self, num_to_print=-1):
         """
         Print the last num_to_print messages. -1 is all of them.
         :return:
