@@ -49,15 +49,13 @@ class DengTvg(katcp_fpga.KatcpFpga):
 parser = argparse.ArgumentParser(description='Set up a TVG digitiser on a ROACH2.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='host', type=str, action='store', default='', help='the host to use')
-parser.add_argument(dest='fpg', type=str, action='store', default='', help='the FPG file to use')
+parser.add_argument('--fpg', dest='fpg', type=str, action='store', default='', help='the FPG file to use')
 parser.add_argument('--ip', dest='ip', action='store', default='10.100.0.200:8888',
                     help='digitiser 10GBE core IP address start')
 parser.add_argument('--mac', dest='mac', action='store', default='02:02:00:00:03:01',
                     help='digitiser 10GBE core MAC start')
 parser.add_argument('--dest_ip', dest='destip', action='store', default='239.2.0.10:8888',
                     help='where should the digitiser data go?')
-parser.add_argument('--no_program', dest='no_program', action='store_true', default=False,
-                    help='do not program the FPGA')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -79,7 +77,7 @@ signal.signal(signal.SIGINT, exit_gracefully)
 
 # make the fake dig
 fpga = DengTvg(args.host)
-if not args.no_program:
+if args.fpg != '':
     fpga.upload_to_ram_and_program(args.fpg)
 else:
     fpga.get_system_information()
