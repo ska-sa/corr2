@@ -18,6 +18,8 @@ parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('--class', dest='hclass', action='store', default='',
                     help='start/stop a class: fengine or xengine')
+parser.add_argument('--dnsmasq', dest='dnsmasq', action='store_true', default=False,
+                    help='search for roach hostnames in /var/lib/misc/dnsmasq.leases')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -37,18 +39,32 @@ if args.comms == 'katcp':
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
-# are we doing it by class?
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-if args.hclass != '':
-    if args.hclass == 'fengine':
-        hosts = utils.parse_hosts(args.hosts, section='fengine')
-    elif args.hclass == 'xengine':
-        hosts = utils.parse_hosts(args.hosts, section='xengine')
-    else:
-        raise RuntimeError('No such host class: %s' % args.hclass)
+# look for hosts in the leases file
+if args.dnsmasq:
+    hosts = []
+    f = open('/var/lib/misc/dnsmasq.leases')
+    for line in f.readlines():
+        if line.find('roach') > 0:
+            roachname = line[line.find('roach'):line.find(' ', line.find('roach') + 1)].strip()
+            hosts.append(roachname)
+    print 'Found %i roaches in dnsmasq.leases.' % len(hosts)
+    # for host in hosts:
+    #     print '\t', host
+    # hosts = []
 else:
-    hosts = utils.parse_hosts(args.hosts)
+    # are we doing it by class?
+    if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+        args.hosts = os.environ['CORR2INI']
+    if args.hclass != '':
+        if args.hclass == 'fengine':
+            hosts = utils.parse_hosts(args.hosts, section='fengine')
+        elif args.hclass == 'xengine':
+            hosts = utils.parse_hosts(args.hosts, section='xengine')
+        else:
+            raise RuntimeError('No such host class: %s' % args.hclass)
+    else:
+        hosts = utils.parse_hosts(args.hosts)
+
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
