@@ -47,7 +47,7 @@ if len(hosts) == 0:
 
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
-fpgautils.threaded_fpga_function(fpgas, 'get_system_information')
+fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 
 # pre corner turn
 if args.prect:
@@ -55,5 +55,5 @@ if args.prect:
 else:
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(tvg_ct=False))
 
-fpgautils.threaded_fpga_function(fpgas, 'disconnect')
+fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 # end

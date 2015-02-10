@@ -61,7 +61,7 @@ if len(hosts) == 0:
 
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
-fpgautils.threaded_fpga_function(fpgas, 'get_system_information')
+fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 
 # check for 10gbe cores
 for fpga_ in fpgas:
@@ -90,7 +90,7 @@ def get_fpga_data(fpga_):
 # work out tables for each fpga
 fpga_headers = []
 master_list = []
-fpga_data = fpgautils.threaded_fpga_operation(fpgas, get_fpga_data)
+fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, get_fpga_data)
 for cnt, fpga_ in enumerate(fpgas):
     gbedata = fpga_data[fpga_.host]['gbe']
     gbe0 = gbedata.keys()[0]
@@ -116,7 +116,7 @@ fpga_headers = [['gbe_rxctr', 'gbe_rxofctr', 'gbe_rxerrctr', 'gbe_rxeofctr', 'gb
 
 
 def signal_handler(sig, frame):
-    fpgautils.threaded_fpga_function(fpgas, 'disconnect')
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
@@ -157,7 +157,7 @@ try:
             else:
                 scroller.set_ypos(1)
                 scroller.set_ylimits(ymin=1)
-            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, get_fpga_data)
+            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, get_fpga_data)
             for ctr, fpga_ in enumerate(fpgas):
                 fpga_data = all_fpga_data[fpga_.host]
 #                scroller.add_line(fpga_.host)

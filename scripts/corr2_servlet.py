@@ -21,10 +21,10 @@ class KatcpLogFormatter(logging.Formatter):
 
 class Corr2Server(katcp.DeviceServer):
 
-    ## Interface version information.
+    # Interface version information.
     VERSION_INFO = ('corr2 instrument servlet', 0, 1)
 
-    ## Device server build / instance information.
+    # Device server build / instance information.
     BUILD_INFO = ('corr2', 0, 1, 'alpha')
 
     def __init__(self, *args, **kwargs):
@@ -42,13 +42,13 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply()
     def request_ping(self, sock):
         """
-
+        Just ping the server
         :param sock:
         :return: 'ok'
         """
         return 'ok',
 
-    @request(Str(), Int(default=100))
+    @request(Str(), Int(default=1000))
     @return_reply()
     def request_create(self, sock, config_file, log_len):
         """
@@ -61,9 +61,7 @@ class Corr2Server(katcp.DeviceServer):
         logging.info('got a create request with config file %s' % config_file)
         try:
             self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
-
             logging.info('made correlator okay')
-
             return 'ok',
         except:
             pass
@@ -122,7 +120,8 @@ class Corr2Server(katcp.DeviceServer):
         txipstr = temp[0]
         txport = int(temp[1])
         self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
-        self.instrument.set_stream_destination(txip_str=txipstr, txport=txport, issue_meta=True)
+        self.instrument.set_stream_destination(txip_str=txipstr, txport=txport)
+
         return 'ok',
 
     @request(Str(default=''))
@@ -192,7 +191,9 @@ class Corr2Server(katcp.DeviceServer):
             if newlist[0] == '':
                 newlist = []
         if len(newlist) > 0:
-            if not self.instrument.set_labels(newlist):
+            try:
+                self.instrument.set_labels(newlist)
+            except:
                 return 'fail', 'provided input labels were not correct'
         return 'ok', self.instrument.get_labels()
 
@@ -301,6 +302,21 @@ class Corr2Server(katcp.DeviceServer):
             current_shift_value = self.instrument.feng_get_fft_shift_all()
             current_shift_value = current_shift_value[current_shift_value.keys()[0]]
         return 'ok', current_shift_value
+
+    @request()
+    @return_reply(Int(min=0))
+    def request_get_log(self, sock):
+        """
+        Fetch and print the instrument log.
+        """
+        if self.instrument is None:
+            return 'fail', '... you have not connected yet!'
+        print '\nlog:'
+        self.instrument.loghandler.print_messages()
+        logstrings = self.instrument.loghandler.get_log_strings()
+        for logstring in logstrings:
+            sock.inform('log', logstring)
+        return 'ok', len(logstrings)
 
     # @request(Int(default=-1), Int(default=-1))
     # @return_reply(Int(), Int())

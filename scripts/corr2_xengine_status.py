@@ -59,7 +59,7 @@ if len(hosts) == 0:
 
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
-fpgautils.threaded_fpga_function(fpgas, 'get_system_information')
+fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 
 # check for 10gbe cores
 for fpga_ in fpgas:
@@ -88,7 +88,7 @@ def get_fpga_data(fpga_):
 fpga_data = get_fpga_data(fpgas[0])
 
 def signal_handler(signal_, frame):
-    fpgautils.threaded_fpga_function(fpgas, 'disconnect')
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
@@ -123,7 +123,7 @@ try:
             scroller.add_line('GBE_txerror', 90, 1, absolute=True)
             scroller.set_ypos(2)
             scroller.set_ylimits(ymin=2)
-            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, get_fpga_data)
+            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, get_fpga_data)
             for ctr, fpga_ in enumerate(fpgas):
                 fpga_data = all_fpga_data[fpga_.host]
                 scroller.add_line(fpga_.host)

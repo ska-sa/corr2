@@ -16,7 +16,7 @@ class EngineCasperFpga(Engine):
     """
     def __init__(self, fpga_host, engine_id, config_source):
         """
-        :param fpga_host:
+        :param fpga_host: the Casperfpga object that hosts this engine
         :param engine_id: engine number on this fpga
         :return:
         """
@@ -101,48 +101,48 @@ class EngineCasperFpga(Engine):
             txip = tengbe.str2ip(self.config['data_product']['txip_str'])
         else:
             txip = tengbe.str2ip(txip_str)
-        
         self.txip.write(txip=txip)
    
     def get_txip(self):
-        """ Get current data transmission IP base in string form
+        """
+        Get current data transmission IP base in string form
         """
         txip = self.txip.read()['data']['txip']
         txip_str = tengbe.ip2str(txip)
         return txip_str
 
     def set_txport(self, txport=None, issue_meta=True):
-        """ Set transmission port for SPEAD output
+        """
+        Set transmission port for SPEAD output
         @param txport: transmission port as integer
         """
         if txport is None:
             txport = self.config['data_product']['txport']
-        
         self.txport.write(txport=txport)
-        
-        #TODO SPEAD meta data
-    
+
     def get_txport(self):
-        """ Get transmission port for SPEAD output
+        """
+        Get transmission port for SPEAD output
         """
         return self.txport.read()['data']['txport']
 
     def is_producing_valid_data(self):
-        """ Is producing valid data ready for SPEAD output
+        """
+        Is producing valid data ready for SPEAD output
         """
         return self.status.read()['data']['txing_data']
 
     def start_tx(self):
-        """ Start SPEAD data transmission
+        """
+        Start SPEAD data transmission
         """
         self.control.write(comms_en=1, comms_rst=0)
  
-    def stop_tx(self, issue_meta=True):
-        """ Stop SPEAD data transmission
+    def stop_tx(self):
+        """
+        Stop SPEAD data transmission
         """
         self.control.write(comms_en=0)
-        
-        #TODO SPEAD meta data
 
     ##########################################
     # Timed latch stuff                      #

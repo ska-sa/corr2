@@ -52,26 +52,24 @@ class FengineSource(DataSource):
         :return:
         """
         DataSource.__init__(self, name, ip, iprange, port)
-        self.source_number = None
         self.eq_poly = None
         self.eq_bram = None
+        self.host = None
+        self.source_number = None
 
-    def get_eq(self, hostdevice=None):
+    def get_eq(self):
         """
         Get the EQ for this source.
-        :param hostdevice:
         :return:
         """
-        if hostdevice is not None:
-            return hostdevice.read_eq(self.eq_bram)
-        else:
-            return self.eq_poly
+        if self.eq_poly is None:
+            self.eq_poly = self.host.read_eq(self.eq_bram)
+        return self.eq_poly
 
-    def set_eq(self, complex_gain=None, hostdevice=None):
+    def set_eq(self, complex_gain=None):
         """
         The the EQ for this source
         :param complex_gain: this can be an int, complex or list
-        :param hostdevice: the device to which to try and write
         :return:
         """
         if complex_gain is not None:
@@ -81,15 +79,14 @@ class FengineSource(DataSource):
             except TypeError:
                 eq_poly = self.eq_poly
             LOGGER.info('\tSource %s updated gain to %s' % (self, eq_poly))
-        if hostdevice is not None:
-            length_written = hostdevice.write_eq(self.eq_poly, self.eq_bram)
-            LOGGER.info('\tSource %s applied gain to hardware - wrote %i bytes' % (self, length_written))
+        length_written = self.host.write_eq(self.eq_poly, self.eq_bram)
+        LOGGER.info('\tSource %s applied gain to hardware - wrote %i bytes' % (self, length_written))
 
     def __str__(self):
         try:
             eq_poly = 'list(%d, ...)' % self.eq_poly[0]
         except TypeError:
             eq_poly = self.eq_poly
-        return 'DataSource(%i,%s) @ %s+%i port(%i) eq(%s,%s)' % (self.source_number, self.name, self.ip,
-                                                                 self.iprange, self.port,
-                                                                 eq_poly, self.eq_bram)
+        return 'DataSource(%i,%s) @ %s, %s+%i port(%i) eq(%s,%s)' % (self.source_number, self.name, self.host,
+                                                                     self.ip, self.iprange, self.port,
+                                                                     eq_poly, self.eq_bram)

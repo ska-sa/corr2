@@ -125,7 +125,6 @@ class FpgaFHost(FpgaHost):
         """
         Add a new data source to this fengine host
         :param data_source: A DataSource object
-        :param eq_poly: The eq polynomial to apply to this source
         :return:
         """
         for source in self.data_sources:
@@ -135,9 +134,13 @@ class FpgaFHost(FpgaHost):
         self.data_sources.append(data_source)
 
     def get_source_eq_all(self):
+        """
+        Return a dictionary of all the EQ settings for the sources allocated to this fhost
+        :return:
+        """
         rv = {}
         for source in self.data_sources:
-            rv[source.name] = source.get_eq(hostdevice=self)
+            rv[source.name] = source.get_eq()
         return rv
 
     def set_source_eq_all(self, complex_gain_list=None):
@@ -147,8 +150,7 @@ class FpgaFHost(FpgaHost):
         :return:
         """
         for source in self.data_sources:
-            source.set_eq(complex_gain_list[source.source_number] if complex_gain_list is not None else None, self)
-        # TODO issue_meta
+            source.set_eq(complex_gain_list[source.source_number] if complex_gain_list is not None else None)
 
     def read_eq(self, eq_bram):
         """
@@ -197,7 +199,6 @@ class FpgaFHost(FpgaHost):
         if shift_schedule is None:
             shift_schedule = self.fft_shift
         self.registers.fft_shift.write(fft_shift=shift_schedule)
-        # TODO issue_meta
 
     def get_fft_shift(self):
         """
