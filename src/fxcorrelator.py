@@ -1189,6 +1189,14 @@ class FxCorrelator(Instrument):
                                                 'number by timestamp_scale (id=0x1046) to get back to seconds since '
                                                 'last sync when this integration was actually started.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
+        
+        self.spead_meta_ig.add_item(name='flags_xeng_raw', id=0x1601,
+                                    description='Flags associated with xeng_raw data output.'
+                                                'bit 34 - corruption or data missing during integration '
+                                                'bit 33 - overrange in data path '
+                                                'bit 32 - noise diode on during integration '
+                                                'bits 0 - 31 reserved for internal debugging',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=0)
 
         ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(self.xeng_get_baseline_order()), 2)
         self.spead_meta_ig.add_item(name='xeng_raw', id=0x1800,
