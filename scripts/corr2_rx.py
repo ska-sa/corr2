@@ -83,7 +83,7 @@ class CorrRx(threading.Thread):
                 for name in ig.keys():
                     logger.debug('\tkey name %s' % name)
                     item = ig.get_item(name)
-                    if (not item._changed) and (name in datasets.keys()):
+                    if (not item.has_changed()) and (name in datasets.keys()):
                         # the item is not marked as changed, and we have a record for it, skip ahead
                         continue
                     if name in meta_required:
@@ -97,24 +97,32 @@ class CorrRx(threading.Thread):
 
                     # check to see if we have encountered this type before
                     if name not in datasets.keys():
+                        datasets[name] = ig[name]
+                        datasets_index[name] = 0
+                    
+                    # check to see if we have stored this type before
+                    if name not in h5_file.keys():
                         shape = ig[name].shape if item.shape == -1 else item.shape
                         dtype = np.dtype(type(ig[name])) if shape == [] else item.dtype
                         if dtype is None:
                             dtype = ig[name].dtype
                         # if we can't get a dtype from the descriptor try and get one from the value
-                        logger.info('Creating dataset for %s (%s,%s).' % (str(name), str(shape), str(dtype)))
-                        if h5_file is not None:
-                            h5_file.create_dataset(name, [1] + ([] if list(shape) == [1] else list(shape)),
-                                             maxshape=[None] + ([] if list(shape) == [1] else list(shape)), dtype=dtype)
-                        dump_size += np.multiply.reduce(shape) * dtype.itemsize
-                        datasets[name] = h5_file[name]
-                        datasets_index[name] = 0
-                        if not item._changed:
+                        if dtype != 'object':
+                            logger.info('Creating dataset for %s (%s,%s).' % (str(name), str(shape), str(dtype)))
+                            if h5_file is not None:
+                                h5_file.create_dataset(name, [1] + ([] if list(shape) == [1] else list(shape)),
+                                                maxshape=[None] + ([] if list(shape) == [1] else list(shape)), dtype=dtype)
+#                            dump_size += np.multiply.reduce(shape) * dtype.itemsize
+#                        datasets[name] = h5_file[name]
+#                        datasets[name] = ig[name]
+#                        datasets_index[name] = 0
+                        if not item.has_changed():
                             continue
                             # if we built from an empty descriptor
                     else:
                         logger.info('Adding %s to dataset. New size is %i.' % (name, datasets_index[name]+1))
-                        h5_file[name].resize(datasets_index[name]+1, axis=0)
+                        if h5_file is not None:
+                            h5_file[name].resize(datasets_index[name]+1, axis=0)
 
                     if name.startswith('xeng_raw'):
                         sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
@@ -128,10 +136,11 @@ class CorrRx(threading.Thread):
                             np.max(scaled_data),
                             np.mean(scaled_data)))
 
-                    h5_file[name][datasets_index[name]] = ig[name]
+                    if h5_file is not None:
+                        h5_file[name][datasets_index[name]] = ig[name]
                     datasets_index[name] += 1
                     # we have dealt with this item so continue...
-                    item._changed = False
+                    item.unset_changed()
                 idx += 1
             #  /if h5_file is not None
 
@@ -157,6 +166,9 @@ class CorrRx(threading.Thread):
                             plotqueue.put(baseline_data)
                             got_data_event.set()
             # /if plotbaseline is not None:
+
+#            if len(items) > 0
+                
 
             # should we quit?
             if self.quit_event.is_set():
@@ -197,6 +209,8 @@ if __name__ == '__main__':
                         help='Plot one or more baselines, comma-seperated list of integers.')
     parser.add_argument('--plot_channels', dest='plotchannels', action='store', default='-1,-1', type=str,
                         help='a start,end tuple, -1 means 0,n_chans respectively')
+    parser.add_argument('--items', dest='items', action='store', default='', type=str,
+                        help='spead items to output to log as we receive them')
     parser.add_argument('--ion', dest='ion', action='store_true', default=False,
                         help='Interactive mode plotting.')
     parser.add_argument('--log', dest='log', action='store_true', default=False,
