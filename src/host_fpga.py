@@ -101,6 +101,6 @@ class FpgaHost(Host, KatcpFpga):
                 raise RuntimeError('Host %s core %i is not receiving SPEAD data, bailing' % (self.host, core_ctr))
             # but the errors must not
             if xrxspead_ctrs1[core_ctr][1] > xrxspead_ctrs0[core_ctr][1]:
-                LOGGER.error('Host %s core %i has SPEAD errors, bailing' % (self.host, core_ctr))
-                raise RuntimeError('Host %s core %i has SPEAD errors, bailing' % (self.host, core_ctr))
+                LOGGER.error('Host %s core %i has an incrementing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
+                raise RuntimeError('Host %s core %i has an incrementing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
         LOGGER.info('Host %s is receiving SPEAD data' % self.host)
