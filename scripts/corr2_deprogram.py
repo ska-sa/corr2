@@ -42,11 +42,12 @@ else:
 # look for hosts in the leases file
 if args.dnsmasq:
     hosts = []
-    f = open('/var/lib/misc/dnsmasq.leases')
-    for line in f.readlines():
+    masqfile = open('/var/lib/misc/dnsmasq.leases')
+    for line in masqfile:
         if line.find('roach') > 0:
             roachname = line[line.find('roach'):line.find(' ', line.find('roach') + 1)].strip()
             hosts.append(roachname)
+    masqfile.close()
     print 'Found %i roaches in dnsmasq.leases.' % len(hosts)
     # for host in hosts:
     #     print '\t', host
