@@ -93,35 +93,39 @@ class Corr2Server(katcp.DeviceServer):
         print multiargs
         return 'fail', 'a test failure, like it should'
 
-    @request(Int())
-    @return_reply()
+    @request(Int(default=-1))
+    @return_reply(Int())
     def request_digitiser_synch_epoch(self, sock, synch_time):
         """
-        Set the digitiser synch time, UNIX time.
+        Set/Get the digitiser synch time, UNIX time.
         :param sock:
         :param synch_time:
         :return:
         """
-        try:
-            self.instrument.set_synch_time(synch_time)
-        except:
-            return 'fail', 'request %s did not succeed, check the log' % 'digitiser_synch_epoch'
-        return 'ok',
+        if synch_time > -1:
+            try:
+                self.instrument.set_synch_time(synch_time)
+            except RuntimeError:
+                return 'fail', 'request digitiser_synch_epoch did not succeed, check the log'
+            except Exception:
+                return 'fail', 'request digitiser_synch_epoch failed for an unknown reason, check the log'
+        return 'ok', self.instrument.get_synch_time()
 
     @request(Str(), Str())
     @return_reply()
     def request_capture_destination(self, sock, stream, ipportstr):
         """
-
+        Set/Get the capture destination for this instrument
         :param sock:
         :return:
         """
+        if stream not in self.configd['xengine']['output_products']:
+            return 'fail', 'stream %s is not in product list: %s' % (stream, self.configd['xengine']['output_products'])
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
         self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
         self.instrument.set_stream_destination(txip_str=txipstr, txport=txport)
-
         return 'ok',
 
     @request(Str(default=''))
@@ -197,16 +201,26 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'provided input labels were not correct'
         return 'ok', self.instrument.get_labels()
 
-    @request()
-    @return_reply()
-    def request_gain(self, sock):
+    @request(Str(default=''), Str(default='', multiple=True))
+    @return_reply(Str(multiple=True))
+    def request_gain(self, sock, source_name, *eq_vals):
         """
-
+        Apply and/or get the gain settings for an input
         :param sock:
+        :param source_name: the source on which to act
+        :param eq_vals: the equaliser values
         :return:
         """
-        self.instrument.feng_set_eq_all()
-        return 'ok',
+        if source_name == '':
+            return 'fail', 'no source name given'
+        if len(eq_vals) > 0 and eq_vals[0] != '':
+            try:
+                self.instrument.feng_eq_set(True, source_name, list(eq_vals))
+            except Exception as e:
+                return 'fail', 'unknown exception: %s' % e.message
+        eqstring = str(self.instrument.feng_eq_get(source_name)[source_name]['eq'])
+        eqstring = eqstring.replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace(',', '')
+        return 'ok', eqstring
 
     @request()
     @return_reply()
@@ -222,8 +236,9 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply(Float())
     def request_accumulation_length(self, sock, new_acc_time):
         """
-
+        Set & get the accumulation time
         :param sock:
+        :param new_acc_time: if this is -1.0, the current acc len will be returned, but nothing set
         :return:
         """
         if new_acc_time != -1.0:
