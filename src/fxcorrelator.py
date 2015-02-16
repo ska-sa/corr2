@@ -80,7 +80,7 @@ class FxCorrelator(Instrument):
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
 
-    def initialise(self, program=True, tvg=False):
+    def initialise(self, program=True, tvg=False, fake_digitiser=False):
         """
         Set up the correlator using the information in the config file.
         :return:
@@ -1208,6 +1208,14 @@ class FxCorrelator(Instrument):
                                                 'number by timestamp_scale (id=0x1046) to get back to seconds since '
                                                 'last sync when this integration was actually started.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
+        
+        self.spead_meta_ig.add_item(name='flags_xeng_raw', id=0x1601,
+                                    description='Flags associated with xeng_raw data output.'
+                                                'bit 34 - corruption or data missing during integration '
+                                                'bit 33 - overrange in data path '
+                                                'bit 32 - noise diode on during integration '
+                                                'bits 0 - 31 reserved for internal debugging',
+                                    shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=0)
 
         ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(self.xeng_get_baseline_order()), 2)
         self.spead_meta_ig.add_item(name='xeng_raw', id=0x1800,
@@ -1219,10 +1227,11 @@ class FxCorrelator(Instrument):
                                                 'unsigned integers.' % len(self.xhosts * self.x_per_fpga),
                                     ndarray=ndarray)
 
-        # spead_ig.add_item(name='xeng_raw', id=0x1800,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
+        #TODO hard-coded !!!!!!! :(
+#        self.spead_ig.add_item(name=("xeng_raw"),id=0x1800,
+#                               description="Raw data for %i xengines in the system. This item represents a full spectrum (all frequency channels) assembled from lowest frequency to highest frequency. Each frequency channel contains the data for all baselines (n_bls given by SPEAD ID 0x100B). Each value is a complex number -- two (real and imaginary) unsigned integers."%(32),
+#                               ndarray=(numpy.dtype(numpy.int32),(4096,((4*(4+1))/2)*4,2)))
+
 
         # spead_ig.add_item(name='beamweight_MyAntStr', id=0x2000+inputN,
         #                        description='',
