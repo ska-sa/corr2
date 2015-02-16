@@ -16,8 +16,8 @@ class FpgaFHost(FpgaHost):
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
         FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
         self._config = config
-        self.data_sources = []
-
+        self.data_sources = []  # a list of DataSources received by this f-engine host
+        self.eqs = {}  # a dictionary, indexed on source name, containing tuples of poly and bram name
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
             self.ports_per_fengine = int(config['ports_per_fengine'])
@@ -76,24 +76,33 @@ class FpgaFHost(FpgaHost):
         time.sleep(1)
         rxregs_new = get_gbe_data()
         if rxregs_new['valid_arb'] == rxregs['valid_arb']:
-            raise RuntimeError('F host %s arbiter is not counting packets.' % self.host)
+            raise RuntimeError('F host %s arbiter is not counting packets. %i -> %i' % (
+                self.host, rxregs_new['valid_arb'], rxregs['valid_arb']))
         if rxregs_new['valid_reord'] == rxregs['valid_reord']:
-            raise RuntimeError('F host %s reorder is not counting packets.' % self.host)
+            raise RuntimeError('F host %s reorder is not counting packets. %i -> %i' % (
+                self.host, rxregs_new['valid_reord'], rxregs['valid_reord']))
         if rxregs_new['pfb_of1'] > rxregs['pfb_of1']:
-            raise RuntimeError('F host %s PFB 1 reports overflows.' % self.host)
+            raise RuntimeError('F host %s PFB 1 reports overflows. %i -> %i' % (
+                self.host, rxregs_new['pfb_of1'], rxregs['pfb_of1']))
         if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
-            raise RuntimeError('F host %s mcnt_relock is triggering.' % self.host)
+            raise RuntimeError('F host %s mcnt_relock is triggering. %i -> %i' % (
+                self.host, rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']))
         for pol in [0, 1]:
             if rxregs_new['pfb_of%i' % pol] > rxregs['pfb_of%i' % pol]:
-                raise RuntimeError('F host %s PFB %i reports overflows.' % (self.host, pol))
+                raise RuntimeError('F host %s PFB %i reports overflows. %i -> %i' % (
+                    self.host, pol, rxregs_new['pfb_of%i' % pol], rxregs['pfb_of%i' % pol]))
             if rxregs_new['re%i_cnt' % pol] > rxregs['re%i_cnt' % pol]:
-                raise RuntimeError('F host %s reorder count error.' % (self.host, pol))
+                raise RuntimeError('F host %s pol %i reorder count error. %i -> %i' % (
+                    self.host, pol, rxregs_new['re%i_cnt' % pol], rxregs['re%i_cnt' % pol]))
             if rxregs_new['re%i_time' % pol] > rxregs['re%i_time' % pol]:
-                raise RuntimeError('F host %s reorder time error.' % (self.host, pol))
+                raise RuntimeError('F host %s pol %i reorder time error. %i -> %i' % (
+                    self.host, pol, rxregs_new['re%i_time' % pol], rxregs['re%i_time' % pol]))
             if rxregs_new['re%i_tstep' % pol] > rxregs['re%i_tstep' % pol]:
-                raise RuntimeError('F host %s timestep error.' % (self.host, pol))
+                raise RuntimeError('F host %s pol %i timestep error. %i -> %i' % (
+                    self.host, pol, rxregs_new['re%i_tstep' % pol], rxregs['re%i_tstep' % pol]))
             if rxregs_new['timerror%i' % pol] > rxregs['timerror%i' % pol]:
-                raise RuntimeError('F host %s time error?.' % (self.host, pol))
+                raise RuntimeError('F host %s pol %i time error? %i -> %i' % (
+                    self.host, pol, rxregs_new['timerror%i' % pol], rxregs['timerror%i' % pol]))
         LOGGER.info('F host %s is reordering data okay.' % self.host)
 
     def read_spead_counters(self):
@@ -127,37 +136,31 @@ class FpgaFHost(FpgaHost):
         :param data_source: A DataSource object
         :return:
         """
+        # check that it doesn't already exist before adding it
         for source in self.data_sources:
             assert source.source_number != data_source.source_number
             assert source.name != data_source.name
-        data_source.eq_bram = 'eq%i' % len(self.data_sources)
         self.data_sources.append(data_source)
 
-    def get_source_eq_all(self):
+    def get_source_eq(self, source_name=None):
         """
         Return a dictionary of all the EQ settings for the sources allocated to this fhost
         :return:
         """
-        rv = {}
-        for source in self.data_sources:
-            rv[source.name] = source.get_eq()
-        return rv
+        if source_name is not None:
+            return self.eqs[source_name]
+        return self.eqs
 
-    def set_source_eq_all(self, complex_gain_list=None):
-        """
-        Set the gains for all sources on this fhost from a provided complex gain table
-        :param complex_gain_list: a list of gains, ONE per source GLOBALLY,
-        :return:
-        """
-        for source in self.data_sources:
-            source.set_eq(complex_gain_list[source.source_number] if complex_gain_list is not None else None)
-
-    def read_eq(self, eq_bram):
+    def read_eq(self, eq_bram=None, eq_name=None):
         """
         Read a given EQ BRAM.
         :param eq_bram:
-        :return:
+        :return: a list of the complex EQ values from RAM
         """
+        if eq_bram is None and eq_name is None:
+            raise RuntimeError('Cannot have both tuple and name None')
+        if eq_name is not None:
+            eq_bram = 'eq%i' % self.eqs[eq_name][1]
         # eq vals are packed as 32-bit complex (16 real, 16 imag)
         eqvals = self.read(eq_bram, self.n_chans*4)
         eqvals = struct.unpack('>%ih' % (self.n_chans*2), eqvals)
@@ -166,26 +169,49 @@ class FpgaFHost(FpgaHost):
             eqcomplex.append(eqvals[ctr] + (1j * eqvals[ctr+1]))
         return eqcomplex
 
-    def write_eq(self, eq_poly, bram):
+    def write_eq_all(self):
         """
-        Write a given complex eq to the given SBRAM.
-        :param eq_poly: an integer, complex number or list
-        :param bram: the bram to which to write
+        Write the self.eq variables to the device SBRAMs
         :return:
         """
-        try:
-            assert len(eq_poly) == self.n_chans
+        for eqname in self.eqs.keys():
+            LOGGER.debug('Writing EQ %s' % eqname)
+            self.write_eq(eq_name=eqname)
+
+    def write_eq(self, eq_tuple=None, eq_name=None):
+        """
+        Write a given complex eq to the given SBRAM.
+        :param eq_tuple: a tuple of an integer, complex number or list or integers or complex numbers and a sbram name
+        :param eq_name: the name of an eq to use, found in the self.eqs dictionary
+        :return:
+        """
+        if eq_tuple is None and eq_name is None:
+            raise RuntimeError('Cannot have both tuple and name None')
+        if eq_name is not None:
+            if eq_name not in self.eqs.keys():
+                raise ValueError('Unknown source name %s' % eq_name)
+            eq_poly = self.eqs[eq_name]['eq']
+            eq_bram = 'eq%i' % self.eqs[eq_name]['bram_num']
+        else:
+            eq_poly = eq_tuple[0]
+            eq_bram = eq_tuple[1]
+        if len(eq_poly) == 1:
+            # single complex
+            creal = self.n_chans * [int(eq_poly[0].real)]
+            cimag = self.n_chans * [int(eq_poly[0].imag)]
+        elif len(eq_poly) == self.n_chans:
+            # list - one for each channel
             creal = [num.real for num in eq_poly]
             cimag = [num.imag for num in eq_poly]
-        except TypeError:
-            # the eq_poly is an int or complex
-            creal = self.n_chans * [int(eq_poly.real)]
-            cimag = self.n_chans * [int(eq_poly.imag)]
+        else:
+            # polynomial
+            raise NotImplementedError('Polynomials are not yet complete.')
         coeffs = (self.n_chans * 2) * [0]
         coeffs[0::2] = creal
         coeffs[1::2] = cimag
         ss = struct.pack('>%ih' % (self.n_chans * 2), *coeffs)
-        self.write(bram, ss, 0)
+        self.write(eq_bram, ss, 0)
+        LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):

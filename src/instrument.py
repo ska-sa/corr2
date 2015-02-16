@@ -36,16 +36,14 @@ class Instrument(object):
         # an instrument knows about hosts, but specifics are left to child classes
         self.hosts = []
 
-        # an instrument was synchronised at some UNIX time
+        # an instrument was synchronised at some UNIX time - -1 means unset
         self.synchronisation_epoch = -1
-        self.synchronisation_epoch = time.time()
 
         if self.config_source is not None:
             try:
                 self._read_config()
             except:
                 raise
-
         LOGGER.info('%s %s created.' % (self.classname, self.descriptor))
 
     def _read_config(self):
@@ -74,9 +72,19 @@ class Instrument(object):
         :param new_synch_time: UNIX time
         :return: <nothing>
         """
-        if new_synch_time > time.time():
-            raise RuntimeError('Synch time in the future makes no sense?')
+        time_now = time.time()
+        if new_synch_time > time_now:
+            LOGGER.error('Synch time in the future makes no sense? %d > %d' % (new_synch_time, time_now))
+            raise RuntimeError('Synch time in the future makes no sense? %d > %d' % (new_synch_time, time_now))
         self.synchronisation_epoch = new_synch_time
+        LOGGER.info('Set synch epoch to %d' % new_synch_time)
+
+    def get_synch_time(self):
+        """
+        Get the last sync time for this system
+        :return: the current UNIX-time synch epoch
+        """
+        return self.synchronisation_epoch
 
     def _read_config_file(self):
         """

@@ -26,7 +26,7 @@ import utils
 import xhost_fpga
 import fhost_fpga
 from instrument import Instrument
-from data_source import DataSource, FengineSource
+from data_source import DataSource
 from casperfpga import tengbe
 from casperfpga import utils as fpgautils
 
@@ -218,52 +218,78 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.fhosts, max_waittime+1, 'check_rx', max_waittime)
         self.logger.info('\tdone.')
 
-    def feng_get_eq_all(self):
+    def feng_eq_get(self, source_name=None):
         """
-        Return the EQ arrays in a dictionary, arranged by FPGA hostname and source name.
+        Return the EQ arrays in a dictionary, arranged by source name.
         :return:
         """
         eq_table = {}
         for fhost in self.fhosts:
-            eq_table[fhost.host] = fhost.get_source_eq_all()
+            eq_table.update(fhost.eqs)
+            if source_name is not None and source_name in eq_table.keys():
+                return {source_name: eq_table[source_name]}
         return eq_table
 
-    def feng_get_eq_list(self):
+    def feng_eq_set(self, write=True, source_name=None, new_eq=None):
         """
-        Return the EQ arrays in a list, ordered by source number
+        Set the EQ for a specific source
+        :param write: should the value be written to BRAM on the device?
+        :param source_name: the source name
+        :param eq: an eq list or value or poly
         :return:
         """
-        eq_list = []
-        for source in self.fengine_sources:
-            eq_list.append(source.get_eq())
-        return eq_list
+        for fhost in self.fhosts:
+            if source_name in fhost.eqs.keys():
+                try:
+                    old_eq = fhost.eqs[source_name]['eq'][:]
+                    neweq = utils.process_new_eq(new_eq)
+                    fhost.eqs[source_name]['eq'] = neweq
+                    self.logger.info('Updated EQ value for source %s: %s...' %
+                                     (source_name, neweq[0:min(10, len(neweq))]))
+                    if write:
+                        fhost.write_eq(eq_name=source_name)
+                except Exception as e:
+                    fhost.eqs[source_name]['eq'] = old_eq[:]
+                    self.logger.error('New EQ error - REVERTED to old value! - %s' % e.message)
+                    raise ValueError('New EQ error - REVERTED to old value! - %s' % e.message)
+                return
+        raise ValueError('Unknown source name %s' % source_name)
 
-    def feng_set_eq_all(self, complex_gain_list=None):
+    def feng_eq_write_all(self, new_eq_dict=None):
         """
         Set the EQ gain for all sources.
-        :param complex_gain_list:
+        :param new_eq_dict: a dictionary of new eq values to store
         :return:
         """
-        self.logger.info('Setting EQ on fengines...')
-        THREADED_FPGA_FUNC(self.fhosts, 10, 'set_source_eq_all', complex_gain_list)
+        if new_eq_dict is not None:
+            self.logger.info('Updating some EQ values before writing.')
+            for src, new_eq in new_eq_dict:
+                self.feng_set_eq(src, new_eq)
+        self.logger.info('Writing EQ on all fhosts...')
+        THREADED_FPGA_FUNC(self.fhosts, 10, 'write_eq_all')
         if self.spead_meta_ig is not None:
-            for source_ctr, eqs in enumerate(self.feng_get_eq_list()):
-                try:
-                    eqlen = len(eqs)
-                except TypeError:
-                    eqs = [eqs]
-                    eqlen = 1
-                self.spead_meta_ig.add_item(name='eq_coef_%s' % self.fengine_sources[source_ctr].name,
-                                            id=0x1400 + source_ctr,
-                                            description='The unitless per-channel digital scaling factors implemented '
-                                                        'prior to requantisation, post-FFT, for input %s. '
-                                                        'Complex number real,imag 32 bit integers.' %
-                                                        self.fengine_sources[source_ctr].name,
-                                            shape=[eqlen, 2],
-                                            fmt=spead.mkfmt(('u',32)),
-                                            init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for eq_coeff in eqs])
+            self._feng_eq_update_metadata()
             self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
         self.logger.info('done.')
+
+    def _feng_eq_update_metadata(self):
+        """
+        Update the EQ metadata for this correlator.
+        :return:
+        """
+        all_eqs = self.feng_eq_get()
+        for source_ctr, source in enumerate(self.fengine_sources):
+            eqlen = len(all_eqs[source.name]['eq'])
+            self.spead_meta_ig.add_item(name='eq_coef_%s' % source.name,
+                                        id=0x1400 + source_ctr,
+                                        description='The unitless per-channel digital scaling factors implemented '
+                                                    'prior to requantisation, post-FFT, for input %s. '
+                                                    'Complex number real,imag 32 bit integers.' %
+                                                    source.name,
+                                        shape=[eqlen, 2],
+                                        fmt=spead.mkfmt(('u', 32)),
+                                        init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
+                                                  for eq_coeff in all_eqs[source.name]['eq']])
 
     def feng_set_fft_shift_all(self, shift_value=None):
         """
@@ -304,7 +330,7 @@ class FxCorrelator(Instrument):
         :return:
         """
         # set eq and shift
-        self.feng_set_eq_all()
+        self.feng_eq_write_all()
         self.feng_set_fft_shift_all()
 
         # set up the fpga comms
@@ -314,7 +340,7 @@ class FxCorrelator(Instrument):
 
         # where does the f-engine data go?
         self.fengine_output = DataSource.from_mcast_string(self.configd['fengine']['destination_mcast_ips'])
-        self.fengine_output.name='fengine_destination'
+        self.fengine_output.name = 'fengine_destination'
         fdest_ip = tengbe.str2ip(self.fengine_output.ip)
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip))
 
@@ -333,9 +359,9 @@ class FxCorrelator(Instrument):
                 this_ip = '%s%d' % (feng_ip_prefix, feng_ip_base)
                 gbe.setup(mac=this_mac, ipaddress=this_ip,
                           port=feng_port)
-                self.logger.info('fhost(%s) gbe(%s) MAC(%s) IP(%s) port(%i) board(%i) txIP(%s) txPort(%i)' %
+                self.logger.info('fhost(%s) gbe(%s) MAC(%s) IP(%s) port(%i) board(%i) txIPbase(%s) txPort(%i)' %
                                  (f.host, gbe.name, this_mac, this_ip, feng_port, board_id,
-                                 self.fengine_output.ip, self.fengine_output.port))
+                                  self.fengine_output.ip, self.fengine_output.port))
                 macbase += 1
                 feng_ip_base += 1
             f.registers.tx_metadata.write(board_id=board_id, porttx=self.fengine_output.port)
@@ -457,9 +483,6 @@ class FxCorrelator(Instrument):
         # for f in self.xhosts:
         #     f.registers.vacc_time_msw.write(arm=0, immediate=0)
         #     f.registers.vacc_time_msw.write(arm=1, immediate=1)
-
-        if use_xeng_sim:
-            self.synchronisation_epoch = time.time()
 
         '''
         # read accumulation count before starting accumulations
@@ -768,7 +791,10 @@ class FxCorrelator(Instrument):
         self._handle_sources()
 
         # turn the product names into a list
-        self.configd['xengine']['output_products'] = self.configd['xengine']['output_products'].split(',')
+        prodlist = self.configd['xengine']['output_products'].replace('[', '').replace(']', '').split(',')
+        self.configd['xengine']['output_products'] = []
+        for prod in prodlist:
+            self.configd['xengine']['output_products'].append(prod.strip(''))
 
     def _handle_sources(self):
         """
@@ -783,11 +809,16 @@ class FxCorrelator(Instrument):
             'Source names (%d) must be paired with multicast source addresses (%d)' % (len(source_names),
                                                                                        len(source_mcast))
 
+        # match eq polys to source names
+        eq_polys = {}
+        for src_name in source_names:
+            eq_polys[src_name] = utils.process_new_eq(self.configd['fengine']['eq_poly_%s' % src_name])
+
         # assemble the sources given into a list
         self.fengine_sources = []
         source_ctr = 0
         for counter, address in enumerate(source_mcast):
-            new_source = FengineSource.from_mcast_string(address)
+            new_source = DataSource.from_mcast_string(address)
             new_source.name = source_names[counter]
             new_source.source_number = source_ctr
             assert new_source.iprange == self.ports_per_fengine, \
@@ -795,20 +826,22 @@ class FxCorrelator(Instrument):
             self.fengine_sources.append(new_source)
             source_ctr += 1
 
-        # assign sources to fhosts
-        self.logger.info('Assigning data sources to f-engines...')
+        # assign sources and eqs to fhosts
+        self.logger.info('Assigning DataSources and EQs to f-engines...')
         source_ctr = 0
         for fhost in self.fhosts:
             self.logger.info('\t%s:' % fhost.host)
+            _eq_dict = {}
             for fengnum in range(0, self.f_per_fpga):
                 _source = self.fengine_sources[source_ctr]
+                _eq_dict[_source.name] = {'eq': eq_polys[_source.name], 'bram_num': fengnum}
                 assert _source.iprange == self.fengine_sources[0].iprange, \
                     'All f-engines should be receiving from %d streams.' % self.ports_per_fengine
-                _source.eq_poly = complex(int(self.configd['fengine']['eq_poly_%i' % source_ctr]))
                 _source.host = fhost
                 fhost.add_source(_source)
                 self.logger.info('\t\t%s' % _source)
                 source_ctr += 1
+            fhost.eqs = _eq_dict
         if source_ctr != len(self.fhosts) * self.f_per_fpga:
             raise RuntimeError('We have different numbers of sources (%d) and f-engines (%d). Problem.',
                                source_ctr, len(self.fhosts) * self.f_per_fpga)
@@ -1159,21 +1192,8 @@ class FxCorrelator(Instrument):
         #                        shape=[], fmt=spead.mkfmt(('f', 64)),
         #                        init_val=)
 
-        for source_ctr, eqs in enumerate(self.feng_get_eq_list()):
-            try:
-                eqlen = len(eqs)
-            except TypeError:
-                eqs = [eqs]
-                eqlen = 1
-            self.spead_meta_ig.add_item(name='eq_coef_%s' % self.fengine_sources[source_ctr].name,
-                                        id=0x1400 + source_ctr,
-                                        description='The unitless per-channel digital scaling factors implemented '
-                                                    'prior to requantisation, post-FFT, for input %s. '
-                                                    'Complex number real,imag 32 bit integers.' %
-                                                    self.fengine_sources[source_ctr].name,
-                                        shape=[eqlen, 2],
-                                        fmt=spead.mkfmt(('u', 32)),
-                                        init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for eq_coeff in eqs])
+        # 0x1400 +++
+        self._feng_eq_update_metadata()
 
         # spead_ig.add_item(name='eq_coef_MyAntStr', id=0x1400+inputN,
         #                        description='',
@@ -1182,10 +1202,9 @@ class FxCorrelator(Instrument):
 
         # ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
 
-        # do not issue timestamp here; will be wrong initial value.
         self.spead_meta_ig.add_item(name='timestamp', id=0x1600,
                                     description='Timestamp of start of this integration. uint counting multiples '
-                                                'of ADC samples since last sync (sync_time,id=0x1027). Divide this '
+                                                'of ADC samples since last sync (sync_time, id=0x1027). Divide this '
                                                 'number by timestamp_scale (id=0x1046) to get back to seconds since '
                                                 'last sync when this integration was actually started.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
