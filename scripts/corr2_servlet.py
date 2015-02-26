@@ -119,8 +119,8 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        if stream not in self.configd['xengine']['output_products']:
-            return 'fail', 'stream %s is not in product list: %s' % (stream, self.configd['xengine']['output_products'])
+        if stream not in self.instrument.configd['xengine']['output_products']:
+            return 'fail', 'stream %s is not in product list: %s' % (stream, self.instrument.configd['xengine']['output_products'])
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
