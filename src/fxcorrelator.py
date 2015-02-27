@@ -715,7 +715,19 @@ class FxCorrelator(Instrument):
             return False
         metalist = []
         for ctr, source in enumerate(self.fengine_sources):
+            # update the source name
+            old_name = source.name
             source.name = newlist[ctr]
+            # update the eq associated with that name
+            found_eq = False
+            for fhost in self.fhosts:
+                if old_name in fhost.eqs.keys():
+                    fhost.eqs[source.name] = fhost.eqs.pop(old_name)
+                    found_eq = True
+                    break
+            if not found_eq:
+                raise ValueError('Could not find the old EQ value, %s, to update to new name, %s.' %
+                                 (old_name, source.name))
             metalist.append((source.name, ctr))
         if self.spead_meta_ig is not None:
             self.spead_meta_ig['input_labelling'] = numpy.array(metalist)
@@ -723,7 +735,7 @@ class FxCorrelator(Instrument):
 
     def get_labels(self):
         """
-        Get the current fengine source labels.
+        Get the current fengine source labels as a string.
         :return:
         """
         source_names = ''
