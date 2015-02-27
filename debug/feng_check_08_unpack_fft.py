@@ -20,6 +20,8 @@ parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='
                     help='comma-delimited list of hosts, if you do not want all the fengine hosts in the config file')
 parser.add_argument('--config', dest='config', type=str, action='store', default='',
                     help='a corr2 config file, will use $CORR2INI if none given')
+parser.add_argument('--linear', dest='linear', action='store_true', default=False,
+                    help='plot linear, not log')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -111,7 +113,7 @@ def get_data():
         unpacked_data[fpga]['packettime48'] = packettime << 12
         p0_unpacked = []
         p1_unpacked = []
-        for ctr, dataword in enumerate(p0_data['data']['p0_80']):
+        for ctr, _ in enumerate(p0_data['data']['p0_80']):
             p0_80 = p0_data['data']['p0_80'][ctr]
             p1_80 = (p0_data['data']['p1_80_msb'][ctr] << 32) | p1_data['data']['p1_80_lsb'][ctr]
             p0_unpacked.append(p0_80)
@@ -164,46 +166,55 @@ else:
             samples.append(bin2fp(binnum, 10, 9, True))
         return samples
 
-    integrated_data = EXPECTED_FREQS * [0]
+    num_pols = 2
+    integrated_data = {}
     pyplot.ion()
 
     # looplimit = args.number * args.integrate
 
     looplimit = -1
-
-
     loopctr = 0
     starttime = time.time()
     while (looplimit == -1) or (loopctr < looplimit):
         unpacked_data = get_data()
         for fpga, fpga_data in unpacked_data.items():
             print '%i: %s data started at %d' % (loopctr, fpga, fpga_data['packettime48']),
-            # for pol_data in [(fpga_data['p0'], 0), (fpga_data['p1'], 1)]:
-            for pol_data in [(fpga_data['p1'], 1)]:
-                allsamples = []
-                for dataword in pol_data[0]:
+            if fpga not in integrated_data.keys():
+                integrated_data[fpga] = {}
+            for polctr, pol in enumerate(['p0', 'p1']):
+                if pol not in integrated_data[fpga].keys():
+                    integrated_data[fpga][pol] = EXPECTED_FREQS * [0]
+                pol_samples = []
+                for dataword in fpga_data[pol]:
                     samples = eighty_to_ten(dataword)
-                    allsamples.extend(samples)
-                assert len(allsamples) == EXPECTED_FREQS * 2
+                    pol_samples.extend(samples)
+                assert len(pol_samples) == EXPECTED_FREQS * 2
                 # print 'A snapshot of length %i gave a sample array of length %i' % (len(pol_data[0]), len(allsamples))
-                fftdata = numpy.fft.fft(allsamples)
+                fftdata = numpy.fft.fft(pol_samples)
                 # print 'The fft was then length %i' % len(fftdata)
-                showdata = EXPECTED_FREQS*[0]
+                showdata = EXPECTED_FREQS * [0]
                 for ctr, sample in enumerate(fftdata[:EXPECTED_FREQS]):
                     showdata[ctr] = pow(sample.real, 2) + pow(sample.imag, 2)
                 # print 'and showdata ended up being %i' % len(showdata)
                 # showdata = numpy.abs()
                 #showdata = showdata[len(showdata)/2:]
                 for ctr, _ in enumerate(showdata):
-                    integrated_data[ctr] += showdata[ctr]
-                pyplot.cla()
-                #pyplot.plot(integrated_data)
-                pyplot.semilogy(integrated_data)
-                pyplot.draw()
+                    integrated_data[fpga][pol][ctr] += showdata[ctr]
                 loopctr += 1
             rate = (time.time() - starttime) / (loopctr * 1.0)
             time_remaining = (looplimit - loopctr) * rate
-            print 'and ended %d samples later. All okay. %.2fs remaining.' % (len(allsamples), time_remaining)
+            print 'and ended %d samples later. All okay. %.2fs remaining.' % (len(pol_samples), time_remaining)
+        # actually draw the plots
+        for intdata in integrated_data.values():
+            pyplot.cla()
+            for ctr, data in enumerate(intdata.values()):
+                #pyplot.subplot(2, 1, ctr+1)
+                #pyplot.cla()
+                if args.linear:
+                    pyplot.plot(data)
+                else:
+                    pyplot.semilogy(data)
+        pyplot.draw()
 
 # wait here so that the plot can be viewed
 print 'Press Ctrl-C to exit...'
