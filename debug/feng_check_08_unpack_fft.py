@@ -153,6 +153,125 @@ if args.checktvg:
                 lastdata = dataramp
                 ctr += 1
         print 'and ended at %d %d samples later. All okay.' % (lasttime, ctr)
+elif True:
+
+    import matplotlib.pyplot as pyplot
+    from casperfpga.memory import bin2fp
+    import numpy
+
+    def eighty_to_ten(eighty):
+        samples = []
+        for offset in range(70, -1, -10):
+            binnum = (eighty >> offset) & 0x3ff
+            samples.append(bin2fp(binnum, 10, 9, True))
+        return samples
+
+    def hennoplot(somearg):
+        # clear plots
+        subplots[0].cla()
+        subplots[1].cla()
+        subplots[2].cla()
+        subplots[3].cla()
+
+        fpga = 'roach02092b'
+
+        num_adc_samples = 8192
+        nyquist_zone = 1
+
+        unpacked_data = get_data()
+
+        adc0_raw = []
+        for dataword in unpacked_data[fpga]['p0']:
+            samples = eighty_to_ten(dataword)
+            adc0_raw.extend(samples)
+        adc0_raw = numpy.array(adc0_raw)
+
+        adc1_raw = []
+        for dataword in unpacked_data[fpga]['p1']:
+            samples = eighty_to_ten(dataword)
+            adc1_raw.extend(samples)
+        adc1_raw = numpy.array(adc1_raw)
+
+        print adc0_raw
+
+        # # calculate spectrum for this ADC snapshot
+        # spectrum0 = numpy.abs((numpy.fft.rfft(adc0_raw)))
+        # spectrum1 = numpy.abs((numpy.fft.rfft(adc1_raw)))
+
+        #adc_rms_voltage_scale = (0.25*0.707)/512.0 # 250mV peak for 512 counts (500mV pp 1024 counts)
+        adc_rms_voltage_scale = (0.25*1.0)/512.0 # 250mV peak for 512 counts (500mV pp 1024 counts)
+
+        spectrum0_voltage = (numpy.abs((numpy.fft.rfft(adc0_raw*adc_rms_voltage_scale)))/(num_adc_samples * 1.0))
+        spectrum0_power = ((spectrum0_voltage*spectrum0_voltage)/50.0)
+        spectrum0_power_peak = 10*numpy.log10(1000*numpy.max(spectrum0_power)) + 3.0
+        #print spectrum0_power_peak
+        spectrum0_power_int = 10*numpy.log10(1000*numpy.sum(spectrum0_power)) + 3.0
+        #print spectrum0_power_int
+
+        spectrum1_voltage = (numpy.abs((numpy.fft.rfft(adc1_raw*adc_rms_voltage_scale)))/(num_adc_samples * 1.0))
+        spectrum1_power = ((spectrum1_voltage*spectrum1_voltage)/50.0)
+        spectrum1_power_peak = 10*numpy.log10(1000*numpy.max(spectrum1_power)) + 3.0
+        #print spectrum1_power_peak
+        spectrum1_power_int = 10*numpy.log10(1000*numpy.sum(spectrum1_power)) + 3.0
+        #print spectrum1_power_int
+
+        n_points = num_adc_samples
+        n_chans = (n_points)/2
+        bandwidth = 856e6
+        freqs=numpy.arange(n_chans)*float(bandwidth)/n_chans
+        period = (1000e6*1.0)/(bandwidth*2) # scale to ns
+        time_ticks=numpy.arange(n_points)*float(period)
+
+        if (nyquist_zone == 1):
+            bandwidth = 856e6
+            freqs=numpy.arange(n_chans)*((float(bandwidth)/n_chans))
+            freqs=numpy.add(freqs,bandwidth)
+            # no need to flip spectrum anymore - done in firmware
+            #spectrum0 = spectrum0[::-1]
+            #spectrum1 = spectrum1[::-1]
+
+        peak_adc_sample0 = numpy.max(adc0_raw)
+        peak_adc_sample1 = numpy.max(adc1_raw)
+
+        # Time Domain Plot ADC0 (V Pol)
+        subplots[0].set_title('ADC1 (V Pol): Time Domain [ns], Peak ADC Sample %i, Peak Power %3.3f [dBm], Integrated Power %3.3f [dBm]'%(peak_adc_sample0,spectrum0_power_peak,spectrum0_power_int))
+        subplots[0].set_ylabel('ADC Amplitude [raw]')
+        subplots[0].grid(True)
+        subplots[0].plot(time_ticks[0:256],adc0_raw[0:256])
+
+        # Spectrum Plot ADC0
+        subplots[1].set_title('ADC1 (V Pol): Spectrum [MHz]')
+        subplots[1].set_ylabel('Power (arbitrary units)')
+        subplots[1].grid(True)
+        #subplots[1].semilogy(freqs/1e6,spectrum0[0:n_chans])
+        subplots[1].plot(freqs/1e6,10*numpy.log10(1000*(spectrum0_power[0:n_chans])))
+
+        # Time Domain Plot ADC1 (H Pol)
+        subplots[2].set_title('ADC2 (H Pol): Time Domain [ns], Peak ADC Sample %i, Peak Power %3.3f [dBm], Integrated Power %3.3f [dBm]'%(peak_adc_sample1,spectrum1_power_peak,spectrum1_power_int))
+        subplots[2].set_ylabel('ADC2 Amplitude [raw]')
+        subplots[2].grid(True)
+        subplots[2].plot(time_ticks[0:256],adc1_raw[0:256])
+
+        # Spectrum Plot ADC1
+        subplots[3].set_title('ADC2 (H Pol): Spectrum [MHz]')
+        subplots[3].set_ylabel('Power (arbitrary units)')
+        subplots[3].grid(True)
+        #subplots[3].semilogy(freqs/1e6,spectrum1[0:n_chans])
+        subplots[3].plot(freqs/1e6,10*numpy.log10(1000*(spectrum1_power[0:n_chans])))
+
+        fig.canvas.draw()
+        fig.canvas.manager.window.after(100, hennoplot ,1)
+
+    #set up the figure with a subplot to be plotted
+    fig = pyplot.figure()
+
+    subplots = []
+    for p in range(4):
+        subPlot = fig.add_subplot(4,1,p+1)
+        subplots.append(subPlot)
+    fig.canvas.manager.window.after(100, hennoplot, 1)
+    pyplot.show()
+    print 'Plot started.'
 else:
     import numpy
     import matplotlib.pyplot as pyplot

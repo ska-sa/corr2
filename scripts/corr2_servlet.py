@@ -248,15 +248,25 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'could not set accumulation length'
         return 'ok', self.instrument.xeng_get_acc_time()
 
-    @request()
-    @return_reply()
-    def request_quantiser_snapshot(self, sock):
+    @request(Str(default=''))
+    @return_reply(Str(multiple=True))
+    def request_quantiser_snapshot(self, sock, source_name):
         """
-
+        Get a list of values representing the quantised spectrum for the given source
         :param sock:
+        :param source_name: the source to query
         :return:
         """
-        return 'ok',
+        try:
+            snapdata = self.instrument.feng_get_quant_snap(source_name)
+        except Exception as e:
+            logging.info(e)
+            return 'fail', 'failed to read quant snap data for given source %s' % source_name
+        quant_string = ''
+        for complex_word in snapdata:
+            quant_string += ' %s' % str(complex_word)
+        quant_string = quant_string.replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace(',', '')
+        return 'ok', quant_string
 
     @request()
     @return_reply()
