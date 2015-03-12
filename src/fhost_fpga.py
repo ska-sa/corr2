@@ -231,7 +231,7 @@ class FpgaFHost(FpgaHost):
         Get the current FFT shift schedule from the FPGA.
         :return: integer representing the FFT shift schedule for all the FFTs on this engine.
         """
-        return self.host.registers.fft_shift.read()['data']['fft_shift']
+        return self.registers.fft_shift.read()['data']['fft_shift']
 
 '''
     def _get_fengine_fpga_config(self):
