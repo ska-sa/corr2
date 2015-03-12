@@ -156,7 +156,6 @@ if args.checktvg:
                 ctr += 1
         print 'and ended at %d %d samples later. All okay.' % (lasttime, ctr)
 elif False:
-
     import matplotlib.pyplot as pyplot
     from casperfpga.memory import bin2fp
     import numpy
@@ -336,9 +335,6 @@ else:
                 else:
                     pyplot.semilogy(data)
         pyplot.draw()
-        if loopctr >= args.integrations:
-            loopctr = 0
-            integrated_data = {}
 
 # wait here so that the plot can be viewed
 print 'Press Ctrl-C to exit...'

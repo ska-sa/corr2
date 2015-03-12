@@ -324,6 +324,37 @@ class FxCorrelator(Instrument):
         """
         THREADED_FPGA_FUNC(self.fhosts, 10, 'clear_status')
 
+    def feng_get_quant_snap(self, source_name):
+        """
+
+        :param source_name:
+        :return:
+        """
+        targetsrc = None
+        for src in self.fengine_sources:
+            if src.name == source_name:
+                targetsrc = src
+                break
+        if targetsrc is None:
+            raise RuntimeError('Could not find source %s' % source_name)
+        targetsrc.host.snapshots.snapquant_ss.arm()
+        targetsrc.host.registers.control.write(snapquant_arm='pulse')
+        sdata = targetsrc.host.snapshots.snapquant_ss.read(arm=False)['data']
+        compl = []
+        if targetsrc.source_number % 2 == 0:
+            for ctr in range(0, len(sdata['r00'])):
+                compl.append(complex(sdata['r00'][ctr], sdata['i00'][ctr]))
+                compl.append(complex(sdata['r01'][ctr], sdata['i01'][ctr]))
+                compl.append(complex(sdata['r02'][ctr], sdata['i02'][ctr]))
+                compl.append(complex(sdata['r03'][ctr], sdata['i03'][ctr]))
+        else:
+            for ctr in range(0, len(sdata['r10'])):
+                compl.append(complex(sdata['r10'][ctr], sdata['i10'][ctr]))
+                compl.append(complex(sdata['r11'][ctr], sdata['i11'][ctr]))
+                compl.append(complex(sdata['r12'][ctr], sdata['i12'][ctr]))
+                compl.append(complex(sdata['r13'][ctr], sdata['i13'][ctr]))
+        return compl
+
     def _fengine_initialise(self):
         """
         Set up f-engines on this device.
