@@ -20,6 +20,10 @@ parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='
                     help='comma-delimited list of hosts, if you do not want all the fengine hosts in the config file')
 parser.add_argument('--config', dest='config', type=str, action='store', default='',
                     help='a corr2 config file, will use $CORR2INI if none given')
+parser.add_argument('--integrate', dest='integrate', action='store', default=-1, type=int,
+                    help='integrate n successive spectra, -1 is infinite')
+parser.add_argument('--number', dest='number', action='store', default=-1, type=int,
+                    help='number of spectra/integrations to fetch, -1 is unlimited')
 parser.add_argument('--linear', dest='linear', action='store_true', default=False,
                     help='plot linear, not log')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
@@ -153,7 +157,7 @@ if args.checktvg:
                 lastdata = dataramp
                 ctr += 1
         print 'and ended at %d %d samples later. All okay.' % (lasttime, ctr)
-elif True:
+elif False:
 
     import matplotlib.pyplot as pyplot
     from casperfpga.memory import bin2fp
@@ -287,17 +291,15 @@ else:
 
     num_pols = 2
     integrated_data = {}
+    integration_counter = 0
     pyplot.ion()
-
-    # looplimit = args.number * args.integrate
-
-    looplimit = -1
-    loopctr = 0
     starttime = time.time()
-    while (looplimit == -1) or (loopctr < looplimit):
+    plot_counter = 0
+    while True:
         unpacked_data = get_data()
+        integration_counter += 1
         for fpga, fpga_data in unpacked_data.items():
-            print '%i: %s data started at %d' % (loopctr, fpga, fpga_data['packettime48']),
+            print '%i: %s data started at %d' % (plot_counter, fpga, fpga_data['packettime48']),
             if fpga not in integrated_data.keys():
                 integrated_data[fpga] = {}
             for polctr, pol in enumerate(['p0', 'p1']):
@@ -319,10 +321,7 @@ else:
                 #showdata = showdata[len(showdata)/2:]
                 for ctr, _ in enumerate(showdata):
                     integrated_data[fpga][pol][ctr] += showdata[ctr]
-                loopctr += 1
-            rate = (time.time() - starttime) / (loopctr * 1.0)
-            time_remaining = (looplimit - loopctr) * rate
-            print 'and ended %d samples later. All okay. %.2fs remaining.' % (len(pol_samples), time_remaining)
+            print 'and ended %d samples later. All okay.' % (len(pol_samples))
         # actually draw the plots
         for intdata in integrated_data.values():
             pyplot.cla()
@@ -334,6 +333,12 @@ else:
                 else:
                     pyplot.semilogy(data)
         pyplot.draw()
+        if integration_counter == args.integrate and args.integrate > 0:
+            integrated_data = {}
+            integration_counter = 0
+            plot_counter += 1
+        if plot_counter == args.number and args.number > 0:
+            break
 
 # wait here so that the plot can be viewed
 print 'Press Ctrl-C to exit...'
