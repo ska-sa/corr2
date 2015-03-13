@@ -295,6 +295,7 @@ else:
     pyplot.ion()
     starttime = time.time()
     plot_counter = 0
+
     while True:
         unpacked_data = get_data()
         integration_counter += 1
@@ -323,11 +324,12 @@ else:
                     integrated_data[fpga][pol][ctr] += showdata[ctr]
             print 'and ended %d samples later. All okay.' % (len(pol_samples))
         # actually draw the plots
-        for intdata in integrated_data.values():
+        num_plots = len(integrated_data.keys())
+        for fpga_ctr, intdata in enumerate(integrated_data.values()):
+            pyplot.subplot(num_plots, 1, fpga_ctr+1)
             pyplot.cla()
             for ctr, data in enumerate(intdata.values()):
-                #pyplot.subplot(2, 1, ctr+1)
-                #pyplot.cla()
+                print fpga_ctr, ctr, len(data)
                 if args.linear:
                     pyplot.plot(data)
                 else:
