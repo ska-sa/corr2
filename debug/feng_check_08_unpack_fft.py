@@ -177,7 +177,7 @@ elif False:
         subplots[2].cla()
         subplots[3].cla()
 
-        fpga = 'roach02092b'
+        fpga = 'roach020a03'
 
         num_adc_samples = 8192
         nyquist_zone = 1
@@ -266,7 +266,7 @@ elif False:
         fig.canvas.draw()
         fig.canvas.manager.window.after(100, hennoplot ,1)
 
-    #set up the figure with a subplot to be plotted
+    # set up the figure with a subplot to be plotted
     fig = pyplot.figure()
 
     subplots = []
@@ -289,23 +289,16 @@ else:
             samples.append(bin2fp(binnum, 10, 9, True))
         return samples
 
-    num_pols = 2
-    integrated_data = {}
-    integration_counter = 0
-    pyplot.ion()
-    starttime = time.time()
-    plot_counter = 0
-
-    while True:
+    def plot_func(figure, sub_plots, idata, ictr, pctr):
         unpacked_data = get_data()
-        integration_counter += 1
+        ictr += 1
         for fpga, fpga_data in unpacked_data.items():
-            print '%i: %s data started at %d' % (plot_counter, fpga, fpga_data['packettime48']),
-            if fpga not in integrated_data.keys():
-                integrated_data[fpga] = {}
+            print '%i: %s data started at %d' % (pctr, fpga, fpga_data['packettime48']),
+            if fpga not in idata.keys():
+                idata[fpga] = {}
             for polctr, pol in enumerate(['p0', 'p1']):
-                if pol not in integrated_data[fpga].keys():
-                    integrated_data[fpga][pol] = EXPECTED_FREQS * [0]
+                if pol not in idata[fpga].keys():
+                    idata[fpga][pol] = EXPECTED_FREQS * [0]
                 pol_samples = []
                 for dataword in fpga_data[pol]:
                     samples = eighty_to_ten(dataword)
@@ -321,26 +314,41 @@ else:
                 # showdata = numpy.abs()
                 #showdata = showdata[len(showdata)/2:]
                 for ctr, _ in enumerate(showdata):
-                    integrated_data[fpga][pol][ctr] += showdata[ctr]
+                    idata[fpga][pol][ctr] += showdata[ctr]
             print 'and ended %d samples later. All okay.' % (len(pol_samples))
         # actually draw the plots
-        num_plots = len(integrated_data.keys())
-        for fpga_ctr, intdata in enumerate(integrated_data.values()):
-            pyplot.subplot(num_plots, 1, fpga_ctr+1)
-            pyplot.cla()
+        for fpga_ctr, intdata in enumerate(idata.values()):
+            sub_plots[fpga_ctr].cla()
+            sub_plots[fpga_ctr].set_title(idata.keys()[fpga_ctr])
             for ctr, data in enumerate(intdata.values()):
-                print fpga_ctr, ctr, len(data)
+                # print fpga_ctr, ctr, len(data)
                 if args.linear:
-                    pyplot.plot(data)
+                    sub_plots[fpga_ctr].plot(data)
                 else:
-                    pyplot.semilogy(data)
-        pyplot.draw()
-        if integration_counter == args.integrate and args.integrate > 0:
-            integrated_data = {}
-            integration_counter = 0
-            plot_counter += 1
-        if plot_counter == args.number and args.number > 0:
-            break
+                    sub_plots[fpga_ctr].semilogy(data)
+        figure.canvas.draw()
+        if ictr == args.integrate and args.integrate > 0:
+            idata = {}
+            ictr = 0
+            pctr += 1
+        if pctr == args.number and args.number > 0:
+            return
+        fig.canvas.manager.window.after(100, plot_func, figure, sub_plots, idata, ictr, pctr)
+
+    # set up the figure with a subplot to be plotted
+    unpacked_data = get_data()
+    fig = pyplot.figure()
+    subplots = []
+    num_plots = len(unpacked_data.keys())
+    for p in range(num_plots):
+        sub_plot = fig.add_subplot(num_plots, 1, p+1)
+        subplots.append(sub_plot)
+    integrated_data = {}
+    integration_counter = 0
+    plot_counter = 0
+    fig.canvas.manager.window.after(100, plot_func, fig, subplots, integrated_data, integration_counter, plot_counter)
+    pyplot.show()
+    print 'Plot started.'
 
 # wait here so that the plot can be viewed
 print 'Press Ctrl-C to exit...'
