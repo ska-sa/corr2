@@ -81,16 +81,16 @@ class FpgaFHost(FpgaHost):
         if rxregs_new['valid_reord'] == rxregs['valid_reord']:
             raise RuntimeError('F host %s reorder is not counting packets. %i -> %i' % (
                 self.host, rxregs_new['valid_reord'], rxregs['valid_reord']))
-        if rxregs_new['pfb_of1'] > rxregs['pfb_of1']:
-            raise RuntimeError('F host %s PFB 1 reports overflows. %i -> %i' % (
-                self.host, rxregs_new['pfb_of1'], rxregs['pfb_of1']))
+        # if rxregs_new['pfb_of1'] > rxregs['pfb_of1']:
+        #     raise RuntimeError('F host %s PFB 1 reports overflows. %i -> %i' % (
+        #         self.host, rxregs_new['pfb_of1'], rxregs['pfb_of1']))
         if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
             raise RuntimeError('F host %s mcnt_relock is triggering. %i -> %i' % (
                 self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
         for pol in [0, 1]:
-            if rxregs_new['pfb_of%i' % pol] > rxregs['pfb_of%i' % pol]:
-                raise RuntimeError('F host %s PFB %i reports overflows. %i -> %i' % (
-                    self.host, pol, rxregs_new['pfb_of%i' % pol], rxregs['pfb_of%i' % pol]))
+            # if rxregs_new['pfb_of%i' % pol] > rxregs['pfb_of%i' % pol]:
+            #     raise RuntimeError('F host %s PFB %i reports overflows. %i -> %i' % (
+            #         self.host, pol, rxregs_new['pfb_of%i' % pol], rxregs['pfb_of%i' % pol]))
             if rxregs_new['re%i_cnt' % pol] > rxregs['re%i_cnt' % pol]:
                 raise RuntimeError('F host %s pol %i reorder count error. %i -> %i' % (
                     self.host, pol, rxregs_new['re%i_cnt' % pol], rxregs['re%i_cnt' % pol]))
@@ -252,6 +252,31 @@ class FpgaFHost(FpgaHost):
         self.snapshots.snapquant_ss.arm()
         self.registers.control.write(snapquant_arm='pulse')
         snapdata = self.snapshots.snapquant_ss.read(arm=False)['data']
+        raise RuntimeError
+
+    def get_pfb_snapshot(self, pol=0):
+        # select the pol
+        self.registers.control.write(snappfb_dsel=pol)
+
+        # arm the snaps
+        self.snapshots.snappfb_0_ss.arm()
+        self.snapshots.snappfb_1_ss.arm()
+
+        # allow them to trigger
+        self.registers.control.write(snappfb_arm='pulse')
+
+        # read the data
+        r0_to_r3 = self.snapshots.snappfb_0_ss.read(arm=False)['data']
+        i3 = self.snapshots.snappfb_1_ss.read(arm=False)['data']
+
+        # reorder the data
+        p_data = []
+        for ctr in range(0, len(i3['i3'])):
+            p_data.append(complex(r0_to_r3['r0'][ctr], r0_to_r3['i0'][ctr]))
+            p_data.append(complex(r0_to_r3['r1'][ctr], r0_to_r3['i1'][ctr]))
+            p_data.append(complex(r0_to_r3['r2'][ctr], r0_to_r3['i2'][ctr]))
+            p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
+        return p_data
 
 '''
     def _get_fengine_fpga_config(self):
