@@ -63,9 +63,11 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
             logging.info('made correlator okay')
             return 'ok',
-        except:
+        except Exception as e:
+            localexc = e
             pass
-        return 'fail',
+        logging.error('create threw Exception: %s' % localexc.message)
+        return 'fail', 'create threw Exception: %s' % localexc.message
 
     @request(Bool(default=True))
     @return_reply()
@@ -78,9 +80,11 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument.initialise(program=program, tvg=False)
             return 'ok',
-        except:
+        except Exception as e:
+            localexc = e
             pass
-        return 'fail',
+        logging.error('create threw Exception: %s' % localexc.message)
+        return 'fail', 'create threw Exception: %s' % localexc.message
 
     @request(Str(multiple=True))
     @return_reply()
