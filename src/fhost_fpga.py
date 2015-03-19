@@ -238,6 +238,8 @@ class FpgaFHost(FpgaHost):
         Read the post-quantisation snapshot for a given source
         :return:
         """
+        raise NotImplementedError
+        """
         source_names = []
         if source_name is None:
             for src in self.data_sources:
@@ -249,10 +251,14 @@ class FpgaFHost(FpgaHost):
                     break
         if len(source_names) == 0:
             raise RuntimeError('Could not find source %s on this f-engine host or no sources given' % source_name)
+        targetsrc.host.snapshots.snapquant_ss.arm()
+        targetsrc.host.registers.control.write(snapquant_arm='pulse')
+        sdata = targetsrc.host.snapshots.snapquant_ss.read(arm=False)['data']
         self.snapshots.snapquant_ss.arm()
         self.registers.control.write(snapquant_arm='pulse')
         snapdata = self.snapshots.snapquant_ss.read(arm=False)['data']
         raise RuntimeError
+        """
 
     def get_pfb_snapshot(self, pol=0):
         # select the pol

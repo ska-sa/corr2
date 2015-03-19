@@ -30,7 +30,7 @@ parser.add_argument('--num_accs', dest='number', action='store', default=-1, typ
                     help='number of spectra/integrations to fetch, -1 is unlimited')
 parser.add_argument('--fftshift', dest='fftshift', action='store', default=-1, type=int,
                     help='the FFT shift to set')
-parser.add_argument('--log', dest='log', action='store_true', default=False,
+parser.add_argument('--log', dest='log', action='store_true', default=True,
                     help='True for log plots, False for linear')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
