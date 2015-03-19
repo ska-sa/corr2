@@ -238,34 +238,45 @@ class FxCorrelator(Instrument):
         :param eq: an eq list or value or poly
         :return:
         """
-        for fhost in self.fhosts:
-            if source_name in fhost.eqs.keys():
-                try:
-                    old_eq = fhost.eqs[source_name]['eq'][:]
-                    neweq = utils.process_new_eq(new_eq)
-                    fhost.eqs[source_name]['eq'] = neweq
-                    self.logger.info('Updated EQ value for source %s: %s...' %
-                                     (source_name, neweq[0:min(10, len(neweq))]))
-                    if write:
-                        fhost.write_eq(eq_name=source_name)
-                except Exception as e:
-                    fhost.eqs[source_name]['eq'] = old_eq[:]
-                    self.logger.error('New EQ error - REVERTED to old value! - %s' % e.message)
-                    raise ValueError('New EQ error - REVERTED to old value! - %s' % e.message)
-                return
-        raise ValueError('Unknown source name %s' % source_name)
+        if new_eq is None:
+            raise ValueError('New EQ of nothing makes no sense.')
+        # if no source is given, apply the new eq to all sources
+        if source_name is None:
+            self.logger.info('Setting EQ on all sources to new given EQ.')
+            for fhost in self.fhosts:
+                for src_nm in fhost.eqs.keys():
+                    self.feng_eq_set(write=False, source_name=src_nm, new_eq=new_eq)
+            if write:
+                self.feng_eq_write_all()
+        else:
+            for fhost in self.fhosts:
+                if source_name in fhost.eqs.keys():
+                    try:
+                        old_eq = fhost.eqs[source_name]['eq'][:]
+                        neweq = utils.process_new_eq(new_eq)
+                        fhost.eqs[source_name]['eq'] = neweq
+                        self.logger.info('Updated EQ value for source %s: %s...' %
+                                         (source_name, neweq[0:min(10, len(neweq))]))
+                        if write:
+                            fhost.write_eq(eq_name=source_name)
+                    except Exception as e:
+                        fhost.eqs[source_name]['eq'] = old_eq[:]
+                        self.logger.error('New EQ error - REVERTED to old value! - %s' % e.message)
+                        raise ValueError('New EQ error - REVERTED to old value! - %s' % e.message)
+                    return
+            raise ValueError('Unknown source name %s' % source_name)
 
     def feng_eq_write_all(self, new_eq_dict=None):
         """
-        Set the EQ gain for all sources.
+        Set the EQ gain for given sources and write the changes to memory.
         :param new_eq_dict: a dictionary of new eq values to store
         :return:
         """
         if new_eq_dict is not None:
             self.logger.info('Updating some EQ values before writing.')
             for src, new_eq in new_eq_dict:
-                self.feng_set_eq(src, new_eq)
-        self.logger.info('Writing EQ on all fhosts...')
+                self.feng_eq_set(write=False, source_name=src, new_eq=new_eq)
+        self.logger.info('Writing EQ on all fhosts based on stored per-source EQ values...')
         THREADED_FPGA_FUNC(self.fhosts, 10, 'write_eq_all')
         if self.spead_meta_ig is not None:
             self._feng_eq_update_metadata()
@@ -679,14 +690,25 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.xhosts, 10, 'clear_status')
         time.sleep(self.xeng_get_acc_time()+1)
         vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
+        errors_found = False
         for host in self.xhosts:
             for status in vacc_status[host.host]:
                 if status['errors'] > 0:
                     self.logger.error('\tVACC errors > 0. Que pasa?')
+                    errors_found = True
                 if status['count'] <= 0:
                     self.logger.error('\tVACC counts <= 0. Que pasa?')
-                    print_vacc_statuses(vacc_status)
-                    raise RuntimeError
+                    errors_found = True
+        if errors_found:
+            vacc_error_detail = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_error_detail')
+            self.logger.error('Exited on VACC error')
+            self.logger.error('VACC statuses:')
+            for host, item in vacc_status.items():
+                self.logger.error('\t%s: %s' % (host, str(item)))
+            self.logger.error('VACC errors:')
+            for host, item in vacc_error_detail.items():
+                self.logger.error('\t%s: %s' % (host, str(item)))
+            raise RuntimeError('Exited on VACC error')
         self.logger.info('\t...accumulations rolling in without error.')
 
     def xeng_set_acc_time(self, acc_time_s):
@@ -902,7 +924,7 @@ class FxCorrelator(Instrument):
         Get instance-specific setup information from a given server. Via KATCP?
         :return:
         """
-        raise NotImplementedError('Still have to do this')
+        raise NotImplementedError('_read_config_server not implemented')
 
     def set_stream_destination(self, txip_str=None, txport=None):
         """
