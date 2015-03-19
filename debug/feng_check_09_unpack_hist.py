@@ -68,6 +68,11 @@ if len(snapshot_missing) > 0:
 
 
 def get_data():
+    """
+    Read the snap data from the f-engines
+    :return:
+    """
+
     # arm the snaps
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots.snapcoarse_0_ss.arm())
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots.snapcoarse_1_ss.arm())
@@ -95,33 +100,35 @@ def get_data():
         raise RuntimeError('Error getting p1 snap data')
 
     # unpack the data and the timestamps
-    unpacked_data = {}
-    for fpga in snapdata_p0.keys():
-        unpacked_data[fpga] = {}
-        p0_data = snapdata_p0[fpga]
-        p1_data = snapdata_p1[fpga]
+    _unpacked_data = {}
+    for _fpga in snapdata_p0.keys():
+        _unpacked_data[_fpga] = {}
+        p0_data = snapdata_p0[_fpga]
+        p1_data = snapdata_p1[_fpga]
         packettime = (p0_data['extra_value']['data']['time36_msb'] << 4) | p1_data['extra_value']['data']['time36_lsb']
-        unpacked_data[fpga]['packettime36'] = packettime
-        unpacked_data[fpga]['packettime48'] = packettime << 12
+        _unpacked_data[_fpga]['packettime36'] = packettime
+        _unpacked_data[_fpga]['packettime48'] = packettime << 12
         p0_unpacked = []
         p1_unpacked = []
-        for ctr, dataword in enumerate(p0_data['data']['p0_80']):
-            p0_80 = p0_data['data']['p0_80'][ctr]
-            p1_80 = (p0_data['data']['p1_80_msb'][ctr] << 32) | p1_data['data']['p1_80_lsb'][ctr]
+        for _ctr, _ in enumerate(p0_data['data']['p0_80']):
+            p0_80 = p0_data['data']['p0_80'][_ctr]
+            p1_80 = (p0_data['data']['p1_80_msb'][_ctr] << 32) | p1_data['data']['p1_80_lsb'][_ctr]
             p0_unpacked.append(p0_80)
             p1_unpacked.append(p1_80)
-        unpacked_data[fpga]['p0'] = p0_unpacked[:]
-        unpacked_data[fpga]['p1'] = p1_unpacked[:]
-    return unpacked_data
+        _unpacked_data[_fpga]['p0'] = p0_unpacked[:]
+        _unpacked_data[_fpga]['p1'] = p1_unpacked[:]
+    return _unpacked_data
 
 import matplotlib.pyplot as pyplot
 from casperfpga.memory import bin2fp
+
+
 def eighty_to_ten(eighty):
-    samples = []
+    _samples = []
     for offset in range(70, -1, -10):
         binnum = (eighty >> offset) & 0x3ff
-        samples.append(bin2fp(binnum, 10, 9, True))
-    return samples
+        _samples.append(bin2fp(binnum, 10, 9, True))
+    return _samples
 
 pyplot.interactive(True)
 while True:

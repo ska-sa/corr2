@@ -24,9 +24,9 @@ parser.add_argument('--config', dest='config', type=str, action='store', default
                     help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument('--pol', dest='pol', action='store', default=0, type=int,
                     help='polarisation, 0 or 1')
-parser.add_argument('--integrate', dest='integrate', action='store', default=-1, type=int,
+parser.add_argument('--num_ints', dest='integrate', action='store', default=-1, type=int,
                     help='integrate n successive spectra, -1 is infinite')
-parser.add_argument('--number', dest='number', action='store', default=-1, type=int,
+parser.add_argument('--num_accs', dest='number', action='store', default=-1, type=int,
                     help='number of spectra/integrations to fetch, -1 is unlimited')
 parser.add_argument('--fftshift', dest='fftshift', action='store', default=-1, type=int,
                     help='the FFT shift to set')
@@ -101,9 +101,12 @@ integrate_ctr = 0
 integrated_data = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
 integrated_power = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
 
-looplimit = args.number * args.integrate
+if args.number == -1 and args.integrate == -1:
+    looplimit = -1
+else:
+    looplimit = args.number * args.integrate
 
-while (looplimit == -1) or (loopctr < looplimit):
+while (looplimit < 0) or (loopctr < looplimit):
 
     # arm the snaps
     for snap in required_snaps:

@@ -26,6 +26,8 @@ parser.add_argument('--number', dest='number', action='store', default=-1, type=
                     help='number of spectra/integrations to fetch, -1 is unlimited')
 parser.add_argument('--linear', dest='linear', action='store_true', default=False,
                     help='plot linear, not log')
+parser.add_argument('--integ', dest='integrations', action='store', type=int, default=1,
+                    help='number of spectra to integrate, -1 is infinate')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -158,7 +160,6 @@ if args.checktvg:
                 ctr += 1
         print 'and ended at %d %d samples later. All okay.' % (lasttime, ctr)
 elif False:
-
     import matplotlib.pyplot as pyplot
     from casperfpga.memory import bin2fp
     import numpy

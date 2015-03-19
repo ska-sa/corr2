@@ -36,3 +36,59 @@ class DataSource(object):
 
     def __str__(self):
         return 'DataSource(%s) @ %s+%i port(%i)' % (self.name, self.ip, self.iprange, self.port)
+
+
+class FengineSource(DataSource):
+    """
+    A DataSource that is specifically used to send data to an f-engine
+    """
+    def __init__(self, host, source_number, eq, name, ip, iprange, port):
+        """
+        Create a FengineSource object
+        :param host: the host on which this data is received
+        :param source_number: the correlator-wide source number/index
+        :param name: the correlator-wide source name
+        :param ip: the ip address from which this source is received
+        :param iprange: the ip range across which it is received
+        :param port: the port on which it is received
+        :param eq: the eq setting and bram associated with this source
+        :return:
+        """
+        self.host = host
+        self.source_number = source_number
+        self.eq = eq
+        self.name = name
+        self.ip = ip
+        self.iprange = iprange
+        self.port = port
+        self._update_name_cb = None
+
+    def update_name(self, newname):
+        """
+        The name is quite important - so provide a method for a callback to be registered for this
+        DataSource, so that when the names changes, you can do other stuff too.
+        :param newname: the new name for this DataSource
+        :return:
+        """
+        if newname == self.name:
+            return
+        if self._update_name_cb is not None:
+            self._update_name_cb(self.name, newname)
+        self.name = newname
+
+    @classmethod
+    def from_datasource(cls, host, source_number, eq, dsource_object):
+        """
+        Make a FengineSource object from an existing DataSource object
+        :param host:
+        :param source_number:
+        :param eq:
+        :param dsource_object:
+        :return:
+        """
+        return cls(host, source_number, eq,
+                   dsource_object.name, dsource_object.ip, dsource_object.iprange, dsource_object.port)
+
+    def __str__(self):
+        return 'FengineSource(%s:%i:%s) @ %s+%i port(%i)' % (self.host.name, self.source_number,
+                                                             self.name, self.ip, self.iprange, self.port)

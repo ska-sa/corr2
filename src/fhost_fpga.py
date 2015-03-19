@@ -86,7 +86,7 @@ class FpgaFHost(FpgaHost):
         #         self.host, rxregs_new['pfb_of1'], rxregs['pfb_of1']))
         if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
             raise RuntimeError('F host %s mcnt_relock is triggering. %i -> %i' % (
-                self.host, rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']))
+                self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
         for pol in [0, 1]:
             # if rxregs_new['pfb_of%i' % pol] > rxregs['pfb_of%i' % pol]:
             #     raise RuntimeError('F host %s PFB %i reports overflows. %i -> %i' % (
@@ -232,6 +232,27 @@ class FpgaFHost(FpgaHost):
         :return: integer representing the FFT shift schedule for all the FFTs on this engine.
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
+
+    def get_quant_snapshot(self, source_name=None):
+        """
+        Read the post-quantisation snapshot for a given source
+        :return:
+        """
+        source_names = []
+        if source_name is None:
+            for src in self.data_sources:
+                source_names.append(src.name)
+        else:
+            for src in self.data_sources:
+                if src.name == source_name:
+                    source_names.append(source_name)
+                    break
+        if len(source_names) == 0:
+            raise RuntimeError('Could not find source %s on this f-engine host or no sources given' % source_name)
+        self.snapshots.snapquant_ss.arm()
+        self.registers.control.write(snapquant_arm='pulse')
+        snapdata = self.snapshots.snapquant_ss.read(arm=False)['data']
+        raise RuntimeError
 
     def get_pfb_snapshot(self, pol=0):
         # select the pol
