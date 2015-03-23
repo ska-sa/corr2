@@ -20,6 +20,8 @@ import sys
 import numpy
 import struct
 import spead64_48 as spead
+from threading import Timer
+from katcp import Sensor
 
 import log
 import utils
@@ -42,6 +44,9 @@ class FxCorrelator(Instrument):
     xengines that each produce cross products from a continuous portion of the channels and accumulate the result.
     SPEAD data products are produced.
     """
+
+    SENSOR_POLL_TIMEOUT = 10
+
     def __init__(self, descriptor, identifier=-1, config_source=None, logger=None, log_level=logging.INFO):
         """
         An abstract base class for instruments.
@@ -76,6 +81,9 @@ class FxCorrelator(Instrument):
 
         self.spead_tx = None
         self.spead_meta_ig = None
+
+        # sensors
+        self.sensors = {}
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
@@ -177,6 +185,33 @@ class FxCorrelator(Instrument):
         # reset all counters on fhosts and xhosts
         self.feng_clear_status_all()
         self.xeng_clear_status_all()
+
+    def setup_sensors(self, katcp_server):
+        """
+        Set up compound sensors to be reported to CAM
+        :param katcp_server: the katcp server with which to register the sensors
+        :return:
+        """
+        self.sensors = {'time': Sensor(sensor_type=Sensor.FLOAT, name='time_sensor', description='The time.',
+                                       units='s', params=[-(2**64), (2**64)-1], default=-1),
+                        'test': Sensor(sensor_type=Sensor.INTEGER, name='test_sensor',
+                                       description='A sensor for Marc to test.',
+                                       units='mPa', params=[-1234, 1234], default=555),
+                        'meta_dest': Sensor(sensor_type=Sensor.STRING, name='meta_dest',
+                                            description='The meta dest string',
+                                            units='', default=str(self.meta_destination))
+                        }
+        for val in self.sensors.values():
+            katcp_server.add_sensor(val)
+        Timer(self.SENSOR_POLL_TIMEOUT, self.update_sensors).start()
+
+    def update_sensors(self):
+        """
+        Update our compound sensors.
+        :return:
+        """
+        self.sensors['time'].set(time.time(), Sensor.NOMINAL, time.time())
+        Timer(self.SENSOR_POLL_TIMEOUT, self.update_sensors).start()
 
     # def qdr_calibrate_SERIAL(self):
     #     for hostlist in [self.fhosts, self.xhosts]:
@@ -590,13 +625,22 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.xhosts, max_waittime+1, 'check_rx', max_waittime)
         self.logger.info('\tdone.')
 
-    def xeng_vacc_sync(self, vacc_load_time=5):
+    def xeng_vacc_sync(self, vacc_load_time=None):
         """
         Sync the vector accumulators on all the x-engines.
         Assumes that the x-engines are all receiving data.
         :return:
         """
-        self.logger.info('X-engine VACC sync:')
+        if vacc_load_time is None:
+            unix_time_diff = 5
+        else:
+            time_now = time.time()
+            if vacc_load_time < time.time() + 1:
+                raise RuntimeError('Load time of %.4f makes no sense at current time %.4f' % (vacc_load_time, time_now))
+            unix_time_diff = vacc_load_time - time.time()
+        wait_time = unix_time_diff + 1
+
+        self.logger.info('X-engine VACC sync happening in %is' % unix_time_diff)
 
         # check if the vaccs need resetting
         vaccstat = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_check_arm_load_counts')
@@ -618,9 +662,13 @@ class FxCorrelator(Instrument):
         current_ftime = self.fhosts[0].get_local_time()
         assert current_ftime & 0xfff == 0, 'Bottom 12 bits of timestamp from f-engine are not zero?!'
         self.logger.info('\tCurrent f engine time: %i' % current_ftime)
-
         # use that time to set the vacc load time on the xengines
-        ldtime = current_ftime + (vacc_load_time * self.sample_rate_hz)
+        ldtime = int(round(current_ftime + (unix_time_diff * self.sample_rate_hz)))
+        quantisation_bits = int(numpy.log2(int(self.configd['fengine']['n_chans'])) + 1
+                                + numpy.log2(int(self.configd['xengine']['xeng_accumulation_len'])))
+        quanttime = (ldtime >> quantisation_bits) << quantisation_bits
+        unix_quant_time = quanttime / self.sample_rate_hz
+
         self.logger.info('\tApplying load time: %i' % ldtime)
         THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_set_loadtime', ldtime)
 
@@ -676,7 +724,7 @@ class FxCorrelator(Instrument):
         self.logger.info('\tx engines have vacc ld time %i' % xldtime)
 
         # wait for the vaccs to arm
-        time.sleep(vacc_load_time + 1)
+        time.sleep(wait_time)
 
         # check the status to see that the load count increased
         vacc_status = THREADED_FPGA_FUNC(self.xhosts, 10, 'vacc_get_status')
@@ -714,6 +762,7 @@ class FxCorrelator(Instrument):
                 self.logger.error('\t%s: %s' % (host, str(item)))
             raise RuntimeError('Exited on VACC error')
         self.logger.info('\t...accumulations rolling in without error.')
+        return unix_quant_time
 
     def xeng_set_acc_time(self, acc_time_s):
         """

@@ -52,9 +52,9 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply()
     def request_create(self, sock, config_file, log_len):
         """
-
+        Create the instrument using the detail in config_file
         :param sock:
-        :param config_file:
+        :param config_file: The instrument config file to use
         :param log_len:
         :return:
         """
@@ -73,12 +73,14 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply()
     def request_initialise(self, sock, program):
         """
-
+        Initialise self.instrument
+        Setup and start sensors
         :param sock:
         :return:
         """
         try:
             self.instrument.initialise(program=program, tvg=False)
+            self.instrument.setup_sensors(katcp_server=self)
             return 'ok',
         except Exception as e:
             localexc = e
@@ -90,7 +92,7 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply()
     def request_testfail(self, sock, *multiargs):
         """
-
+        Just a command that fails. For testing.
         :param sock:
         :return: 'fail' and a test fail message
         """
