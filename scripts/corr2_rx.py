@@ -45,7 +45,7 @@ class CorrRx(threading.Thread):
         #print 'starting target with kwargs ',self._kwargs
         self._target(**self._kwargs)
 
-    def rx_cont(self, data_port=7148, acc_scale=True, filename=None, **kwargs):
+    def rx_cont(self, data_port=7148, acc_scale=True, filename=None, items=None, **kwargs):
         logger = self.logger
         logger.info('Data reception on port %i.' % data_port)
         rx = spead.TransportUDPrx(data_port, pkt_count=1024, buffer_size=51200000)
@@ -78,6 +78,31 @@ class CorrRx(threading.Thread):
         for heap in spead.iterheaps(rx):
             ig.update(heap)
             logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f' % (idx, heap.heap_cnt, time.time()))
+    
+            # output item values specified
+            if items is not None:
+                for name in ig.keys():
+                    if name in items:
+                        item = ig.get_item(name)
+                        if item.has_changed():
+                            #decode flags
+                            if name == 'flags_xeng_raw':
+                                corrupt_flag = np.uint32((ig[name] / np.uint64(2**33))) & np.uint32(1);
+                                logger.info('(%s) corrupt => %s'%(time.ctime(), 'true' if corrupt_flag == 1 else 'false'))
+                                over_range_flag = np.uint32((ig[name] / np.uint64(2**32))) & np.uint32(1);
+                                logger.info('(%s) over range => %s'%(time.ctime(), 'true' if over_range_flag == 1 else 'false'))
+                                noise_diode_flag = np.uint32((ig[name] / np.uint64(2**31))) & np.uint64(1);
+                                logger.info('(%s) noise diode => %s'%(time.ctime(), 'true' if noise_diode_flag == 1 else 'false'))
+                                #debug flags not exposed externally
+                                noise_diode_flag = np.uint32((ig[name] / np.uint64(2**31))) & np.uint64(1);
+                                logger.info('(%s) noise diode => %s'%(time.ctime(), 'true' if noise_diode_flag == 1 else 'false'))
+                            #convert timestamp
+                            elif name == 'timestamp':
+                                sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
+                                logger.info('(%s) timestamp => %s'%(time.ctime(), time.ctime(sd_timestamp)))
+                            # generic output of item covnerted to string
+                            else:
+                                logger.info('(%s) %s => %s'%(time.ctime(), name, str(ig[name]))) 
 
             if h5_file is not None:
                 for name in ig.keys():
@@ -112,10 +137,6 @@ class CorrRx(threading.Thread):
                             if h5_file is not None:
                                 h5_file.create_dataset(name, [1] + ([] if list(shape) == [1] else list(shape)),
                                                 maxshape=[None] + ([] if list(shape) == [1] else list(shape)), dtype=dtype)
-#                            dump_size += np.multiply.reduce(shape) * dtype.itemsize
-#                        datasets[name] = h5_file[name]
-#                        datasets[name] = ig[name]
-#                        datasets_index[name] = 0
                         if not item.has_changed():
                             continue
                             # if we built from an empty descriptor
@@ -191,6 +212,7 @@ class CorrRx(threading.Thread):
 # some defaults
 filename = None
 plotbaseline = None
+items = None
 
 if __name__ == '__main__':
     import argparse
@@ -209,8 +231,8 @@ if __name__ == '__main__':
                         help='Plot one or more baselines, comma-seperated list of integers.')
     parser.add_argument('--plot_channels', dest='plotchannels', action='store', default='-1,-1', type=str,
                         help='a start,end tuple, -1 means 0,n_chans respectively')
-    parser.add_argument('--items', dest='items', action='store', default='', type=str,
-                        help='spead items to output to log as we receive them')
+    parser.add_argument('--item', dest='items', action='append', default=[],   
+                        help='spead item to output value to log as we receive it')
     parser.add_argument('--ion', dest='ion', action='store_true', default=False,
                         help='Interactive mode plotting.')
     parser.add_argument('--log', dest='log', action='store_true', default=False,
@@ -218,8 +240,18 @@ if __name__ == '__main__':
     parser.add_argument('--no_auto', dest='noauto', action='store_true', default=False,
                         help='Do not scale the data by the number of accumulations.')
     parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
-                        help='log level to use, default None, options INFO, DEBUG, ERROR')
+                        help='log level to use, default INFO, options INFO, DEBUG, ERROR')
+    parser.add_argument('--speadloglevel', dest='spead_log_level', action='store', default='INFO',
+                        help='log level to use in spead receiver, default INFO, options INFO, DEBUG, ERROR')
     args = parser.parse_args()
+
+    if args.items is not None:
+        items = args.items
+        print '\tTracking:'
+        for item in items:
+            print '\t  * %s' %item
+    else:
+        print '\tNot tracking any items'
 
     if args.log_level != '':
         import logging
@@ -228,6 +260,14 @@ if __name__ == '__main__':
             logging.basicConfig(level=eval('logging.%s' % log_level))
         except AttributeError:
             raise RuntimeError('No such log level: %s' % log_level)
+    
+    if args.spead_log_level != '':
+        import logging
+        spead_log_level = args.spead_log_level.strip()
+        try:
+            logging.basicConfig(level=eval('logging.%s' % spead_log_level))
+        except AttributeError:
+            raise RuntimeError('No such log level: %s' % spead_log_level)
 
     if args.noauto:
         acc_scale = False
@@ -264,7 +304,7 @@ if __name__ == '__main__':
     if plot_endchan == -1:
         plot_endchan = n_chans
 
-print 'Initalising SPEAD transports for data:'
+print 'Initialising SPEAD transports for data:'
 print '\tData reception on port', data_port
 if filename is not None:
     print '\tStoring to file %s' % filename
@@ -276,6 +316,7 @@ if len(plot_baselines) > 0:
     print '\tPlotting baselines:', plot_baselines
     plotqueue = Queue.Queue()
     got_data_event = threading.Event()
+
 
     if args.ion:
         pyplot.ion()
@@ -311,8 +352,10 @@ crx = CorrRx(quit_event=quit_event,
              data_port=data_port,
              acc_scale=acc_scale,
              log_level=eval('logging.%s' % log_level),
+             spead_log_level=eval('logging.%s' % spead_log_level),
              filename=filename,
              plotbaseline=plotbaseline,
+             items=args.items,
              plotqueue=plotqueue, )
 try:
     crx.daemon = True
