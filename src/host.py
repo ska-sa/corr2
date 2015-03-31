@@ -27,18 +27,6 @@ class Host(object):
         """
         raise NotImplementedError('%s.initialise() not implemented' % self.host)
 
-    def ping(self):
-        """All hosts must supply a ping method that returns true or false.
-        @return: True or False
-        """
-        raise NotImplementedError('%s.ping() not implemented' % self.host)
-
-    def is_running(self):
-        """All hosts must supply a is_running method that returns true or false.
-        @return: True or False
-        """
-        raise NotImplementedError('%s.is_running() not implemented' % self.host)
-
     def add_engine(self, new_engine):
         """
         Add an compute engine to this node.
