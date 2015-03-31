@@ -34,19 +34,6 @@ class FpgaHost(Host, KatcpFpga):
         self.get_system_information()
         return self.is_running()
 
-    def ping(self):
-        """
-        All hosts must supply a ping method that returns true or false.
-        @return: True or False
-        """
-        return self.is_running()
-
-    def is_running(self):
-        """All hosts must supply a is_running method that returns true or false.
-        @return: True or False
-        """
-        return KatcpFpga.is_running(self)
-
     def check_rx_raw(self, max_waittime=30):
         """
         Is this host receiving 10gbe data correctly?
@@ -101,6 +88,6 @@ class FpgaHost(Host, KatcpFpga):
                 raise RuntimeError('Host %s core %i is not receiving SPEAD data, bailing' % (self.host, core_ctr))
             # but the errors must not
             if xrxspead_ctrs1[core_ctr][1] > xrxspead_ctrs0[core_ctr][1]:
-                LOGGER.error('Host %s core %i has SPEAD errors, bailing' % (self.host, core_ctr))
-                raise RuntimeError('Host %s core %i has SPEAD errors, bailing' % (self.host, core_ctr))
+                LOGGER.error('Host %s core %i has an incrementing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
+                raise RuntimeError('Host %s core %i has an incrementing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
         LOGGER.info('Host %s is receiving SPEAD data' % self.host)

@@ -77,3 +77,37 @@ def parse_hosts(str_file_dict, section=None):
     num_hosts = len(host_list)
     LOGGER.debug('Ended up with %i hosts.' % num_hosts)
     return host_list
+
+
+def process_new_eq(eq):
+    """
+    Handle a new EQ - it could be an int, a string, a polynomial string
+    :param eq: the new eq
+    :return: a list of complex numbers:
+                if the length matches the fft, it's an array, one coeff per channel
+                else if it's one, it's a single value for all channels
+                else it's a polynomial applied over the channels
+    """
+    # eq = '300' - this is an eq poly of length one, in string form
+    # eq = 300 - this is an eq poly of length one, in int form
+    # eq = '10,30,40' - this is an eq poly
+    # string or single int?
+    try:
+        eq = eq.strip()
+        if len(eq) == 0:
+            raise ValueError('Empty string makes littles sense for EQ values.')
+        # could be a polynomial or an array in a string
+        try:
+            eq.index(',')
+            eqlist = eq.split(',')
+        except ValueError:
+            eqlist = eq.split(' ')
+    except AttributeError:
+        try:
+            len(eq)
+            eqlist = eq
+        except TypeError:
+            eqlist = [eq]
+    for ctr, eq in enumerate(eqlist):
+        eqlist[ctr] = complex(eq)
+    return eqlist

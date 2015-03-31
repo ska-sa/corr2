@@ -52,9 +52,9 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply()
     def request_create(self, sock, config_file, log_len):
         """
-
+        Create the instrument using the detail in config_file
         :param sock:
-        :param config_file:
+        :param config_file: The instrument config file to use
         :param log_len:
         :return:
         """
@@ -63,65 +63,75 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
             logging.info('made correlator okay')
             return 'ok',
-        except:
+        except Exception as e:
+            localexc = e
             pass
-        return 'fail',
+        logging.error('create threw Exception: %s' % localexc.message)
+        return 'fail', 'create threw Exception: %s' % localexc.message
 
     @request(Bool(default=True))
     @return_reply()
     def request_initialise(self, sock, program):
         """
-
+        Initialise self.instrument
+        Setup and start sensors
         :param sock:
         :return:
         """
         try:
             self.instrument.initialise(program=program, tvg=False)
+            self.instrument.setup_sensors(katcp_server=self)
             return 'ok',
-        except:
+        except Exception as e:
+            localexc = e
             pass
-        return 'fail',
+        logging.error('create threw Exception: %s' % localexc.message)
+        return 'fail', 'create threw Exception: %s' % localexc.message
 
     @request(Str(multiple=True))
     @return_reply()
     def request_testfail(self, sock, *multiargs):
         """
-
+        Just a command that fails. For testing.
         :param sock:
         :return: 'fail' and a test fail message
         """
         print multiargs
         return 'fail', 'a test failure, like it should'
 
-    @request(Int())
-    @return_reply()
+    @request(Int(default=-1))
+    @return_reply(Int())
     def request_digitiser_synch_epoch(self, sock, synch_time):
         """
-        Set the digitiser synch time, UNIX time.
+        Set/Get the digitiser synch time, UNIX time.
         :param sock:
         :param synch_time:
         :return:
         """
-        try:
-            self.instrument.set_synch_time(synch_time)
-        except:
-            return 'fail', 'request %s did not succeed, check the log' % 'digitiser_synch_epoch'
-        return 'ok',
+        if synch_time > -1:
+            try:
+                self.instrument.set_synch_time(synch_time)
+            except RuntimeError:
+                return 'fail', 'request digitiser_synch_epoch did not succeed, check the log'
+            except Exception:
+                return 'fail', 'request digitiser_synch_epoch failed for an unknown reason, check the log'
+        return 'ok', self.instrument.get_synch_time()
 
     @request(Str(), Str())
     @return_reply()
     def request_capture_destination(self, sock, stream, ipportstr):
         """
-
+        Set/Get the capture destination for this instrument
         :param sock:
         :return:
         """
+        if stream not in self.instrument.configd['xengine']['output_products']:
+            return 'fail', 'stream %s is not in product list: %s' % (stream, self.instrument.configd['xengine']['output_products'])
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
         self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
         self.instrument.set_stream_destination(txip_str=txipstr, txport=txport)
-
         return 'ok',
 
     @request(Str(default=''))
@@ -197,16 +207,26 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'provided input labels were not correct'
         return 'ok', self.instrument.get_labels()
 
-    @request()
-    @return_reply()
-    def request_gain(self, sock):
+    @request(Str(default=''), Str(default='', multiple=True))
+    @return_reply(Str(multiple=True))
+    def request_gain(self, sock, source_name, *eq_vals):
         """
-
+        Apply and/or get the gain settings for an input
         :param sock:
+        :param source_name: the source on which to act
+        :param eq_vals: the equaliser values
         :return:
         """
-        self.instrument.feng_set_eq_all()
-        return 'ok',
+        if source_name == '':
+            return 'fail', 'no source name given'
+        if len(eq_vals) > 0 and eq_vals[0] != '':
+            try:
+                self.instrument.feng_eq_set(True, source_name, list(eq_vals))
+            except Exception as e:
+                return 'fail', 'unknown exception: %s' % e.message
+        eqstring = str(self.instrument.feng_eq_get(source_name)[source_name]['eq'])
+        eqstring = eqstring.replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace(',', '')
+        return 'ok', eqstring
 
     @request()
     @return_reply()
@@ -222,8 +242,9 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply(Float())
     def request_accumulation_length(self, sock, new_acc_time):
         """
-
+        Set & get the accumulation time
         :param sock:
+        :param new_acc_time: if this is -1.0, the current acc len will be returned, but nothing set
         :return:
         """
         if new_acc_time != -1.0:
@@ -233,15 +254,25 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'could not set accumulation length'
         return 'ok', self.instrument.xeng_get_acc_time()
 
-    @request()
-    @return_reply()
-    def request_quantiser_snapshot(self, sock):
+    @request(Str(default=''))
+    @return_reply(Str(multiple=True))
+    def request_quantiser_snapshot(self, sock, source_name):
         """
-
+        Get a list of values representing the quantised spectrum for the given source
         :param sock:
+        :param source_name: the source to query
         :return:
         """
-        return 'ok',
+        try:
+            snapdata = self.instrument.feng_get_quant_snap(source_name)
+        except Exception as e:
+            logging.info(e)
+            return 'fail', 'failed to read quant snap data for given source %s' % source_name
+        quant_string = ''
+        for complex_word in snapdata:
+            quant_string += ' %s' % str(complex_word)
+        quant_string = quant_string.replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace(',', '')
+        return 'ok', quant_string
 
     @request()
     @return_reply()

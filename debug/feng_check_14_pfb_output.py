@@ -24,13 +24,13 @@ parser.add_argument('--config', dest='config', type=str, action='store', default
                     help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument('--pol', dest='pol', action='store', default=0, type=int,
                     help='polarisation, 0 or 1')
-parser.add_argument('--integrate', dest='integrate', action='store', default=-1, type=int,
+parser.add_argument('--num_ints', dest='integrate', action='store', default=-1, type=int,
                     help='integrate n successive spectra, -1 is infinite')
-parser.add_argument('--number', dest='number', action='store', default=-1, type=int,
+parser.add_argument('--num_accs', dest='number', action='store', default=-1, type=int,
                     help='number of spectra/integrations to fetch, -1 is unlimited')
 parser.add_argument('--fftshift', dest='fftshift', action='store', default=-1, type=int,
                     help='the FFT shift to set')
-parser.add_argument('--log', dest='log', action='store_true', default=False,
+parser.add_argument('--log', dest='log', action='store_true', default=True,
                     help='True for log plots, False for linear')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
@@ -72,7 +72,7 @@ fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 snapshot_missing = []
 for fpga_ in fpgas:
     for snap in required_snaps:
-        if not snap in fpga_.snapshots.names():
+        if snap not in fpga_.snapshots.names():
             snapshot_missing.append(fpga_.host)
 if len(snapshot_missing) > 0:
     print 'The following hosts are missing one or more of the post-pfb snapshots. Bailing.'
@@ -101,9 +101,12 @@ integrate_ctr = 0
 integrated_data = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
 integrated_power = {fpga.host: EXPECTED_FREQS*[0] for fpga in fpgas}
 
-looplimit = args.number * args.integrate
+if args.number == -1 and args.integrate == -1:
+    looplimit = -1
+else:
+    looplimit = args.number * args.integrate
 
-while (looplimit == -1) or (loopctr < looplimit):
+while (looplimit < 0) or (loopctr < looplimit):
 
     # arm the snaps
     for snap in required_snaps:
@@ -123,7 +126,6 @@ while (looplimit == -1) or (loopctr < looplimit):
         r0_to_r3 = snapdata[required_snaps[0]][fpga]['data']
         i3 = snapdata[required_snaps[1]][fpga]['data']
         p_data = []
-        #for ctr in range(0, len(r0_to_r3['r0'])):
         for ctr in range(0, len(i3['i3'])):
             p_data.append(numpy.complex(r0_to_r3['r0'][ctr], r0_to_r3['i0'][ctr]))
             p_data.append(numpy.complex(r0_to_r3['r1'][ctr], r0_to_r3['i1'][ctr]))

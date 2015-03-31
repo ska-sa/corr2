@@ -20,6 +20,14 @@ parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='
                     help='comma-delimited list of hosts, if you do not want all the fengine hosts in the config file')
 parser.add_argument('--config', dest='config', type=str, action='store', default='',
                     help='a corr2 config file, will use $CORR2INI if none given')
+parser.add_argument('--integrate', dest='integrate', action='store', default=-1, type=int,
+                    help='integrate n successive spectra, -1 is infinite')
+parser.add_argument('--number', dest='number', action='store', default=-1, type=int,
+                    help='number of spectra/integrations to fetch, -1 is unlimited')
+parser.add_argument('--linear', dest='linear', action='store_true', default=False,
+                    help='plot linear, not log')
+parser.add_argument('--integ', dest='integrations', action='store', type=int, default=1,
+                    help='number of spectra to integrate, -1 is infinate')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -111,7 +119,7 @@ def get_data():
         unpacked_data[fpga]['packettime48'] = packettime << 12
         p0_unpacked = []
         p1_unpacked = []
-        for ctr, dataword in enumerate(p0_data['data']['p0_80']):
+        for ctr, _ in enumerate(p0_data['data']['p0_80']):
             p0_80 = p0_data['data']['p0_80'][ctr]
             p1_80 = (p0_data['data']['p1_80_msb'][ctr] << 32) | p1_data['data']['p1_80_lsb'][ctr]
             p0_unpacked.append(p0_80)
@@ -151,6 +159,124 @@ if args.checktvg:
                 lastdata = dataramp
                 ctr += 1
         print 'and ended at %d %d samples later. All okay.' % (lasttime, ctr)
+elif False:
+    import matplotlib.pyplot as pyplot
+    from casperfpga.memory import bin2fp
+    import numpy
+
+    def eighty_to_ten(eighty):
+        samples = []
+        for offset in range(70, -1, -10):
+            binnum = (eighty >> offset) & 0x3ff
+            samples.append(bin2fp(binnum, 10, 9, True))
+        return samples
+
+    def hennoplot(somearg):
+        # clear plots
+        subplots[0].cla()
+        subplots[1].cla()
+        subplots[2].cla()
+        subplots[3].cla()
+
+        fpga = 'roach020a03'
+
+        num_adc_samples = 8192
+        nyquist_zone = 1
+
+        unpacked_data = get_data()
+
+        adc0_raw = []
+        for dataword in unpacked_data[fpga]['p0']:
+            samples = eighty_to_ten(dataword)
+            adc0_raw.extend(samples)
+        adc0_raw = numpy.array(adc0_raw)
+
+        adc1_raw = []
+        for dataword in unpacked_data[fpga]['p1']:
+            samples = eighty_to_ten(dataword)
+            adc1_raw.extend(samples)
+        adc1_raw = numpy.array(adc1_raw)
+
+        print adc0_raw
+
+        # # calculate spectrum for this ADC snapshot
+        # spectrum0 = numpy.abs((numpy.fft.rfft(adc0_raw)))
+        # spectrum1 = numpy.abs((numpy.fft.rfft(adc1_raw)))
+
+        #adc_rms_voltage_scale = (0.25*0.707)/512.0 # 250mV peak for 512 counts (500mV pp 1024 counts)
+        adc_rms_voltage_scale = (0.25*1.0)/512.0 # 250mV peak for 512 counts (500mV pp 1024 counts)
+
+        spectrum0_voltage = (numpy.abs((numpy.fft.rfft(adc0_raw*adc_rms_voltage_scale)))/(num_adc_samples * 1.0))
+        spectrum0_power = ((spectrum0_voltage*spectrum0_voltage)/50.0)
+        spectrum0_power_peak = 10*numpy.log10(1000*numpy.max(spectrum0_power)) + 3.0
+        #print spectrum0_power_peak
+        spectrum0_power_int = 10*numpy.log10(1000*numpy.sum(spectrum0_power)) + 3.0
+        #print spectrum0_power_int
+
+        spectrum1_voltage = (numpy.abs((numpy.fft.rfft(adc1_raw*adc_rms_voltage_scale)))/(num_adc_samples * 1.0))
+        spectrum1_power = ((spectrum1_voltage*spectrum1_voltage)/50.0)
+        spectrum1_power_peak = 10*numpy.log10(1000*numpy.max(spectrum1_power)) + 3.0
+        #print spectrum1_power_peak
+        spectrum1_power_int = 10*numpy.log10(1000*numpy.sum(spectrum1_power)) + 3.0
+        #print spectrum1_power_int
+
+        n_points = num_adc_samples
+        n_chans = (n_points)/2
+        bandwidth = 856e6
+        freqs=numpy.arange(n_chans)*float(bandwidth)/n_chans
+        period = (1000e6*1.0)/(bandwidth*2) # scale to ns
+        time_ticks=numpy.arange(n_points)*float(period)
+
+        if (nyquist_zone == 1):
+            bandwidth = 856e6
+            freqs=numpy.arange(n_chans)*((float(bandwidth)/n_chans))
+            freqs=numpy.add(freqs,bandwidth)
+            # no need to flip spectrum anymore - done in firmware
+            #spectrum0 = spectrum0[::-1]
+            #spectrum1 = spectrum1[::-1]
+
+        peak_adc_sample0 = numpy.max(adc0_raw)
+        peak_adc_sample1 = numpy.max(adc1_raw)
+
+        # Time Domain Plot ADC0 (V Pol)
+        subplots[0].set_title('ADC1 (V Pol): Time Domain [ns], Peak ADC Sample %i, Peak Power %3.3f [dBm], Integrated Power %3.3f [dBm]'%(peak_adc_sample0,spectrum0_power_peak,spectrum0_power_int))
+        subplots[0].set_ylabel('ADC Amplitude [raw]')
+        subplots[0].grid(True)
+        subplots[0].plot(time_ticks[0:256],adc0_raw[0:256])
+
+        # Spectrum Plot ADC0
+        subplots[1].set_title('ADC1 (V Pol): Spectrum [MHz]')
+        subplots[1].set_ylabel('Power (arbitrary units)')
+        subplots[1].grid(True)
+        #subplots[1].semilogy(freqs/1e6,spectrum0[0:n_chans])
+        subplots[1].plot(freqs/1e6,10*numpy.log10(1000*(spectrum0_power[0:n_chans])))
+
+        # Time Domain Plot ADC1 (H Pol)
+        subplots[2].set_title('ADC2 (H Pol): Time Domain [ns], Peak ADC Sample %i, Peak Power %3.3f [dBm], Integrated Power %3.3f [dBm]'%(peak_adc_sample1,spectrum1_power_peak,spectrum1_power_int))
+        subplots[2].set_ylabel('ADC2 Amplitude [raw]')
+        subplots[2].grid(True)
+        subplots[2].plot(time_ticks[0:256],adc1_raw[0:256])
+
+        # Spectrum Plot ADC1
+        subplots[3].set_title('ADC2 (H Pol): Spectrum [MHz]')
+        subplots[3].set_ylabel('Power (arbitrary units)')
+        subplots[3].grid(True)
+        #subplots[3].semilogy(freqs/1e6,spectrum1[0:n_chans])
+        subplots[3].plot(freqs/1e6,10*numpy.log10(1000*(spectrum1_power[0:n_chans])))
+
+        fig.canvas.draw()
+        fig.canvas.manager.window.after(100, hennoplot ,1)
+
+    # set up the figure with a subplot to be plotted
+    fig = pyplot.figure()
+
+    subplots = []
+    for p in range(4):
+        subPlot = fig.add_subplot(4,1,p+1)
+        subplots.append(subPlot)
+    fig.canvas.manager.window.after(100, hennoplot, 1)
+    pyplot.show()
+    print 'Plot started.'
 else:
     import numpy
     import matplotlib.pyplot as pyplot
@@ -164,46 +290,66 @@ else:
             samples.append(bin2fp(binnum, 10, 9, True))
         return samples
 
-    integrated_data = EXPECTED_FREQS * [0]
-    pyplot.ion()
-
-    # looplimit = args.number * args.integrate
-
-    looplimit = -1
-
-
-    loopctr = 0
-    starttime = time.time()
-    while (looplimit == -1) or (loopctr < looplimit):
+    def plot_func(figure, sub_plots, idata, ictr, pctr):
         unpacked_data = get_data()
+        ictr += 1
         for fpga, fpga_data in unpacked_data.items():
-            print '%i: %s data started at %d' % (loopctr, fpga, fpga_data['packettime48']),
-            # for pol_data in [(fpga_data['p0'], 0), (fpga_data['p1'], 1)]:
-            for pol_data in [(fpga_data['p1'], 1)]:
-                allsamples = []
-                for dataword in pol_data[0]:
+            print '%i: %s data started at %d' % (pctr, fpga, fpga_data['packettime48']),
+            if fpga not in idata.keys():
+                idata[fpga] = {}
+            for polctr, pol in enumerate(['p0', 'p1']):
+                if pol not in idata[fpga].keys():
+                    idata[fpga][pol] = EXPECTED_FREQS * [0]
+                pol_samples = []
+                for dataword in fpga_data[pol]:
                     samples = eighty_to_ten(dataword)
-                    allsamples.extend(samples)
-                assert len(allsamples) == EXPECTED_FREQS * 2
+                    pol_samples.extend(samples)
+                assert len(pol_samples) == EXPECTED_FREQS * 2
                 # print 'A snapshot of length %i gave a sample array of length %i' % (len(pol_data[0]), len(allsamples))
-                fftdata = numpy.fft.fft(allsamples)
+                fftdata = numpy.fft.fft(pol_samples)
                 # print 'The fft was then length %i' % len(fftdata)
-                showdata = EXPECTED_FREQS*[0]
+                showdata = EXPECTED_FREQS * [0]
                 for ctr, sample in enumerate(fftdata[:EXPECTED_FREQS]):
                     showdata[ctr] = pow(sample.real, 2) + pow(sample.imag, 2)
                 # print 'and showdata ended up being %i' % len(showdata)
                 # showdata = numpy.abs()
                 #showdata = showdata[len(showdata)/2:]
                 for ctr, _ in enumerate(showdata):
-                    integrated_data[ctr] += showdata[ctr]
-                pyplot.cla()
-                #pyplot.plot(integrated_data)
-                pyplot.semilogy(integrated_data)
-                pyplot.draw()
-                loopctr += 1
-            rate = (time.time() - starttime) / (loopctr * 1.0)
-            time_remaining = (looplimit - loopctr) * rate
-            print 'and ended %d samples later. All okay. %.2fs remaining.' % (len(allsamples), time_remaining)
+                    idata[fpga][pol][ctr] += showdata[ctr]
+            print 'and ended %d samples later. All okay.' % (len(pol_samples))
+        # actually draw the plots
+        for fpga_ctr, intdata in enumerate(idata.values()):
+            sub_plots[fpga_ctr].cla()
+            sub_plots[fpga_ctr].set_title(idata.keys()[fpga_ctr])
+            for ctr, data in enumerate(intdata.values()):
+                # print fpga_ctr, ctr, len(data)
+                if args.linear:
+                    sub_plots[fpga_ctr].plot(data)
+                else:
+                    sub_plots[fpga_ctr].semilogy(data)
+        figure.canvas.draw()
+        if ictr == args.integrate and args.integrate > 0:
+            idata = {}
+            ictr = 0
+            pctr += 1
+        if pctr == args.number and args.number > 0:
+            return
+        fig.canvas.manager.window.after(100, plot_func, figure, sub_plots, idata, ictr, pctr)
+
+    # set up the figure with a subplot to be plotted
+    unpacked_data = get_data()
+    fig = pyplot.figure()
+    subplots = []
+    num_plots = len(unpacked_data.keys())
+    for p in range(num_plots):
+        sub_plot = fig.add_subplot(num_plots, 1, p+1)
+        subplots.append(sub_plot)
+    integrated_data = {}
+    integration_counter = 0
+    plot_counter = 0
+    fig.canvas.manager.window.after(100, plot_func, fig, subplots, integrated_data, integration_counter, plot_counter)
+    pyplot.show()
+    print 'Plot started.'
 
 # wait here so that the plot can be viewed
 print 'Press Ctrl-C to exit...'

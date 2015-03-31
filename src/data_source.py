@@ -40,53 +40,55 @@ class DataSource(object):
 
 class FengineSource(DataSource):
     """
-    A data source for an f-engine. Holds all the information we need to use that data source.
+    A DataSource that is specifically used to send data to an f-engine
     """
-    def __init__(self, name, ip, iprange, port):
+    def __init__(self, host, source_number, eq, name, ip, iprange, port):
         """
-        A DataSource representation of antenna data to an f-engine. So it has eq poly and bram
-        :param name: the name of this data source
-        :param ip: the ip address at which it can be found
-        :param iprange: the consecutive number of IPs over which it is spread
-        :param port: the port to which it is sent
+        Create a FengineSource object
+        :param host: the host on which this data is received
+        :param source_number: the correlator-wide source number/index
+        :param name: the correlator-wide source name
+        :param ip: the ip address from which this source is received
+        :param iprange: the ip range across which it is received
+        :param port: the port on which it is received
+        :param eq: the eq setting and bram associated with this source
         :return:
         """
-        DataSource.__init__(self, name, ip, iprange, port)
-        self.eq_poly = None
-        self.eq_bram = None
-        self.host = None
-        self.source_number = None
+        self.host = host
+        self.source_number = source_number
+        self.eq = eq
+        self.name = name
+        self.ip = ip
+        self.iprange = iprange
+        self.port = port
+        self._update_name_cb = None
 
-    def get_eq(self):
+    def update_name(self, newname):
         """
-        Get the EQ for this source.
+        The name is quite important - so provide a method for a callback to be registered for this
+        DataSource, so that when the names changes, you can do other stuff too.
+        :param newname: the new name for this DataSource
         :return:
         """
-        if self.eq_poly is None:
-            self.eq_poly = self.host.read_eq(self.eq_bram)
-        return self.eq_poly
+        if newname == self.name:
+            return
+        if self._update_name_cb is not None:
+            self._update_name_cb(self.name, newname)
+        self.name = newname
 
-    def set_eq(self, complex_gain=None):
+    @classmethod
+    def from_datasource(cls, host, source_number, eq, dsource_object):
         """
-        The the EQ for this source
-        :param complex_gain: this can be an int, complex or list
+        Make a FengineSource object from an existing DataSource object
+        :param host:
+        :param source_number:
+        :param eq:
+        :param dsource_object:
         :return:
         """
-        if complex_gain is not None:
-            self.eq_poly = complex_gain
-            try:
-                eq_poly = 'list(%d, ...)' % self.eq_poly[0]
-            except TypeError:
-                eq_poly = self.eq_poly
-            LOGGER.info('\tSource %s updated gain to %s' % (self, eq_poly))
-        length_written = self.host.write_eq(self.eq_poly, self.eq_bram)
-        LOGGER.info('\tSource %s applied gain to hardware - wrote %i bytes' % (self, length_written))
+        return cls(host, source_number, eq,
+                   dsource_object.name, dsource_object.ip, dsource_object.iprange, dsource_object.port)
 
     def __str__(self):
-        try:
-            eq_poly = 'list(%d, ...)' % self.eq_poly[0]
-        except TypeError:
-            eq_poly = self.eq_poly
-        return 'DataSource(%i,%s) @ %s, %s+%i port(%i) eq(%s,%s)' % (self.source_number, self.name, self.host,
-                                                                     self.ip, self.iprange, self.port,
-                                                                     eq_poly, self.eq_bram)
+        return 'FengineSource(%s:%i:%s) @ %s+%i port(%i)' % (self.host.name, self.source_number,
+                                                             self.name, self.ip, self.iprange, self.port)

@@ -22,13 +22,13 @@ from corr2 import utils
 
 COLUMN_WIDTH = 12
 
-parser = argparse.ArgumentParser(description='GAGAH.',
+parser = argparse.ArgumentParser(description='Read RX debug registers on f-engines.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='comma-delimited list of x-engine hosts')
+                    help='comma-delimited list of f-engine hosts')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
-                    help='time at which to poll xengine data, in seconds')
+                    help='time at which to poll fengine data, in seconds')
 parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
                     default=False,
                     help='reset all counters at script startup')

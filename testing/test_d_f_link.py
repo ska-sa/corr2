@@ -46,7 +46,7 @@ for fhost in fhosts:
     fpga = KatcpClientFpga(fhost)
     fpga.get_system_information()
     if reset_counters:
-        fpga.registers.control.write(unpack_cnt_rst = 'pulse')
+        fpga.registers.control.write(unpack_cnt_rst='pulse')
     ffpgas.append(fpga)
 
 # set up the curses scroll screen
