@@ -1,0 +1,5 @@
+libfreetype6-dev 
+pkg-config
+build-essential
+python-dev
+libhdf5-dev
