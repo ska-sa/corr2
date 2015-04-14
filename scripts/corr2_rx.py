@@ -197,7 +197,7 @@ if __name__ == '__main__':
 
     from corr2 import utils
 
-    parser = argparse.ArgumentParser(description='Receive data from a corremelator.',
+    parser = argparse.ArgumentParser(description='Receive data from a correlator.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--config', dest='config', action='store', default='',
                         help='corr2 config file')
