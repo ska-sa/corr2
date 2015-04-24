@@ -159,6 +159,12 @@ class FxCorrelator(Instrument):
             post_mess_delay = 10
             self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
             time.sleep(post_mess_delay)
+            
+            self.logger.info('Forcing an f-engine resync')
+            for f in self.fhosts:
+                f.registers.control.write(sys_rst=False)
+                f.registers.control.write(sys_rst=True)
+                f.registers.control.write(sys_rst=False)
 
         if program and True:
             # reset all counters on fhosts and xhosts
@@ -638,7 +644,7 @@ class FxCorrelator(Instrument):
             if vacc_load_time < time.time() + 1:
                 raise RuntimeError('Load time of %.4f makes no sense at current time %.4f' % (vacc_load_time, time_now))
             unix_time_diff = vacc_load_time - time.time()
-        wait_time = unix_time_diff + 1
+        wait_time = unix_time_diff + 10 
 
         self.logger.info('X-engine VACC sync happening in %is' % unix_time_diff)
 
@@ -724,6 +730,7 @@ class FxCorrelator(Instrument):
         self.logger.info('\tx engines have vacc ld time %i' % xldtime)
 
         # wait for the vaccs to arm
+        self.logger.info('\twaiting %i seconds for accumulations to start' % wait_time)
         time.sleep(wait_time)
 
         # check the status to see that the load count increased
