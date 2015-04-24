@@ -87,15 +87,52 @@ class CorrRx(threading.Thread):
                         if item.has_changed():
                             #decode flags
                             if name == 'flags_xeng_raw':
+                                #application level debug flags
                                 corrupt_flag = np.uint32((ig[name] / np.uint64(2**33))) & np.uint32(1);
                                 logger.info('(%s) corrupt => %s'%(time.ctime(), 'true' if corrupt_flag == 1 else 'false'))
                                 over_range_flag = np.uint32((ig[name] / np.uint64(2**32))) & np.uint32(1);
                                 logger.info('(%s) over range => %s'%(time.ctime(), 'true' if over_range_flag == 1 else 'false'))
-                                noise_diode_flag = np.uint32((ig[name] / np.uint64(2**31))) & np.uint64(1);
+                                noise_diode_flag = np.uint32((ig[name] / np.uint64(2**31))) & np.uint32(1);
                                 logger.info('(%s) noise diode => %s'%(time.ctime(), 'true' if noise_diode_flag == 1 else 'false'))
+                                
                                 #debug flags not exposed externally
-                                noise_diode_flag = np.uint32((ig[name] / np.uint64(2**31))) & np.uint64(1);
-                                logger.info('(%s) noise diode => %s'%(time.ctime(), 'true' if noise_diode_flag == 1 else 'false'))
+                                
+                                #digitiser flags
+                                noise_diode0_flag = np.uint32((ig[name] / np.uint64(2**1))) & np.uint32(1);
+                                logger.info('(%s) polarisation 0 noise diode => %s'%(time.ctime(), 'true' if noise_diode0_flag == 1 else 'false'))
+                                noise_diode1_flag = np.uint32((ig[name] / np.uint64(2**0))) & np.uint32(1);
+                                logger.info('(%s) polarisation 1 noise diode => %s'%(time.ctime(), 'true' if noise_diode1_flag == 1 else 'false'))
+                                adc_or0_flag = np.uint32((ig[name] / np.uint64(2**3))) & np.uint32(1);
+                                logger.info('(%s) polarisation 0 adc over-range => %s'%(time.ctime(), 'true' if adc_or0_flag == 1 else 'false'))
+                                adc_or1_flag = np.uint32((ig[name] / np.uint64(2**2))) & np.uint32(1);
+                                logger.info('(%s) polarisation 1 adc over-range => %s'%(time.ctime(), 'true' if adc_or1_flag == 1 else 'false'))
+                                
+                                #f-engine flags
+                                f_spead_error_flag = np.uint32((ig[name] / np.uint64(2**8))) & np.uint32(1);
+                                logger.info('(%s) f-engine spead reception error => %s'%(time.ctime(), 'true' if f_spead_error_flag == 1 else 'false'))
+                                f_fifo_of_flag = np.uint32((ig[name] / np.uint64(2**9))) & np.uint32(1);
+                                logger.info('(%s) f-engine reception FIFO overflow => %s'%(time.ctime(), 'true' if f_fifo_of_flag == 1 else 'false'))
+                                f_pkt_of_flag = np.uint32((ig[name] / np.uint64(2**10))) & np.uint32(1);
+                                logger.info('(%s) f-engine reception packet overflow => %s'%(time.ctime(), 'true' if f_pkt_of_flag == 1 else 'false'))
+                                f_discarding_flag = np.uint32((ig[name] / np.uint64(2**11))) & np.uint32(1);
+                                logger.info('(%s) f-engine packet discarded => %s'%(time.ctime(), 'true' if f_discarding_flag == 1 else 'false'))
+                                f_timed_out_flag = np.uint32((ig[name] / np.uint64(2**12))) & np.uint32(1);
+                                logger.info('(%s) f-engine timed out waiting for valid timestamp => %s'%(time.ctime(), 'true' if f_discarding_flag == 1 else 'false'))
+                                f_rcv_error_flag = np.uint32((ig[name] / np.uint64(2**13))) & np.uint32(1);
+                                logger.info('(%s) f-engine receive error => %s'%(time.ctime(), 'true' if f_rcv_error_flag == 1 else 'false'))
+                                f_pfb_or1_flag = np.uint32((ig[name] / np.uint64(2**14))) & np.uint32(1);
+                                logger.info('(%s) f-engine PFB 1 over-range => %s'%(time.ctime(), 'true' if f_pfb_or1_flag == 1 else 'false'))
+                                f_pfb_or0_flag = np.uint32((ig[name] / np.uint64(2**15))) & np.uint32(1);
+                                logger.info('(%s) f-engine PFB 0 over-range => %s'%(time.ctime(), 'true' if f_pfb_or0_flag == 1 else 'false'))
+                                f_qdr1_flag = np.uint32((ig[name] / np.uint64(2**16))) & np.uint32(1);
+                                logger.info('(%s) f-engine QDR SRAM 1 parity error => %s'%(time.ctime(), 'true' if f_qdr1_flag == 1 else 'false'))
+                                f_qdr0_flag = np.uint32((ig[name] / np.uint64(2**17))) & np.uint32(1);
+                                logger.info('(%s) f-engine QDR SRAM 0 parity error => %s'%(time.ctime(), 'true' if f_qdr0_flag == 1 else 'false'))
+                                
+                                #x-engine flags
+                                x_spead_error_flag = np.uint32((ig[name] / np.uint64(2**24))) & np.uint32(1);
+                                logger.info('(%s) x-engine spead reception error => %s'%(time.ctime(), 'true' if x_spead_error_flag == 1 else 'false'))
+
                             #convert timestamp
                             elif name == 'timestamp':
                                 sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
