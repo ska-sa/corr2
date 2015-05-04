@@ -27,6 +27,13 @@ class Host(object):
         """
         raise NotImplementedError('%s.initialise() not implemented' % self.host)
 
+    def host_okay(self):
+        """
+        Is this host/LRU okay?
+        :return:
+        """
+        raise NotImplementedError('%s.host_okay() not implemented' % self.host)
+
     def add_engine(self, new_engine):
         """
         Add an compute engine to this node.

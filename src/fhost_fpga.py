@@ -41,6 +41,32 @@ class FpgaFHost(FpgaHost):
         """
         self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
 
+    def host_okay(self):
+        """
+        Is this host/LRU okay?
+        :return:
+        """
+        try:
+            assert self.check_rx()
+            err_one = self.registers.ct_errcnt.read()['data']
+            err_two = self.registers.wintime_error.read()['data']
+            ct_cnt_one = self.registers.ct_cnt.read()['data']
+            time.sleep(0.2)
+            ct_cnt_two = self.registers.ct_cnt.read()['data']
+            assert err_one['errcnt0'] == 0
+            assert err_one['parerrcnt0'] == 0
+            assert err_one['errcnt1'] == 0
+            assert err_one['parerrcnt1'] == 0
+            assert err_two['step'] == 0
+            assert err_two['vs_spead'] == 0
+            assert ct_cnt_two['validcnt'] - ct_cnt_one['validcnt'] > 0
+            assert ct_cnt_two['synccnt'] - ct_cnt_one['synccnt'] > 0
+        except:
+            LOGGER.info('F host %s host_okay() - FALSE.' % self.host)
+            return False
+        LOGGER.info('F host %s host_okay() - TRUE.' % self.host)
+        return True
+
     def check_rx(self, max_waittime=30):
         """
         Check the receive path on this f host
@@ -50,6 +76,7 @@ class FpgaFHost(FpgaHost):
         self.check_rx_raw(max_waittime)
         self.check_rx_spead()
         self.check_rx_reorder()
+        return True
 
     def check_rx_reorder(self):
         """

@@ -34,6 +34,20 @@ class FpgaXHost(FpgaHost):
         """
         self.registers.control.write(status_clr='pulse', cnt_rst='pulse', gbe_debug_rst='pulse')
 
+    def host_okay(self):
+        """
+        Is this host/LRU okay?
+        :return:
+        """
+        try:
+            assert self.check_rx()
+            assert self.vacc_okay()
+        except:
+            LOGGER.info('X host %s host_okay() - FALSE.' % self.host)
+            return False
+        LOGGER.info('X host %s host_okay() - TRUE.' % self.host)
+        return True
+
     def check_rx(self, max_waittime=30):
         """
         Check the receive path on this X host
@@ -43,6 +57,7 @@ class FpgaXHost(FpgaHost):
         self.check_rx_raw(max_waittime)
         self.check_rx_spead()
         self.check_rx_reorder()
+        return True
 
     def check_rx_reorder(self):
         """
