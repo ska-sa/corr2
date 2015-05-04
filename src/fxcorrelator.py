@@ -44,9 +44,6 @@ class FxCorrelator(Instrument):
     xengines that each produce cross products from a continuous portion of the channels and accumulate the result.
     SPEAD data products are produced.
     """
-
-    SENSOR_POLL_TIMEOUT = 10
-
     def __init__(self, descriptor, identifier=-1, config_source=None, logger=None, log_level=logging.INFO):
         """
         An abstract base class for instruments.
@@ -82,11 +79,12 @@ class FxCorrelator(Instrument):
         self.spead_tx = None
         self.spead_meta_ig = None
 
-        # sensors
-        self.sensors = {}
+        self._sensors = {}
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source)
+
+        self._initialised = False
 
     def initialise(self, program=True, tvg=False, fake_digitiser=False):
         """
@@ -186,32 +184,81 @@ class FxCorrelator(Instrument):
         self.feng_clear_status_all()
         self.xeng_clear_status_all()
 
+        # set an initialised flag
+        self._initialised = True
+
     def setup_sensors(self, katcp_server):
         """
         Set up compound sensors to be reported to CAM
         :param katcp_server: the katcp server with which to register the sensors
         :return:
         """
-        self.sensors = {'time': Sensor(sensor_type=Sensor.FLOAT, name='time_sensor', description='The time.',
-                                       units='s', params=[-(2**64), (2**64)-1], default=-1),
-                        'test': Sensor(sensor_type=Sensor.INTEGER, name='test_sensor',
-                                       description='A sensor for Marc to test.',
-                                       units='mPa', params=[-1234, 1234], default=555),
-                        'meta_dest': Sensor(sensor_type=Sensor.STRING, name='meta_dest',
-                                            description='The meta dest string',
-                                            units='', default=str(self.meta_destination))
-                        }
-        for val in self.sensors.values():
-            katcp_server.add_sensor(val)
-        Timer(self.SENSOR_POLL_TIMEOUT, self.update_sensors).start()
+        if not self._initialised:
+            raise RuntimeError('Cannot set up sensors until instrument is initialised.')
+        self._sensors = {}
+        okay_res = THREADED_FPGA_FUNC(self.fhosts, 5, 'host_okay')
+        for _f in self.fhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_lru_%s' % _f.host,
+                            description='F-engine %s LRU okay' % _f.host,
+                            default=True)
+            sensor.set(okay_res[_f.host])
+            self._sensors[sensor.name] = sensor
+        okay_res = THREADED_FPGA_FUNC(self.xhosts, 5, 'host_okay')
+        for _x in self.xhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_lru_%s' % _x.host,
+                            description='X-engine %s LRU okay' % _x.host,
+                            default=True)
+            sensor.set(okay_res[_x.host])
+            self._sensors[sensor.name] = sensor
 
-    def update_sensors(self):
+        # self._sensors = {'time': Sensor(sensor_type=Sensor.FLOAT, name='time_sensor', description='The time.',
+        #                                units='s', params=[-(2**64), (2**64)-1], default=-1),
+        #                 'test': Sensor(sensor_type=Sensor.INTEGER, name='test_sensor',
+        #                                description='A sensor for Marc to test.',
+        #                                units='mPa', params=[-1234, 1234], default=555),
+        #                 'meta_dest': Sensor(sensor_type=Sensor.STRING, name='meta_dest',
+        #                                     description='The meta dest string',
+        #                                     units='', default=str(self.meta_destination))
+        #                 }
+        # # f-engine rx/tx counters
+        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_tx',
+        #                 description='F-engine TX okay - counters incrementing',
+        #                 default=True)
+        # self._sensors['feng_tx'] = sensor
+        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_rx',
+        #                 description='F-engine RX okay - counters incrementing',
+        #                 default=True)
+        # self._sensors['feng_rx'] = sensor
+        # # x-engine rx/tx counters
+        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_tx',
+        #                 description='X-engine TX okay - counters incrementing',
+        #                 default=True)
+        # self._sensors['xeng_tx'] = sensor
+        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_rx',
+        #                 description='X-engine RX okay - counters incrementing',
+        #                 default=True)
+        # self._sensors['xeng_rx'] = sensor
+        # # f- and x-engine QDR errors
+        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_qdr',
+        #                 description='X-engine QDR okay',
+        #                 default=True)
+        # self._sensors['xeng_qdr'] = sensor
+        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_qdr',
+        #                 description='F-engine QDR okay',
+        #                 default=True)
+        # self._sensors['feng_qdr'] = sensor
+
+        for val in self._sensors.values():
+            katcp_server.add_sensor(val)
+        Timer(self.sensor_poll_time, self._update_sensors).start()
+
+    def _update_sensors(self):
         """
         Update our compound sensors.
         :return:
         """
-        self.sensors['time'].set(time.time(), Sensor.NOMINAL, time.time())
-        Timer(self.SENSOR_POLL_TIMEOUT, self.update_sensors).start()
+        self._sensors['time'].set(time.time(), Sensor.NOMINAL, time.time())
+        Timer(self.sensor_poll_time, self._update_sensors).start()
 
     # def qdr_calibrate_SERIAL(self):
     #     for hostlist in [self.fhosts, self.xhosts]:
@@ -868,8 +915,8 @@ class FxCorrelator(Instrument):
             raise IOError('One or more bitstream files not found.')
 
         # TODO: Load config values from the bitstream meta information - f per fpga, x per fpga, etc
-
         self.arp_wait_time = int(self.configd['FxCorrelator']['arp_wait_time'])
+        self.sensor_poll_time = int(self.configd['FxCorrelator']['sensor_poll_time'])
         self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
         self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
