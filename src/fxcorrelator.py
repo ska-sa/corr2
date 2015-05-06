@@ -150,7 +150,7 @@ class FxCorrelator(Instrument):
             # raw_input('wait for arp')
             end_time = time.time()
             self.logger.info('\tDone. That took %d seconds.' % (end_time - starttime))
-            sys.stdout.flush()
+            # sys.stdout.flush()
 
             # subscribe the f-engines to the multicast groups
             self._fengine_subscribe_to_multicast()
@@ -201,7 +201,9 @@ class FxCorrelator(Instrument):
         """
         if not self._initialised:
             raise RuntimeError('Cannot set up sensors until instrument is initialised.')
+
         self._sensors = {}
+
         okay_res = THREADED_FPGA_FUNC(self.fhosts, 5, 'host_okay')
         for _f in self.fhosts:
             sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_lru_%s' % _f.host,
@@ -264,6 +266,17 @@ class FxCorrelator(Instrument):
         :return:
         """
         self._sensors['time'].set(time.time(), Sensor.NOMINAL, time.time())
+
+        # update the LRU sensors
+        okay_res = THREADED_FPGA_FUNC(self.fhosts, 5, 'host_okay')
+        for _f in self.fhosts:
+            _name = 'feng_lru_%s' % _f.host
+            self._sensors[_name].set(okay_res[_f.host])
+        okay_res = THREADED_FPGA_FUNC(self.xhosts, 5, 'host_okay')
+        for _x in self.xhosts:
+            _name = 'xeng_lru_%s' % _x.host
+            self._sensors[_name].set(okay_res[_x.host])
+
         Timer(self.sensor_poll_time, self._update_sensors).start()
 
     # def qdr_calibrate_SERIAL(self):
@@ -523,6 +536,10 @@ class FxCorrelator(Instrument):
                 rxaddr_bits = rxaddr.split('.')
                 rxaddr_base = int(rxaddr_bits[3])
                 rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
+
+                # check that the source IP address is in fact a multicast address
+                #asdasdad
+
                 if (len(fhost.tengbes) / self.f_per_fpga) != source.iprange:
                     raise RuntimeError(
                         '10Gbe ports (%d) do not match sources IPs (%d)' % (len(fhost.tengbes), source.iprange))
