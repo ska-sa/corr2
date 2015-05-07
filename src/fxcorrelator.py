@@ -488,7 +488,7 @@ class FxCorrelator(Instrument):
         # where does the f-engine data go?
         self.fengine_output = DataSource.from_mcast_string(self.configd['fengine']['destination_mcast_ips'])
         self.fengine_output.name = 'fengine_destination'
-        fdest_ip = tengbe.str2ip(self.fengine_output.ip)
+        fdest_ip = tengbe.IpAddress.str2ip(self.fengine_output.ip)
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip))
 
         # set up the cores
@@ -1059,20 +1059,20 @@ class FxCorrelator(Instrument):
         :return: <nothing>
         """
         if txip_str is None:
-            txip = tengbe.str2ip(self.xeng_tx_destination[0])
+            txip = tengbe.IpAddress.str2ip(self.xeng_tx_destination[0])
         else:
-            txip = tengbe.str2ip(txip_str)
+            txip = tengbe.IpAddress.str2ip(txip_str)
         if txport is None:
             txport = self.xeng_tx_destination[1]
         else:
             txport = int(txport)
-        self.logger.info('Setting stream destination to %s:%d' % (tengbe.ip2str(txip), txport))
+        self.logger.info('Setting stream destination to %s:%d' % (tengbe.IpAddress.ip2str(txip), txport))
         try:
             THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.gbe_iptx.write(reg=txip))
             THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.gbe_porttx.write(reg=txport))
         except AttributeError:
             self.logger.warning('Set SPEAD stream destination called, but devices NOT written! Have they been created?')
-        self.xeng_tx_destination = (tengbe.ip2str(txip), txport)
+        self.xeng_tx_destination = (tengbe.IpAddress.ip2str(txip), txport)
 
     def set_meta_destination(self, txip_str=None, txport=None):
         """
