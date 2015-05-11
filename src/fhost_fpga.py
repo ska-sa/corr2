@@ -46,22 +46,22 @@ class FpgaFHost(FpgaHost):
         Is this host/LRU okay?
         :return:
         """
-        try:
-            assert self.check_rx()
-            err_one = self.registers.ct_errcnt.read()['data']
-            err_two = self.registers.wintime_error.read()['data']
-            ct_cnt_one = self.registers.ct_cnt.read()['data']
-            time.sleep(0.2)
-            ct_cnt_two = self.registers.ct_cnt.read()['data']
-            assert err_one['errcnt0'] == 0
-            assert err_one['parerrcnt0'] == 0
-            assert err_one['errcnt1'] == 0
-            assert err_one['parerrcnt1'] == 0
-            assert err_two['step'] == 0
-            assert err_two['vs_spead'] == 0
-            assert ct_cnt_two['validcnt'] - ct_cnt_one['validcnt'] > 0
-            assert ct_cnt_two['synccnt'] - ct_cnt_one['synccnt'] > 0
-        except:
+        _sleeptime = 1
+        if not self.check_rx():
+            return False
+        err_one = self.registers.ct_errcnt.read()['data']
+        err_two = self.registers.wintime_error.read()['data']
+        ct_cnt_one = self.registers.ct_cnt.read()['data']
+        time.sleep(_sleeptime)
+        ct_cnt_two = self.registers.ct_cnt.read()['data']
+        if not ((err_one['errcnt0'] == 0) and
+                (err_one['parerrcnt0'] == 0) and
+                (err_one['errcnt1'] == 0) and
+                (err_one['parerrcnt1'] == 0) and
+                (err_two['step'] == 0) and
+                (err_two['vs_spead'] == 0) and
+                (ct_cnt_two['validcnt'] - ct_cnt_one['validcnt'] > 0) and
+                (ct_cnt_two['synccnt'] - ct_cnt_one['synccnt'] > 0)):
             LOGGER.info('F host %s host_okay() - FALSE.' % self.host)
             return False
         LOGGER.info('F host %s host_okay() - TRUE.' % self.host)
@@ -73,9 +73,12 @@ class FpgaFHost(FpgaHost):
         :param max_waittime: the maximum time to wait for raw 10gbe data
         :return:
         """
-        self.check_rx_raw(max_waittime)
-        self.check_rx_spead()
-        self.check_rx_reorder()
+        if not (self.check_rx_raw(max_waittime) and
+                self.check_rx_spead() and
+                self.check_rx_reorder()):
+            LOGGER.error('F host %s check_rx() - FALSE.' % self.host)
+            return False
+        LOGGER.info('F host %s check_rx() - TRUE.' % self.host)
         return True
 
     def check_rx_reorder(self):
@@ -99,38 +102,41 @@ class FpgaFHost(FpgaHost):
             data['pfb_of0'] = temp['of0']
             data['pfb_of1'] = temp['of1']
             return data
+        _sleeptime = 1
         rxregs = get_gbe_data()
-        time.sleep(1)
+        time.sleep(_sleeptime)
         rxregs_new = get_gbe_data()
         if rxregs_new['valid_arb'] == rxregs['valid_arb']:
-            raise RuntimeError('F host %s arbiter is not counting packets. %i -> %i' % (
-                self.host, rxregs_new['valid_arb'], rxregs['valid_arb']))
+            LOGGER.error('F host %s arbiter is not counting packets. %i -> %i' %
+                         (self.host, rxregs_new['valid_arb'], rxregs['valid_arb']))
+            return False
         if rxregs_new['valid_reord'] == rxregs['valid_reord']:
-            raise RuntimeError('F host %s reorder is not counting packets. %i -> %i' % (
-                self.host, rxregs_new['valid_reord'], rxregs['valid_reord']))
-        # if rxregs_new['pfb_of1'] > rxregs['pfb_of1']:
-        #     raise RuntimeError('F host %s PFB 1 reports overflows. %i -> %i' % (
-        #         self.host, rxregs_new['pfb_of1'], rxregs['pfb_of1']))
+            LOGGER.error('F host %s reorder is not counting packets. %i -> %i' %
+                         (self.host, rxregs_new['valid_reord'], rxregs['valid_reord']))
+            return False
         if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
-            raise RuntimeError('F host %s mcnt_relock is triggering. %i -> %i' % (
-                self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
+            LOGGER.error('F host %s mcnt_relock is triggering. %i -> %i' %
+                         (self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
+            return False
         for pol in [0, 1]:
-            # if rxregs_new['pfb_of%i' % pol] > rxregs['pfb_of%i' % pol]:
-            #     raise RuntimeError('F host %s PFB %i reports overflows. %i -> %i' % (
-            #         self.host, pol, rxregs_new['pfb_of%i' % pol], rxregs['pfb_of%i' % pol]))
             if rxregs_new['re%i_cnt' % pol] > rxregs['re%i_cnt' % pol]:
-                raise RuntimeError('F host %s pol %i reorder count error. %i -> %i' % (
-                    self.host, pol, rxregs_new['re%i_cnt' % pol], rxregs['re%i_cnt' % pol]))
+                LOGGER.error('F host %s pol %i reorder count error. %i -> %i' %
+                             (self.host, pol, rxregs_new['re%i_cnt' % pol], rxregs['re%i_cnt' % pol]))
+                return False
             if rxregs_new['re%i_time' % pol] > rxregs['re%i_time' % pol]:
-                raise RuntimeError('F host %s pol %i reorder time error. %i -> %i' % (
-                    self.host, pol, rxregs_new['re%i_time' % pol], rxregs['re%i_time' % pol]))
+                LOGGER.error('F host %s pol %i reorder time error. %i -> %i' %
+                             (self.host, pol, rxregs_new['re%i_time' % pol], rxregs['re%i_time' % pol]))
+                return False
             if rxregs_new['re%i_tstep' % pol] > rxregs['re%i_tstep' % pol]:
-                raise RuntimeError('F host %s pol %i timestep error. %i -> %i' % (
-                    self.host, pol, rxregs_new['re%i_tstep' % pol], rxregs['re%i_tstep' % pol]))
+                LOGGER.error('F host %s pol %i timestep error. %i -> %i' %
+                             (self.host, pol, rxregs_new['re%i_tstep' % pol], rxregs['re%i_tstep' % pol]))
+                return False
             if rxregs_new['timerror%i' % pol] > rxregs['timerror%i' % pol]:
-                raise RuntimeError('F host %s pol %i time error? %i -> %i' % (
-                    self.host, pol, rxregs_new['timerror%i' % pol], rxregs['timerror%i' % pol]))
+                LOGGER.error('F host %s pol %i time error? %i -> %i' %
+                             (self.host, pol, rxregs_new['timerror%i' % pol], rxregs['timerror%i' % pol]))
+                return False
         LOGGER.info('F host %s is reordering data okay.' % self.host)
+        return True
 
     def read_spead_counters(self):
         """

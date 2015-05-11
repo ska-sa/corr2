@@ -170,18 +170,24 @@ class FxCorrelator(Instrument):
             self.xeng_clear_status_all()
 
             # check to see if the f engines are receiving all their data
-            self._feng_check_rx()
+            if not self._feng_check_rx():
+                raise RuntimeError('The f-engines have a problem.')
 
             # start f-engine TX
             self.logger.info('Starting f-engine datastream')
             for f in self.fhosts:
                 f.registers.control.write(gbe_txen=True)
 
+            # check that the F-engines are transmitting data correctly
+            if not self._feng_check_tx():
+                raise RuntimeError('The f-engines have a problem.')
+
             # subscribe the x-engines to this data also
             self._xengine_subscribe_to_multicast()
 
             # check that they are receiving data
-            self._xeng_check_rx()
+            if not self._xeng_check_rx():
+                raise RuntimeError('The x-engines have a problem.')
 
             # arm the vaccs on the x-engines
             self.xeng_vacc_sync()
@@ -320,8 +326,29 @@ class FxCorrelator(Instrument):
         :return:
         """
         self.logger.info('Checking F hosts are receiving data...')
-        THREADED_FPGA_FUNC(self.fhosts, max_waittime+1, 'check_rx', max_waittime)
+        results = THREADED_FPGA_FUNC(self.fhosts, max_waittime+1, 'check_rx', max_waittime)
+        all_okay = True
+        for _v in results.values():
+            all_okay = all_okay and _v
+        if not all_okay:
+            self.logger.error('\tERROR in F-engine rx data.')
         self.logger.info('\tdone.')
+        return all_okay
+
+    def _feng_check_tx(self):
+        """
+        Check that the f-engines are sending data correctly
+        :return:
+        """
+        self.logger.info('Checking F hosts are transmitting data...')
+        results = THREADED_FPGA_FUNC(self.fhosts, 5, 'check_tx_raw')
+        all_okay = True
+        for _v in results.values():
+            all_okay = all_okay and _v
+        if not all_okay:
+            self.logger.error('\tERROR in F-engine tx data.')
+        self.logger.info('\tdone.')
+        return all_okay
 
     def feng_eq_get(self, source_name=None):
         """
@@ -488,7 +515,7 @@ class FxCorrelator(Instrument):
         # where does the f-engine data go?
         self.fengine_output = DataSource.from_mcast_string(self.configd['fengine']['destination_mcast_ips'])
         self.fengine_output.name = 'fengine_destination'
-        fdest_ip = tengbe.IpAddress.str2ip(self.fengine_output.ip)
+        fdest_ip = int(self.fengine_output.ip_address)
         THREADED_FPGA_OP(self.fhosts, 10, lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip))
 
         # set up the cores
@@ -508,7 +535,7 @@ class FxCorrelator(Instrument):
                           port=feng_port)
                 self.logger.info('fhost(%s) gbe(%s) MAC(%s) IP(%s) port(%i) board(%i) txIPbase(%s) txPort(%i)' %
                                  (f.host, gbe.name, this_mac, this_ip, feng_port, board_id,
-                                  self.fengine_output.ip, self.fengine_output.port))
+                                  self.fengine_output.ip_address, self.fengine_output.port))
                 macbase += 1
                 feng_ip_base += 1
             f.registers.tx_metadata.write(board_id=board_id, porttx=self.fengine_output.port)
@@ -532,25 +559,25 @@ class FxCorrelator(Instrument):
             self.logger.info('\t%s:' % fhost.host)
             gbe_ctr = 0
             for source in fhost.data_sources:
-                rxaddr = source.ip
-                rxaddr_bits = rxaddr.split('.')
-                rxaddr_base = int(rxaddr_bits[3])
-                rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
-
-                # check that the source IP address is in fact a multicast address
-                #asdasdad
-
-                if (len(fhost.tengbes) / self.f_per_fpga) != source.iprange:
-                    raise RuntimeError(
-                        '10Gbe ports (%d) do not match sources IPs (%d)' % (len(fhost.tengbes), source.iprange))
-                for ctr in range(0, source.iprange):
-                    gbename = fhost.tengbes.names()[gbe_ctr]
-                    gbe = fhost.tengbes[gbename]
-                    rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-                    self.logger.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
-                    gbe.multicast_receive(rxaddress, 0)
-                    gbe_ctr += 1
-        self.logger.info('one.')
+                if not source.is_multicast():
+                    self.logger.info('\t\tsource address %s is not multicast?' % source.ip_address)
+                else:
+                    rxaddr = str(source.ip_address)
+                    rxaddr_bits = rxaddr.split('.')
+                    rxaddr_base = int(rxaddr_bits[3])
+                    rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
+                    if (len(fhost.tengbes) / self.f_per_fpga) != source.ip_range:
+                        raise RuntimeError(
+                            '10Gbe ports (%d) do not match sources IPs (%d)' %
+                            (len(fhost.tengbes), source.ip_range))
+                    for ctr in range(0, source.ip_range):
+                        gbename = fhost.tengbes.names()[gbe_ctr]
+                        gbe = fhost.tengbes[gbename]
+                        rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
+                        self.logger.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
+                        gbe.multicast_receive(rxaddress, 0)
+                        gbe_ctr += 1
+        self.logger.info('done.')
 
     """
     X-engine functionality
@@ -613,51 +640,7 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_OP(self.xhosts, 10, lambda fpga_: fpga_.registers.control.write(status_clr='pulse'))
 
         # check for errors
-        """
-        for f in self.xhosts:
-            for eng_index in range(4):
-                xeng = f.get_engine(eng_index)
-                status = xeng.host.registers['status%d' % eng_index].read()['data']
-
-                # check that all engines are receiving data
-                if (status['rxing_data'] == False):
-                    print 'xengine %d on host %s is not receiving valid data' %(eng_index, str(f))
-
-                # TODO check that there are no other errors
-                
-                # check that all engines are producing data ready for transmission
-                if (status['txing_data'] == False):
-                    print 'xengine %d on host %s is not producing valid data' %(eng_index, str(f))
-        """
-
-        # start accumulating
-        # for f in self.xhosts:
-        #     f.registers.vacc_time_msw.write(arm=0, immediate=0)
-        #     f.registers.vacc_time_msw.write(arm=1, immediate=1)
-
-        '''
-        # read accumulation count before starting accumulations
-        vacc_cnts = []
-        for f in self.xhosts:
-            for eng_index in range(4):
-                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
-                vacc_cnts.append(vacc_cnt)
-
-        print 'waiting for an accumulation' 
-        time.sleep(1.5)
-        '''
-
-        # check accumulations are happening
-        '''
-        vacc_cnts.reverse()
-        for f in self.xhosts:
-            for eng_index in range(4):
-                vacc_cnt = f.registers['vacc_cnt%d' %eng_index].read()['data']['reg']
-                vacc_cnt_before = vacc_cnts.pop()                
-
-                if vacc_cnt_before == vacc_cnt:
-                    print 'no accumulations happening for %s:xeng %d' %(str(f), eng_index)
-        '''
+        # TODO - read status regs?
 
     def xeng_clear_status_all(self):
         """
@@ -672,18 +655,21 @@ class FxCorrelator(Instrument):
         only one group, with data meant only for it.
         :return:
         """
-        source_address = self.fengine_output.ip
-        source_bits = source_address.split('.')
-        source_base = int(source_bits[3])
-        source_prefix = '%s.%s.%s.' % (source_bits[0], source_bits[1], source_bits[2])
-        source_ctr = 0
-        for host_ctr, host in enumerate(self.xhosts):
-            for gbe in host.tengbes:
-                rxaddress = '%s%d' % (source_prefix, source_base + source_ctr)
-                gbe.multicast_receive(rxaddress, 0)
-                source_ctr += 1
-                self.logger.debug('xhost %s %s subscribing to address %s' % (host.host, gbe.name, rxaddress))
-                self.logger.info('xhost %s %s subscribing to address %s' % (host.host, gbe.name, rxaddress))
+        if self.fengine_output.is_multicast():
+            self.logger.info('F > X is multicast from base %s' % self.fengine_output)
+            source_address = str(self.fengine_output.ip_address)
+            source_bits = source_address.split('.')
+            source_base = int(source_bits[3])
+            source_prefix = '%s.%s.%s.' % (source_bits[0], source_bits[1], source_bits[2])
+            source_ctr = 0
+            for host_ctr, host in enumerate(self.xhosts):
+                for gbe in host.tengbes:
+                    rxaddress = '%s%d' % (source_prefix, source_base + source_ctr)
+                    gbe.multicast_receive(rxaddress, 0)
+                    source_ctr += 1
+                    self.logger.info('\txhost %s %s subscribing to address %s' % (host.host, gbe.name, rxaddress))
+        else:
+            self.logger.info('F > X is unicast from base %s' % self.fengine_output)
 
     def _xeng_check_rx(self, max_waittime=30):
         """
@@ -692,8 +678,14 @@ class FxCorrelator(Instrument):
         :return:
         """
         self.logger.info('Checking X hosts are receiving data...')
-        THREADED_FPGA_FUNC(self.xhosts, max_waittime+1, 'check_rx', max_waittime)
+        results = THREADED_FPGA_FUNC(self.xhosts, max_waittime+1, 'check_rx', max_waittime)
+        all_okay = True
+        for _v in results.values():
+            all_okay = all_okay and _v
+        if not all_okay:
+            self.logger.error('\tERROR in X-engine rx data.')
         self.logger.info('\tdone.')
+        return all_okay
 
     def xeng_vacc_sync(self, vacc_load_time=None):
         """
@@ -1009,8 +1001,9 @@ class FxCorrelator(Instrument):
         for counter, address in enumerate(source_mcast):
             new_source = DataSource.from_mcast_string(address)
             new_source.name = source_names[counter]
+            # adding a new instance attribute here, be careful
             new_source.source_number = source_ctr
-            assert new_source.iprange == self.ports_per_fengine, \
+            assert new_source.ip_range == self.ports_per_fengine, \
                 'F-engines should be receiving from %d streams.' % self.ports_per_fengine
             self.fengine_sources.append(new_source)
             source_ctr += 1
@@ -1024,8 +1017,9 @@ class FxCorrelator(Instrument):
             for fengnum in range(0, self.f_per_fpga):
                 _source = self.fengine_sources[source_ctr]
                 _eq_dict[_source.name] = {'eq': eq_polys[_source.name], 'bram_num': fengnum}
-                assert _source.iprange == self.fengine_sources[0].iprange, \
+                assert _source.ip_range == self.fengine_sources[0].ip_range, \
                     'All f-engines should be receiving from %d streams.' % self.ports_per_fengine
+                # adding a new instance attribute here, be careful
                 _source.host = fhost
                 fhost.add_source(_source)
                 self.logger.info('\t\t%s' % _source)
