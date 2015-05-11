@@ -95,7 +95,7 @@ class FpgaXHost(FpgaHost):
         for core_ctr in range(0, 2):
             counter = self.registers['rx_cnt%i' % core_ctr].read()['data']['reg']
             error = self.registers['rx_err_cnt%i' % core_ctr].read()['data']['reg']
-            rv.append((counter, error))
+            rv.append((counter,error))
         return rv
 
     def vacc_accumulations_per_second(self, xnum=-1):

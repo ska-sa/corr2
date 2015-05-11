@@ -85,16 +85,16 @@ class FpgaFHost(FpgaHost):
         """
         def get_gbe_data():
             data = {}
+            pktof_ctrs = self.registers.pktof_ctrs.read()['data']
+            for gbe in [0, 1, 2, 3]:
+                data['pktof_ctr%i' % gbe] = pktof_ctrs['gbe%i' % gbe]             
+            recverr_ctrs = self.registers.recverr_ctr.read()['data']
             for pol in [0, 1]:
-                reord_errors = self.registers['updebug_reord_err%i' % pol].read()['data']
-                data['re%i_cnt' % pol] = reord_errors['cnt']
-                data['re%i_time' % pol] = reord_errors['time']
-                data['re%i_tstep' % pol] = reord_errors['timestep']
-                data['timerror%i' % pol] = reord_errors['timestep']
-            valid_cnt = self.registers.updebug_validcnt.read()['data']
-            data['valid_arb'] = valid_cnt['arb']
-            data['valid_reord'] = valid_cnt['reord']
-            data['mcnt_relock'] = self.registers.mcnt_relock.read()['data']['reg']
+                data['recverr_ctr%i' % pol] = recverr_ctrs['p%i' % pol]             
+            temp = self.registers.reorder_ctrs.read()['data']
+            data['mcnt_relock'] = temp['mcnt_relock']
+            data['timerror'] = temp['timestep_error']
+            data['discard'] = temp['discard']
             temp = self.registers.pfb_of.read()['data']
             data['pfb_of0'] = temp['of0']
             data['pfb_of1'] = temp['of1']
@@ -102,34 +102,23 @@ class FpgaFHost(FpgaHost):
         rxregs = get_gbe_data()
         time.sleep(1)
         rxregs_new = get_gbe_data()
-        if rxregs_new['valid_arb'] == rxregs['valid_arb']:
-            raise RuntimeError('F host %s arbiter is not counting packets. %i -> %i' % (
-                self.host, rxregs_new['valid_arb'], rxregs['valid_arb']))
-        if rxregs_new['valid_reord'] == rxregs['valid_reord']:
-            raise RuntimeError('F host %s reorder is not counting packets. %i -> %i' % (
-                self.host, rxregs_new['valid_reord'], rxregs['valid_reord']))
-        # if rxregs_new['pfb_of1'] > rxregs['pfb_of1']:
-        #     raise RuntimeError('F host %s PFB 1 reports overflows. %i -> %i' % (
-        #         self.host, rxregs_new['pfb_of1'], rxregs['pfb_of1']))
-        if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
-            raise RuntimeError('F host %s mcnt_relock is triggering. %i -> %i' % (
-                self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
+        for gbe in [0, 1, 2, 3]:
+            if rxregs_new['pktof_ctr%i' % gbe] != rxregs['pktof_ctr%i' % gbe]:
+                raise RuntimeError('F host %s packet overflow on interface gbe%i. %i -> %i' % (
+                    self.host, gbe, rxregs_new['pktof_ctr%i' % gbe], rxregs['pktof_ctr%i' % gbe]))
         for pol in [0, 1]:
-            # if rxregs_new['pfb_of%i' % pol] > rxregs['pfb_of%i' % pol]:
-            #     raise RuntimeError('F host %s PFB %i reports overflows. %i -> %i' % (
-            #         self.host, pol, rxregs_new['pfb_of%i' % pol], rxregs['pfb_of%i' % pol]))
-            if rxregs_new['re%i_cnt' % pol] > rxregs['re%i_cnt' % pol]:
+            if rxregs_new['recverr_ctr%i' % pol] != rxregs['recverr_ctr%i' % pol]:
                 raise RuntimeError('F host %s pol %i reorder count error. %i -> %i' % (
-                    self.host, pol, rxregs_new['re%i_cnt' % pol], rxregs['re%i_cnt' % pol]))
-            if rxregs_new['re%i_time' % pol] > rxregs['re%i_time' % pol]:
-                raise RuntimeError('F host %s pol %i reorder time error. %i -> %i' % (
-                    self.host, pol, rxregs_new['re%i_time' % pol], rxregs['re%i_time' % pol]))
-            if rxregs_new['re%i_tstep' % pol] > rxregs['re%i_tstep' % pol]:
-                raise RuntimeError('F host %s pol %i timestep error. %i -> %i' % (
-                    self.host, pol, rxregs_new['re%i_tstep' % pol], rxregs['re%i_tstep' % pol]))
-            if rxregs_new['timerror%i' % pol] > rxregs['timerror%i' % pol]:
-                raise RuntimeError('F host %s pol %i time error? %i -> %i' % (
-                    self.host, pol, rxregs_new['timerror%i' % pol], rxregs['timerror%i' % pol]))
+                    self.host, pol, rxregs_new['recverr_ctr%i' % pol], rxregs['recverr_ctr%i' % pol]))
+        if rxregs_new['mcnt_relock'] != rxregs['mcnt_relock']:
+            raise RuntimeError('F host %s mcnt_relock is changing. %i -> %i' % (
+                self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
+        if rxregs_new['timerror'] != rxregs['timerror']:
+            raise RuntimeError('F host %s timestep error is changing. %i -> %i' % (
+                self.host, rxregs_new['timerror'], rxregs['timerror']))
+        if rxregs_new['discard'] != rxregs['discard']:
+            raise RuntimeError('F host %s discarding packets. %i -> %i' % (
+                self.host, rxregs_new['discard'], rxregs['discard']))
         LOGGER.info('F host %s is reordering data okay.' % self.host)
 
     def read_spead_counters(self):
@@ -138,10 +127,15 @@ class FpgaFHost(FpgaHost):
         :return:
         """
         rv = []
+	errors = self.registers.speaderr_ctrs.read()
         for core_ctr in range(0, 4):
-            counter = self.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
-            error = self.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
-            rv.append((counter, error))
+            counter = self.registers['gbe%i_rxctr' % core_ctr].read()['data']['reg']
+            error = errors['data']['gbe%i' % core_ctr]
+	    rv.append((counter, error))
+        #for core_ctr in range(0, 4):
+            #counter = self.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
+            #error = self.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
+	    #rv.append((counter, error))
         return rv
 
     def get_local_time(self):
