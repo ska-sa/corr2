@@ -82,12 +82,12 @@ class FpgaHost(Host, KatcpFpga):
         time.sleep(1)
         xrxspead_ctrs1 = self.read_spead_counters()
         for core_ctr in range(0, len(xrxspead_ctrs0)):
-            # ctrs must have incremented
-            if xrxspead_ctrs1[core_ctr][0] <= xrxspead_ctrs0[core_ctr][0]:
-                LOGGER.error('Host %s core %i is not receiving SPEAD data, bailing' % (self.host, core_ctr))
+            # ctrs must have changed
+            if xrxspead_ctrs1[core_ctr][0] == xrxspead_ctrs0[core_ctr][0]:
+            	LOGGER.error('Host %s core %i is not receiving SPEAD data, bailing' % (self.host, core_ctr))
                 raise RuntimeError('Host %s core %i is not receiving SPEAD data, bailing' % (self.host, core_ctr))
             # but the errors must not
-            if xrxspead_ctrs1[core_ctr][1] > xrxspead_ctrs0[core_ctr][1]:
-                LOGGER.error('Host %s core %i has an incrementing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
-                raise RuntimeError('Host %s core %i has an incrementing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
-        LOGGER.info('Host %s is receiving SPEAD data' % self.host)
+            if xrxspead_ctrs1[core_ctr][1] != xrxspead_ctrs0[core_ctr][1]:
+                LOGGER.error('Host %s core %i has an changing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
+                raise RuntimeError('Host %s core %i has a changing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
+        LOGGER.info('Host %s is not receiving SPEAD data errors' % self.host)
