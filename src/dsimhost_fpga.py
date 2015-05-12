@@ -97,7 +97,7 @@ class FpgaDsimHost(FpgaHost):
             raise RuntimeError('D-engine {host} not running'
                                .format(**self.__dict__))
         self.get_system_information()
-        self._setup_tengbes()
+        self.setup_tengbes()
         # Set digitizer polarisation IDs, 0 - h, 1 - v
         self.registers.receptor_id.write(pol0_id=0, pol1_id=1)
 
@@ -108,6 +108,13 @@ class FpgaDsimHost(FpgaHost):
         # Default to generating test-vectors
         for output in self.outputs:
             output.select_output('test_vectors')
+
+    def enable_data_output(self, enabled=True):
+        """(dis)Enable 10GbE data output"""
+        enabled = bool(enabled)
+        self.registers.control.write(gbe_txen=bool(enabled))
+        if enabled:
+            self.registers.control_output.write(load_en_time='pulse')
 
     def _program(self):
         """Program the boffile to fpga and ensure 10GbE's are not transmitting"""
@@ -120,38 +127,50 @@ class FpgaDsimHost(FpgaHost):
         # Ensure data is not sent before the tengbe's are configured
         self.registers.control.write(gbe_txen=False)
 
-    def _setup_tengbes(self):
+    def setup_tengbes(self):
         """Set up 10GbE MACs, IPs and destination address/port"""
         start_ip = self.config['10gbe_start_ip']
         start_mac = self.config['10gbe_start_mac']
         port = int(self.config['10gbe_port'])
+        num_tengbes = 4         # Hardcoded assumption
+        gbes_per_pol = 2      # Hardcoded assumption
+        num_pols = num_tengbes // gbes_per_pol
+
         ip_bits = start_ip.split('.')
         ipbase = int(ip_bits[3])
         mac_bits = start_mac.split(':')
         macbase = int(mac_bits[5])
-        num_tengbes = 4         # Harcoded assumption
         for ctr in range(num_tengbes):
             mac = '%s:%d' % (':'.join(mac_bits[0:5]), macbase + ctr)
             ip = '%s.%s.%s.%d' % (ip_bits[0], ip_bits[1], ip_bits[2], ipbase + ctr)
             self.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=port)
         for gbe in self.tengbes:
             gbe.tap_start(True)
+
         # set the destination IP and port for the tx
-        txaddr = start_ip
-        txaddr_bits = txaddr.split('.')
-        txaddr_base = int(txaddr_bits[3])
-        txaddr_prefix = '.'.join(txaddr_bits[0:3])
-        for ctr in range(0, num_tengbes):
-            txip = txaddr_base + ctr
-            LOGGER.info('%s sending to: %s%d port %d' % (
-                self.host, txaddr_prefix, txip, port))
-            self.write_int('gbe_iptx%i' % ctr,
-                           tengbe.str2ip('%s.%d' % (txaddr_prefix, txip)))
+        gbe_ctr = 0             # pol-global counter for gbe's
+        for pol in range(0, num_pols):
+            # Get address configuration for current polarisation
+            single_destination = int(self.config.get(
+                'pol{}_single_destination'.format(pol), 0))
+            txaddr_start = self.config['pol{}_destination_start_ip'.format(pol)]
+            txaddr_bits = txaddr_start.split('.')
+            txaddr_base = int(txaddr_bits[3])
+            txaddr_prefix = '.'.join(txaddr_bits[0:3])
+
+            # Set the gbe destination addres for each gbe used by this pol
+            addr_offset = 0
+            for pol_gbe_ctr in range(0, gbes_per_pol):
+                txip = txaddr_base + addr_offset
+                LOGGER.info('%s sending to: %s.%d port %d' % (
+                    self.host, txaddr_prefix, txip, port))
+                self.write_int('gbe_iptx%i' % gbe_ctr,
+                               tengbe.str2ip('%s.%d' % (txaddr_prefix, txip)))
+                if not single_destination:
+                    addr_offset += 1
+
+                gbe_ctr += 1
+
         self.write_int('gbe_porttx', port)
         self.registers.control.write(gbe_rst=False)
-
-    def enable_data_output(self):
-        """Make the data flow!"""
-        self.registers.control.write(gbe_txen=True)
-        self.registers.control_output.write(load_en_time='pulse')
 
