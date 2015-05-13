@@ -84,7 +84,7 @@ class FpgaDsimHost(FpgaHost):
                 setattr(self.outputs, 'out_' + output_scale_name,
                         Output(output_scale_name, reg, self.registers.control))
 
-    def initialize(self):
+    def initialise(self):
         """Program (if self.boffile is specified) and init Dsim roach"""
         if not self.is_connected():
             self.connect()
