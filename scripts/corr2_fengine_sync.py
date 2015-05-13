@@ -24,8 +24,10 @@ parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='
                     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('--retry', dest='retry', action='store', default=10, type=int,
                     help='how many times should we try to sync?')
-parser.add_argument('--noforce', dest='noforce', action='store_true', default=False,
+parser.add_argument('--force', dest='force', action='store_true', default=False,
                     help='force a sync even if they are already synced')
+parser.add_argument('--checkonly', dest='checkonly', action='store_true', default=False,
+                    help='check sync only, do not try to sync')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -74,25 +76,26 @@ def check_sync(all_fpgas):
 
 # check the current sync times
 synced, times = check_sync(fpgas)
-if synced and args.noforce:
-    print 'All fengines synced at %d.' % times[times.keys()[0]]
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+print 'Current f-engine sync times:'
+for host, synctime in times.items():
+    print '\t%s: %i' % (host, synctime)
 
-# sync the f-engines
-tries = 0
-while tries < args.retry:
-    print 'Syncing...',
-    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'))
-    print 'checking...',
-    time.sleep(1)
-    synced, times = check_sync(fpgas)
-    if synced:
-        print 'done. Synced at %d.' % times[times.keys()[0]]
-        break
-    print 'failed. Trying again.', times
-if tries == args.retry:
-    if args.log_level != '':
-        logging.error('FAILED to sync!')
-    print 'FAILED to sync!'
+if ((not synced) or args.force) and (not args.checkonly):
+    # sync the f-engines
+    tries = 0
+    while tries < args.retry:
+        print 'Syncing...',
+        fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'))
+        print 'checking...',
+        time.sleep(1)
+        synced, times = check_sync(fpgas)
+        if synced:
+            print 'done. Synced at %d.' % times[times.keys()[0]]
+            break
+        print 'failed. Trying again.', times
+    if tries == args.retry:
+        if args.log_level != '':
+            logging.error('FAILED to sync!')
+        print 'FAILED to sync!'
 
 fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
