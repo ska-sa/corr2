@@ -173,8 +173,8 @@ class FxCorrelator(Instrument):
 
             # start f-engine TX
             self.logger.info('Starting f-engine datastream')
-            for f in self.fhosts:
-                f.registers.control.write(gbe_txen=True)
+            THREADED_FPGA_OP(self.fhosts, timeout=5,
+                             target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
 
             # check that the F-engines are transmitting data correctly
             if not self._feng_check_tx():
@@ -1001,6 +1001,13 @@ class FxCorrelator(Instrument):
             fpgahost = xhost_fpga.FpgaXHost.from_config_source(host, self.katcp_port,
                                                                config_source=self.configd['xengine'])
             self.xhosts.append(fpgahost)
+
+        # check that no hosts overlap
+        for _fh in self.fhosts:
+            for _xh in self.xhosts:
+                if _fh.host == _xh.host:
+                    self.logger.error('Host %s is assigned to both X- and F-engines' % _fh.host)
+                    raise RuntimeError
 
         # what data sources have we been allocated?
         self._handle_sources()
