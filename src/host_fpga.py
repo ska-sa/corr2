@@ -55,11 +55,12 @@ class FpgaHost(Host, KatcpFpga):
             for core in rxregs.keys():
                 rxctr_old = rxregs[core]['%s_rxctr' % core]['data']['reg']
                 rxctr_new = rxregs_new[core]['%s_rxctr' % core]['data']['reg']
-                rxbad_old = rxregs[core]['%s_rxbadctr' % core]['data']['reg']
-                rxbad_new = rxregs_new[core]['%s_rxbadctr' % core]['data']['reg']
+                #rxbad_old = rxregs[core]['%s_rxbadctr' % core]['data']['reg']
+                #rxbad_new = rxregs_new[core]['%s_rxbadctr' % core]['data']['reg']
                 rxerr_old = rxregs[core]['%s_rxerrctr' % core]['data']['reg']
                 rxerr_new = rxregs_new[core]['%s_rxerrctr' % core]['data']['reg']
-                if (rxctr_old == rxctr_new) or (rxbad_old != rxbad_new) or (rxerr_old != rxerr_new):
+                #if (rxctr_old == rxctr_new) or (rxbad_old != rxbad_new) or (rxerr_old != rxerr_new):
+                if (rxctr_old == rxctr_new) or (rxerr_old != rxerr_new):
                     still_the_same = True
                     continue
             if still_the_same:
