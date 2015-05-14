@@ -23,7 +23,9 @@ def parse_ini_file(ini_file='', required_sections=None):
         raise IOError('Could not read the config file, %s' % ini_file)
     for check_section in required_sections:
         if not parser.has_section(check_section):
-            raise ValueError('The config file does not seem to have the required %s section?' % check_section)
+            raise ValueError(
+                'The config file does not seem to have the required %s section?' % (
+                    check_section,) )
     config = {}
     for section in parser.sections():
         config[section] = {}
