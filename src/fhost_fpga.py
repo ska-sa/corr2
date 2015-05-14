@@ -85,19 +85,19 @@ class FpgaFHost(FpgaHost):
         """
         def get_gbe_data():
             data = {}
-            pktof_ctrs = self.registers.pktof_ctrs.read()['data']
+            reorder_ctrs = self.registers.reorder_ctrs.read()['data']
             for gbe in [0, 1, 2, 3]:
+            	pktof_ctrs = self.registers.pktof_ctrs.read()['data']
                 data['pktof_ctr%i' % gbe] = pktof_ctrs['gbe%i' % gbe]             
             recverr_ctrs = self.registers.recverr_ctr.read()['data']
             for pol in [0, 1]:
                 data['recverr_ctr%i' % pol] = recverr_ctrs['p%i' % pol]             
-            temp = self.registers.reorder_ctrs.read()['data']
-            data['mcnt_relock'] = temp['mcnt_relock']
-            data['timerror'] = temp['timestep_error']
-            data['discard'] = temp['discard']
-            temp = self.registers.pfb_of.read()['data']
-            data['pfb_of0'] = temp['of0']
-            data['pfb_of1'] = temp['of1']
+            data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
+            data['timerror'] = reorder_ctrs['timestep_error']
+            data['discard'] = reorder_ctrs['discard']
+            status = self.registers.pfb_of.read()['data']
+            data['pfb_of0'] = status['of0']
+            data['pfb_of1'] = status['of1']
             return data
         rxregs = get_gbe_data()
         time.sleep(1)
@@ -440,16 +440,4 @@ class FpgaFHost(FpgaHost):
         # finally write to the bram
         self.host.write(reg_name, coeffs_str)
 
-    #TODO
-    def set_delay(self, pol_index, delay=0, delay_delta=0, phase=0, phase_delta=0, load_time=None):
-        """ Apply delay correction coefficients to polarisation specified from time specified
-        @param pol_index: polarisation delay coefficients are to be applied to
-        @param delay: delay in samples
-        @param delay_delta: change in delay in samples per ADC sample
-        @param phase: initial phase offset TODO units
-        @param phase_delta: change in phase TODO units
-        @param load_time: time to load values in ADC samples since epoch. If None load immediately
-        """
-        log_not_implemented_error(LOGGER,  '%s.set_delay not implemented '%self.descriptor)
 
-'''
