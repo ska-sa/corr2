@@ -165,7 +165,8 @@ class FpgaDsimHost(FpgaHost):
                 LOGGER.info('%s sending to: %s.%d port %d' % (
                     self.host, txaddr_prefix, txip, port))
                 self.write_int('gbe_iptx%i' % gbe_ctr,
-                               tengbe.str2ip('%s.%d' % (txaddr_prefix, txip)))
+                               tengbe.IpAddress.str2ip(
+                                   '%s.%d' % (txaddr_prefix, txip)))
                 if not single_destination:
                     addr_offset += 1
 
