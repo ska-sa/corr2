@@ -308,6 +308,22 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.fhosts, max_waittime+1, 'check_rx', max_waittime)
         self.logger.info('\tdone.')
 
+    def feng_set_delay(self, target_name, delay=0, delay_rate=0, fringe_phase=0, fringe_rate=0, ld_time=-1, ld_check=True, extra_wait_time=0):
+	"""
+        :param target_name:
+        :return:
+        """
+        targetsrc = None
+        for src in self.fengine_sources:
+            if src.name == target_name:
+                targetsrc = src
+                break
+        if targetsrc is None:
+            raise RuntimeError('Could not find target %s' % target_name)
+
+	pol_id = targetsrc.source_number % 2
+     	targetsrc.fr_delay_set(pol_id, delay, delay_rate, fringe_phase, fringe_rate, ld_time, ld_check, extra_wait_time)
+
     def feng_eq_get(self, source_name=None):
         """
         Return the EQ arrays in a dictionary, arranged by source name.
@@ -438,22 +454,20 @@ class FxCorrelator(Instrument):
                 break
         if targetsrc is None:
             raise RuntimeError('Could not find source %s' % source_name)
-        targetsrc.host.snapshots.snapquant_ss.arm()
-        targetsrc.host.registers.control.write(snapquant_arm='pulse')
-        sdata = targetsrc.host.snapshots.snapquant_ss.read(arm=False)['data']
-        compl = []
-        if targetsrc.source_number % 2 == 0:
-            for ctr in range(0, len(sdata['r00'])):
-                compl.append(complex(sdata['r00'][ctr], sdata['i00'][ctr]))
-                compl.append(complex(sdata['r01'][ctr], sdata['i01'][ctr]))
-                compl.append(complex(sdata['r02'][ctr], sdata['i02'][ctr]))
-                compl.append(complex(sdata['r03'][ctr], sdata['i03'][ctr]))
+        
+	if targetsrc.source_number % 2 == 0:
+            snapshot = targetsrc.host.snapshots.snap_quant0_ss
         else:
-            for ctr in range(0, len(sdata['r10'])):
-                compl.append(complex(sdata['r10'][ctr], sdata['i10'][ctr]))
-                compl.append(complex(sdata['r11'][ctr], sdata['i11'][ctr]))
-                compl.append(complex(sdata['r12'][ctr], sdata['i12'][ctr]))
-                compl.append(complex(sdata['r13'][ctr], sdata['i13'][ctr]))
+            snapshot = targetsrc.host.snapshots.snap_quant1_ss
+	
+        snapshot.arm()
+        sdata = snapshot.read(arm=False)['data']
+        compl = []
+        for ctr in range(0, len(sdata['real0'])):
+	    compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
+	    compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
+	    compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
+	    compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
         return compl
 
     def _fengine_initialise(self):
