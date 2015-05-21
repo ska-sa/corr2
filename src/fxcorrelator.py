@@ -113,6 +113,13 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
         THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='connect')
 
+        igmp_version = self.configd['FxCorrelator'].get('igmp_version')
+        if igmp_version is not None:
+            self.logger.info('Setting FPGA hosts IGMP version to %s', igmp_version)
+            THREADED_FPGA_FUNC(
+                self.fhosts + self.xhosts, timeout=5, target_function=(
+                    'set_igmp_version', (igmp_version, ), {}) )
+
         # if we need to program the FPGAs, do so
         if program:
             self.logger.info('Programming FPGA hosts')
