@@ -80,10 +80,14 @@ class FpgaXHost(FpgaHost):
         for ctr in range(0, self.x_per_fpga):
             if rxregs_new['rcvcnt%i' % ctr] <= rxregs['rcvcnt%i' % ctr]:
                 raise RuntimeError('X host %s is not receiving reordered data.' % self.host)
-            if (rxregs_new['ercv%i' % ctr] > rxregs['ercv%i' % ctr]) or \
-               (rxregs_new['etim%i' % ctr] > rxregs['etim%i' % ctr]) or \
-               (rxregs_new['edisc%i' % ctr] > rxregs['edisc%i' % ctr]):
-                raise RuntimeError('X host %s reports reorder errors.' % self.host)
+	    string = ''
+            if (rxregs_new['ercv%i' % ctr] > rxregs['ercv%i' % ctr]):
+		string = string + '\nNot receiving all time data'
+            if (rxregs_new['etim%i' % ctr] > rxregs['etim%i' % ctr]):
+		string = string + '\nData gaps are big enough to cause time gaps'
+            if (rxregs_new['edisc%i' % ctr] > rxregs['edisc%i' % ctr]):
+		string = string + '\nSome packets are being discarded'
+                raise RuntimeError('X host %s reports reorder errors.%s' % (self.host, string))
         LOGGER.info('X host %s is reordering data okay.' % self.host)
 
     def read_spead_counters(self):
