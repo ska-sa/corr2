@@ -129,7 +129,8 @@ class FxCorrelator(Instrument):
             for f in self.fhosts:
                 ftups.append((f, f.boffile))
             fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
-            # this does not wait for the programming to complete, so it won't get all the system information
+            # this does not wait for the programming to complete, so it won't get all the
+            # system information
 
         # load information from the running boffiles
         self.logger.info('Loading design information')
