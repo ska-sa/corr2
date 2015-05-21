@@ -16,3 +16,8 @@ Recommended:
 
 ToDo:
     - Make it work!
+
+
+Release Notes:
+    - 2015-05-21: Needs DEng version r2_deng_tvg_2015_May_20_1353.fpg or later
+      for dsimengine to work properly

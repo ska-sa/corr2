@@ -100,19 +100,23 @@ class FpgaDsimHost(FpgaHost):
         self.setup_tengbes()
         # Set digitizer polarisation IDs, 0 - h, 1 - v
         self.registers.receptor_id.write(pol0_id=0, pol1_id=1)
-
-        # start the local timer on the test d-engine - mrst, then a fake sync
-        self.registers.control.write(mrst='pulse')
-        self.registers.control.write(msync='pulse')
-
+        self.data_resync()
         # Default to generating test-vectors
         for output in self.outputs:
             output.select_output('test_vectors')
 
+    def data_resync(self):
+        """start the local timer on the test d-engine - mrst, then a fake sync"""
+        self.registers.control.write(mrst='pulse')
+        self.registers.control.write(msync='pulse')
+
     def enable_data_output(self, enabled=True):
         """(dis)Enable 10GbE data output"""
         enabled = bool(enabled)
-        self.registers.control.write(gbe_txen=bool(enabled))
+        gb_tx_reg = self.registers.gbe_tx_always_on
+        reg_vals = {n: enabled for n in gb_tx_reg.field_names()
+                    if n.endswith('_tx_always_on')}
+        gb_tx_reg.write(**reg_vals)
         if enabled:
             self.registers.control_output.write(load_en_time='pulse')
 
@@ -125,7 +129,7 @@ class FpgaDsimHost(FpgaHost):
         LOGGER.info('Programmed %s in %.2f seconds.' % (
             self.host, time.time() - stime))
         # Ensure data is not sent before the tengbe's are configured
-        self.registers.control.write(gbe_txen=False)
+        self.enable_data_output(False)
 
     def setup_tengbes(self):
         """Set up 10GbE MACs, IPs and destination address/port"""
