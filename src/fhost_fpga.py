@@ -90,24 +90,12 @@ class FpgaFHost(FpgaHost):
             data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
             data['timerror'] = reorder_ctrs['timestep_error']
             data['discard'] = reorder_ctrs['discard']
-            version = self.registers.rcs_user.read()['data']['reg']
-            if version == 32768:
-            	for gbe in [0, 1, 2, 3]:
-            	    pktof_ctrs = self.registers.pktof_ctrs.read()['data']
-                    data['pktof_ctr%i' % gbe] = pktof_ctrs['gbe%i' % gbe]             
-                recverr_ctrs = self.registers.recverr_ctr.read()['data']
-                for pol in [0, 1]:
-                    data['recverr_ctr%i' % pol] = recverr_ctrs['p%i' % pol]             
-                status = self.registers.pfb_of.read()['data']
-                data['pfb_of0'] = status['of0']
-                data['pfb_of1'] = status['of1']
-            else:
-            	for gbe in [0, 1, 2, 3]:
-                    data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]             
-                status = self.registers.status.read()['data']
-                for pol in [0, 1]:
-                    data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]             
-                    data['pfb_of%i' % pol] = status['pfb_of%i_cnt' % pol]
+	    for gbe in [0, 1, 2, 3]:
+	        data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]             
+	    status = self.registers.status.read()['data']
+	    for pol in [0, 1]:
+	        data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]             
+	        data['pfb_of%i' % pol] = status['pfb_of%i_cnt' % pol]
             return data
         rxregs = get_gbe_data()
         time.sleep(1)
@@ -137,15 +125,11 @@ class FpgaFHost(FpgaHost):
         :return:
         """
         rv = []
-	errors = self.registers.speaderr_ctrs.read()
+	spead_ctrs = self.registers.spead_ctrs.read()['data']
         for core_ctr in range(0, 4):
-            counter = self.registers['gbe%i_rxctr' % core_ctr].read()['data']['reg']
-            error = errors['data']['gbe%i' % core_ctr]
+            counter = spead_ctrs['rx_cnt%i' % core_ctr]
+            error = spead_ctrs['err_cnt%i' % core_ctr]
 	    rv.append((counter, error))
-        #for core_ctr in range(0, 4):
-            #counter = self.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
-            #error = self.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
-	    #rv.append((counter, error))
         return rv
 
     def get_local_time(self):
