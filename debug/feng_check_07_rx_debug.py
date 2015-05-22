@@ -64,17 +64,19 @@ if len(hosts) == 0:
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 
-regs = ['mcnt_relock', 'tmiss_p0','tmiss_p1', 'tmiss_ctr', 'recverr_ctr', 'timestep_ages',
+regs = ['mcnt_relock', 'tmiss_p0', 'tmiss_p1', 'tmiss_ctr', 'recverr_ctr', 'timestep_ages',
         'sync_timestamp_msw', 'sync_timestamp_lsw']
 
 if args.rstcnt:
     fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
-                                                                                  unpack_cnt_rst='pulse'))
+                                      target_function=
+                                      (lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
+                                                                                   unpack_cnt_rst='pulse'),))
 
 if args.sysrst:
     fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'))
+                                      target_function=
+                                      (lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
 
 
 def checkregs(fpga_, necregs):
@@ -84,7 +86,7 @@ def checkregs(fpga_, necregs):
         if necreg not in regnames:
             freg_error += 1
     return freg_error > 0
-regcheck = fpgautils.threaded_fpga_operation(fpgas, 10, checkregs, regs)
+regcheck = fpgautils.threaded_fpga_operation(fpgas, 10, target_function=(checkregs, (regs,)))
 registers_missing = []
 for fpga, error in regcheck.items():
     if error:
@@ -92,7 +94,7 @@ for fpga, error in regcheck.items():
 if len(registers_missing) > 0:
     print 'The following hosts are missing necessary registers. Bailing.'
     print registers_missing
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+    fpgautils.threaded_fpga_function(fpgas, 10, target_function=('disconnect',))
     sys.exit()
 
 
@@ -127,7 +129,7 @@ import signal
 def exit_gracefully(sig, frame):
     print sig, frame
     scroll.screen_teardown()
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+    fpgautils.threaded_fpga_function(fpgas, 10, target_function=('disconnect',))
     sys.exit(0)
 signal.signal(signal.SIGINT, exit_gracefully)
 signal.signal(signal.SIGHUP, exit_gracefully)
@@ -163,7 +165,7 @@ try:
                 start_pos += pos_increment
             scroller.set_ypos(newpos=2)
             scroller.set_ylimits(ymin=2)
-            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, get_fpga_data)
+            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, target_function=(get_fpga_data,))
             for ctr, fpga in enumerate(fpgas):
                 fpga_data = all_fpga_data[fpga.host]
                 scroller.add_line(fpga.host)
