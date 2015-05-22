@@ -113,6 +113,13 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
         THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='connect')
 
+        igmp_version = self.configd['FxCorrelator'].get('igmp_version')
+        if igmp_version is not None:
+            self.logger.info('Setting FPGA hosts IGMP version to %s', igmp_version)
+            THREADED_FPGA_FUNC(
+                self.fhosts + self.xhosts, timeout=5, target_function=(
+                    'set_igmp_version', (igmp_version, ), {}) )
+
         # if we need to program the FPGAs, do so
         if program:
             self.logger.info('Programming FPGA hosts')
@@ -122,7 +129,8 @@ class FxCorrelator(Instrument):
             for f in self.fhosts:
                 ftups.append((f, f.boffile))
             fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
-            # this does not wait for the programming to complete, so it won't get all the system information
+            # this does not wait for the programming to complete, so it won't get all the
+            # system information
 
         # load information from the running boffiles
         self.logger.info('Loading design information')
