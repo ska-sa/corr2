@@ -46,22 +46,22 @@ class FpgaFHost(FpgaHost):
         Is this host/LRU okay?
         :return:
         """
-        try:
-            assert self.check_rx()
-            err_one = self.registers.ct_errcnt.read()['data']
-            err_two = self.registers.wintime_error.read()['data']
-            ct_cnt_one = self.registers.ct_cnt.read()['data']
-            time.sleep(0.2)
-            ct_cnt_two = self.registers.ct_cnt.read()['data']
-            assert err_one['errcnt0'] == 0
-            assert err_one['parerrcnt0'] == 0
-            assert err_one['errcnt1'] == 0
-            assert err_one['parerrcnt1'] == 0
-            assert err_two['step'] == 0
-            assert err_two['vs_spead'] == 0
-            assert ct_cnt_two['validcnt'] - ct_cnt_one['validcnt'] > 0
-            assert ct_cnt_two['synccnt'] - ct_cnt_one['synccnt'] > 0
-        except:
+        _sleeptime = 1
+        if not self.check_rx():
+            return False
+        err_one = self.registers.ct_errcnt.read()['data']
+        err_two = self.registers.wintime_error.read()['data']
+        ct_cnt_one = self.registers.ct_cnt.read()['data']
+        time.sleep(_sleeptime)
+        ct_cnt_two = self.registers.ct_cnt.read()['data']
+        if not ((err_one['errcnt0'] == 0) and
+                (err_one['parerrcnt0'] == 0) and
+                (err_one['errcnt1'] == 0) and
+                (err_one['parerrcnt1'] == 0) and
+                (err_two['step'] == 0) and
+                (err_two['vs_spead'] == 0) and
+                (ct_cnt_two['validcnt'] - ct_cnt_one['validcnt'] > 0) and
+                (ct_cnt_two['synccnt'] - ct_cnt_one['synccnt'] > 0)):
             LOGGER.info('F host %s host_okay() - FALSE.' % self.host)
             return False
         LOGGER.info('F host %s host_okay() - TRUE.' % self.host)
@@ -73,9 +73,12 @@ class FpgaFHost(FpgaHost):
         :param max_waittime: the maximum time to wait for raw 10gbe data
         :return:
         """
-        self.check_rx_raw(max_waittime)
-        self.check_rx_spead()
-        self.check_rx_reorder()
+        if not (self.check_rx_raw(max_waittime) and
+                self.check_rx_spead() and
+                self.check_rx_reorder()):
+            LOGGER.error('F host %s check_rx() - FALSE.' % self.host)
+            return False
+        LOGGER.info('F host %s check_rx() - TRUE.' % self.host)
         return True
 
     def check_rx_reorder(self):
@@ -97,8 +100,9 @@ class FpgaFHost(FpgaHost):
 	        data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]             
 	        data['pfb_of%i' % pol] = status['pfb_of%i_cnt' % pol]
             return data
+        _sleeptime = 1
         rxregs = get_gbe_data()
-        time.sleep(1)
+        time.sleep(_sleeptime)
         rxregs_new = get_gbe_data()
         for gbe in [0, 1, 2, 3]:
             if rxregs_new['pktof_ctr%i' % gbe] != rxregs['pktof_ctr%i' % gbe]:
@@ -118,6 +122,7 @@ class FpgaFHost(FpgaHost):
             raise RuntimeError('F host %s discarding packets. %i -> %i' % (
                 self.host, rxregs_new['discard'], rxregs['discard']))
         LOGGER.info('F host %s is reordering data okay.' % self.host)
+        return True
 
     def read_spead_counters(self):
         """

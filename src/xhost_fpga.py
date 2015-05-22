@@ -39,11 +39,8 @@ class FpgaXHost(FpgaHost):
         Is this host/LRU okay?
         :return:
         """
-        try:
-            assert self.check_rx()
-            assert self.vacc_okay()
-        except:
-            LOGGER.info('X host %s host_okay() - FALSE.' % self.host)
+        if not (self.check_rx() and self.vacc_okay()):
+            LOGGER.error('X host %s host_okay() - FALSE.' % self.host)
             return False
         LOGGER.info('X host %s host_okay() - TRUE.' % self.host)
         return True
@@ -54,9 +51,12 @@ class FpgaXHost(FpgaHost):
         :param max_waittime: the maximum time to wait for raw 10gbe data
         :return:
         """
-        self.check_rx_raw(max_waittime)
-        self.check_rx_spead()
-        self.check_rx_reorder()
+        if not (self.check_rx_raw(max_waittime) and
+                self.check_rx_spead() and
+                self.check_rx_reorder()):
+            LOGGER.error('X host %s check_rx() - FALSE.' % self.host)
+            return False
+        LOGGER.info('X host %s check_rx() - TRUE.' % self.host)
         return True
 
     def check_rx_reorder(self):
@@ -74,21 +74,26 @@ class FpgaXHost(FpgaHost):
                 data['etim%i' % ctr] = self.registers['reorderr_timeout%i' % ctr].read()['data']['reg']
                 data['edisc%i' % ctr] = self.registers['reorderr_disc%i' % ctr].read()['data']['reg']
             return data
+        _sleeptime = 1
         rxregs = get_gbe_data()
-        time.sleep(1)
+        time.sleep(_sleeptime)
         rxregs_new = get_gbe_data()
         for ctr in range(0, self.x_per_fpga):
             if rxregs_new['rcvcnt%i' % ctr] <= rxregs['rcvcnt%i' % ctr]:
-                raise RuntimeError('X host %s is not receiving reordered data.' % self.host)
-	    string = ''
-            if (rxregs_new['ercv%i' % ctr] > rxregs['ercv%i' % ctr]):
-		string = string + '\nNot receiving all time data'
-            if (rxregs_new['etim%i' % ctr] > rxregs['etim%i' % ctr]):
-		string = string + '\nData gaps are big enough to cause time gaps'
-            if (rxregs_new['edisc%i' % ctr] > rxregs['edisc%i' % ctr]):
-		string = string + '\nSome packets are being discarded'
-                raise RuntimeError('X host %s reports reorder errors.%s' % (self.host, string))
+                LOGGER.error('X host %s is not receiving reordered data.' % self.host)
+                return False
+            if ((rxregs_new['ercv%i' % ctr] > rxregs['ercv%i' % ctr]) or
+                    (rxregs_new['etim%i' % ctr] > rxregs['etim%i' % ctr]) or
+                    (rxregs_new['edisc%i' % ctr] > rxregs['edisc%i' % ctr])):
+                LOGGER.error('X host %s reports reorder errors: '
+                             'rcv(%i) time(%i) disc(%i)' %
+                             (self.host,
+                              rxregs_new['ercv%i' % ctr] - rxregs['ercv%i' % ctr],
+                              rxregs_new['etim%i' % ctr] - rxregs['etim%i' % ctr],
+                              rxregs_new['edisc%i' % ctr] - rxregs['edisc%i' % ctr]))
+                return False
         LOGGER.info('X host %s is reordering data okay.' % self.host)
+        return True
 
     def read_spead_counters(self):
         """
