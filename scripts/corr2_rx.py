@@ -26,7 +26,7 @@ import logging
 
 
 class CorrRx(threading.Thread):
-    def __init__(self, quit_event, port=7148, log_handler=None,
+    def __init__(self, port=7148, log_handler=None,
                  log_level=logging.INFO, spead_log_level=logging.INFO, **kwargs):
         # if log_handler == None:
         #     log_handler = log_handlers.DebugLogHandler(100)
@@ -78,7 +78,6 @@ class CorrRx(threading.Thread):
         for heap in spead.iterheaps(rx):
             ig.update(heap)
             logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f' % (idx, heap.heap_cnt, time.time()))
-    
             # output item values specified
             if items is not None:
                 for name in ig.keys():
