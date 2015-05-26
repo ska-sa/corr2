@@ -193,6 +193,78 @@ class FxCorrelator(Instrument):
         # set an initialised flag
         self._initialised = True
 
+    def _sensor_cb_flru(self, sensor):
+        """
+        Sensor call back function for f-engine LRU
+        :param sensor:
+        :return:
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.fhosts[host_name].host_okay()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_sensor_cb_flru ran on %s' % (host_name))
+        Timer(10, self._sensor_cb_flru, sensor).start()
+
+    def _sensor_cb_xlru(self, sensor):
+        """
+        Sensor call back function for x-engine LRU
+        :param sensor:
+        :return:
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.xhosts[host_name].host_okay()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_sensor_cb_xlru ran on %s' % (host_name))
+        Timer(10, self._sensor_cb_xlru, sensor).start()
+
+    def _sensor_feng_tx(self, sensor):
+        """
+        f-engine tx counters
+        :param sensor:
+        :return: rv
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.fhosts[host_name].tengbes.tx_okay()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_sensor_feng_tx ran on %s' % (host_name))
+        Timer(10, self._sensor_feng_tx, sensor).start()
+
+    def _sensor_feng_rx(self, sensor):
+        """
+        f-engine rx counters
+        :param sensor:
+        :return: true/false
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.fhosts[host_name].check_rx_reorder()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_sensor_feng_rx ran on %s' % (host_name))
+        Timer(10, self._sensor_feng_rx, sensor).start()
+
+    def _sensor_xeng_tx(self, sensor):
+        """
+        x-engine tx counters
+        :param sensor:
+        :return:
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.xhosts[host_name].tengbes.tx_okay()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_sensor_xeng_tx ran on %s' % (host_name))
+        Timer(10, self._sensor_xeng_tx, sensor).start()
+
+    def _sensor_xeng_rx(self, sensor):
+        """
+        x-engine rx counters
+        :param sensor:
+        :return:
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.xhosts[host_name].check_rx_reorder()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_sensor_xeng_rx ran on %s' % (host_name))
+        Timer(10, self._sensor_xeng_rx, sensor).start()
+
     def setup_sensors(self, katcp_server):
         """
         Set up compound sensors to be reported to CAM
@@ -202,19 +274,20 @@ class FxCorrelator(Instrument):
         if not self._initialised:
             raise RuntimeError('Cannot set up sensors until instrument is initialised.')
         self._sensors = {}
-        okay_res = THREADED_FPGA_FUNC(self.fhosts, 5, 'host_okay')
+
+        # f-engine lru
         for _f in self.fhosts:
             sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_lru_%s' % _f.host,
                             description='F-engine %s LRU okay' % _f.host,
                             default=True)
-            sensor.set(okay_res[_f.host])
+            self._sensor_cb_flru(sensor) # call back function
             self._sensors[sensor.name] = sensor
-        okay_res = THREADED_FPGA_FUNC(self.xhosts, 5, 'host_okay')
+        # x-engine lru
         for _x in self.xhosts:
             sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_lru_%s' % _x.host,
                             description='X-engine %s LRU okay' % _x.host,
                             default=True)
-            sensor.set(okay_res[_x.host])
+            self._sensor_cb_xlru(sensor) # call back function
             self._sensors[sensor.name] = sensor
 
         # self._sensors = {'time': Sensor(sensor_type=Sensor.FLOAT, name='time_sensor', description='The time.',
@@ -226,33 +299,52 @@ class FxCorrelator(Instrument):
         #                                     description='The meta dest string',
         #                                     units='', default=str(self.meta_destination))
         #                 }
-        # # f-engine rx/tx counters
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_tx',
-        #                 description='F-engine TX okay - counters incrementing',
-        #                 default=True)
-        # self._sensors['feng_tx'] = sensor
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_rx',
-        #                 description='F-engine RX okay - counters incrementing',
-        #                 default=True)
-        # self._sensors['feng_rx'] = sensor
-        # # x-engine rx/tx counters
+
+
+        # # f-engine tx counters
+        # for _f in self.fhosts:
+        #     sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_tx_%s' % _f.host,
+        #                     description='F-engine TX okay - counters incrementing' % _f.host,
+        #                     default=True)
+        #     self._sensors['feng_tx'] = sensor
+
+        # f-engine rx counters
+        for _f in self.fhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_rx_%s' % _f.host,
+                            description='F-engine %s RX okay - counters incrementing' % _f.host,
+                            default=True)
+            self._sensor_feng_rx(sensor)
+            self._sensors[sensor.name] = sensor
+
+        # # x-engine tx counters
         # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_tx',
         #                 description='X-engine TX okay - counters incrementing',
         #                 default=True)
         # self._sensors['xeng_tx'] = sensor
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_rx',
-        #                 description='X-engine RX okay - counters incrementing',
-        #                 default=True)
-        # self._sensors['xeng_rx'] = sensor
-        # # f- and x-engine QDR errors
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_qdr',
-        #                 description='X-engine QDR okay',
-        #                 default=True)
-        # self._sensors['xeng_qdr'] = sensor
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_qdr',
-        #                 description='F-engine QDR okay',
-        #                 default=True)
-        # self._sensors['feng_qdr'] = sensor
+
+        # x-engine rx counters
+        for _x in self.xhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_rx_%s' % _x.host,
+                            description='X-engine RX okay - counters incrementing' % _x.host,
+                            default=True)
+            self._sensor_xeng_rx(sensor)
+            self._sensors[sensor.name] = sensor
+
+        # # x-engine QDR errors
+        for _x in self.xhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_qdr_%s' % _x.host,
+                            description='X-engine QDR okay' % _x.host,
+                            default=True)
+            self._qdr_okay(sensor)
+            self._sensors[sensor.name] = sensor
+
+        # # f-engine QDR errors
+        for _f in self.fhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_qdr_%s' % _f.host,
+                            description='F-engine QDR okay' % _f.host,
+                            default=True)
+            self._qdr_okay(sensor)
+            self._sensors[sensor.name] = sensor
 
         for val in self._sensors.values():
             katcp_server.add_sensor(val)
@@ -272,6 +364,9 @@ class FxCorrelator(Instrument):
     #             print host.host
     #             for qdr in host.qdrs:
     #                 qdr.qdr_cal(fail_hard=False, verbosity=2)
+
+    def _qdr_okay(self, sensor):
+        return True
 
     def qdr_calibrate(self):
         # cal the QDR specifically
