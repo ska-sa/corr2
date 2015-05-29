@@ -145,10 +145,10 @@ class FpgaDsimHost(FpgaHost):
     def enable_data_output(self, enabled=True):
         """(dis)Enable 10GbE data output"""
         enabled = bool(enabled)
-        gb_tx_reg = self.registers.gbe_tx_always_on
-        reg_vals = {n: enabled for n in gb_tx_reg.field_names()
+        pol_tx_reg = self.registers.pol_tx_always_on
+        reg_vals = {n: enabled for n in pol_tx_reg.field_names()
                     if n.endswith('_tx_always_on')}
-        gb_tx_reg.write(**reg_vals)
+        pol_tx_reg.write(**reg_vals)
         if enabled:
             self.registers.control_output.write(load_en_time='pulse')
 
@@ -158,10 +158,11 @@ class FpgaDsimHost(FpgaHost):
         Does nothing if data is already being transmitted
         """
         num_regs = [r for r in self.registers if re.match(
-            r'^gbe\d_num_pkts$', r.name)]
+            r'^pol\d_num_pkts$', r.name)]
         for r in num_regs:
             r.write(**{r.name: no_packets})
-        self.registers.eth_traffic_trigger.write(gbe_traffic_trigger='pulse')
+        self.registers.pol_traffic_trigger.write(**{
+            n: 'pulse' for n in self.registers.pol_traffic_trigger.field_names()})
 
     def _program(self):
         """Program the boffile to fpga and ensure 10GbE's are not transmitting"""
@@ -180,7 +181,7 @@ class FpgaDsimHost(FpgaHost):
         start_mac = self.config['10gbe_start_mac']
         port = int(self.config['10gbe_port'])
         num_tengbes = 4         # Hardcoded assumption
-        gbes_per_pol = 2      # Hardcoded assumption
+        gbes_per_pol = 2        # Hardcoded assumption
         num_pols = num_tengbes // gbes_per_pol
 
         ip_bits = start_ip.split('.')
