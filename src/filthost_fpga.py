@@ -26,14 +26,35 @@ class FpgaFilterHost(FpgaHost):
                    boffile=config_source['bitstream'],
                    connect=True, config=config_source, board_id=board_id)
 
-    def set_destination(self):
+    def initialise(self):
+        """
+        Initialise this filter board once data from the digitiser is available.
+        :return:
+        """
+        self.set_igmp_version(2)  # TODO - get this from the config, not hardcoded
+        self._set_destination()
+        self._handle_sources()
+        self.setup_rx()
+        self._subscribe_to_source_data()
+        self.check_rx()
+
+    def _set_destination(self):
         """
         Set the destination for the filtered data, as configured
         :return:
         """
-        self.registers.gbe_iptx0.write_int(int(tengbe.IpAddress(self._config['pol0_destination_ip'])))
-        self.registers.gbe_iptx1.write_int(int(tengbe.IpAddress(self._config['pol1_destination_ip'])))
+        self.registers.gbe_iptx0.write_int(
+            int(tengbe.IpAddress(self._config['pol0_destination_ip'])))
+        self.registers.gbe_iptx1.write_int(
+            int(tengbe.IpAddress(self._config['pol1_destination_ip'])))
         self.registers.gbe_porttx.write_int(int(self._config['destination_port']))
+
+    def clear_status(self):
+        """
+        Clear the status registers and counters on this filter board
+        :return:
+        """
+        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
 
     def setup_rx(self):
         """
@@ -41,6 +62,8 @@ class FpgaFilterHost(FpgaHost):
         Check that the board is receiving data correctly.
         :return:
         """
+        assert self.board_id > -1, 'The board ID cannot be -1, it must be zero or greater.'
+
         self.registers.control.write(gbe_txen=False)
         self.registers.control.write(gbe_rst=True)
         self.clear_status()
@@ -48,24 +71,23 @@ class FpgaFilterHost(FpgaHost):
         _num_tengbes = len(self.tengbes)
         _ip_octets = [int(bit) for bit in self._config['10gbe_start_ip'].split('.')]
         _port = int(self._config['10gbe_port'])
-        assert len(_ip_octets) == 4, 'That\'s an odd IP address.'
+        assert len(_ip_octets) == 4, 'That\'s an odd IP address: {}'.format(str(_ip_octets))
         _ip_base = _ip_octets[3] + (self.board_id * _num_tengbes)
         _ip_prefix = '%d.%d.%d.' % (_ip_octets[0], _ip_octets[1], _ip_octets[2])
-        _mac_prefix = self._config['10gbe__mac_prefix']
-        _mac_base = int(self._config['10gbe__mac_base']) + (self.board_id * _num_tengbes)
-        for gbe in self.tengbes:
+        _mac_prefix = self._config['10gbe_macprefix']
+        _mac_base = int(self._config['10gbe_macbase']) + (self.board_id * _num_tengbes)
+        for _gbe in self.tengbes:
             this_mac = '%s%02x' % (_mac_prefix, _mac_base)
             this_ip = '%s%d' % (_ip_prefix, _ip_base)
-            gbe.setup(mac=this_mac, ipaddress=this_ip,
-                      port=_port)
+            _gbe.setup(mac=this_mac, ipaddress=this_ip,
+                       port=_port)
             LOGGER.info('filthost({}) gbe({}) MAC({}) IP({}) port({}) board({})'.format(
-                self.host, gbe.name, this_mac, this_ip, _port, self.board_id))
+                self.host, _gbe.name, this_mac, this_ip, _port, self.board_id))
             _mac_base += 1
             _ip_base += 1
 
-        # start tap on the interfaces
-        for gbe in self.tengbes:
-            gbe.tap_start(True)
+        for _gbe in self.tengbes:
+            _gbe.tap_start(True)
 
         # release the cores from reset
         self.registers.control.write(gbe_rst=False)
@@ -89,77 +111,49 @@ class FpgaFilterHost(FpgaHost):
             new_source.name = source_names[counter]
             new_source.source_number = source_ctr
             _sources.append(new_source)
+            if source_ctr > 0:
+                assert(new_source.ip_range == _sources[0].ip_range,
+                       'DataSources have to offer the same IP range.')
             source_ctr += 1
 
         # assign the correct sources to this filter host
-        _source_offset =
+        _sources_per_filter = len(_sources) / len(self._config['hosts'].strip().split(','))
+        LOGGER.info('Assuming {} source items per filter board'.format(_sources_per_filter))
 
-        print _sources
+        _source_offset = self.board_id * _sources_per_filter
+        for _ctr in range(_source_offset, _source_offset + _sources_per_filter):
+            self.data_sources.append(_sources[_ctr])
+            LOGGER.info('{}: assigning source {} to host at position {}.'.format(
+                self.host, _sources[_ctr], _ctr,
+            ))
 
-        self.logger.info('done.')
-
-    def subscribe_to_source_data(self):
+    def _subscribe_to_source_data(self):
         """
         Subscribe the multicast source data as configured.
         :return:
         """
-        LOGGER.info('{} subscribing to filter datasources...'.format(self.host))
+        LOGGER.info('{} subscribing to filter datasources...'.format(
+            self.host))
         gbe_ctr = 0
         for source in self.data_sources:
             if not source.is_multicast():
-                self.logger.info('\tsource address %s is not multicast?' % source.ip_address)
+                LOGGER.info('\tsource address {} is not multicast?'.format(
+                    str(source.ip_address)))
             else:
                 rxaddr = str(source.ip_address)
                 rxaddr_bits = rxaddr.split('.')
                 rxaddr_base = int(rxaddr_bits[3])
                 rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
-
-    // TODO - and now?
-
-                if (len(self.tengbes) / self.f_per_fpga) != source.ip_range:
-                    raise RuntimeError(
-                        '10Gbe ports (%d) do not match sources IPs (%d)' %
-                        (len(fhost.tengbes), source.ip_range))
-                for ctr in range(0, source.ip_range):
-                    gbename = fhost.tengbes.names()[gbe_ctr]
-                    gbe = fhost.tengbes[gbename]
-                    rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-                    self.logger.info('\t%s subscribing to address %s' % (gbe.name, rxaddress))
+                for _ctr in range(0, source.ip_range):
+                    gbename = self.tengbes.names()[gbe_ctr]
+                    gbe = self.tengbes[gbename]
+                    rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + _ctr)
+                    LOGGER.info('\t{} subscribing to address {}'.format(
+                        str(gbe.name), str(rxaddress),
+                    ))
                     gbe.multicast_receive(rxaddress, 0)
                     gbe_ctr += 1
-
-
-
-
-
-        gbe = self.tengbes.gbe0
-        rxaddress = '239.2.0.10'
-        LOGGER.info('\t{} subscribing to address {}'.format(gbe.name, rxaddress))
-        gbe.multicast_receive(rxaddress, 0)
-
-        gbe = self.tengbes.gbe1
-        rxaddress = '239.2.0.11'
-        LOGGER.info('\t{} subscribing to address {}'.format(gbe.name, rxaddress))
-        gbe.multicast_receive(rxaddress, 0)
-
-        gbe = self.tengbes.gbe2
-        rxaddress = '239.2.0.12'
-        LOGGER.info('\t{} subscribing to address {}'.format(gbe.name, rxaddress))
-        gbe.multicast_receive(rxaddress, 0)
-
-        gbe = self.tengbes.gbe3
-        rxaddress = '239.2.0.13'
-        LOGGER.info('\t{} subscribing to address {}'.format(gbe.name, rxaddress))
-        gbe.multicast_receive(rxaddress, 0)
-
         LOGGER.info('done.')
-
-    def clear_status(self):
-        """
-        Clear the status registers and counters on this f-engine host
-        :return:
-        """
-        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
 
     def host_okay(self):
         """
@@ -168,7 +162,7 @@ class FpgaFilterHost(FpgaHost):
         """
         if not self.check_rx():
             return False
-        LOGGER.info('F host %s host_okay() - TRUE.' % self.host)
+        LOGGER.info('Filter host {} host_okay() - TRUE.'.format(self.host))
         return True
 
     def check_rx_reorder(self):
