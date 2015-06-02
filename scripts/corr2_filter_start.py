@@ -7,15 +7,10 @@ Start the filter boards.
 
 @author: paulp
 """
-import sys
-import time
 import argparse
-import signal
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-import casperfpga.scroll as scroll
 from corr2 import utils, filthost_fpga
 
 parser = argparse.ArgumentParser(description='Set up the filter boards, check RX and start TX.',
