@@ -14,7 +14,6 @@ import signal
 import time
 import argparse
 
-from casperfpga import tengbe
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 
@@ -220,7 +219,7 @@ while True:
                     display_key = 'src_ip'
                 else:
                     raise RuntimeError('Unknown IP key?')
-                # print '%s(%s)' % (display_key, tengbe.ip2str(coredata[key][ctr])), '\t',
+                # print '%s(%s)' % (display_key, tengbe.IpAddress.ip2str(coredata[key][ctr])), '\t',
             elif key == data_key:
                 new_spead_info, spead_stringdata = process_spead_word(spead_info, coredata[data_key][ctr], packet_counter)
                 if new_spead_info is not None:

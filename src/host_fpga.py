@@ -44,6 +44,26 @@ class FpgaHost(Host, KatcpFpga):
                 return False
         return True
 
+    def check_rx(self, max_waittime=30):
+        """
+        Check the receive path on this X host
+        :param max_waittime: the maximum time to wait for raw 10gbe data
+        :return:
+        """
+        if not self.check_rx_reorder():
+            LOGGER.error('FPGA host {0} reorder RX check failed - probing why...'.format(self.host))
+            if not self.check_rx_spead():
+                LOGGER.error('\tSPEAD RX check also failed.')
+                if not self.check_rx_raw(max_waittime):
+                    LOGGER.error('\tRaw RX also failed.')
+                else:
+                    LOGGER.error('\tRaw RX passed - problem is likely in the SPEAD stage.')
+            else:
+                LOGGER.error('\tSPEAD RX passed - problem is likely in the reorder stage.')
+            return False
+        LOGGER.info('FPGA host %s check_rx() - TRUE.' % self.host)
+        return True
+
     def check_rx_raw(self, max_waittime=30):
         """
         Is this host receiving 10gbe data correctly?
