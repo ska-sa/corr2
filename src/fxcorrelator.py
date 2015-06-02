@@ -118,7 +118,7 @@ class FxCorrelator(Instrument):
             self.logger.info('Setting FPGA hosts IGMP version to %s', igmp_version)
             THREADED_FPGA_FUNC(
                 self.fhosts + self.xhosts, timeout=5, target_function=(
-                    'set_igmp_version', (igmp_version, ), {}) )
+                    'set_igmp_version', (igmp_version, ), {}))
 
         # if we need to program the FPGAs, do so
         if program:
@@ -1163,13 +1163,13 @@ class FxCorrelator(Instrument):
         self.logger.info('Stopping X transmission')
 
         THREADED_FPGA_OP(self.xhosts, timeout=10,
-                         target_function=
-                         (lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+                         target_function=(
+                             lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
         if stop_f:
             self.logger.info('Stopping F transmission')
             THREADED_FPGA_OP(self.fhosts, timeout=10,
-                             target_function=
-                             (lambda fpga_: fpga_.registers.control.write(comms_en=False),))
+                             target_function=(
+                                 lambda fpga_: fpga_.registers.control.write(comms_en=False),))
 
     def xeng_get_baseline_order(self):
         """
