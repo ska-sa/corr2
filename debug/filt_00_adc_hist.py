@@ -23,14 +23,13 @@ parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
+import logging
 if args.log_level != '':
-    import logging
     log_level = args.log_level.strip()
     try:
         logging.basicConfig(level=eval('logging.%s' % log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
-
 LOGGER = logging.getLogger(__name__)
 
 def exit_gracefully(signal, frame):

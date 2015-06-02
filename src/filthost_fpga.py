@@ -60,6 +60,9 @@ class FpgaFilterHost(FpgaHost):
         if not self.check_rx():
             raise RuntimeError('Filter {} is not receiving data correctly.'.format(self.host))
         self.enable_tx()
+        # TODO - check tx must not bail hard if the registers aren't there
+        # if not self.check_tx_raw():
+        #     raise RuntimeError('Filter {} is not transmitting data correctly.'.format(self.host))
 
     def enable_tx(self):
         """
