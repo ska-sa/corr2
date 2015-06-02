@@ -18,21 +18,51 @@ class FpgaHost(Host, KatcpFpga):
         KatcpFpga.__init__(self, host, katcp_port, connect=connect)
         self.boffile = boffile
 
-    def _no_implement_connect(self, program=True, program_port=-1):
+    def check_tx_raw(self):
         """
-        Initialise this host node to its normal running state.
-        :param program: Should the FPGA be reprogrammed?
-        :param program_port: Which port should be used for programming. -1 means random.
-        :return: True if the FPGA client is running and connected.
+        Check to see whether this host is transmitting packets without
+        error on all its GBE interfaces.
+        :return:
         """
-        raise NotImplementedError
-        if not self.is_connected():
-            KatcpFpga.connect(self)
-        if program:
-            self.upload_to_ram_and_program(self.boffile, port=program_port)
-        self.test_connection()
-        self.get_system_information()
-        return self.is_running()
+        def _get_gbe_data():
+            _returndata = {}
+            for gbecore in self.tengbes:
+                _returndata[gbecore.name] = gbecore.read_tx_counters()
+            return _returndata
+        tx_one = _get_gbe_data()
+        time.sleep(1)
+        tx_two = _get_gbe_data()
+        for _core in tx_one:
+            _d1 = tx_one[_core]
+            _d2 = tx_two[_core]
+            if ((_d2['%s_txctr' % _core]['data']['reg'] - _d1['%s_txctr' % _core]['data']['reg'] <= 0) or
+                    (_d2['%s_txvldctr' % _core]['data']['reg'] - _d1['%s_txvldctr' % _core]['data']['reg'] <= 0)):
+                return False
+            if ((_d2['%s_txofctr' % _core]['data']['reg'] - _d1['%s_txofctr' % _core]['data']['reg'] > 0) or
+                    (_d2['%s_txerrctr' % _core]['data']['reg'] - _d1['%s_txerrctr' % _core]['data']['reg'] > 0) or
+                    (_d2['%s_txfullctr' % _core]['data']['reg'] - _d1['%s_txfullctr' % _core]['data']['reg'] > 0)):
+                return False
+        return True
+
+    def check_rx(self, max_waittime=30):
+        """
+        Check the receive path on this X host
+        :param max_waittime: the maximum time to wait for raw 10gbe data
+        :return:
+        """
+        if not self.check_rx_reorder():
+            LOGGER.error('FPGA host {0} reorder RX check failed - probing why...'.format(self.host))
+            if not self.check_rx_spead():
+                LOGGER.error('\tSPEAD RX check also failed.')
+                if not self.check_rx_raw(max_waittime):
+                    LOGGER.error('\tRaw RX also failed.')
+                else:
+                    LOGGER.error('\tRaw RX passed - problem is likely in the SPEAD stage.')
+            else:
+                LOGGER.error('\tSPEAD RX passed - problem is likely in the reorder stage.')
+            return False
+        LOGGER.info('FPGA host %s check_rx() - TRUE.' % self.host)
+        return True
 
     def check_rx_raw(self, max_waittime=30):
         """
@@ -59,7 +89,8 @@ class FpgaHost(Host, KatcpFpga):
                 rxbad_new = rxregs_new[core]['%s_rxbadctr' % core]['data']['reg']
                 rxerr_old = rxregs[core]['%s_rxerrctr' % core]['data']['reg']
                 rxerr_new = rxregs_new[core]['%s_rxerrctr' % core]['data']['reg']
-                if (rxctr_old == rxctr_new) or (rxbad_old != rxbad_new) or (rxerr_old != rxerr_new):
+                if ((rxctr_old == rxctr_new) or (rxbad_old != rxbad_new) or
+                        (rxerr_old != rxerr_new)):
                     still_the_same = True
                     continue
             if still_the_same:
@@ -69,25 +100,33 @@ class FpgaHost(Host, KatcpFpga):
                 break
             rxregs = rxregs_new
         if not rx_okay:
-            raise RuntimeError('Host %s RX data error after %d seconds.' % (self.host, max_waittime))
+            LOGGER.error('Host %s RX data error after %d seconds.' % (self.host, max_waittime))
+            return False
         else:
             LOGGER.info('Host %s is receiving 10gbe data' % self.host)
+            return True
 
     def check_rx_spead(self):
         """
         Check that this host is receiving SPEAD data.
         :return:
         """
-        xrxspead_ctrs0 = self.read_spead_counters()
-        time.sleep(1)
-        xrxspead_ctrs1 = self.read_spead_counters()
-        for core_ctr in range(0, len(xrxspead_ctrs0)):
+        _sleeptime = 1
+        _ctrs0 = self.read_spead_counters()
+        time.sleep(_sleeptime)
+        _ctrs1 = self.read_spead_counters()
+        for core_ctr in range(0, len(_ctrs0)):
             # ctrs must have incremented
-            if xrxspead_ctrs1[core_ctr][0] <= xrxspead_ctrs0[core_ctr][0]:
-                LOGGER.error('Host %s core %i is not receiving SPEAD data, bailing' % (self.host, core_ctr))
-                raise RuntimeError('Host %s core %i is not receiving SPEAD data, bailing' % (self.host, core_ctr))
+            if _ctrs1[core_ctr][0] <= _ctrs0[core_ctr][0]:
+                LOGGER.error('Host %s core %i is not receiving SPEAD data, bailing' %
+                             (self.host, core_ctr))
+                return False
             # but the errors must not
-            if xrxspead_ctrs1[core_ctr][1] > xrxspead_ctrs0[core_ctr][1]:
-                LOGGER.error('Host %s core %i has an incrementing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
-                raise RuntimeError('Host %s core %i has an incrementing SPEAD error counter: initially %i errors and 1s later had %i SPEAD errors, bailing.' % (self.host, core_ctr, xrxspead_ctrs0[core_ctr][1],xrxspead_ctrs1[core_ctr][1]))
+            if _ctrs1[core_ctr][1] > _ctrs0[core_ctr][1]:
+                LOGGER.error('Host %s core %i has an incrementing SPEAD error counter: '
+                             'initially %i errors and %is later had %i SPEAD errors, bailing.' %
+                             (self.host, core_ctr, _ctrs0[core_ctr][1],
+                              _sleeptime, _ctrs1[core_ctr][1]))
+                return False
         LOGGER.info('Host %s is receiving SPEAD data' % self.host)
+        return True
