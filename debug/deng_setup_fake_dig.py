@@ -37,10 +37,10 @@ class DengTvg(katcp_fpga.KatcpFpga):
         ip_base = ip_octets[3]
         ip_prefix = '%d.%d.%d.' % (ip_octets[0], ip_octets[1], ip_octets[2])
         for gbectr, gbe in enumerate(self.tengbes):
-            this_ip = tengbe.str2ip('%s%d' % (ip_prefix, ip_base))
+            this_ip = tengbe.IpAddress.str2ip('%s%d' % (ip_prefix, ip_base))
             self.registers['gbe_iptx%i' % gbectr].write(reg=this_ip)
             LOGGER.info('gbe(%s) sending to IP(%s) port(%i)' %
-                        (gbe.name, tengbe.ip2str(this_ip), port))
+                        (gbe.name, tengbe.IpAddress.ip2str(this_ip), port))
             ip_base += 1
         self.registers.gbe_porttx.write(reg=port)
 
@@ -59,7 +59,7 @@ parser.add_argument('--dest_ip', dest='destip', action='store', default='239.2.0
                     help='where should the digitiser data go?')
 parser.add_argument('--no_program', dest='no_program', action='store_true', default=False,
                     help='do not program the FPGA')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
@@ -71,6 +71,7 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
     LOGGER = logging.getLogger(__name__)
+
 
 def exit_gracefully(signal, frame):
     fpga.disconnect()

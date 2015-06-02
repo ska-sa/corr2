@@ -6,6 +6,7 @@ import signal
 
 from casperfpga import katcp_fpga, tengbe
 
+raise DeprecationWarning('Don\'t use this, rather deng_setup_fake_dig.py')
 
 class DengTvg(katcp_fpga.KatcpFpga):
     def setup_tengbes(self, ip_and_port, base_mac):
@@ -35,7 +36,7 @@ class DengTvg(katcp_fpga.KatcpFpga):
         ip_base = ip_octets[3]
         ip_prefix = '%d.%d.%d.' % (ip_octets[0], ip_octets[1], ip_octets[2])
         for gbectr, gbe in enumerate(self.tengbes):
-            this_ip = tengbe.str2ip('%s%d' % (ip_prefix, ip_base))
+            this_ip = tengbe.IpAddress.str2ip('%s%d' % (ip_prefix, ip_base))
             self.registers['gbe_iptx%i' % gbectr].write(reg=this_ip)
             LOGGER.info('gbe(%s) sending to IP(%s) port(%i)' %
                         (gbe.name, tengbe.ip2str(this_ip), port))
