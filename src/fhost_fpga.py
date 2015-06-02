@@ -67,20 +67,6 @@ class FpgaFHost(FpgaHost):
         LOGGER.info('F host %s host_okay() - TRUE.' % self.host)
         return True
 
-    def check_rx(self, max_waittime=30):
-        """
-        Check the receive path on this f host
-        :param max_waittime: the maximum time to wait for raw 10gbe data
-        :return:
-        """
-        if not (self.check_rx_raw(max_waittime) and
-                self.check_rx_spead() and
-                self.check_rx_reorder()):
-            LOGGER.error('F host %s check_rx() - FALSE.' % self.host)
-            return False
-        LOGGER.info('F host %s check_rx() - TRUE.' % self.host)
-        return True
-
     def check_rx_reorder(self):
         """
         Is this F host reordering received data correctly?
@@ -144,7 +130,7 @@ class FpgaFHost(FpgaHost):
         :return:
         """
         rv = []
-        for core_ctr in range(0, 4):
+        for core_ctr in range(0, len(self.tengbes)):
             counter = self.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
             error = self.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
             rv.append((counter, error))
