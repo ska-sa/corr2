@@ -24,5 +24,5 @@ Release Notes:
       must be removed, or (after installing above romfs or newer), the
       ?reset-config request can be issued followed by a reboot.
 
-    - 2015-05-21: Needs DEng version r2_deng_tvg_2015_May_20_1353.fpg or later
+    - 2015-05-29: Needs DEng version  r2_deng_tvg_2015_May_21_1535.fpg or later
       for dsimengine to work properly
