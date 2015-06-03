@@ -8,11 +8,11 @@ Check that the 64-bit packing is working okay.
 import argparse
 import sys
 import signal
+import matplotlib.pyplot as pyplot
+import numpy
 
 from casperfpga import katcp_fpga
-import matplotlib.pyplot as pyplot
-from casperfpga.memory import bin2fp
-import numpy
+from corr2.utils import AdcData
 
 FFT_CHANS = 4096
 
@@ -57,36 +57,6 @@ if 'packed_p0_ss' not in fpga.snapshots.names():
 if 'packed_p1_ss' not in fpga.snapshots.names():
     raise RuntimeError('ADC1 snap not available!')
 
-def unpack64_to_80(datalist):
-    words80 = []
-    for wordctr in range(0, len(datalist)-5, 5):
-        word64_0 = datalist[wordctr + 0]
-        word64_1 = datalist[wordctr + 1]
-        word64_2 = datalist[wordctr + 2]
-        word64_3 = datalist[wordctr + 3]
-        word64_4 = datalist[wordctr + 4]
-        word80_0 = ((word64_1 & 0x000000000000ffff) << 64) | ((word64_0 & 0xffffffffffffffff) << 0)
-        word80_1 = ((word64_2 & 0x00000000ffffffff) << 48) | ((word64_1 & 0xffffffffffff0000) >> 16)
-        word80_2 = ((word64_3 & 0x0000ffffffffffff) << 32) | ((word64_2 & 0xffffffff00000000) >> 32)
-        word80_3 = ((word64_4 & 0xffffffffffffffff) << 16) | ((word64_3 & 0xffff000000000000) >> 48)
-        words80.append(word80_0)
-        words80.append(word80_1)
-        words80.append(word80_2)
-        words80.append(word80_3)
-    return words80
-
-def eighty_to_ten(snapdata):
-    ten_bit_samples = []
-    for word80 in snapdata:
-        eight_samples = []
-        for ctr in range(70, -1, -10):
-            tenbit = (word80 >> ctr) & 1023
-            tbsigned = bin2fp(tenbit, 10, 9, True)
-            eight_samples.append(tbsigned)
-        # eight_samples.reverse()
-        ten_bit_samples.extend(eight_samples)
-    return ten_bit_samples
-
 def eighty_to_ten_TVG(snapdata):
     ten_bit_samples = []
     for word80 in snapdata:
@@ -104,14 +74,14 @@ def get_data(tvg=False):
     fpga.registers.ctrl2.write(arm_pack_snap='pulse')
     snapdata_p0 = fpga.snapshots.packed_p0_ss.read(arm=False)['data']['p0']
     snapdata_p1 = fpga.snapshots.packed_p1_ss.read(arm=False)['data']['p0']
-    data_p0 = unpack64_to_80(snapdata_p0)
-    data_p1 = unpack64_to_80(snapdata_p1)
+    data_p0 = AdcData.sixty_four_to_eighty(snapdata_p0)
+    data_p1 = AdcData.sixty_four_to_eighty(snapdata_p1)
     if tvg:
         data_p0 = eighty_to_ten_TVG(data_p0)
         data_p1 = eighty_to_ten_TVG(data_p1)
     else:
-        data_p0 = eighty_to_ten(data_p0)
-        data_p1 = eighty_to_ten(data_p1)
+        data_p0 = AdcData.eighty_to_ten(data_p0)
+        data_p1 = AdcData.eighty_to_ten(data_p1)
     return {'p0': data_p0, 'p1': data_p1}
 
 def plot_func(figure, sub_plots, idata, ictr, pctr):
@@ -133,7 +103,7 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
         if args.linear:
             sub_plots[pol].plot(idata[pol])
         else:
-            sub_plots[pol].semilogy(idata[pol])
+            sub_plots[pol].plot([10*numpy.log10(_d) for _d in idata[pol]])
         LOGGER.info('max for pol {} at {}'.format(pol, idata[pol].index(max(idata[pol][10:]))))
         figure.canvas.draw()
     if ictr >= args.integrate and args.integrate > 0:

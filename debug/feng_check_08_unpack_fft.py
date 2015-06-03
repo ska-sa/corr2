@@ -164,13 +164,6 @@ elif False:
     from casperfpga.memory import bin2fp
     import numpy
 
-    def eighty_to_ten(eighty):
-        samples = []
-        for offset in range(70, -1, -10):
-            binnum = (eighty >> offset) & 0x3ff
-            samples.append(bin2fp(binnum, 10, 9, True))
-        return samples
-
     def hennoplot(somearg):
         # clear plots
         subplots[0].cla()
@@ -185,16 +178,10 @@ elif False:
 
         unpacked_data = get_data()
 
-        adc0_raw = []
-        for dataword in unpacked_data[fpga]['p0']:
-            samples = eighty_to_ten(dataword)
-            adc0_raw.extend(samples)
+        adc0_raw = utils.AdcData.eighty_to_ten(unpacked_data[fpga]['p0'])
         adc0_raw = numpy.array(adc0_raw)
 
-        adc1_raw = []
-        for dataword in unpacked_data[fpga]['p1']:
-            samples = eighty_to_ten(dataword)
-            adc1_raw.extend(samples)
+        adc1_raw = utils.AdcData.eighty_to_ten(unpacked_data[fpga]['p1'])
         adc1_raw = numpy.array(adc1_raw)
 
         print adc0_raw
@@ -283,13 +270,6 @@ else:
     from casperfpga.memory import bin2fp
     import time
 
-    def eighty_to_ten(eighty):
-        samples = []
-        for offset in range(70, -1, -10):
-            binnum = (eighty >> offset) & 0x3ff
-            samples.append(bin2fp(binnum, 10, 9, True))
-        return samples
-
     def plot_func(figure, sub_plots, idata, ictr, pctr):
         unpacked_data = get_data()
         ictr += 1
@@ -300,10 +280,7 @@ else:
             for polctr, pol in enumerate(['p0', 'p1']):
                 if pol not in idata[fpga].keys():
                     idata[fpga][pol] = EXPECTED_FREQS * [0]
-                pol_samples = []
-                for dataword in fpga_data[pol]:
-                    samples = eighty_to_ten(dataword)
-                    pol_samples.extend(samples)
+                pol_samples = utils.AdcData.eighty_to_ten(fpga_data[pol])
                 assert len(pol_samples) == EXPECTED_FREQS * 2
                 # print 'A snapshot of length %i gave a sample array of length %i' % (len(pol_data[0]), len(allsamples))
                 fftdata = numpy.fft.fft(pol_samples)
@@ -313,7 +290,7 @@ else:
                     showdata[ctr] = pow(sample.real, 2) + pow(sample.imag, 2)
                 # print 'and showdata ended up being %i' % len(showdata)
                 # showdata = numpy.abs()
-                #showdata = showdata[len(showdata)/2:]
+                # showdata = showdata[len(showdata)/2:]
                 for ctr, _ in enumerate(showdata):
                     idata[fpga][pol][ctr] += showdata[ctr]
             print 'and ended %d samples later. All okay.' % (len(pol_samples))

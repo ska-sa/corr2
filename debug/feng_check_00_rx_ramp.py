@@ -15,6 +15,7 @@ from casperfpga import spead as casperspead
 from casperfpga import utils as casperutils
 from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
+from corr2.utils import AdcData
 
 parser = argparse.ArgumentParser(description='Display the contents of an FPGA\'s 10Gbe buffers.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -88,26 +89,6 @@ else:
 fpga.disconnect()
 
 # read through the data from the core snapshot and check the ramp inside it
-
-
-def unpack64_to_80(datalist):
-    words80 = []
-    for wordctr in range(0, len(datalist), 5):
-        word64_0 = datalist[wordctr + 0]
-        word64_1 = datalist[wordctr + 1]
-        word64_2 = datalist[wordctr + 2]
-        word64_3 = datalist[wordctr + 3]
-        word64_4 = datalist[wordctr + 4]
-        word80_0 = ((word64_1 & 0x000000000000ffff) << 64) | ((word64_0 & 0xffffffffffffffff) << 0)
-        word80_1 = ((word64_2 & 0x00000000ffffffff) << 48) | ((word64_1 & 0xffffffffffff0000) >> 16)
-        word80_2 = ((word64_3 & 0x0000ffffffffffff) << 32) | ((word64_2 & 0xffffffff00000000) >> 32)
-        word80_3 = ((word64_4 & 0xffffffffffffffff) << 16) | ((word64_3 & 0xffff000000000000) >> 48)
-        words80.append(word80_0)
-        words80.append(word80_1)
-        words80.append(word80_2)
-        words80.append(word80_3)
-    return words80
-
 spead_processor = casperspead.SpeadProcessor(4, '64,48', 640, 8)
 gbepackets = casperutils.packetise_snapdata(coredata, eof_key=eof_key)
 print 'Found %i GBE packets.\nChecking length and decoding SPEAD.' % len(gbepackets)
@@ -126,7 +107,7 @@ for pkt in spead_processor.packets:
     if pkt.headers[0x1600] != last_time + 8192:
         errors_headers += 1
     pkt_times.append(pkt.headers[0x1600])
-    data80 = unpack64_to_80(pkt.data)
+    data80 = AdcData.sixty_four_to_eighty(pkt.data)
     data_tvg = []
     for word80 in data80:
         time80 = word80 >> 32
@@ -152,7 +133,7 @@ for pkt in spead_processor.packets:
 if errors_dataramp > 0 or errors_datatime > 0 or errors_headers > 0:
     unpacked = []
     for pkt in spead_processor.packets:
-        data80 = unpack64_to_80(pkt.data)
+        data80 = AdcData.sixty_four_to_eighty(pkt.data)
         data_tvg = []
         for word80 in data80:
             time80 = word80 >> 32
