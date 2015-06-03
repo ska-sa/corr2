@@ -86,7 +86,7 @@ class FxCorrelator(Instrument):
 
         self._initialised = False
 
-    def initialise(self, program=True, tvg=False, fake_digitiser=False):
+    def initialise(self, program=True, tvg=False, fake_digitiser=False, qdr_cal=True):
         """
         Set up the correlator using the information in the config file.
         :return:
@@ -118,7 +118,7 @@ class FxCorrelator(Instrument):
             self.logger.info('Setting FPGA hosts IGMP version to %s', igmp_version)
             THREADED_FPGA_FUNC(
                 self.fhosts + self.xhosts, timeout=5, target_function=(
-                    'set_igmp_version', (igmp_version, ), {}) )
+                    'set_igmp_version', (igmp_version, ), {}))
 
         # if we need to program the FPGAs, do so
         if program:
@@ -139,7 +139,10 @@ class FxCorrelator(Instrument):
 
         if program:
             # cal the qdr on all boards
-            self.qdr_calibrate()
+            if qdr_cal:
+                self.qdr_calibrate()
+            else:
+                self.logger.info('Skipping QDR cal - are you sure you want to do this?')
 
             # init the f engines
             self._fengine_initialise()
@@ -194,6 +197,9 @@ class FxCorrelator(Instrument):
 
             # subscribe the x-engines to this data also
             self._xengine_subscribe_to_multicast()
+            post_mess_delay = 10
+            self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
+            time.sleep(post_mess_delay)
 
             # check that they are receiving data
             if not self._xeng_check_rx():
@@ -546,7 +552,7 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_OP(self.fhosts, timeout=10,
                          target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
         THREADED_FPGA_OP(self.fhosts, timeout=10,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
         self.feng_clear_status_all()
 
         # where does the f-engine data go?
@@ -576,16 +582,12 @@ class FxCorrelator(Instrument):
                                   self.fengine_output.ip_address, self.fengine_output.port))
                 macbase += 1
                 feng_ip_base += 1
+                gbe.tap_start(restart=True)
             f.registers.tx_metadata.write(board_id=board_id, porttx=self.fengine_output.port)
             board_id += 1
 
-        # start tap on the f-engines
-        for ctr, f in enumerate(self.fhosts):
-            for gbe in f.tengbes:
-                gbe.tap_start(True)
-
         # release from reset
-        THREADED_FPGA_OP(self.fhosts, timeout=10,
+        THREADED_FPGA_OP(self.fhosts, timeout=5,
                          target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
 
     def _fengine_subscribe_to_multicast(self):
@@ -630,12 +632,14 @@ class FxCorrelator(Instrument):
         # simulator
         if use_xeng_sim:
             THREADED_FPGA_OP(self.xhosts, timeout=10,
-                             target_function=
-                             (lambda fpga_: fpga_.registers.simulator.write(en=False, rst='pulse'),))
+                             target_function=(
+                                 lambda fpga_: fpga_.registers.simulator.write(en=False, rst='pulse'),))
 
         # disable transmission, place cores in reset, and give control register a known state
         THREADED_FPGA_OP(self.xhosts, timeout=10,
                          target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+        THREADED_FPGA_OP(self.xhosts, timeout=10,
+                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
         self.xeng_clear_status_all()
 
         # set up accumulation length
@@ -665,7 +669,7 @@ class FxCorrelator(Instrument):
                                  (f.host, gbe, this_mac, this_ip, xeng_port, board_id))
                 macbase += 1
                 xeng_ip_base += 1
-                gbe.tap_start()
+                gbe.tap_start(restart=True)
             board_id += 1  # 1 on new systems, 4 on old xeng_rx_reorder system
 
         # clear gbe status

@@ -90,8 +90,10 @@ def get_data():
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snapcoarse_arm='pulse'))
 
     # read the data
-    snapdata_p0 = fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots.snapcoarse_0_ss.read(arm=False))
-    snapdata_p1 = fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots.snapcoarse_1_ss.read(arm=False))
+    snapdata_p0 = fpgautils.threaded_fpga_operation(fpgas, 10,
+                                                    lambda fpga_: fpga_.snapshots.snapcoarse_0_ss.read(arm=False))
+    snapdata_p1 = fpgautils.threaded_fpga_operation(fpgas, 10,
+                                                    lambda fpga_: fpga_.snapshots.snapcoarse_1_ss.read(arm=False))
 
     try:
         for key, value in snapdata_p0.items():
