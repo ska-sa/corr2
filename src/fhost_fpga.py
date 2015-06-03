@@ -49,19 +49,12 @@ class FpgaFHost(FpgaHost):
         _sleeptime = 1
         if not self.check_rx():
             return False
-        err_one = self.registers.ct_errcnt.read()['data']
-        err_two = self.registers.wintime_error.read()['data']
-        ct_cnt_one = self.registers.ct_cnt.read()['data']
+        ct_ctrs = self.registers.ct_ctrs.read()['data']
         time.sleep(_sleeptime)
-        ct_cnt_two = self.registers.ct_cnt.read()['data']
-        if not ((err_one['errcnt0'] == 0) and
-                (err_one['parerrcnt0'] == 0) and
-                (err_one['errcnt1'] == 0) and
-                (err_one['parerrcnt1'] == 0) and
-                (err_two['step'] == 0) and
-                (err_two['vs_spead'] == 0) and
-                (ct_cnt_two['validcnt'] - ct_cnt_one['validcnt'] > 0) and
-                (ct_cnt_two['synccnt'] - ct_cnt_one['synccnt'] > 0)):
+        if not ((ct_ctrs['ct_err_cnt0'] == 0) and
+                (ct_ctrs['ct_err_cnt1'] == 0) and
+                (ct_ctrs['ct_parerr_cnt0'] == 0) and
+                (ct_ctrs['ct_parerr_cnt1'] == 0)):
             LOGGER.info('F host %s host_okay() - FALSE.' % self.host)
             return False
         LOGGER.info('F host %s host_okay() - TRUE.' % self.host)
