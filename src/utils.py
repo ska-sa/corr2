@@ -4,7 +4,51 @@ from ConfigParser import SafeConfigParser
 import logging
 import os
 
+from casperfpga.memory import bin2fp
+
 LOGGER = logging.getLogger(__name__)
+
+
+class AdcData(object):
+
+    @staticmethod
+    def eighty_to_ten(list_w80):
+        """
+        Convert a list of 80-bit words to 10-bit adc samples
+        :param list_w80: a list of 80-bit words, each with eight 10-bit adc samples
+        :return: a list of ten-bit ADC samples
+        """
+        ten_bit_samples = []
+        for word80 in list_w80:
+            for ctr in range(70, -1, -10):
+                tenbit = (word80 >> ctr) & 1023
+                tbsigned = bin2fp(tenbit, 10, 9, True)
+                ten_bit_samples.append(tbsigned)
+        return ten_bit_samples
+
+    @staticmethod
+    def sixty_four_to_eighty(list_w64):
+        """
+        Convert a list of 64-bit words to 80-bit words from the ADC
+        :param list_w64: a list of 64-bit words, typically straight from the 10gbe
+        :return: a list of 80-bit words, as rxd from the ADC
+        """
+        words80 = []
+        for wordctr in range(0, len(list_w64)-5, 5):
+            word64_0 = list_w64[wordctr + 0]
+            word64_1 = list_w64[wordctr + 1]
+            word64_2 = list_w64[wordctr + 2]
+            word64_3 = list_w64[wordctr + 3]
+            word64_4 = list_w64[wordctr + 4]
+            word80_0 = ((word64_1 & 0x000000000000ffff) << 64) | ((word64_0 & 0xffffffffffffffff) << 0)
+            word80_1 = ((word64_2 & 0x00000000ffffffff) << 48) | ((word64_1 & 0xffffffffffff0000) >> 16)
+            word80_2 = ((word64_3 & 0x0000ffffffffffff) << 32) | ((word64_2 & 0xffffffff00000000) >> 32)
+            word80_3 = ((word64_4 & 0xffffffffffffffff) << 16) | ((word64_3 & 0xffff000000000000) >> 48)
+            words80.append(word80_0)
+            words80.append(word80_1)
+            words80.append(word80_2)
+            words80.append(word80_3)
+        return words80
 
 
 def parse_ini_file(ini_file='', required_sections=None):

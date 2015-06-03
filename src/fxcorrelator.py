@@ -109,7 +109,24 @@ class FxCorrelator(Instrument):
             enable tx
         """
 
-        # connect to the hosts that make up this correlator
+        # set up the filter boards if we need to
+        if 'filter' in self.configd:
+            self.logger.info('Adding filter hosts:')
+            import filthost_fpga
+            self.filthosts = []
+            _filthosts = self.configd['filter']['hosts'].strip().split(',')
+            for ctr, _ in enumerate(_filthosts):
+                _fpga = filthost_fpga.FpgaFilterHost(ctr, self.configd)
+                self.filthosts.append(_fpga)
+                self.logger.info('\tFilter host {} added'.format(_fpga.host))
+            self.logger.info('done.')
+            # program the boards
+            THREADED_FPGA_FUNC(self.filthosts, timeout=10, target_function=('upload_to_ram_and_program',
+                                                                            (self.filthosts[0].boffile,),))
+            # initialise them
+            THREADED_FPGA_FUNC(self.filthosts, timeout=10, target_function=('initialise', (),))
+
+        # connect to the other hosts that make up this correlator
         THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
         THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='connect')
 
@@ -1167,13 +1184,13 @@ class FxCorrelator(Instrument):
         self.logger.info('Stopping X transmission')
 
         THREADED_FPGA_OP(self.xhosts, timeout=10,
-                         target_function=
-                         (lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+                         target_function=(
+                             lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
         if stop_f:
             self.logger.info('Stopping F transmission')
             THREADED_FPGA_OP(self.fhosts, timeout=10,
-                             target_function=
-                             (lambda fpga_: fpga_.registers.control.write(comms_en=False),))
+                             target_function=(
+                                 lambda fpga_: fpga_.registers.control.write(comms_en=False),))
 
     def xeng_get_baseline_order(self):
         """
