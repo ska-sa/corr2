@@ -30,18 +30,74 @@ class FpgaHost(Host, KatcpFpga):
                 _returndata[gbecore.name] = gbecore.read_tx_counters()
             return _returndata
         tx_one = _get_gbe_data()
-        time.sleep(1)
+        time.sleep(0.25)
         tx_two = _get_gbe_data()
+        time.sleep(0.75)
+        tx_three = _get_gbe_data()
         for _core in tx_one:
             _d1 = tx_one[_core]
             _d2 = tx_two[_core]
-            if ((_d2['%s_txctr' % _core]['data']['reg'] - _d1['%s_txctr' % _core]['data']['reg'] <= 0) or
-                    (_d2['%s_txvldctr' % _core]['data']['reg'] - _d1['%s_txvldctr' % _core]['data']['reg'] <= 0)):
-                return False
-            if ((_d2['%s_txofctr' % _core]['data']['reg'] - _d1['%s_txofctr' % _core]['data']['reg'] > 0) or
-                    (_d2['%s_txerrctr' % _core]['data']['reg'] - _d1['%s_txerrctr' % _core]['data']['reg'] > 0) or
-                    (_d2['%s_txfullctr' % _core]['data']['reg'] - _d1['%s_txfullctr' % _core]['data']['reg'] > 0)):
-                return False
+            _d3 = tx_three[_core]
+
+            ################################
+	    # certain registers MUST exist #
+	    ################################
+
+            if _d1.has_key('%s_txctr' % _core):
+                if _d2['%s_txctr' % _core]['data']['reg'] == _d1['%s_txctr' % _core]['data']['reg'] and _d3['%s_txctr' % _core]['data']['reg'] == _d2['%s_txctr' % _core]['data']['reg']:
+                    LOGGER.info('Host %s %s txctr not changing' % (self.host, _core))
+                    return False
+	    else:
+            	LOGGER.error('Host %s %s must have a txctr' % (self.host, _core))
+            	return False
+
+            if _d1.has_key('%s_txerrctr' % _core):
+            	if _d2['%s_txerrctr' % _core]['data']['reg'] != _d1['%s_txerrctr' % _core]['data']['reg'] and _d3['%s_txerrctr' % _core]['data']['reg'] != _d2['%s_txerrctr' % _core]['data']['reg']:
+            	    LOGGER.info('Host %s %s txerrctr changing' % (self.host, _core))
+	            return False
+            else:
+            	LOGGER.error('Host %s %s must have a txerrctr' % (self.host, _core))
+            	return False
+
+            #########################################################
+	    # certain registers can not exist but absence are noted #
+	    #########################################################
+	    
+            if _d1.has_key('%s_txvldctr' % _core):
+            	if _d2['%s_txvldctr' % _core]['data']['reg'] == _d1['%s_txvldctr' % _core]['data']['reg'] and _d3['%s_txvldctr' % _core]['data']['reg'] == _d2['%s_txvldctr' % _core]['data']['reg']:
+            	    LOGGER.info('Host %s %s txvldctr not changing' % (self.host, _core))
+	            return False
+            else:
+            	LOGGER.debug('Host %s %s has no txvldctr' % (self.host, _core))
+
+            if _d1.has_key('%s_txofctr' % _core):
+            	if _d2['%s_txofctr' % _core]['data']['reg'] != _d1['%s_txofctr' % _core]['data']['reg'] and _d3['%s_txofctr' % _core]['data']['reg'] != _d2['%s_txofctr' % _core]['data']['reg']:
+            	    LOGGER.info('Host %s %s txofctr changing' % (self.host, _core))
+	            return False
+            else:
+            	LOGGER.debug('Host %s %s has no txofctr' % (self.host, _core))
+
+            if _d1.has_key('%s_txerrctr' % _core):
+            	if _d2['%s_txerrctr' % _core]['data']['reg'] != _d1['%s_txerrctr' % _core]['data']['reg'] and _d3['%s_txerrctr' % _core]['data']['reg'] != _d2['%s_txerrctr' % _core]['data']['reg']:
+            	    LOGGER.info('Host %s %s txerrctr changing' % (self.host, _core))
+	            return False
+            else:
+            	LOGGER.debug('Host %s %s has no txerrctr' % (self.host, _core))
+
+            if _d1.has_key('%s_txfullctr' % _core):
+            	if _d2['%s_txfullctr' % _core]['data']['reg'] != _d1['%s_txfullctr' % _core]['data']['reg'] and _d3['%s_txfullctr' % _core]['data']['reg'] != _d2['%s_txfullctr' % _core]['data']['reg']:
+            	    LOGGER.info('Host %s %s txfullctr changing' % (self.host, _core))
+	            return False
+            else:
+            	LOGGER.debug('Host %s %s has no txfullctr' % (self.host, _core))
+
+#            if ((_d2['%s_txctr' % _core]['data']['reg'] - _d1['%s_txctr' % _core]['data']['reg'] <= 0) or
+#                    (_d2['%s_txvldctr' % _core]['data']['reg'] - _d1['%s_txvldctr' % _core]['data']['reg'] <= 0)):
+#                return False
+#            if ((_d2['%s_txofctr' % _core]['data']['reg'] - _d1['%s_txofctr' % _core]['data']['reg'] > 0) or
+#                    (_d2['%s_txerrctr' % _core]['data']['reg'] - _d1['%s_txerrctr' % _core]['data']['reg'] > 0) or
+#                    (_d2['%s_txfullctr' % _core]['data']['reg'] - _d1['%s_txfullctr' % _core]['data']['reg'] > 0)):
+#                return False
         return True
 
     def check_rx_raw(self, max_waittime=30):
