@@ -26,8 +26,8 @@ def parse_sources(name_string, ip_string):
         new_source.source_number = source_ctr
         _sources.append(new_source)
         if source_ctr > 0:
-            assert(new_source.ip_range == _sources[0].ip_range,
-                   'DataSources have to offer the same IP range.')
+            assert new_source.ip_range == _sources[0].ip_range,\
+                'DataSources have to offer the same IP range.'
         source_ctr += 1
     return _sources
 
