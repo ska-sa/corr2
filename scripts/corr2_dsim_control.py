@@ -51,26 +51,12 @@ parser.add_argument('--loglevel', dest='log_level', action='store', default='',
 parser.add_argument('--ipython', action='store_true', default=False, help=
                     'Launch an embedded ipython shell once all is said and done')
 
-parser.add_argument('--sine_freq', nargs = 2, default=False, help=
-                    'Set Frequency ...blablabla')
-
 parser.add_argument('--set_sine_source', nargs = 3, default=False, help=
                     'Set Scale and Frequency \n \
                     blablala.')
-                    
-#parser.add_argument('--sine_freq_0', nargs = 1, default=False, help=
-#                    'Set Frequency for sine source 0...blablabla')
-                    
-#parser.add_argument('--sine_freq_1', nargs = 1, default=False, help=
-#                    'Set Frequency for sine source 1 ...blablabla')
 
-#parser.add_argument('--sine_freq_0', nargs = 1, default=False, help=
-
-#                    'Set Frequency ...blablabla')
-                    
-#parser.add_argument('--sine_freq_1', nargs = 1, default=False, help=
-#                    'Set Frequency ...blablabla')
-                                        
+parser.add_argument('--set_noise_source', nargs = 2, default=False, help=
+                    'Set noise source scale.')
 
 args = parser.parse_args()
 
@@ -142,73 +128,51 @@ if args.ipython:
     import IPython
     IPython.embed()
     something_happened = True
-    
-if args.sine_freq:
-    xscale = float(args.sine_freq[0])
-    yfreq = float(args.sine_freq[1])
-    
-    if xscale > 0 <= 1 and yfreq > 0 <= dhost.sine_sources.sin_0.max_freq:
-        dhost.sine_sources.sin_0.set(xscale, yfreq)
-        print "Scale set to:", dhost.sine_sources.sin_0.scale
-        print "Frequency set to:", dhost.sine_sources.sin_0.frequency
-    else :
-        print "Scale should be between 0 and 1"
-        print "Frequency should be between 0 and 856MHz"
-    
-    something_happened = True   
 
 if args.set_sine_source:
     sine_source = args.set_sine_source[0]
     xscale = float(args.set_sine_source[1])
     yfreq = float(args.set_sine_source[2])
-    
-#    ss = getattr(dhost.sine_sources, 'sin_{}'.format(sine_source))
-    print "Sine source: ", sine_source
-    print "Scale set to:" , xscale
-    print "Frequency set to:", yfreq
-    print "\n"
-    #print ss.name
-   
-   # print "0_Scale set to:", dhost.sine_sources.sin_0.scale
-   # print "1_Scale set to:", dhost.sine_sources.sin_1.scale
-    #print "Frequency set to:", dhost.sine_sources.sin_1.frequency
-    
-    
-    if sine_source == '0':
-        if xscale > 0 <= 1 and yfreq > 0 <= dhost.sine_sources.sin_0.max_freq:
-            dhost.sine_sources.sin_0.set(xscale, yfreq)
-            print "Scale set to:", dhost.sine_sources.sin_0.scale
-            print "Frequency set to:", dhost.sine_sources.sin_0.frequency
-        else :
-            print "Scale should be between 0 and 1"
-            print "Frequency should be between 0 and 856MHz"
+    #maxfreq = "{}MHz".format( dhost.sine_sources.sin_0.max_freq / 1e6 )
+    try:
+        SineSource = getattr(dhost.sine_sources, 'sin_{}'.format(sine_source))
+        maxfreq = "{}MHz".format( SineSource.max_freq / 1e6 )
+        #print maxfreq
+        SineSource.set(scale = xscale, frequency = yfreq)
+        print "Sine sourced:", SineSource.name
+        print "Scale:", SineSource.scale
+        print "Frequency:", SineSource.frequency        
+    except AttributeError:
+        print "You can only select between, '0', '1', or 'corr'"
+        sys.exit(1)
+    except ValueError:
+        print "Error, verify your inputs"
+        sys.exit(1)
+    import IPython
+    IPython.embed()
+    something_happened = True
 
-    elif sine_source == '1':
-        if xscale > 0 <= 1 and yfreq > 0 <= dhost.sine_sources.sin_1.max_freq:
-            dhost.sine_sources.sin_1.set(xscale, yfreq)
-            print "Scale set to:", dhost.sine_sources.sin_1.scale
-            print "Frequency set to:", dhost.sine_sources.sin_1.frequency
-        else :
-            print "Scale should be between 0 and 1"
-            print "Frequency should be between 0 and 856MHz"
-            
-    elif sine_source == 'corr':
-        if xscale > 0 <= 1 and yfreq > 0 <= dhost.sine_sources.sin_corr.max_freq:
-            dhost.sine_sources.sin_corr.set(xscale, yfreq)
-            print "Scale set to:", dhost.sine_sources.sin_corr.scale
-            print "Frequency set to:", dhost.sine_sources.sin_corr.frequency
-        else :
-            print "Scale should be between 0 and 1"
-            print "Frequency should be between 0 and 856MHz"
-            
-    else :
-        print "please input '0', '1' or 'corr'"
-    
+if args.set_noise_source:
+    NoiseSource = args.set_noise_source[0]
+    NoiseScale = float(args.set_noise_source[1])
+    ##maxfreq = "{}MHz".format( dhost.sine_sources.sin_0.max_freq / 1e6 )
+    try:
+        SourceFrom = getattr(dhost.noise_sources, 'noise_{}'.format(NoiseSource))
+        SourceFrom.set(scale = NoiseScale)
+        print "Noise Source:", SourceFrom.name
+        print "Noise Scale:", SourceFrom.scale
+    except AttributeError:
+        print "You can only select between, '0', '1', or 'corr'"
+        sys.exit(1)
+    except ValueError:
+        print "Error"
+        sys.exit(1)
+        
     #import IPython
     #IPython.embed()
     something_happened = True
-    
-    
+
+
 if not something_happened:
     parser.print_help()
 
