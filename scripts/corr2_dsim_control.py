@@ -168,8 +168,8 @@ if args.set_noise_source:
         print "Error"
         sys.exit(1)
         
-    #import IPython
-    #IPython.embed()
+    import IPython
+    IPython.embed()
     something_happened = True
 
 
