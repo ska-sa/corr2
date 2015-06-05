@@ -745,14 +745,14 @@ class FxCorrelator(Instrument):
         :return:
         """
         if vacc_load_time is None:
-            unix_time_diff = 5
+            unix_time_diff = 2
         else:
             time_now = time.time()
             if vacc_load_time < time.time() + 1:
                 raise RuntimeError('Load time of %.4f makes no sense at current time %.4f' %
                                    (vacc_load_time, time_now))
             unix_time_diff = vacc_load_time - time.time()
-        wait_time = unix_time_diff + 10 
+        wait_time = unix_time_diff + 3 
 
         self.logger.info('X-engine VACC sync happening in %is' % unix_time_diff)
 
