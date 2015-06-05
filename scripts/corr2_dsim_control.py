@@ -12,32 +12,66 @@ from corr2 import utils
 
 from corr2.dsimhost_fpga import FpgaDsimHost
 
+
 parser = argparse.ArgumentParser(description='Control the dsim-engine (fake digitiser.)',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
 parser.add_argument('--config', type=str, action='store', help=
+
                     'corr2 config file. (default: Use CORR2INI env var)')
+
 parser.add_argument('--program', dest='program', action='store_true', default=False,
                     help='(re)program the fake digitiser')
+
 parser.add_argument('--deprogram', dest='deprogram', action='store_true', default=False,
                     help='deprogram the fake digitiser')
+
 parser.add_argument('--start', dest='start', action='store_true', default=False,
                     help='start the fake digitiser transmission')
+
 parser.add_argument('--pulse', action='store_true', default=False, help=
                     'Send a pulse of fake packets. Does nothing if digitiser is '
                     'already transmitting, use --stop first. It will only work '
                     'once until the dsim-engine is reset, e.g using --resync '
                     'which can be used with --pulse (--resync will be applied first).')
+
 parser.add_argument('--pulse-packets', action='store', default=100, help=
                     'Send out out this many data packets per polarisation if --pulse '
                     'is specified (default: %(default)d.')
+
 parser.add_argument('--resync', action='store_true', default=False,
                     help='Restart digitiser time and then sync')
+
 parser.add_argument('--stop', dest='stop', action='store_true', default=False,
                     help='stop the fake digitiser transmission')
+                    
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
+
 parser.add_argument('--ipython', action='store_true', default=False, help=
                     'Launch an embedded ipython shell once all is said and done')
+
+parser.add_argument('--sine_freq', nargs = 2, default=False, help=
+                    'Set Frequency ...blablabla')
+
+parser.add_argument('--set_sine_source', nargs = 3, default=False, help=
+                    'Set Scale and Frequency \n \
+                    blablala.')
+                    
+#parser.add_argument('--sine_freq_0', nargs = 1, default=False, help=
+#                    'Set Frequency for sine source 0...blablabla')
+                    
+#parser.add_argument('--sine_freq_1', nargs = 1, default=False, help=
+#                    'Set Frequency for sine source 1 ...blablabla')
+
+#parser.add_argument('--sine_freq_0', nargs = 1, default=False, help=
+
+#                    'Set Frequency ...blablabla')
+                    
+#parser.add_argument('--sine_freq_1', nargs = 1, default=False, help=
+#                    'Set Frequency ...blablabla')
+                                        
+
 args = parser.parse_args()
 
 if args.log_level != '':
@@ -108,7 +142,73 @@ if args.ipython:
     import IPython
     IPython.embed()
     something_happened = True
+    
+if args.sine_freq:
+    xscale = float(args.sine_freq[0])
+    yfreq = float(args.sine_freq[1])
+    
+    if xscale > 0 <= 1 and yfreq > 0 <= dhost.sine_sources.sin_0.max_freq:
+        dhost.sine_sources.sin_0.set(xscale, yfreq)
+        print "Scale set to:", dhost.sine_sources.sin_0.scale
+        print "Frequency set to:", dhost.sine_sources.sin_0.frequency
+    else :
+        print "Scale should be between 0 and 1"
+        print "Frequency should be between 0 and 856MHz"
+    
+    something_happened = True   
 
+if args.set_sine_source:
+    sine_source = args.set_sine_source[0]
+    xscale = float(args.set_sine_source[1])
+    yfreq = float(args.set_sine_source[2])
+    
+#    ss = getattr(dhost.sine_sources, 'sin_{}'.format(sine_source))
+    print "Sine source: ", sine_source
+    print "Scale set to:" , xscale
+    print "Frequency set to:", yfreq
+    print "\n"
+    #print ss.name
+   
+   # print "0_Scale set to:", dhost.sine_sources.sin_0.scale
+   # print "1_Scale set to:", dhost.sine_sources.sin_1.scale
+    #print "Frequency set to:", dhost.sine_sources.sin_1.frequency
+    
+    
+    if sine_source == '0':
+        if xscale > 0 <= 1 and yfreq > 0 <= dhost.sine_sources.sin_0.max_freq:
+            dhost.sine_sources.sin_0.set(xscale, yfreq)
+            print "Scale set to:", dhost.sine_sources.sin_0.scale
+            print "Frequency set to:", dhost.sine_sources.sin_0.frequency
+        else :
+            print "Scale should be between 0 and 1"
+            print "Frequency should be between 0 and 856MHz"
+
+    elif sine_source == '1':
+        if xscale > 0 <= 1 and yfreq > 0 <= dhost.sine_sources.sin_1.max_freq:
+            dhost.sine_sources.sin_1.set(xscale, yfreq)
+            print "Scale set to:", dhost.sine_sources.sin_1.scale
+            print "Frequency set to:", dhost.sine_sources.sin_1.frequency
+        else :
+            print "Scale should be between 0 and 1"
+            print "Frequency should be between 0 and 856MHz"
+            
+    elif sine_source == 'corr':
+        if xscale > 0 <= 1 and yfreq > 0 <= dhost.sine_sources.sin_corr.max_freq:
+            dhost.sine_sources.sin_corr.set(xscale, yfreq)
+            print "Scale set to:", dhost.sine_sources.sin_corr.scale
+            print "Frequency set to:", dhost.sine_sources.sin_corr.frequency
+        else :
+            print "Scale should be between 0 and 1"
+            print "Frequency should be between 0 and 856MHz"
+            
+    else :
+        print "please input '0', '1' or 'corr'"
+    
+    #import IPython
+    #IPython.embed()
+    something_happened = True
+    
+    
 if not something_happened:
     parser.print_help()
 
