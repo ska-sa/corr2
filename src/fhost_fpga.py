@@ -75,9 +75,10 @@ class FpgaFHost(FpgaHost):
 	    for gbe in [0, 1, 2, 3]:
 	        data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]             
 	    status = self.registers.status.read()['data']
+	    pfb_ctrs = self.registers.pfb_ctrs.read()['data']
 	    for pol in [0, 1]:
 	        data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]             
-	        data['pfb_of%i' % pol] = status['pfb_of%i_cnt' % pol]
+	        data['pfb_of%i' % pol] = pfb_ctrs['pfb_of%i_cnt' % pol]
             return data
         _sleeptime = 1
         rxregs = get_gbe_data()
