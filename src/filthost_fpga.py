@@ -92,7 +92,7 @@ class FpgaFilterHost(FpgaHost):
             source_ctr += 1
 
         # assign the correct sources to this filter host
-        _source_offset =
+        #_source_offset =
 
         print _sources
 
@@ -114,7 +114,7 @@ class FpgaFilterHost(FpgaHost):
                 rxaddr_base = int(rxaddr_bits[3])
                 rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
 
-    // TODO - and now?
+    #// TODO - and now?
 
                 if (len(self.tengbes) / self.f_per_fpga) != source.ip_range:
                     raise RuntimeError(
