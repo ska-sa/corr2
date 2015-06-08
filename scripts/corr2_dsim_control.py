@@ -57,8 +57,9 @@ parser.add_argument('--set_sine_source', nargs = 3, default=False, help=
 parser.add_argument('--set_noise_source', nargs = 2, default=False, help=
                     'Set noise source scale.')
                     
-parser.add_argument('--select_output', nargs = 2, default=False, help=
+parser.add_argument('--select_output', nargs = 3, default=False, help=
                     'Select output, choose from 0 or 1.\
+                     Output Scale, choose between 0 - 1.\
                      Output types, choose from signal or test_vectors.\
                      ')
 
@@ -174,14 +175,15 @@ if args.set_noise_source:
 
 if args.select_output:
     Output_Select = int(args.select_output[0])
- #   Output_Scale = float(args.select_output[1])
-    Output_Type = args.select_output[1]
+    Output_Scale = float(args.select_output[1])
+    Output_Type = args.select_output[2]
     try:
         Output_From = getattr(dhost.outputs, 'out_{}'.format(Output_Select))
-  #      dhost.outputs.out_0.scale_output(0.4)
-
         Output_From.select_output(Output_Type)
+        Output_From.scale_output(Output_Scale)
+        """MM: Check if it can read what was written to it!"""
         print "Output Selected:", Output_From.name
+        print "Output Scale Selected:"
         print "Ouput Type Selected:"
     except AttributeError:
         print "You can only select between, '0' or '1'"
