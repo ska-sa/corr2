@@ -135,10 +135,10 @@ if args.ipython:
     something_happened = True
 
 if args.set_sine_source:
+    """Sine source selection field, including source ,scale and frequency"""
     sine_source = args.set_sine_source[0]
     xscale = float(args.set_sine_source[1])
     yfreq = float(args.set_sine_source[2])
-    #maxfreq = "{}MHz".format( dhost.sine_sources.sin_0.max_freq / 1e6 )
     try:
         SineSource = getattr(dhost.sine_sources, 'sin_{}'.format(sine_source))
         maxfreq = "{}MHz".format( SineSource.max_freq / 1e6 )
@@ -153,11 +153,12 @@ if args.set_sine_source:
     except ValueError:
         print "Error, verify your inputs"
         sys.exit(1)
-    #import IPython
-    #IPython.embed()
+    import IPython
+    IPython.embed()
     something_happened = True
 
 if args.set_noise_source:
+    """Noise selection, selectiong source of noise and scale"""
     NoiseSource = args.set_noise_source[0]
     NoiseScale = float(args.set_noise_source[1])
     ##maxfreq = "{}MHz".format( dhost.sine_sources.sin_0.max_freq / 1e6 )
