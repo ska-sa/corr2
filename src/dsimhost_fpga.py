@@ -66,13 +66,22 @@ class Output(object):
         self.name = name
         self.scale_register = scale_register
         self.control_register = control_register
+        self.tgv_select_field = 'tvg_select' + self.name
+
+    @property
+    def output_type(self):
+        """Curently selected output type"""
+        if self.control_register.read()['data']['tvg_select0'] == 0:
+            return 'test_vectors'
+        else:
+            return 'signal'
+        
 
     def select_output(self, output_type):
-        tgv_select = 'tvg_select' + self.name
         if output_type == 'test_vectors':
-            self.control_register.write(**{tgv_select: 0})
+            self.control_register.write(**{self.tgv_select_field: 0})
         elif output_type == 'signal':
-            self.control_register.write(**{tgv_select: 1})
+            self.control_register.write(**{self.tgv_select_field: 1})
         else:
             raise ValueError(
                 'Valid output_type values: "test_vectors" and "signal"')
