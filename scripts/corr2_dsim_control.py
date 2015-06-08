@@ -52,11 +52,16 @@ parser.add_argument('--ipython', action='store_true', default=False, help=
                     'Launch an embedded ipython shell once all is said and done')
 
 parser.add_argument('--set_sine_source', nargs = 3, default=False, help=
-                    'Set Scale and Frequency \n \
-                    blablala.')
+                    'Set Scale and Frequency')
 
 parser.add_argument('--set_noise_source', nargs = 2, default=False, help=
                     'Set noise source scale.')
+                    
+parser.add_argument('--select_output', nargs = 3, default=False, help=
+                    'Select output, choose from 0 or 1.\
+                     Output Scale, choose between 0 - 1.\
+                     Output types, choose from signal or test_vectors.\
+                     ')
 
 args = parser.parse_args()
 
@@ -143,13 +148,13 @@ if args.set_sine_source:
         print "Scale:", SineSource.scale
         print "Frequency:", SineSource.frequency        
     except AttributeError:
-        print "You can only select between, '0', '1', or 'corr'"
+        print "You can only select between, '0', '1'"
         sys.exit(1)
     except ValueError:
         print "Error, verify your inputs"
         sys.exit(1)
-    import IPython
-    IPython.embed()
+    #import IPython
+    #IPython.embed()
     something_happened = True
 
 if args.set_noise_source:
@@ -166,6 +171,24 @@ if args.set_noise_source:
         sys.exit(1)
     except ValueError:
         print "Error"
+        sys.exit(1)
+
+if args.select_output:
+    Output_Select = int(args.select_output[0])
+ #   Output_Scale = float(args.select_output[1])
+    Output_Type = args.select_output[2]
+    try:
+        Output_From = getattr(dhost.outputs, 'out_{}'.format(Output_Select))
+  #      dhost.outputs.out_0.scale_output(0.4)
+
+        Output_From.select_output(Output_Type)
+        print "Output Selected:", Output_From.name
+        print "Ouput Type Selected:"
+    except AttributeError:
+        print "You can only select between, '0' or '1'"
+        sys.exit(1)
+    except ValueError:
+        print "Valid output_type values: 'test_vectors' and 'signal'"
         sys.exit(1)
         
     import IPython
