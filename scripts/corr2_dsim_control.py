@@ -182,22 +182,23 @@ if args.select_output:
         Output_From = getattr(dhost.outputs, 'out_{}'.format(Output_Select))
         Output_From.select_output(Output_Type)
         Output_From.scale_output(Output_Scale)
-        """MM: Check if it can read what was written to it!"""
+        """Check if it can read what was written to it!"""
         print "Output Selected:", Output_From.name
-        print "Output Scale Selected:"
-        print "Ouput Type Selected:"
+        print "Output Scale:",  Output_From.scale_register.read()['data']['scale']
+        if Output_From.output_type == 0: print "Output type: Test_Vectors"
+        else: print "Output type: Signal"
+        
     except AttributeError:
         print "You can only select between, '0' or '1'"
         sys.exit(1)
     except ValueError:
         print "Valid output_type values: 'test_vectors' and 'signal'"
         sys.exit(1)
-        
+    print "\n\n"    
     import IPython
     IPython.embed()
     something_happened = True
-
-
+#---------------------------------------------
 if not something_happened:
     parser.print_help()
 

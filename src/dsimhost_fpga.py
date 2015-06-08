@@ -71,9 +71,13 @@ class Output(object):
     @property
     def output_type(self):
         """Curently selected output type"""
-        self.control_register.read #......
+        #if
+        return self.control_register.read()['data']['tvg_select0'] #== 0:
+            #print "Output type: Test_Vectors"
+        #else:
+        #    print "Output type: Signal"
         
-
+        
     def select_output(self, output_type):
         if output_type == 'test_vectors':
             self.control_register.write(**{self.tgv_select_field: 0})
