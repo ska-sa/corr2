@@ -68,16 +68,15 @@ regs = ['mcnt_relock', 'tmiss_p0', 'tmiss_p1', 'tmiss_ctr', 'recverr_ctr', 'time
         'sync_timestamp_msw', 'sync_timestamp_lsw']
 
 if args.rstcnt:
-    fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      target_function=
-                                      (lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
-                                                                                   unpack_cnt_rst='pulse'),))
+    fpgautils.threaded_fpga_operation(
+        fpgas, 10, target_function=(
+            lambda fpga_: fpga_.registers.control.write(
+                cnt_rst='pulse', unpack_cnt_rst='pulse'),))
 
 if args.sysrst:
-    fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      target_function=
-                                      (lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
-
+    fpgautils.threaded_fpga_operation(
+        fpgas, 10, target_function=(lambda fpga_:
+                                    fpga_.registers.control.write(sys_rst='pulse'),))
 
 def checkregs(fpga_, necregs):
     freg_error = 0
@@ -147,9 +146,6 @@ try:
         if keypress == -1:
             break
         elif keypress > 0:
-#            if character == 'c':
-#                for f in ffpgas:
-#                    f.reset_counters()
             scroller.draw_screen()
         if time.time() > last_refresh + args.polltime:
             scroller.clear_buffer()
@@ -173,7 +169,7 @@ try:
                 pos_increment = COLUMN_WIDTH
                 for reg in reg_names:
                     regval = '%8d' % fpga_data[reg]
-                    scroller.add_line(regval, start_pos, scroller.get_current_line() - 1) # all on the same line
+                    scroller.add_line(regval, start_pos, scroller.get_current_line() - 1)  # all on the same line
                     start_pos += pos_increment
             scroller.draw_screen()
             last_refresh = time.time()
