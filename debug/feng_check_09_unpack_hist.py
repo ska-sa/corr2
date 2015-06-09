@@ -9,6 +9,7 @@ import argparse
 import sys
 import signal
 import os
+import matplotlib.pyplot as pyplot
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -119,17 +120,6 @@ def get_data():
         _unpacked_data[_fpga]['p1'] = p1_unpacked[:]
     return _unpacked_data
 
-import matplotlib.pyplot as pyplot
-from casperfpga.memory import bin2fp
-
-
-def eighty_to_ten(eighty):
-    _samples = []
-    for offset in range(70, -1, -10):
-        binnum = (eighty >> offset) & 0x3ff
-        _samples.append(bin2fp(binnum, 10, 9, True))
-    return _samples
-
 pyplot.interactive(True)
 while True:
     unpacked_data = get_data()
@@ -140,10 +130,7 @@ while True:
         else:
             plotdata = (fpga_data['p1'], 1)
         for pol_data in [plotdata]:
-            allsamples = []
-            for dataword in pol_data[0]:
-                samples = eighty_to_ten(dataword)
-                allsamples.extend(samples)
+            allsamples = utils.AdcData.eighty_to_ten(pol_data[0])
             pyplot.cla()
             pyplot.hist(allsamples, 100, (-0.5, 0.5))
             pyplot.xlim((-0.5, 0.5))

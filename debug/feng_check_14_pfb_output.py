@@ -165,7 +165,7 @@ while (looplimit < 0) or (loopctr < looplimit):
         print '\tStddev: %.10f' % numpy.std(p_show_data[1000:3000])
 
         if args.log:
-            pyplot.semilogy(p_show_data)
+            plt = pyplot.plot([10*numpy.log10(_d) for _d in p_show_data])
         else:
             pyplot.plot(p_show_data)
 

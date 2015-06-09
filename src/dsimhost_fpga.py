@@ -1,5 +1,8 @@
+from __future__ import division
+
 import logging
 import time
+import re
 
 from casperfpga.attribute_container import AttributeContainer
 from casperfpga import tengbe
@@ -16,39 +19,73 @@ def get_prefixed_name(prefix, string):
     else:
         return string[len(prefix):]
 
+def remove_nones(write_vars):
+    return {k:v for k, v in write_vars.items() if v is not None}
+
 class Source(object):
     def __init__(self, register, name):
         self.register = register
+        self.parent = register.parent
         self.name = name
 
 class SineSource(Source):
+    def __init__(self, register, name):
+        super(SineSource, self).__init__(register, name)
+        self.sample_rate_hz = float(self.parent.config['sample_rate_hz'])
+        freq_field = self.register.field_get_by_name('frequency')
+        self.nr_freq_steps = 2**(freq_field.width_bits)
+        self.max_freq = self.sample_rate_hz / 2.
+        self.delta_freq = self.max_freq / (self.nr_freq_steps - 1)
+
+    @property
+    def frequency(self):
+        return self.register.read()['data']['frequency'] * self.delta_freq
+
+    @property
+    def scale(self):
+        return self.register.read()['data']['scale']
+
     def set(self, scale=None, frequency=None):
-        # TODO work in 'human' units such as Hz or Volts?
-        self.register.write(scale=scale, frequency=frequency)
+        freq_steps = (int(round(frequency / self.delta_freq))
+                      if frequency is not None else None)
+        write_vars = remove_nones(dict(scale=scale, frequency=freq_steps))
+        self.register.write(**write_vars)
 
 class NoiseSource(Source):
-    def set(self, scale=None, frequency=None):
+    @property
+    def scale(self):
+        return self.register.read()['data']['scale']
+
+    def set(self, scale=None):
         # TODO work in 'human' units such W / Hz?
-        self.register.write(scale=scale, frequency=frequency)
+        write_vars = remove_nones(dict(scale=scale))
+        self.register.write(**write_vars)
 
 class Output(object):
     def __init__(self, name, scale_register, control_register):
         self.name = name
         self.scale_register = scale_register
         self.control_register = control_register
+        self.tgv_select_field = 'tvg_select' + self.name
+
+    @property
+    def output_type(self):
+        """Curently selected output type"""
+        if self.control_register.read()['data']['tvg_select0'] == 0:
+            return 'test_vectors'
+        else:
+            return 'signal'
 
     def select_output(self, output_type):
-        tgv_select = 'tvg_select' + self.name
         if output_type == 'test_vectors':
-            self.control_register.write(**{tgv_select: 0})
+            self.control_register.write(**{self.tgv_select_field: 0})
         elif output_type == 'signal':
-            self.control_register.write(**{tgv_select: 1})
+            self.control_register.write(**{self.tgv_select_field: 1})
         else:
             raise ValueError(
                 'Valid output_type values: "test_vectors" and "signal"')
 
     def scale_output(self, scale):
-        # TODO normalized scale to take values between 0 and 1?
         self.scale_register.write(scale=scale)
 
 class FpgaDsimHost(FpgaHost):
@@ -105,20 +142,35 @@ class FpgaDsimHost(FpgaHost):
         for output in self.outputs:
             output.select_output('test_vectors')
 
+    def reset(self):
+        self.registers.control.write(mrst='pulse')
+
     def data_resync(self):
         """start the local timer on the test d-engine - mrst, then a fake sync"""
-        self.registers.control.write(mrst='pulse')
+        self.reset()
         self.registers.control.write(msync='pulse')
 
     def enable_data_output(self, enabled=True):
         """(dis)Enable 10GbE data output"""
         enabled = bool(enabled)
-        gb_tx_reg = self.registers.gbe_tx_always_on
-        reg_vals = {n: enabled for n in gb_tx_reg.field_names()
+        pol_tx_reg = self.registers.pol_tx_always_on
+        reg_vals = {n: enabled for n in pol_tx_reg.field_names()
                     if n.endswith('_tx_always_on')}
-        gb_tx_reg.write(**reg_vals)
+        pol_tx_reg.write(**reg_vals)
         if enabled:
             self.registers.control_output.write(load_en_time='pulse')
+
+    def pulse_data_output(self, no_packets):
+        """Produce a data output pulse of no_packets per polarisation
+
+        Does nothing if data is already being transmitted
+        """
+        num_regs = [r for r in self.registers if re.match(
+            r'^pol\d_num_pkts$', r.name)]
+        for r in num_regs:
+            r.write(**{r.name: no_packets})
+        self.registers.pol_traffic_trigger.write(**{
+            n: 'pulse' for n in self.registers.pol_traffic_trigger.field_names()})
 
     def _program(self):
         """Program the boffile to fpga and ensure 10GbE's are not transmitting"""
@@ -137,7 +189,7 @@ class FpgaDsimHost(FpgaHost):
         start_mac = self.config['10gbe_start_mac']
         port = int(self.config['10gbe_port'])
         num_tengbes = 4         # Hardcoded assumption
-        gbes_per_pol = 2      # Hardcoded assumption
+        gbes_per_pol = 2        # Hardcoded assumption
         num_pols = num_tengbes // gbes_per_pol
 
         ip_bits = start_ip.split('.')
@@ -178,4 +230,3 @@ class FpgaDsimHost(FpgaHost):
 
         self.write_int('gbe_porttx', port)
         self.registers.control.write(gbe_rst=False)
-

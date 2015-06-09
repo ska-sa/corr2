@@ -2,52 +2,98 @@ __author__ = 'paulp'
 
 import time
 import logging
-from casperfpga import tengbe
 
 from host_fpga import FpgaHost
 from data_source import DataSource
 
 LOGGER = logging.getLogger(__name__)
 
+def parse_sources(name_string, ip_string):
+    """
+    Parse lists of source name and IPs into a list of DataSource objects.
+    :return:
+    """
+    source_names = name_string.strip().split(',')
+    source_mcast = ip_string.strip().split(',')
+    assert len(source_mcast) == len(source_names), (
+        'Source names (%i) must be paired with multicast source '
+        'addresses (%i)' % (len(source_names), len(source_mcast)))
+    _sources = []
+    source_ctr = 0
+    for counter, address in enumerate(source_mcast):
+        new_source = DataSource.from_mcast_string(address)
+        new_source.name = source_names[counter]
+        new_source.source_number = source_ctr
+        _sources.append(new_source)
+        if source_ctr > 0:
+            assert(new_source.ip_range == _sources[0].ip_range,
+                   'DataSources have to offer the same IP range.')
+        source_ctr += 1
+    return _sources
+
 
 class FpgaFilterHost(FpgaHost):
     """
     A Host, that hosts SNB filter engines, that is a CASPER KATCP FPGA.
     """
-    def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None, board_id=-1):
-        FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
-        self._config = config
+    def __init__(self, board_id, instrument_config):
+        self._config = instrument_config['filter']
+        self._instrument_config = instrument_config
+        _katcp_port = int(self._instrument_config['FxCorrelator']['katcp_port'])
+        _bof = self._config['bitstream']
+        _hosts = self._config['hosts'].strip().split(',')
+        FpgaHost.__init__(self, _hosts[board_id], katcp_port=_katcp_port, boffile=_bof, connect=True)
         self.board_id = board_id
-        self.data_sources = []  # a list of DataSources received by this filter host
-
-    @classmethod
-    def from_config_source(cls, hostname, katcp_port, config_source, board_id):
-        return cls(hostname, katcp_port=katcp_port,
-                   boffile=config_source['bitstream'],
-                   connect=True, config=config_source, board_id=board_id)
+        self.data_sources = []
+        self.data_destinations = []
 
     def initialise(self):
         """
         Initialise this filter board once data from the digitiser is available.
         :return:
         """
-        self.set_igmp_version(2)  # TODO - get this from the config, not hardcoded
-        self._set_destination()
+        self.set_igmp_version(self._instrument_config['FxCorrelator']['igmp_version'])
+        self._set_destinations()
         self._handle_sources()
         self.setup_rx()
         self._subscribe_to_source_data()
-        self.check_rx()
+        if not self.check_rx():
+            raise RuntimeError('Filter {} is not receiving data correctly.'.format(self.host))
+        self.enable_tx()
+        # TODO - check tx must not bail hard if the registers aren't there
+        # if not self.check_tx_raw():
+        #     raise RuntimeError('Filter {} is not transmitting data correctly.'.format(self.host))
 
-    def _set_destination(self):
+    def enable_tx(self):
+        """
+        Enable transmission on this filter engine.
+        :return:
+        """
+        self.registers.control.write(gbe_txen=True)
+        LOGGER.info('Filter {} output enabled.'.format(self.host))
+
+    def _set_destinations(self):
         """
         Set the destination for the filtered data, as configured
         :return:
         """
-        self.registers.gbe_iptx0.write_int(
-            int(tengbe.IpAddress(self._config['pol0_destination_ip'])))
-        self.registers.gbe_iptx1.write_int(
-            int(tengbe.IpAddress(self._config['pol1_destination_ip'])))
-        self.registers.gbe_porttx.write_int(int(self._config['destination_port']))
+
+        _destinations_per_filter = 2  # eish, this is hardcoded for now...
+        _destinations = parse_sources(name_string=self._instrument_config['fengine']['source_names'],
+                                      ip_string=self._instrument_config['fengine']['source_mcast_ips'],)
+        LOGGER.info('Assuming {} source items per filter board'.format(_destinations_per_filter))
+        _offset = self.board_id * _destinations_per_filter
+        self.data_destinations = []
+        for _ctr in range(_offset, _offset + _destinations_per_filter):
+            self.data_destinations.append(_destinations[_ctr])
+            LOGGER.info('{}: assigning destination {} to host at position {}.'.format(
+                self.host, _destinations[_ctr], _ctr,
+            ))
+        assert len(self.data_destinations) == _destinations_per_filter,\
+            'Currently only 2 outputs are accepted for filter boards.'
+        self.registers.gbe_iptx0.write_int(int(self.data_destinations[0].ip_address))
+        self.registers.gbe_iptx1.write_int(int(self.data_destinations[1].ip_address))
+        self.registers.gbe_porttx.write_int(self.data_destinations[0].port)
 
     def clear_status(self):
         """
@@ -63,11 +109,9 @@ class FpgaFilterHost(FpgaHost):
         :return:
         """
         assert self.board_id > -1, 'The board ID cannot be -1, it must be zero or greater.'
-
         self.registers.control.write(gbe_txen=False)
         self.registers.control.write(gbe_rst=True)
         self.clear_status()
-
         _num_tengbes = len(self.tengbes)
         _ip_octets = [int(bit) for bit in self._config['10gbe_start_ip'].split('.')]
         _port = int(self._config['10gbe_port'])
@@ -85,11 +129,8 @@ class FpgaFilterHost(FpgaHost):
                 self.host, _gbe.name, this_mac, this_ip, _port, self.board_id))
             _mac_base += 1
             _ip_base += 1
-
         for _gbe in self.tengbes:
             _gbe.tap_start(True)
-
-        # release the cores from reset
         self.registers.control.write(gbe_rst=False)
 
     def _handle_sources(self):
@@ -97,30 +138,14 @@ class FpgaFilterHost(FpgaHost):
         Sort out sources for this filter host
         :return:
         """
-        source_names = self._config['source_names'].strip().split(',')
-        source_mcast = self._config['source_mcast_ips'].strip().split(',')
-        assert len(source_mcast) == len(source_names), (
-            'Source names (%i) must be paired with multicast source '
-            'addresses (%i)' % (len(source_names), len(source_mcast)))
-
-        # assemble the sources given into a list
-        _sources = []
-        source_ctr = 0
-        for counter, address in enumerate(source_mcast):
-            new_source = DataSource.from_mcast_string(address)
-            new_source.name = source_names[counter]
-            new_source.source_number = source_ctr
-            _sources.append(new_source)
-            if source_ctr > 0:
-                assert(new_source.ip_range == _sources[0].ip_range,
-                       'DataSources have to offer the same IP range.')
-            source_ctr += 1
-
+        _sources = parse_sources(name_string=self._config['source_names'],
+                                 ip_string=self._config['source_mcast_ips'])
         # assign the correct sources to this filter host
         _sources_per_filter = len(_sources) / len(self._config['hosts'].strip().split(','))
         LOGGER.info('Assuming {} source items per filter board'.format(_sources_per_filter))
 
         _source_offset = self.board_id * _sources_per_filter
+        self.data_sources = []
         for _ctr in range(_source_offset, _source_offset + _sources_per_filter):
             self.data_sources.append(_sources[_ctr])
             LOGGER.info('{}: assigning source {} to host at position {}.'.format(
@@ -244,14 +269,3 @@ class FpgaFilterHost(FpgaHost):
         assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
         return (msw << 32) | lsw
 
-    def add_source(self, data_source):
-        """
-        Add a new data source to this Filter host
-        :param data_source: A DataSource object
-        :return:
-        """
-        # check that it doesn't already exist before adding it
-        for source in self.data_sources:
-            assert source.source_number != data_source.source_number
-            assert source.name != data_source.name
-        self.data_sources.append(data_source)

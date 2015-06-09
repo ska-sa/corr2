@@ -8,11 +8,11 @@ Collect the output of a post-unpack snapshot and do an FFT on it.
 import argparse
 import sys
 import signal
+import matplotlib.pyplot as pyplot
+import numpy
 
 from casperfpga import katcp_fpga
-import matplotlib.pyplot as pyplot
-from casperfpga.memory import bin2fp
-import numpy
+from corr2.utils import AdcData
 
 FFT_CHANS = 4096
 
@@ -35,14 +35,13 @@ parser.add_argument('--checktvg', dest='checktvg', action='store_true', default=
                          'an FFT on the data')
 args = parser.parse_args()
 
+import logging
 if args.log_level != '':
-    import logging
     log_level = args.log_level.strip()
     try:
         logging.basicConfig(level=eval('logging.%s' % log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
-
 LOGGER = logging.getLogger(__name__)
 
 def exit_gracefully(signal, frame):
@@ -69,18 +68,8 @@ def get_data():
     snapdata_p1['p1'] = []
     for ctr, msb_data in enumerate(snapdata_p0['p1_msb']):
         snapdata_p1['p1'].append((msb_data << 32) + snapdata_p1['p1_lsb'][ctr])
-
-    def eighty_to_ten(snapdata):
-        ten_bit_samples = []
-        for word80 in snapdata:
-            for ctr in range(70, -1, -10):
-                tenbit = (word80 >> ctr) & 1023
-                tbsigned = bin2fp(tenbit, 10, 9, True)
-                ten_bit_samples.append(tbsigned)
-        return ten_bit_samples
-
-    data_p0 = eighty_to_ten(snapdata_p0['p0'])
-    data_p1 = eighty_to_ten(snapdata_p1['p1'])
+    data_p0 = AdcData.eighty_to_ten(snapdata_p0['p0'])
+    data_p1 = AdcData.eighty_to_ten(snapdata_p1['p1'])
     return {'p0': data_p0, 'p1': data_p1}
 
 def get_data_filtered():
@@ -109,7 +98,7 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
         if args.linear:
             sub_plots[pol].plot(idata[pol])
         else:
-            sub_plots[pol].semilogy(idata[pol])
+            sub_plots[pol].plot([10*numpy.log10(_d) for _d in idata[pol]])
         LOGGER.info('max for pol {} at {}'.format(pol, idata[pol].index(max(idata[pol][10:]))))
         figure.canvas.draw()
     if ictr >= args.integrate and args.integrate > 0:

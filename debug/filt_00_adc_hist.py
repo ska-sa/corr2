@@ -8,10 +8,10 @@ Collect the output of a post-unpack snapshot and do an FFT on it.
 import argparse
 import sys
 import signal
+import matplotlib.pyplot as pyplot
 
 from casperfpga import katcp_fpga
-import matplotlib.pyplot as pyplot
-from casperfpga.memory import bin2fp
+from corr2.utils import AdcData
 
 parser = argparse.ArgumentParser(description='Show a histogram of the incoming samples.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -23,14 +23,13 @@ parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
+import logging
 if args.log_level != '':
-    import logging
     log_level = args.log_level.strip()
     try:
         logging.basicConfig(level=eval('logging.%s' % log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
-
 LOGGER = logging.getLogger(__name__)
 
 def exit_gracefully(signal, frame):
@@ -57,18 +56,8 @@ def get_data():
     snapdata_p1['p1'] = []
     for ctr, msb_data in enumerate(snapdata_p0['p1_msb']):
         snapdata_p1['p1'].append((msb_data << 32) + snapdata_p1['p1_lsb'][ctr])
-
-    def eighty_to_ten(snapdata):
-        ten_bit_samples = []
-        for word80 in snapdata:
-            for ctr in range(70, -1, -10):
-                tenbit = (word80 >> ctr) & 1023
-                tbsigned = bin2fp(tenbit, 10, 9, True)
-                ten_bit_samples.append(tbsigned)
-        return ten_bit_samples
-
-    data_p0 = eighty_to_ten(snapdata_p0['p0'])
-    data_p1 = eighty_to_ten(snapdata_p1['p1'])
+    data_p0 = AdcData.eighty_to_ten(snapdata_p0['p0'])
+    data_p1 = AdcData.eighty_to_ten(snapdata_p1['p1'])
     return {'p0': data_p0, 'p1': data_p1}
 
 def get_data_filtered():
