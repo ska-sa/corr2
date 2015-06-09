@@ -10,6 +10,7 @@ import sys
 import signal
 import os
 import matplotlib.pyplot as pyplot
+import numpy
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
@@ -67,13 +68,11 @@ if len(snapshot_missing) > 0:
     print snapshot_missing
     exit_gracefully(None, None)
 
-
 def get_data():
     """
     Read the snap data from the f-engines
     :return:
     """
-
     # arm the snaps
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots.snapcoarse_0_ss.arm())
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots.snapcoarse_1_ss.arm())
@@ -120,28 +119,49 @@ def get_data():
         _unpacked_data[_fpga]['p1'] = p1_unpacked[:]
     return _unpacked_data
 
-pyplot.interactive(True)
-while True:
+def _populate_subplots(data, figure):
+    _plot_ctr = 0
+    sub_plots = {}
+    for fpga in data:
+        print 'Adding subplot for fpga {}'.format(fpga)
+        sub_plots['{}'.format(fpga)] = figure.add_subplot(len(data), 1, _plot_ctr + 1)
+        _plot_ctr += 1
+    return sub_plots
+
+def plot_func(figure, sub_plots):
     unpacked_data = get_data()
+    if len(sub_plots) == 0:
+        sub_plots.update(_populate_subplots(unpacked_data, figure))
     for fpga, fpga_data in unpacked_data.items():
         print '%s data started at %d' % (fpga, fpga_data['packettime48']),
+        _sbplt = sub_plots['{}'.format(fpga)]
         if args.pol == 0:
-            plotdata = (fpga_data['p0'], 0)
+            plotdata = fpga_data['p0']
         else:
-            plotdata = (fpga_data['p1'], 1)
-        for pol_data in [plotdata]:
-            allsamples = utils.AdcData.eighty_to_ten(pol_data[0])
-            pyplot.cla()
-            pyplot.hist(allsamples, 100, (-0.5, 0.5))
-            pyplot.xlim((-0.5, 0.5))
-            pyplot.draw()
+            plotdata = fpga_data['p1']
+        allsamples = utils.AdcData.eighty_to_ten(plotdata)
+        _sbplt.cla()
+        _sbplt.hist(allsamples, 100, (-0.5, 0.5))
         print 'and ended %d samples later. All okay.' % (len(allsamples))
-
-        import numpy
         print '\tMean:  %.5f' % numpy.mean(allsamples)
         print '\tStddev: %.10f' % numpy.std(allsamples)
+    pyplot.xlim((-0.5, 0.5))
+    figure.canvas.draw()
+    figure.canvas.manager.window.after(100, plot_func, figure, sub_plots)
 
-# and exit
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+# set up the figure with a subplot to be plotted
+fig = pyplot.figure()
+subplots = {}
+fig.canvas.manager.window.after(100, plot_func, fig, subplots)
+pyplot.show()
+print 'Plot started.'
+
+# wait here so that the plot can be viewed
+print 'Press Ctrl-C to exit...'
+sys.stdout.flush()
+import time
+while True:
+    time.sleep(1)
+exit_gracefully(None, None)
 
 # end
