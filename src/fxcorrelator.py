@@ -265,6 +265,32 @@ class FxCorrelator(Instrument):
         self.logger.info('_sensor_xeng_rx ran on %s' % (host_name))
         Timer(10, self._sensor_xeng_rx, sensor).start()
 
+    def _sensor_feng_phy(self, sensor):
+        """
+        f-engine PHY counters
+        :param sensor:
+        :return:
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.fhosts[host_name].check_phy_counter()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_sensor_feng_phy ran on %s' % host_name)
+        Timer(10, self._sensor_feng_phy, sensor).start()
+        return
+
+    def _sensor_xeng_phy(self, sensor):
+        """
+        x-engine PHY counters
+        :param sensor:
+        :return:
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.xhosts[host_name].check_phy_counter()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_sensor_xeng_phy ran on %s' % host_name)
+        Timer(10, self._sensor_xeng_phy, sensor).start()
+        return
+
     def setup_sensors(self, katcp_server):
         """
         Set up compound sensors to be reported to CAM
