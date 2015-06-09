@@ -48,6 +48,8 @@ parser.add_argument('--select-output', nargs=3, default=False, help=
                     'Choose which Output to source from, Output_0 or Output_1.\
                      Output Scale, choose between 0 - 1.\
                      Output types, choose from signal or test_vectors.')
+parser.add_argument('--sins', action='append', default=[], nargs=2, help=
+                    'Enter scale and Frequency values for sin_0 and sin_1.')
 args = parser.parse_args()
 
 if args.log_level != '':
@@ -131,7 +133,7 @@ if args.sine_source:
         sinesource.set(scale=xscale, frequency=yfreq)
         print "Sine Source:", sinesource.name
         print "Scale:", sinesource.scale
-        print "Frequency:", sinesource.frequency        
+        print "Frequency:", sinesource.frequency
     except AttributeError:
         print "You can only select between, sin_0 or sin_1"
         sys.exit(1)
@@ -160,7 +162,7 @@ if args.noise_source:
 if args.select_output:
     output_select = int(args.select_output[0])
     output_scale = float(args.select_output[1])
-    output_type = args.select_output[2]   
+    output_type = args.select_output[2]
     try:
         output_from = getattr(dhost.outputs, 'out_{}'.format(output_select))
         output_from.select_output(output_type)
@@ -174,6 +176,38 @@ if args.select_output:
         sys.exit(1)
     except ValueError:
         print "Valid output_type values: 'test_vectors' and 'signal'"
+        sys.exit(1)
+    something_happened = True
+
+if args.sins:
+    print "------------------"
+    sin_0 = args.sins[0]
+    sin_1 = args.sins[1]
+    #sin_corr = args.sins[2]
+    sin_0_scale = float(sin_0[0])
+    sin_0_freq = float(sin_0[1])
+    sin_1_scale = float(sin_1[0])
+    sin_1_freq = float(sin_1[1])
+    #sin_corr_scale = float(sin_corr[0])
+    #sin_corr_freq = float(sin_corr[1])
+    try:
+        sine_source_0 = dhost.sine_sources.sin_0
+        sine_source_1 = dhost.sine_sources.sin_1
+        #sine_source_corr = dhost.sine_sources.sin_corr
+        sine_source_0.set(scale=sin_0_scale, frequency=sin_0_freq)
+        sine_source_1.set(scale=sin_1_scale, frequency=sin_1_freq)
+        #sine_source_corr.set(scale=sin_corr_scale, frequency=sin_corr_freq)
+        print "Sin0 Frequency:", sine_source_0.frequency
+        print "Sin0 Scale:", sine_source_0.scale
+        print "\nSin1 Frequency:", sine_source_1.frequency
+        print "Sin1 Scale:", sine_source_1.scale
+        #print "\nSin1 Frequency:", sine_source_corr.frequency
+        #print "Sin1 Scale:", sine_source_corr.scale
+    except AttributeError:
+        print "You can only select between, sin_0 or sin_1"
+        sys.exit(1)
+    except ValueError:
+        print "Error, verify your inputs"
         sys.exit(1)
     something_happened = True
 #---------------------------------------------
