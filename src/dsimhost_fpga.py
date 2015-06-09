@@ -75,7 +75,6 @@ class Output(object):
             return 'test_vectors'
         else:
             return 'signal'
-        
 
     def select_output(self, output_type):
         if output_type == 'test_vectors':
