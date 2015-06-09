@@ -66,7 +66,6 @@ class FpgaFHost(FpgaHost):
         :return:
         """
         def get_gbe_data():
-		
             data = {}
             reorder_ctrs = self.registers.reorder_ctrs.read()['data']
             data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
