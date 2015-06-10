@@ -26,3 +26,6 @@ Release Notes:
 
     - 2015-05-29: Needs DEng version  r2_deng_tvg_2015_May_21_1535.fpg or later
       for dsimengine to work properly
+    
+    - 2015-06-10ish - new_transport_check branch created that breaks interface 
+      with earlier f-engines 
