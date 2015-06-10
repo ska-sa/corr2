@@ -77,7 +77,6 @@ class FpgaFilterHost(FpgaHost):
         Set the destination for the filtered data, as configured
         :return:
         """
-
         _destinations_per_filter = 2  # eish, this is hardcoded for now...
         _destinations = parse_sources(name_string=self._instrument_config['fengine']['source_names'],
                                       ip_string=self._instrument_config['fengine']['source_mcast_ips'],)
@@ -268,4 +267,3 @@ class FpgaFilterHost(FpgaHost):
         msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
         assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
         return (msw << 32) | lsw
-
