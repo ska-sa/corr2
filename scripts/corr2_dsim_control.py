@@ -128,18 +128,22 @@ if args.sine_source:
         try:
             sine_sources = getattr(dhost.sine_sources, 'sin_{}'.format(sine_source))
             maxfreq = "{}MHz".format( sine_sources.max_freq / 1e6 )
-            sine_sources.set(scale=xscale, frequency=yfreq)
-            print ""
-            print "sine Source:", sine_sources.name
-            print "Scale:", sine_sources.scale
-            print "Frequency:", sine_sources.frequency
         except AttributeError:
             print "You can only select between sine sources: {}".format([
                 ss.name for ss in dhost.sine_sources])
             sys.exit(1)
+        try:
+            sine_sources.set(scale=xscale, frequency=yfreq)
         except ValueError:
-            print "Error, verify your inputs"
+            print "\nError, verify your inputs for sin_%s" % sine_sources.name
+            print "Max Frequency should be %s" %maxfreq
+            # Read scale from object!!!!
+            print "Scale should be between 0 and 1"
             sys.exit(1)
+        print ""
+        print "sine Source:", sine_sources.name
+        print "Scale:", sine_sources.scale
+        print "Frequency:", sine_sources.frequency
     something_happened = True
 
 if args.noise_source:
@@ -148,16 +152,18 @@ if args.noise_source:
         noise_scale = float(noise_scale_s)
         try:
             source_from = getattr(dhost.noise_sources, 'noise_{}'.format(noise_sources))
-            source_from.set(scale=noise_scale)
-            print ""
-            print "Noise Source:", source_from.name
-            print "Noise Scale:", source_from.scale
         except AttributeError:
             print "You can only select between:", dhost.noise_sources.names()
             sys.exit(1)
+        try:
+            source_from.set(scale=noise_scale)
         except ValueError:
+            # Read values from object
             print "Valid scale input is between 0 - 1."
             sys.exit(1)
+        print ""
+        print "Noise Source:", source_from.name
+        print "Noise Scale:", source_from.scale
     something_happened = True
 
 if args.select_output:
@@ -179,6 +185,8 @@ if args.select_output:
         print "Output Selected:", output_from.name
         print "Output Scale:",  output_from.scale_register.read()['data']['scale']
         print "Output Type:", output_from.output_type
+    import IPython
+    IPython.embed()
     something_happened = True
 #---------------------------------------------
 if not something_happened:
