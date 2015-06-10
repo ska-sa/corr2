@@ -44,10 +44,12 @@ parser.add_argument('--sine-source', action='append', default=[], nargs=3 , help
 parser.add_argument('--noise-source', action='append', default=[], nargs=2, help=
                     'Choose which Noise to source, noise_0 or noise_1.\
                     Set noise scale.')
-parser.add_argument('--select-output', action='append', default=[], nargs=3, help=
+parser.add_argument('--output-type', action='append', default=[], nargs=2, help=
                     'Choose which Output to source from, Output_0 or Output_1.\
-                     Output Scale, choose between 0 - 1.\
                      Output types, choose from signal or test_vectors.')
+parser.add_argument('--output-scale', action='append', default=[], nargs=2, help=
+                    'Choose which Output to source from, Output 0 or Output 1.\
+                     Output Scale, choose between 0 - 1.')
 args = parser.parse_args()
 
 if args.log_level != '':
@@ -121,13 +123,11 @@ if args.ipython:
     something_happened = True
 
 if args.sine_source:
-    """Sine source selection field, including source ,scale and frequency"""
     for sine_source, xscale_s, yfreq_s in args.sine_source:
         xscale = float(xscale_s)
         yfreq = float(yfreq_s)
         try:
             sine_sources = getattr(dhost.sine_sources, 'sin_{}'.format(sine_source))
-            maxfreq = "{}MHz".format( sine_sources.max_freq / 1e6 )
         except AttributeError:
             print "You can only select between sine sources: {}".format([
                 ss.name for ss in dhost.sine_sources])
@@ -136,18 +136,16 @@ if args.sine_source:
             sine_sources.set(scale=xscale, frequency=yfreq)
         except ValueError:
             print "\nError, verify your inputs for sin_%s" % sine_sources.name
-            print "Max Frequency should be %s" %maxfreq
-            # Read scale from object!!!!
+            print "Max Frequency should be {}MHz".format(sine_sources.max_freq/1e6)
             print "Scale should be between 0 and 1"
             sys.exit(1)
         print ""
-        print "sine Source:", sine_sources.name
-        print "Scale:", sine_sources.scale
-        print "Frequency:", sine_sources.frequency
+        print "sine source:", sine_sources.name
+        print "scale:", sine_sources.scale
+        print "frequency:", sine_sources.frequency
     something_happened = True
 
 if args.noise_source:
-    """Noise selection, selectiong source of noise and scale"""
     for noise_sources, noise_scale_s in args.noise_source:
         noise_scale = float(noise_scale_s)
         try:
@@ -162,31 +160,44 @@ if args.noise_source:
             print "Valid scale input is between 0 - 1."
             sys.exit(1)
         print ""
-        print "Noise Source:", source_from.name
-        print "Noise Scale:", source_from.scale
+        print "noise source:", source_from.name
+        print "noise scale:", source_from.scale
     something_happened = True
 
-if args.select_output:
-    for output_select, output_scale_s, output_type in args.select_output:
-        output_scale = float(output_scale_s)
+if args.output_type:
+    for output_type, output_type_s in args.output_type:
         try:
-            output_from = getattr(dhost.outputs, 'out_{}'.format(output_select))
+            type_from = getattr(dhost.outputs, 'out_{}'.format(output_type))
         except AttributeError:
             print "You can only select between, Output_0 or Output_1'."
             sys.exit(1)
-        output_from.select_output(output_type)
         try:
-            output_from.scale_output(output_scale)
+            type_from.select_output(output_type_s)
         except ValueError:
             print "Valid output_type values: 'test_vectors' and 'signal'"
             sys.exit(1)
+        print ""
+        print "output selected:", type_from.name
+        print "output type:", type_from.output_type
+    something_happened = True
+#---------------------------------------------
+if args.output_scale:
+    for output_scale, output_scale_s in args.output_scale:
+        scale_value = float(output_scale_s)
+        try:
+            scale_from = getattr(dhost.outputs, 'out_{}'.format(output_scale))
+        except AttributeError:
+            print "You can only select between, %s" % dhost.outputs.names()
+            sys.exit(1)
+        try:
+            scale_from.scale_output(scale_value)
+        except ValueError:
+            print "Valid scale input is between 0 - 1."
+            sys.exit(1)
         """Check if it can read what was written to it!"""
         print ""
-        print "Output Selected:", output_from.name
-        print "Output Scale:",  output_from.scale_register.read()['data']['scale']
-        print "Output Type:", output_from.output_type
-    import IPython
-    IPython.embed()
+        print "output selected:", scale_from.name
+        print "output scale:",  scale_from.scale_register.read()['data']['scale']
     something_happened = True
 #---------------------------------------------
 if not something_happened:
