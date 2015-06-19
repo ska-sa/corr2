@@ -22,3 +22,6 @@ Thumbs.db
 MANIFEST
 build
 dist
+
+# Development IDE
+.idea/
