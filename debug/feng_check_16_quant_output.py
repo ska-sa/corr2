@@ -59,7 +59,7 @@ else:
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-required_snaps = ['snapquant_ss']
+required_snaps = ['snap_quant0_ss', 'snap_quant1_ss']
 
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
@@ -99,7 +99,7 @@ while True:
         fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots[snap].arm())
 
     # allow them to trigger
-    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snapquant_arm='pulse'))
+#    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snapquant_arm='pulse'))
 
     # read the data
     snapdata = {}
@@ -108,18 +108,19 @@ while True:
 
     for fpga in snapdata[required_snaps[0]].keys():
         # reorder the data
-        quant_data = snapdata[required_snaps[0]][fpga]['data']
+        quant0_data = snapdata[required_snaps[0]][fpga]['data']
+        quant1_data = snapdata[required_snaps[1]][fpga]['data']
         p0_data = []
         p1_data = []
-        for ctr in range(0, len(quant_data['r00'])):
-            p0_data.append(numpy.complex(quant_data['r00'][ctr], quant_data['i00'][ctr]))
-            p0_data.append(numpy.complex(quant_data['r01'][ctr], quant_data['i01'][ctr]))
-            p0_data.append(numpy.complex(quant_data['r02'][ctr], quant_data['i02'][ctr]))
-            p0_data.append(numpy.complex(quant_data['r03'][ctr], quant_data['i03'][ctr]))
-            p1_data.append(numpy.complex(quant_data['r10'][ctr], quant_data['i10'][ctr]))
-            p1_data.append(numpy.complex(quant_data['r11'][ctr], quant_data['i11'][ctr]))
-            p1_data.append(numpy.complex(quant_data['r12'][ctr], quant_data['i12'][ctr]))
-            p1_data.append(numpy.complex(quant_data['r13'][ctr], quant_data['i13'][ctr]))
+        for ctr in range(0, len(quant0_data['real0'])):
+            p0_data.append(numpy.complex(quant0_data['real0'][ctr], quant0_data['imag0'][ctr]))
+            p0_data.append(numpy.complex(quant0_data['real1'][ctr], quant0_data['imag1'][ctr]))
+            p0_data.append(numpy.complex(quant0_data['real2'][ctr], quant0_data['imag2'][ctr]))
+            p0_data.append(numpy.complex(quant0_data['real3'][ctr], quant0_data['imag3'][ctr]))
+            p1_data.append(numpy.complex(quant1_data['real0'][ctr], quant1_data['imag0'][ctr]))
+            p1_data.append(numpy.complex(quant1_data['real1'][ctr], quant1_data['imag1'][ctr]))
+            p1_data.append(numpy.complex(quant1_data['real2'][ctr], quant1_data['imag2'][ctr]))
+            p1_data.append(numpy.complex(quant1_data['real3'][ctr], quant1_data['imag3'][ctr]))
 
         print '%s data is %d points long.' % (fpga, len(p0_data))
 
