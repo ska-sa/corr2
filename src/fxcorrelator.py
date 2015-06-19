@@ -326,13 +326,13 @@ class FxCorrelator(Instrument):
         #                                     units='', default=str(self.meta_destination))
         #                 }
 
-
-        # # f-engine tx counters
-        # for _f in self.fhosts:
-        #     sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_tx_%s' % _f.host,
-        #                     description='F-engine TX okay - counters incrementing' % _f.host,
-        #                     default=True)
-        #     self._sensors['feng_tx'] = sensor
+        # f-engine tx counters
+        for _f in self.fhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_tx_%s' % _f.host,
+                            description='F-engine TX okay - counters incrementing' % _f.host,
+                            default=True)
+            self._sensor_feng_rx(sensor)
+            self._sensors[sensor.name] = sensor
 
         # f-engine rx counters
         for _f in self.fhosts:
@@ -342,11 +342,12 @@ class FxCorrelator(Instrument):
             self._sensor_feng_rx(sensor)
             self._sensors[sensor.name] = sensor
 
-        # # x-engine tx counters
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_tx',
-        #                 description='X-engine TX okay - counters incrementing',
-        #                 default=True)
-        # self._sensors['xeng_tx'] = sensor
+        # x-engine tx counters
+        sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_tx',
+                        description='X-engine TX okay - counters incrementing',
+                        default=True)
+        self._sensor_xeng_rx(sensor)
+        self._sensors[sensor.name] = sensor
 
         # x-engine rx counters
         for _x in self.xhosts:
@@ -370,6 +371,22 @@ class FxCorrelator(Instrument):
                             description='F-engine QDR okay' % _f.host,
                             default=True)
             self._qdr_okay(sensor)
+            self._sensors[sensor.name] = sensor
+
+        # # x-engine PHY counters
+        for _x in self.xhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_PHY_%s' % _x.host,
+                            description='X-engine PHY okay' % _x.host,
+                            default=True)
+            self._sensor_xeng_phy(sensor)
+            self._sensors[sensor.name] = sensor
+
+        # # f-engine PHY counters
+        for _f in self.fhosts:
+            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_PHY_%s' % _f.host,
+                            description='F-engine PHY okay' % _f.host,
+                            default=True)
+            self._sensor_feng_phy(sensor)
             self._sensors[sensor.name] = sensor
 
         for val in self._sensors.values():
