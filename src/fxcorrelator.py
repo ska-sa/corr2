@@ -291,6 +291,41 @@ class FxCorrelator(Instrument):
         Timer(10, self._sensor_xeng_phy, sensor).start()
         return
 
+    def _xeng_qdr_okay(self, sensor):
+        """
+        x-engine QDR check
+        :param sensor:
+        :return:
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.xhosts[host_name].qdr_okay()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_xeng_qdr_okay ran on %s' % host_name)
+        Timer(10, self._xeng_qdr_okay, sensor).start()
+        return
+
+    def _feng_qdr_okay(self, sensor):
+        """
+        f-engine QDR check
+        :param sensor:
+        :return:
+        """
+        host_name = sensor.name.split('_')[2]
+        result = self.fhosts[host_name].qdr_okay()
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        self.logger.info('_feng_qdr_okay ran on %s' % host_name)
+        Timer(10, self._feng_qdr_okay, sensor).start()
+        return
+
+    # need to decide where this one goes
+    def qdr_okay(self):
+        regs = self.registers.ct_ctrs.read()['data'].values()
+        if all(reg == 0 for reg in regs):
+            return True
+        else:
+            LOGGER.info('QDR on host %s - FALSE.' % (self.host))
+            return False
+
     def setup_sensors(self, katcp_server):
         """
         Set up compound sensors to be reported to CAM
@@ -362,7 +397,7 @@ class FxCorrelator(Instrument):
             sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_qdr_%s' % _x.host,
                             description='X-engine QDR okay' % _x.host,
                             default=True)
-            self._qdr_okay(sensor)
+            self._xeng_qdr_okay(sensor)
             self._sensors[sensor.name] = sensor
 
         # # f-engine QDR errors
@@ -370,7 +405,7 @@ class FxCorrelator(Instrument):
             sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_qdr_%s' % _f.host,
                             description='F-engine QDR okay' % _f.host,
                             default=True)
-            self._qdr_okay(sensor)
+            self._feng_qdr_okay(sensor)
             self._sensors[sensor.name] = sensor
 
         # # x-engine PHY counters
@@ -407,9 +442,6 @@ class FxCorrelator(Instrument):
     #             print host.host
     #             for qdr in host.qdrs:
     #                 qdr.qdr_cal(fail_hard=False, verbosity=2)
-
-    def _qdr_okay(self, sensor):
-        return True
 
     def qdr_calibrate(self):
         # cal the QDR specifically
