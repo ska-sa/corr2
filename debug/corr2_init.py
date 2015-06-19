@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 
 sys.path.insert(0, '/home/paulp/code/corr2.ska.github/src')
 
-from casperfpga import KatcpClientFpga
+from casperfpga import KatcpFpga
 from casperfpga import tengbe
 import casperfpga.misc as misc
 

@@ -2,6 +2,7 @@ __author__ = 'paulp'
 
 import argparse
 
+import corr2.utils as corr2utils
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
@@ -11,17 +12,7 @@ parser.add_argument('--config', dest='config', type=str, action='store', default
                     help='the config file to use')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
-
-if args.log_level != '':
-    import logging
-    log_level = args.log_level.strip()
-    try:
-        logging.basicConfig(level=eval('logging.%s' % log_level))
-    except AttributeError:
-        raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
     from casperfpga import katcp_fpga
@@ -42,21 +33,27 @@ THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 # read the config file
-configd = fpgautils.parse_ini_file(args.config)
+configd = corr2utils.parse_ini_file(args.config)
 filter_cfg = configd['filter']
 
 # program the filter boards
 filter_fpgas = []
-for _f in filter_cfg['hosts']:
+filter_hosts = filter_cfg['hosts'].split(',')
+for _f in filter_hosts:
     filter_fpgas.append(HOSTCLASS(_f))
 fpgautils.program_fpgas(filter_fpgas, progfile=filter_cfg['bitstream'], timeout=15)
 THREADED_FPGA_FUNC(filter_fpgas, timeout=10, target_function='get_system_information')
+
+igmp_version = '2'
+LOGGER.info('Setting FPGA hosts IGMP version to %s', igmp_version)
+THREADED_FPGA_FUNC(filter_fpgas, timeout=10, target_function=(
+    'set_igmp_version', (igmp_version, ), {}))
 
 # set up the fpga comms
 THREADED_FPGA_OP(filter_fpgas, timeout=10,
                  target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
 THREADED_FPGA_OP(filter_fpgas, timeout=10,
-                 target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+                 target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
 THREADED_FPGA_OP(filter_fpgas, timeout=10,
                  target_function=(lambda fpga_:
                                   fpga_.registers.control.write(status_clr='pulse',
@@ -67,11 +64,11 @@ THREADED_FPGA_OP(filter_fpgas, timeout=10,
 THREADED_FPGA_OP(filter_fpgas, timeout=5,
                  target_function=(lambda fpga_:
                                   fpga_.registers.gbe_iptx0.write_int(int(
-                                      tengbe.IpAddress(int(filter_cfg['pol0_destination_ip'])))),))
+                                      tengbe.IpAddress(filter_cfg['pol0_destination_ip']))),))
 THREADED_FPGA_OP(filter_fpgas, timeout=5,
                  target_function=(lambda fpga_:
                                   fpga_.registers.gbe_iptx1.write_int(int(
-                                      tengbe.IpAddress(int(filter_cfg['pol1_destination_ip'])))),))
+                                      tengbe.IpAddress(filter_cfg['pol1_destination_ip']))),))
 THREADED_FPGA_OP(filter_fpgas, timeout=5,
                  target_function=(lambda fpga_:
                                   fpga_.registers.gbe_porttx.write_int(int(
@@ -113,27 +110,35 @@ for fhost in filter_fpgas:
 
     gbe = fhost.tengbes.gbe0
     rxaddress = '239.2.0.10'
+    rxaddress = '239.2.0.64'
     LOGGER.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
     gbe.multicast_receive(rxaddress, 0)
 
     gbe = fhost.tengbes.gbe1
     rxaddress = '239.2.0.11'
+    rxaddress = '239.2.0.65'
     LOGGER.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
     gbe.multicast_receive(rxaddress, 0)
 
     gbe = fhost.tengbes.gbe2
     rxaddress = '239.2.0.12'
+    rxaddress = '239.2.0.66'
     LOGGER.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
     gbe.multicast_receive(rxaddress, 0)
 
     gbe = fhost.tengbes.gbe3
     rxaddress = '239.2.0.13'
+    rxaddress = '239.2.0.67'
     LOGGER.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
     gbe.multicast_receive(rxaddress, 0)
 
 LOGGER.info('done.')
 
+# check that the FPGA is receiving data correctly
+
 # enable output
 THREADED_FPGA_OP(filter_fpgas, timeout=10,
                  target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
 LOGGER.info('Output enabled on all boards.')
+
+# check that the FPGA is transmitting data correctly
