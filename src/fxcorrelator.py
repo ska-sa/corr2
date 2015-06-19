@@ -880,11 +880,16 @@ class FxCorrelator(Instrument):
                     print load_count
                     raise RuntimeError
         self.logger.info('\tAfter trigger: arm_count(%i) load_count(%i)' % (arm_count+1, load_count+1))
-        self.logger.info('\tAll VACCs triggered correctly. Checking for errors & accumulations...')
+        self.logger.info('\tAll VACCs triggered correctly.')
 
+        self.logger.info('\tClearing status and reseting counters.')
         THREADED_FPGA_FUNC(self.xhosts, timeout=10,
                            target_function='clear_status')
         time.sleep(self.xeng_get_acc_time()+1)
+        
+        #if accumulation_len in config is long, we get some parity errors when we read
+        # the status here, but not again :( 
+        self.logger.info('\tChecking for errors & accumulations...')
         vacc_status = THREADED_FPGA_FUNC(self.xhosts, timeout=10,
                                          target_function='vacc_get_status')
         errors_found = False
