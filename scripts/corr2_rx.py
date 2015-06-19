@@ -93,9 +93,9 @@ class CorrRx(threading.Thread):
                                 logger.info('(%s) over range => %s'%(time.ctime(), 'true' if over_range_flag == 1 else 'false'))
                                 noise_diode_flag = np.uint32((ig[name] / np.uint64(2**31))) & np.uint32(1);
                                 logger.info('(%s) noise diode => %s'%(time.ctime(), 'true' if noise_diode_flag == 1 else 'false'))
-                                
+
                                 #debug flags not exposed externally
-                                
+
                                 #digitiser flags
                                 noise_diode0_flag = np.uint32((ig[name] / np.uint64(2**1))) & np.uint32(1);
                                 logger.info('(%s) polarisation 0 noise diode => %s'%(time.ctime(), 'true' if noise_diode0_flag == 1 else 'false'))
@@ -105,7 +105,7 @@ class CorrRx(threading.Thread):
                                 logger.info('(%s) polarisation 0 adc over-range => %s'%(time.ctime(), 'true' if adc_or0_flag == 1 else 'false'))
                                 adc_or1_flag = np.uint32((ig[name] / np.uint64(2**2))) & np.uint32(1);
                                 logger.info('(%s) polarisation 1 adc over-range => %s'%(time.ctime(), 'true' if adc_or1_flag == 1 else 'false'))
-                                
+
                                 #f-engine flags
                                 f_spead_error_flag = np.uint32((ig[name] / np.uint64(2**8))) & np.uint32(1);
                                 logger.info('(%s) f-engine spead reception error => %s'%(time.ctime(), 'true' if f_spead_error_flag == 1 else 'false'))
@@ -127,7 +127,7 @@ class CorrRx(threading.Thread):
                                 logger.info('(%s) f-engine QDR SRAM 1 parity error => %s'%(time.ctime(), 'true' if f_qdr1_flag == 1 else 'false'))
                                 f_qdr0_flag = np.uint32((ig[name] / np.uint64(2**17))) & np.uint32(1);
                                 logger.info('(%s) f-engine QDR SRAM 0 parity error => %s'%(time.ctime(), 'true' if f_qdr0_flag == 1 else 'false'))
-                                
+
                                 #x-engine flags
                                 x_spead_error_flag = np.uint32((ig[name] / np.uint64(2**24))) & np.uint32(1);
                                 logger.info('(%s) x-engine spead reception error => %s'%(time.ctime(), 'true' if x_spead_error_flag == 1 else 'false'))
@@ -138,7 +138,7 @@ class CorrRx(threading.Thread):
                                 logger.info('(%s) timestamp => %s'%(time.ctime(), time.ctime(sd_timestamp)))
                             # generic output of item covnerted to string
                             else:
-                                logger.info('(%s) %s => %s'%(time.ctime(), name, str(ig[name]))) 
+                                logger.info('(%s) %s => %s'%(time.ctime(), name, str(ig[name])))
 
             if h5_file is not None:
                 for name in ig.keys():
@@ -160,7 +160,7 @@ class CorrRx(threading.Thread):
                     if name not in datasets.keys():
                         datasets[name] = ig[name]
                         datasets_index[name] = 0
-                    
+
                     # check to see if we have stored this type before
                     if name not in h5_file.keys():
                         shape = ig[name].shape if item.shape == -1 else item.shape
@@ -225,7 +225,7 @@ class CorrRx(threading.Thread):
             # /if plotbaseline is not None:
 
 #            if len(items) > 0
-                
+
 
             # should we quit?
             if self.quit_event.is_set():
@@ -267,7 +267,7 @@ if __name__ == '__main__':
                         help='Plot one or more baselines, comma-seperated list of integers.')
     parser.add_argument('--plot_channels', dest='plotchannels', action='store', default='-1,-1', type=str,
                         help='a start,end tuple, -1 means 0,n_chans respectively')
-    parser.add_argument('--item', dest='items', action='append', default=[],   
+    parser.add_argument('--item', dest='items', action='append', default=[],
                         help='spead item to output value to log as we receive it')
     parser.add_argument('--ion', dest='ion', action='store_true', default=False,
                         help='Interactive mode plotting.')
@@ -296,7 +296,7 @@ if __name__ == '__main__':
             logging.basicConfig(level=eval('logging.%s' % log_level))
         except AttributeError:
             raise RuntimeError('No such log level: %s' % log_level)
-    
+
     if args.spead_log_level != '':
         import logging
         spead_log_level = args.spead_log_level.strip()
