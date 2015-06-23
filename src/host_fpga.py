@@ -39,57 +39,36 @@ class FpgaHost(Host, KatcpFpga):
             _d2 = tx_two[_core]
             _d3 = tx_three[_core]
 
-            ################################
-	    # certain registers MUST exist #
-	    ################################
+            def _checkregs(keyname, required, equal):
+                if keyname in _d1:
+                    if not equal:
+                        if _d2[keyname]['data']['reg'] == _d1[keyname]['data']['reg']\
+                                and _d3[keyname]['data']['reg'] == _d2[keyname]['data']['reg']:
+                            LOGGER.info('%s - %s not changing' % (self.host, keyname))
+                            return False
+                    else:
+                        if _d2[keyname]['data']['reg'] != _d1[keyname]['data']['reg']\
+                                and _d3[keyname]['data']['reg'] != _d2[keyname]['data']['reg']:
+                            LOGGER.info('%s - %s changing' % (self.host, keyname))
+                            return False
+                else:
+                    if required:
+                        LOGGER.error('%s - %s does not exist' % (self.host, keyname))
+                        return False
+                    else:
+                        LOGGER.warn('%s - %s does not exist' % (self.host, keyname))
+                return True
 
-            if _d1.has_key('%s_txctr' % _core):
-                if _d2['%s_txctr' % _core]['data']['reg'] == _d1['%s_txctr' % _core]['data']['reg'] and _d3['%s_txctr' % _core]['data']['reg'] == _d2['%s_txctr' % _core]['data']['reg']:
-                    LOGGER.info('Host %s %s txctr not changing' % (self.host, _core))
-                    return False
-	    else:
-            	LOGGER.error('Host %s %s must have a txctr' % (self.host, _core))
-            	return False
+            # tx counter and error counter registers MUST exist
+            if not _checkregs('{}_txctr'.format(_core), required=True, equal=False):
+                return False
+            if not _checkregs('{}_txerrctr'.format(_core), required=True, equal=True):
+                return False
 
-            if _d1.has_key('%s_txerrctr' % _core):
-            	if _d2['%s_txerrctr' % _core]['data']['reg'] != _d1['%s_txerrctr' % _core]['data']['reg'] and _d3['%s_txerrctr' % _core]['data']['reg'] != _d2['%s_txerrctr' % _core]['data']['reg']:
-            	    LOGGER.info('Host %s %s txerrctr changing' % (self.host, _core))
-	            return False
-            else:
-            	LOGGER.error('Host %s %s must have a txerrctr' % (self.host, _core))
-            	return False
-
-            #########################################################
-	    # certain registers can not exist but absence are noted #
-	    #########################################################
-	    
-            if _d1.has_key('%s_txvldctr' % _core):
-            	if _d2['%s_txvldctr' % _core]['data']['reg'] == _d1['%s_txvldctr' % _core]['data']['reg'] and _d3['%s_txvldctr' % _core]['data']['reg'] == _d2['%s_txvldctr' % _core]['data']['reg']:
-            	    LOGGER.info('Host %s %s txvldctr not changing' % (self.host, _core))
-	            return False
-            else:
-            	LOGGER.debug('Host %s %s has no txvldctr' % (self.host, _core))
-
-            if _d1.has_key('%s_txofctr' % _core):
-            	if _d2['%s_txofctr' % _core]['data']['reg'] != _d1['%s_txofctr' % _core]['data']['reg'] and _d3['%s_txofctr' % _core]['data']['reg'] != _d2['%s_txofctr' % _core]['data']['reg']:
-            	    LOGGER.info('Host %s %s txofctr changing' % (self.host, _core))
-	            return False
-            else:
-            	LOGGER.debug('Host %s %s has no txofctr' % (self.host, _core))
-
-            if _d1.has_key('%s_txerrctr' % _core):
-            	if _d2['%s_txerrctr' % _core]['data']['reg'] != _d1['%s_txerrctr' % _core]['data']['reg'] and _d3['%s_txerrctr' % _core]['data']['reg'] != _d2['%s_txerrctr' % _core]['data']['reg']:
-            	    LOGGER.info('Host %s %s txerrctr changing' % (self.host, _core))
-	            return False
-            else:
-            	LOGGER.debug('Host %s %s has no txerrctr' % (self.host, _core))
-
-            if _d1.has_key('%s_txfullctr' % _core):
-            	if _d2['%s_txfullctr' % _core]['data']['reg'] != _d1['%s_txfullctr' % _core]['data']['reg'] and _d3['%s_txfullctr' % _core]['data']['reg'] != _d2['%s_txfullctr' % _core]['data']['reg']:
-            	    LOGGER.info('Host %s %s txfullctr changing' % (self.host, _core))
-	            return False
-            else:
-            	LOGGER.debug('Host %s %s has no txfullctr' % (self.host, _core))
+            # certain registers can not exist but absence are noted
+            _checkregs('{}_txvldctr'.format(_core), required=False, equal=False)
+            _checkregs('{}_txofctr'.format(_core), required=False, equal=True)
+            _checkregs('{}_txfullctr'.format(_core), required=False, equal=True)
 
 #            if ((_d2['%s_txctr' % _core]['data']['reg'] - _d1['%s_txctr' % _core]['data']['reg'] <= 0) or
 #                    (_d2['%s_txvldctr' % _core]['data']['reg'] - _d1['%s_txvldctr' % _core]['data']['reg'] <= 0)):
@@ -106,16 +85,19 @@ class FpgaHost(Host, KatcpFpga):
         :param max_waittime: the maximum time to wait for raw 10gbe data
         :return:
         """
-        if not self.check_rx_reorder():
-            LOGGER.error('FPGA host {0} reorder RX check failed - probing why...'.format(self.host))
-            if not self.check_rx_spead():
-                LOGGER.error('\tSPEAD RX check also failed.')
-                if not self.check_rx_raw(max_waittime):
-                    LOGGER.error('\tRaw RX also failed.')
-                else:
-                    LOGGER.error('\tRaw RX passed - problem is likely in the SPEAD stage.')
+        start_time = time.time()
+        if not self.check_rx_spead():
+            LOGGER.error('\tSPEAD RX check failed.')
+            _waittime = max_waittime - (time.time() - start_time)
+            if not self.check_rx_raw(max_waittime=_waittime):
+                LOGGER.error('\tRaw RX also failed.')
             else:
-                LOGGER.error('\tSPEAD RX passed - problem is likely in the reorder stage.')
+                LOGGER.error('\tRaw RX passed - problem is likely in the SPEAD stage.')
+            return False
+        else:
+            LOGGER.info('\tSPEAD RX passed - checking reorder stage.')
+        if not self.check_rx_reorder():
+            LOGGER.error('FPGA host {0} reorder RX check failed.'.format(self.host))
             return False
         LOGGER.info('FPGA host %s check_rx() - TRUE.' % self.host)
         return True
@@ -135,17 +117,14 @@ class FpgaHost(Host, KatcpFpga):
         start_time = time.time()
         rx_okay = False
         while time.time() < start_time + max_waittime:
-            time.sleep(1)
+            time.sleep(0.5)
             rxregs_new = get_gbe_data()
             still_the_same = False
             for core in rxregs.keys():
                 rxctr_old = rxregs[core]['%s_rxctr' % core]['data']['reg']
                 rxctr_new = rxregs_new[core]['%s_rxctr' % core]['data']['reg']
-                #rxbad_old = rxregs[core]['%s_rxbadctr' % core]['data']['reg']
-                #rxbad_new = rxregs_new[core]['%s_rxbadctr' % core]['data']['reg']
                 rxerr_old = rxregs[core]['%s_rxerrctr' % core]['data']['reg']
                 rxerr_new = rxregs_new[core]['%s_rxerrctr' % core]['data']['reg']
-                #if (rxctr_old == rxctr_new) or (rxbad_old != rxbad_new) or (rxerr_old != rxerr_new):
                 if (rxctr_old == rxctr_new) or (rxerr_old != rxerr_new):
                     still_the_same = True
                     continue
