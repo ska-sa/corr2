@@ -86,7 +86,7 @@ class FpgaHost(Host, KatcpFpga):
         :return:
         """
         start_time = time.time()
-        if not self.check_rx_spead():
+        if not self.check_rx_spead(max_waittime=max_waittime):
             LOGGER.error('\tSPEAD RX check failed.')
             _waittime = max_waittime - (time.time() - start_time)
             if not self.check_rx_raw(max_waittime=_waittime):
@@ -102,7 +102,7 @@ class FpgaHost(Host, KatcpFpga):
         LOGGER.info('FPGA host %s check_rx() - TRUE.' % self.host)
         return True
 
-    def check_rx_raw(self, max_waittime=30):
+    def check_rx_raw(self, max_waittime=5):
         """
         Is this host receiving 10gbe data correctly?
         :param max_waittime: maximum time to try for data
@@ -115,53 +115,48 @@ class FpgaHost(Host, KatcpFpga):
             return returndata
         rxregs = get_gbe_data()
         start_time = time.time()
-        rx_okay = False
-        while time.time() < start_time + max_waittime:
-            time.sleep(0.5)
-            rxregs_new = get_gbe_data()
-            still_the_same = False
-            for core in rxregs.keys():
-                rxctr_old = rxregs[core]['%s_rxctr' % core]['data']['reg']
-                rxctr_new = rxregs_new[core]['%s_rxctr' % core]['data']['reg']
-                rxerr_old = rxregs[core]['%s_rxerrctr' % core]['data']['reg']
-                rxerr_new = rxregs_new[core]['%s_rxerrctr' % core]['data']['reg']
-                if (rxctr_old == rxctr_new) or (rxerr_old != rxerr_new):
-                    still_the_same = True
-                    continue
-            if still_the_same:
-                continue
-            else:
-                rx_okay = True
-                break
-            rxregs = rxregs_new
-        if not rx_okay:
-            LOGGER.error('Host %s RX data error after %d seconds.' % (self.host, max_waittime))
+        still_the_same = self.tengbes.names()[:]
+        while (time.time() < start_time + max_waittime) and (len(still_the_same)>0):
+            time.sleep(0.1)
+            core = still_the_same[0]
+            rxregs_new = self.tengbes[core].read_counters()
+            rxctr_old = rxregs[core]['%s_rxctr' % core]['data']['reg']
+            rxerr_old = rxregs[core]['%s_rxerrctr' % core]['data']['reg']
+            rxctr_new = rxregs_new['%s_rxctr' % core]['data']['reg']
+            rxerr_new = rxregs_new['%s_rxerrctr' % core]['data']['reg']
+            if (rxctr_old != rxctr_new) and (rxerr_old == rxerr_new):
+                still_the_same.remove(core)
+        if len(still_the_same)>0:
+            LOGGER.error('Host %s is not receiving 10GbE data on interfaces %s,'\
+                ' or is receiving bad data, over a %d second period.'\
+                % (self.host, still_the_same,max_waittime))
             return False
         else:
-            LOGGER.info('Host %s is receiving 10gbe data' % self.host)
+            LOGGER.info('Host %s is receiving data on all GbE interfaces.'\
+                 % self.host)
             return True
 
-    def check_rx_spead(self):
+    def check_rx_spead(self, max_waittime=5):
         """
         Check that this host is receiving SPEAD data.
         :return:
         """
-        _sleeptime = 1
-        _ctrs0 = self.read_spead_counters()
-        time.sleep(_sleeptime)
-        _ctrs1 = self.read_spead_counters()
-        for core_ctr in range(0, len(_ctrs0)):
-            # ctrs must have changed
-            if _ctrs1[core_ctr][0] == _ctrs0[core_ctr][0]:
-                LOGGER.error('Host %s core %i is not receiving SPEAD data, bailing' %
-                             (self.host, core_ctr))
-                return False
-            # but the errors must not
-            if _ctrs1[core_ctr][1] != _ctrs0[core_ctr][1]:
-                LOGGER.error('Host %s core %i has a changing SPEAD error counter: '
-                             'initially %i errors and %is later had %i SPEAD errors, bailing.' %
-                             (self.host, core_ctr, _ctrs0[core_ctr][1],
-                              _sleeptime, _ctrs1[core_ctr][1]))
-                return False
-        LOGGER.info('Host %s is receiving SPEAD data' % self.host)
-        return True
+        start_time = time.time()
+        ctrs0 = self.read_spead_counters()
+        still_the_same = [True for gbe in ctrs0]
+        while (time.time() < start_time + max_waittime) and \
+                (still_the_same.count(True)>0):
+            time.sleep(0.1)
+            core = still_the_same.index(True)
+            ctrs1 = self.read_spead_counters()
+            if (ctrs1[core][0] != ctrs0[core][0]) and \
+                    (ctrs1[core][1] == ctrs0[core][1]):
+                still_the_same[core]=False 
+        if still_the_same.count(True)>0:
+            LOGGER.error('Host %s is not receiving good SPEAD data over a %i'\
+                ' second period. Errors on interfaces: %s.' %(self.host,\
+                    max_waittime,still_the_same))
+            return False
+        else:
+            LOGGER.info('Host %s is receiving good SPEAD data.' % self.host)
+            return True
