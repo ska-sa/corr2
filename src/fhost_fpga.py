@@ -71,23 +71,20 @@ class FpgaFHost(FpgaHost):
             data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
             data['timerror'] = reorder_ctrs['timestep_error']
             data['discard'] = reorder_ctrs['discard']
-	    for gbe in [0, 1, 2, 3]:
-	        data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]             
-	    status = self.registers.status.read()['data']
-	    pfb_ctrs = self.registers.pfb_ctrs.read()['data']
-	    for pol in [0, 1]:
-	        data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]             
-	        data['pfb_of%i' % pol] = pfb_ctrs['pfb_of%i_cnt' % pol]
+            for gbe in range(0, 4):
+                data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]
+            for pol in range(0, 2):
+                data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]
             return data
         _sleeptime = 1
         rxregs = get_gbe_data()
         time.sleep(_sleeptime)
         rxregs_new = get_gbe_data()
-        for gbe in [0, 1, 2, 3]:
+        for gbe in range(0, 4):
             if rxregs_new['pktof_ctr%i' % gbe] != rxregs['pktof_ctr%i' % gbe]:
                 raise RuntimeError('F host %s packet overflow on interface gbe%i. %i -> %i' % (
                     self.host, gbe, rxregs_new['pktof_ctr%i' % gbe], rxregs['pktof_ctr%i' % gbe]))
-        for pol in [0, 1]:
+        for pol in range(0, 2):
             if rxregs_new['recverr_ctr%i' % pol] != rxregs['recverr_ctr%i' % pol]:
                 raise RuntimeError('F host %s pol %i reorder count error. %i -> %i' % (
                     self.host, pol, rxregs_new['recverr_ctr%i' % pol], rxregs['recverr_ctr%i' % pol]))
@@ -109,11 +106,11 @@ class FpgaFHost(FpgaHost):
         :return:
         """
         rv = []
-	spead_ctrs = self.registers.spead_ctrs.read()['data']
+        spead_ctrs = self.registers.spead_ctrs.read()['data']
         for core_ctr in range(0, 4):
             counter = spead_ctrs['rx_cnt%i' % core_ctr]
             error = spead_ctrs['err_cnt%i' % core_ctr]
-	    rv.append((counter, error))
+            rv.append((counter, error))
         return rv
 
     def get_local_time(self):
@@ -180,6 +177,10 @@ class FpgaFHost(FpgaHost):
     def write_eq(self, eq_tuple=None, eq_name=None):
         """
         Write a given complex eq to the given SBRAM.
+
+        Specify either eq_tuple, a combination of sbram_name and value(s), OR eq_name, but not both. If eq_name
+                is specified, the sbram_name and eq value(s) are read from the self.eqs dictionary.
+
         :param eq_tuple: a tuple of an integer, complex number or list or integers or complex numbers and a sbram name
         :param eq_name: the name of an eq to use, found in the self.eqs dictionary
         :return:
