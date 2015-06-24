@@ -180,28 +180,25 @@ class FxCorrelator(Instrument):
             self.logger.info('\tDone. That took %d seconds.' % (end_time - starttime))
             # sys.stdout.flush()
 
-            # subscribe the f-engines to the multicast groups
+            # subscribe all the engines to the multicast groups
             self._fengine_subscribe_to_multicast()
-            post_mess_delay = 10
+            self._xengine_subscribe_to_multicast()
+            post_mess_delay = 5
             self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
             time.sleep(post_mess_delay)
             
             self.logger.info('Forcing an f-engine resync')
             for f in self.fhosts:
                 f.registers.control.write(sys_rst='pulse')
+            time.sleep(1)
 
-        if program and True:
             # reset all counters on fhosts and xhosts
             self.feng_clear_status_all()
             self.xeng_clear_status_all()
 	    
-	    self.logger.info('Forcing an f-engine resync')
-            for f in self.fhosts:
-                f.registers.control.write(sys_rst='pulse')
-
             # check to see if the f engines are receiving all their data
             if not self._feng_check_rx():
-                raise RuntimeError('The f-engines have a problem.')
+                raise RuntimeError('The f-engines RX have a problem.')
 
             # start f-engine TX
             self.logger.info('Starting f-engine datastream')
@@ -210,17 +207,11 @@ class FxCorrelator(Instrument):
 
             # check that the F-engines are transmitting data correctly
             if not self._feng_check_tx():
-                raise RuntimeError('The f-engines have a problem.')
+                raise RuntimeError('The f-engines TX have a problem.')
 
-            # subscribe the x-engines to this data also
-            self._xengine_subscribe_to_multicast()
-            post_mess_delay = 10
-            self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
-            time.sleep(post_mess_delay)
-
-            # check that they are receiving data
+            # check that the X-engines are receiving data
             if not self._xeng_check_rx():
-                raise RuntimeError('The x-engines have a problem.')
+                raise RuntimeError('The x-engines RX have a problem.')
 
             # arm the vaccs on the x-engines
             self.xeng_vacc_sync()
