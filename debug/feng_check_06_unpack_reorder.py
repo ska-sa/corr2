@@ -114,12 +114,12 @@ if len(registers_missing) > 0:
 if args.rstcnt:
     if 'unpack_cnt_rst' in fpgas[0].registers.control.field_names():
         fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
-                                                                                  unpack_cnt_rst='pulse'))
+                                          lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
+                                                                                      unpack_cnt_rst='pulse'))
     else:
         fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
-                                                                                  up_cnt_rst='pulse'))
+                                          lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
+                                                                                      up_cnt_rst='pulse'))
 
 fpga_data = get_fpga_data(fpgas[0])
 reg_names = fpga_data.keys()
@@ -138,9 +138,6 @@ try:
         if keypress == -1:
             break
         elif keypress > 0:
-#            if character == 'c':
-#                for f in ffpgas:
-#                    f.reset_counters()
             scroller.draw_screen()
         if time.time() > last_refresh + args.polltime:
             scroller.clear_buffer()
