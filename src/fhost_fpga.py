@@ -311,6 +311,21 @@ class FpgaFHost(FpgaHost):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
+    def qdr_okay(self):
+        """
+        Checks if parity bits on f-eng are zero
+        :return: True/False
+        """
+        for cnt in range(0, 1):
+            err = self.registers.ct_ctrs.read()['data']['ct_parerr_cnt%d' % cnt]
+            if err == 0:
+                LOGGER.info('Reg ct_parerr_cnt%d on F host %s okay.' % (cnt, self.host))
+            else:
+                LOGGER.error('Reg ct_parerr_cnt%d on F host %s not zero.' % (cnt, self.host))
+                return False
+        LOGGER.info('F host QDR %s okay.' % self.host)
+        return True
+
 '''
     def _get_fengine_fpga_config(self):
 

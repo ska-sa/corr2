@@ -317,15 +317,6 @@ class FxCorrelator(Instrument):
         Timer(10, self._feng_qdr_okay, sensor).start()
         return
 
-    # need to decide where this one goes
-    def qdr_okay(self):
-        regs = self.registers.ct_ctrs.read()['data'].values()
-        if all(reg == 0 for reg in regs):
-            return True
-        else:
-            LOGGER.info('QDR on host %s - FALSE.' % (self.host))
-            return False
-
     def setup_sensors(self, katcp_server):
         """
         Set up compound sensors to be reported to CAM
