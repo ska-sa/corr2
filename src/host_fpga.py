@@ -30,9 +30,9 @@ class FpgaHost(Host, KatcpFpga):
                 _returndata[gbecore.name] = gbecore.read_tx_counters()
             return _returndata
         tx_one = _get_gbe_data()
-        time.sleep(0.25)
+        time.sleep(0.5)
         tx_two = _get_gbe_data()
-        time.sleep(0.75)
+        time.sleep(0.5)
         tx_three = _get_gbe_data()
         for _core in tx_one:
             _d1 = tx_one[_core]
@@ -89,6 +89,8 @@ class FpgaHost(Host, KatcpFpga):
         if not self.check_rx_spead(max_waittime=max_waittime):
             LOGGER.error('\tSPEAD RX check failed.')
             _waittime = max_waittime - (time.time() - start_time)
+            if _waittime < 0:
+                return False
             if not self.check_rx_raw(max_waittime=_waittime):
                 LOGGER.error('\tRaw RX also failed.')
             else:
@@ -116,7 +118,8 @@ class FpgaHost(Host, KatcpFpga):
         rxregs = get_gbe_data()
         start_time = time.time()
         still_the_same = self.tengbes.names()[:]
-        while (time.time() < start_time + max_waittime) and (len(still_the_same)>0):
+        while (time.time() < start_time + max_waittime) and \
+                (len(still_the_same) > 0):
             time.sleep(0.1)
             core = still_the_same[0]
             rxregs_new = self.tengbes[core].read_counters()
@@ -126,14 +129,14 @@ class FpgaHost(Host, KatcpFpga):
             rxerr_new = rxregs_new['%s_rxerrctr' % core]['data']['reg']
             if (rxctr_old != rxctr_new) and (rxerr_old == rxerr_new):
                 still_the_same.remove(core)
-        if len(still_the_same)>0:
-            LOGGER.error('Host %s is not receiving 10GbE data on interfaces %s,'\
-                ' or is receiving bad data, over a %d second period.'\
-                % (self.host, still_the_same,max_waittime))
+        if len(still_the_same) > 0:
+            LOGGER.error('Host %s is not receiving 10GbE data on interfaces %s, '
+                         'or is receiving bad data, over a %.3f second '
+                         'period.' % (self.host, still_the_same, max_waittime))
             return False
         else:
-            LOGGER.info('Host %s is receiving data on all GbE interfaces.'\
-                 % self.host)
+            LOGGER.info('Host %s is receiving data on all '
+                        'GbE interfaces.' % self.host)
             return True
 
     def check_rx_spead(self, max_waittime=5):
@@ -145,17 +148,20 @@ class FpgaHost(Host, KatcpFpga):
         ctrs0 = self.read_spead_counters()
         still_the_same = [True for gbe in ctrs0]
         while (time.time() < start_time + max_waittime) and \
-                (still_the_same.count(True)>0):
+                (still_the_same.count(True) > 0):
             time.sleep(0.1)
-            core = still_the_same.index(True)
             ctrs1 = self.read_spead_counters()
-            if (ctrs1[core][0] != ctrs0[core][0]) and \
-                    (ctrs1[core][1] == ctrs0[core][1]):
-                still_the_same[core]=False 
-        if still_the_same.count(True)>0:
-            LOGGER.error('Host %s is not receiving good SPEAD data over a %i'\
-                ' second period. Errors on interfaces: %s.' %(self.host,\
-                    max_waittime,still_the_same))
+            for _core_ctr in range(0, len(still_the_same)):
+                if (ctrs1[_core_ctr][0] != ctrs0[_core_ctr][0]) and \
+                        (ctrs1[_core_ctr][1] == ctrs0[_core_ctr][1]):
+                    still_the_same[_core_ctr] = False
+        if still_the_same.count(True) > 0:
+            LOGGER.error('Host %s is not receiving good SPEAD data '
+                         'over a %i second period. Errors on '
+                         'interfaces: %s.\n\t%s -> %s' % (self.host,
+                                                    max_waittime,
+                                                    still_the_same,
+                                                    ctrs0, ctrs1, ))
             return False
         else:
             LOGGER.info('Host %s is receiving good SPEAD data.' % self.host)

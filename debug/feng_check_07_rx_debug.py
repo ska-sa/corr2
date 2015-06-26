@@ -64,14 +64,12 @@ if len(hosts) == 0:
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 
-regs = ['mcnt_relock', 'tmiss_p0', 'tmiss_p1', 'tmiss_ctr', 'recverr_ctr', 'timestep_ages',
-        'sync_timestamp_msw', 'sync_timestamp_lsw']
+regs = ['spead_ctrs', 'reorder_ctrs']
 
 if args.rstcnt:
-    fpgautils.threaded_fpga_operation(
-        fpgas, 10, target_function=(
-            lambda fpga_: fpga_.registers.control.write(
-                cnt_rst='pulse', unpack_cnt_rst='pulse'),))
+    fpgautils.threaded_fpga_operation(fpgas, 10,
+                                      target_function=(lambda fpga_:
+                                                       fpga_.registers.control.write(cnt_rst='pulse',)))
 
 if args.sysrst:
     fpgautils.threaded_fpga_operation(
@@ -96,28 +94,26 @@ if len(registers_missing) > 0:
     fpgautils.threaded_fpga_function(fpgas, 10, target_function=('disconnect',))
     sys.exit()
 
-
 def get_fpga_data(fpga):
-    data = {}
-    data['mcnt_rlck'] = fpga.registers.mcnt_relock.read()['data']['reg']
-    data['tmis_p0'] = fpga.registers.tmiss_p0.read()['data']['reg']
-    data['tmis_p1'] = fpga.registers.tmiss_p1.read()['data']['reg']
-    temp = fpga.registers.tmiss_ctr.read()['data']
-    data['tmis_ctr0'] = temp['p0']
-    data['tmis_ctr1'] = temp['p1']
-    temp = fpga.registers.recverr_ctr.read()['data']
-    data['rerr_ctr0'] = temp['p0']
-    data['rerr_ctr1'] = temp['p1']
-    temp = fpga.registers.timestep_ages.read()['data']
-    data['futuerr'] = temp['future']
-    data['pasterr'] = temp['past']
-    data['sy_tstmp'] = fpga.registers.sync_timestamp_msw.read()['data']['reg'] << 4
-    temp = fpga.registers.sync_timestamp_lsw.read()['data']
-    data['sy_tstmp'] = data['sy_tstmp'] | temp['time_lsw']
-    data['tstep_err'] = temp['tstep_err_ctr']
-    data['cnt_sync'] = temp['sync80_ctr']
-    data['cnt_val'] = temp['valid80_ctr']
-    data['pkt_sz'] = temp['pkt_size']
+    temp = fpga.registers.spead_ctrs.read()['data']
+    data = {'sprx0': temp['rx_cnt0'],
+            'sprx1': temp['rx_cnt1'],
+            'sprx2': temp['rx_cnt2'],
+            'sprx3': temp['rx_cnt3'],
+            'sperr0': temp['err_cnt0'],
+            'sperr1': temp['err_cnt1'],
+            'sperr2': temp['err_cnt2'],
+            'sperr3': temp['err_cnt3']}
+    temp = fpga.registers.reorder_ctrs.read()['data']
+    data['pktof0'] = temp['pktof0']
+    data['pktof1'] = temp['pktof1']
+    data['pktof2'] = temp['pktof2']
+    data['pktof3'] = temp['pktof3']
+    data['disc'] = temp['discard']
+    data['tstep_err'] = temp['timestep_error']
+    data['mcnt_rlck'] = temp['mcnt_relock']
+    data['rcverr0'] = temp['recverr0']
+    data['rcverr1'] = temp['recverr1']
     return data
 
 data = get_fpga_data(fpgas[0])
