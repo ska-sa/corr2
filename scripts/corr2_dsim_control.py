@@ -50,7 +50,13 @@ parser.add_argument('--output-type', action='append', default=[], nargs=2, help=
 parser.add_argument('--output-scale', action='append', default=[], nargs=2, help=
                     'Choose which Output to source from, Output 0 or Output 1.\
                      Output Scale, choose between 0 - 1.')
+parser.add_argument('--zeros-sine', action='store_true', default=False, help=
+                    'Sets all sine sources to 0 scale and 0 Frequency.')
+parser.add_argument('--zeros-noise', action='store_true', default=False, help=
+                    'Sets all  noise sources to 0 scale.')
+
 args = parser.parse_args()
+
 
 if args.log_level != '':
     import logging
@@ -145,6 +151,17 @@ if args.sine_source:
         print "frequency:", sine_sources.frequency
     something_happened = True
 
+if args.zeros_sine:
+    """Set all sine sources to zeros"""
+    try:
+        dhost.sine_sources.sin_0.set(0, 0)
+        dhost.sine_sources.sin_1.set(0, 0)
+        dhost.sine_sources.sin_corr.set(0, 0)
+        print "All sine sources set to Scale:0, Freq:0"
+    except:
+        print "An error occured."
+    something_happened = True
+
 if args.noise_source:
     for noise_sources, noise_scale_s in args.noise_source:
         noise_scale = float(noise_scale_s)
@@ -162,6 +179,17 @@ if args.noise_source:
         print ""
         print "noise source:", source_from.name
         print "noise scale:", source_from.scale
+    something_happened = True
+
+if args.zeros_noise:
+    """Set all sine sources to zeros"""
+    try:
+        dhost.noise_sources.noise_0.set(0)
+        dhost.noise_sources.noise_1.set(0)
+        dhost.noise_sources.noise_corr.set(0)
+        print "All noise sources set to Scale:0"
+    except:
+        print "An error occured."
     something_happened = True
 
 if args.output_type:
