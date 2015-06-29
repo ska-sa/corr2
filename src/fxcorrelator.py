@@ -31,12 +31,12 @@ from instrument import Instrument
 from data_source import DataSource
 from casperfpga import tengbe
 from casperfpga import utils as fpgautils
+from tornado.ioloop import IOLoop
 
 use_xeng_sim = False
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
-
 
 class FxCorrelator(Instrument):
     """
@@ -314,7 +314,7 @@ class FxCorrelator(Instrument):
         result = self.fhosts[host_name].qdr_okay()
         sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
         self.logger.info('_feng_qdr_okay ran on %s' % host_name)
-        Timer(10, self._feng_qdr_okay, sensor).start()
+        IOLoop.instance().call_later(self._feng_qdr_okay, 10)
         return
 
     def setup_sensors(self, katcp_server):
@@ -325,6 +325,15 @@ class FxCorrelator(Instrument):
         """
         if not self._initialised:
             raise RuntimeError('Cannot set up sensors until instrument is initialised.')
+        ioloop = getattr(self, 'ioloop', None)
+        if not ioloop:
+            ioloop = getattr(katcp_server, 'ioloop', None)
+        if not ioloop:
+            # make my own ioloop
+            ioloop = IOLoop.instance()
+            ioloop.start()
+            ioloop.stop()  # move it to the end?
+
         self._sensors = {}
 
         # f-engine lru
@@ -332,14 +341,16 @@ class FxCorrelator(Instrument):
             sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_lru_%s' % _f.host,
                             description='F-engine %s LRU okay' % _f.host,
                             default=True)
-            self._sensor_cb_flru(sensor) # call back function
+            # self._sensor_cb_flru(sensor)
+            ioloop.add_callback(self._sensor_cb_flru, sensor)
             self._sensors[sensor.name] = sensor
+
         # x-engine lru
         for _x in self.xhosts:
             sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_lru_%s' % _x.host,
                             description='X-engine %s LRU okay' % _x.host,
                             default=True)
-            self._sensor_cb_xlru(sensor) # call back function
+            ioloop.add_callback(self._sensor_cb_xlru, sensor)  # call back function
             self._sensors[sensor.name] = sensor
 
         # self._sensors = {'time': Sensor(sensor_type=Sensor.FLOAT, name='time_sensor', description='The time.',
