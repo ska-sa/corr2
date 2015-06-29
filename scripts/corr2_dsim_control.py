@@ -182,7 +182,7 @@ if args.noise_source:
     something_happened = True
 
 if args.zeros_noise:
-    """Set all sine sources to zeros"""
+    """Set all noise sources to zeros"""
     try:
         dhost.noise_sources.noise_0.set(0)
         dhost.noise_sources.noise_1.set(0)
