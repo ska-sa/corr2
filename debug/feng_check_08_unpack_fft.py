@@ -14,7 +14,7 @@ from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Perform an FFT on the post-coarse delay data.',
+parser = argparse.ArgumentParser(description='Perform an FFT on the ADC snapshot data.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
                     help='comma-delimited list of hosts, if you do not want all the fengine hosts in the config file')
