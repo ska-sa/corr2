@@ -9,7 +9,10 @@ def _sensor_cb_flru(instr, sensor):
     :return:
     """
     host_name = sensor.name.split('_')[2]
-    result = instr.fhosts[host_name].host_okay()
+    result = False
+    for _fhost in instr.fhosts:
+        if _fhost.host == host_name:
+            result = _fhost.host_okay()
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.info('_sensor_cb_flru ran on {}'.format(host_name))
     IOLoop.current().call_later(10, _sensor_cb_flru, instr, sensor)
@@ -149,8 +152,9 @@ def setup_sensors(instrument, katcp_server):
         sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_lru_%s' % _f.host,
                         description='F-engine %s LRU okay' % _f.host,
                         default=True)
-        ioloop.add_callback(_sensor_cb_flru, instrument, sensor)
+        katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
+        ioloop.add_callback(_sensor_cb_flru, instrument, sensor)
 
 #     # x-engine lru
 # =======
@@ -250,25 +254,3 @@ def setup_sensors(instrument, katcp_server):
 #         katcp_server.add_sensor(val)
 #     Timer(self.sensor_poll_time, self._update_sensors).start()
 #
-# def _update_sensors(self):
-#     """
-#     Update our compound sensors.
-#     :return:
-#     """
-#     self._sensors['time'].set(time.time(), Sensor.NOMINAL, time.time())
-#
-#     # update the LRU sensors
-#     okay_res = THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='host_okay')
-#     for _f in self.fhosts:
-#         _name = 'feng_lru_%s' % _f.host
-#         self._sensors[_name].set(time.time(),
-#                                  Sensor.NOMINAL if okay_res[_f.host] else Sensor.ERROR,
-#                                  okay_res[_f.host])
-#     okay_res = THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='host_okay')
-#     for _x in self.xhosts:
-#         _name = 'xeng_lru_%s' % _x.host
-#         self._sensors[_name].set(time.time(),
-#                                  Sensor.NOMINAL if okay_res[_x.host] else Sensor.ERROR,
-#                                  okay_res[_x.host])
-#
-#     Timer(self.sensor_poll_time, self._update_sensors).start()
