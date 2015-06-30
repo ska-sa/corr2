@@ -159,11 +159,7 @@ if args.zeros_sine:
         dhost.sine_sources.sin_corr.set(0, 0)
         print "All sine sources set to Scale:0, Freq:0"
     except:
-<<<<<<< HEAD
         print "An error occured."
-=======
-        print "An error occured"
->>>>>>> devel
     something_happened = True
 
 if args.noise_source:
@@ -186,22 +182,14 @@ if args.noise_source:
     something_happened = True
 
 if args.zeros_noise:
-<<<<<<< HEAD
-    """Set all noise sources to zeros"""
-=======
     """Set all sine sources to zeros"""
->>>>>>> devel
     try:
         dhost.noise_sources.noise_0.set(0)
         dhost.noise_sources.noise_1.set(0)
         dhost.noise_sources.noise_corr.set(0)
         print "All noise sources set to Scale:0"
     except:
-<<<<<<< HEAD
         print "An error occured."
-=======
-        print "An error occured"
->>>>>>> devel
     something_happened = True
 
 if args.output_type:
