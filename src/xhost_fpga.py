@@ -53,7 +53,6 @@ class FpgaXHost(FpgaHost):
         def get_gbe_data():
             data = {}
             for ctr in range(0, self.x_per_fpga):
-                #data['reocnt%i' % ctr] = self.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
                 data['miss%i' % ctr] = self.registers['reord_missant%i' % ctr].read()['data']['reg']
                 data['rcvcnt%i' % ctr] = self.registers['reordcnt_recv%i' % ctr].read()['data']['reg']
                 data['ercv%i' % ctr] = self.registers['reorderr_recv%i' % ctr].read()['data']['reg']
@@ -72,7 +71,7 @@ class FpgaXHost(FpgaHost):
                     (rxregs_new['etim%i' % ctr] > rxregs['etim%i' % ctr]) or
                     (rxregs_new['edisc%i' % ctr] > rxregs['edisc%i' % ctr])):
                 LOGGER.error('X host %s reports reorder errors: '
-                             'rcv(%i) time(%i) disc(%i)' %
+                             'ercv(%i) etime(%i) edisc(%i)' %
                              (self.host,
                               rxregs_new['ercv%i' % ctr] - rxregs['ercv%i' % ctr],
                               rxregs_new['etim%i' % ctr] - rxregs['etim%i' % ctr],
