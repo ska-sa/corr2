@@ -5,6 +5,40 @@ Created on Mon Mar 31 13:10:05 2014
 @author: paulp
 """
 
+from tornado.ioloop import IOLoop
+import time
+import sys
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
+def loopcb(thetime):
+    print thetime
+
+ioloop = IOLoop.instance()
+print 'ioloop inited:', IOLoop.initialized()
+
+ioloop.add_callback(loopcb, time.time())
+
+ioloop.start()
+# ioloop.stop()
+
+while True:
+    time.sleep(0.2)
+    print 'while loop'
+    sys.stdout.flush()
+
+sys.exit(0)
+
+
+
+
+
+
+
+
+
+
 import logging, sys
 
 LOGGER = logging.getLogger(__name__)
