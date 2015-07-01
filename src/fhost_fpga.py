@@ -24,6 +24,7 @@ class FpgaFHost(FpgaHost):
             self.fft_shift = int(config['fft_shift'])
             self.n_chans = int(config['n_chans'])
         else:
+            raise RuntimeError('At the moment I want this to be populated.')
             self.num_fengines = None
             self.ports_per_fengine = None
             self.fft_shift = None
