@@ -1153,10 +1153,13 @@ class FxCorrelator(Instrument):
         # make a new SPEAD transmitter
         del self.spead_tx, self.spead_meta_ig
         self.spead_tx = spead.Transmitter(spead.TransportUDPtx(*self.meta_destination))
-        # update the multicast socket option
-        mcast_interface = self.configd['xengine']['multicast_interface_address']
-        self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_IF,
-                                            socket.inet_aton(mcast_interface))
+        # update the multicast socket option to use a TTL of 2, 
+        # in order to traverse the L3 network on site.
+        ttl_bin = struct.pack('@i', 2)
+        self.spead_tx.t._udp_out.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl_bin)
+        #mcast_interface = self.configd['xengine']['multicast_interface_address']
+        #self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_IF,
+        #                                    socket.inet_aton(mcast_interface))
         # self.spead_tx.t._udp_out.setsockopt(socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
         #                                     socket.inet_aton(txip_str) + socket.inet_aton(mcast_interface))
         # make the item group we're going to use
