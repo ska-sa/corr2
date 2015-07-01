@@ -207,6 +207,22 @@ class FpgaXHost(FpgaHost):
         self.registers.vacc_time_lsw.write(lsw=ldtime_lsw)
         self.registers.vacc_time_msw.write(msw=ldtime_msw)
 
+    def qdr_okay(self):
+        """
+        Checks if parity bits on x-eng are zero
+        :param wait_time:
+        :return: True/False
+        """
+        for xeng in range(0, self.x_per_fpga):
+            err = self.registers['vacc_errors%d' % xeng].read()['data']['parity']
+            if err == 0:
+                LOGGER.info('X-eng %d on X host %s okay.' % (xeng, self.host))
+            else:
+                LOGGER.error('X-eng %d on X host %s has parity errors.' % (xeng, self.host))
+                return False
+        LOGGER.info('X host QDR %s okay.' % self.host)
+        return True
+
     # def set_accumulation_length(self, accumulation_length, issue_meta=True):
     #     """ Set the accumulation time for the vector accumulator
     #     @param accumulation_length: the accumulation time in spectra.

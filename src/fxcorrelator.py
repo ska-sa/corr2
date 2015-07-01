@@ -20,8 +20,6 @@ import sys
 import numpy
 import struct
 import spead64_48 as spead
-from threading import Timer
-from katcp import Sensor
 
 import log
 import utils
@@ -36,7 +34,6 @@ use_xeng_sim = False
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
-
 
 class FxCorrelator(Instrument):
     """
@@ -195,7 +192,7 @@ class FxCorrelator(Instrument):
             # reset all counters on fhosts and xhosts
             self.feng_clear_status_all()
             self.xeng_clear_status_all()
-	    
+
             # check to see if the f engines are receiving all their data
             if not self._feng_check_rx():
                 raise RuntimeError('The f-engines RX have a problem.')
@@ -222,100 +219,6 @@ class FxCorrelator(Instrument):
 
         # set an initialised flag
         self._initialised = True
-
-    def setup_sensors(self, katcp_server):
-        """
-        Set up compound sensors to be reported to CAM
-        :param katcp_server: the katcp server with which to register the sensors
-        :return:
-        """
-        if not self._initialised:
-            raise RuntimeError('Cannot set up sensors until instrument is initialised.')
-
-        self._sensors = {}
-
-        okay_res = THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='host_okay')
-        for _f in self.fhosts:
-            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_lru_%s' % _f.host,
-                            description='F-engine %s LRU okay' % _f.host,
-                            default=True)
-            sensor.set(time.time(),
-                       Sensor.NOMINAL if okay_res[_f.host] else Sensor.ERROR,
-                       okay_res[_f.host])
-            self._sensors[sensor.name] = sensor
-        okay_res = THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='host_okay')
-        for _x in self.xhosts:
-            sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_lru_%s' % _x.host,
-                            description='X-engine %s LRU okay' % _x.host,
-                            default=True)
-            sensor.set(time.time(),
-                       Sensor.NOMINAL if okay_res[_x.host] else Sensor.ERROR,
-                       okay_res[_x.host])
-            self._sensors[sensor.name] = sensor
-
-        # self._sensors = {'time': Sensor(sensor_type=Sensor.FLOAT, name='time_sensor', description='The time.',
-        #                                units='s', params=[-(2**64), (2**64)-1], default=-1),
-        #                 'test': Sensor(sensor_type=Sensor.INTEGER, name='test_sensor',
-        #                                description='A sensor for Marc to test.',
-        #                                units='mPa', params=[-1234, 1234], default=555),
-        #                 'meta_dest': Sensor(sensor_type=Sensor.STRING, name='meta_dest',
-        #                                     description='The meta dest string',
-        #                                     units='', default=str(self.meta_destination))
-        #                 }
-        # # f-engine rx/tx counters
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_tx',
-        #                 description='F-engine TX okay - counters incrementing',
-        #                 default=True)
-        # self._sensors['feng_tx'] = sensor
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_rx',
-        #                 description='F-engine RX okay - counters incrementing',
-        #                 default=True)
-        # self._sensors['feng_rx'] = sensor
-        # # x-engine rx/tx counters
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_tx',
-        #                 description='X-engine TX okay - counters incrementing',
-        #                 default=True)
-        # self._sensors['xeng_tx'] = sensor
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_rx',
-        #                 description='X-engine RX okay - counters incrementing',
-        #                 default=True)
-        # self._sensors['xeng_rx'] = sensor
-        # # f- and x-engine QDR errors
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xeng_qdr',
-        #                 description='X-engine QDR okay',
-        #                 default=True)
-        # self._sensors['xeng_qdr'] = sensor
-        # sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='feng_qdr',
-        #                 description='F-engine QDR okay',
-        #                 default=True)
-        # self._sensors['feng_qdr'] = sensor
-
-        for val in self._sensors.values():
-            katcp_server.add_sensor(val)
-        Timer(self.sensor_poll_time, self._update_sensors).start()
-
-    def _update_sensors(self):
-        """
-        Update our compound sensors.
-        :return:
-        """
-        self._sensors['time'].set(time.time(), Sensor.NOMINAL, time.time())
-
-        # update the LRU sensors
-        okay_res = THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='host_okay')
-        for _f in self.fhosts:
-            _name = 'feng_lru_%s' % _f.host
-            self._sensors[_name].set(time.time(),
-                                     Sensor.NOMINAL if okay_res[_f.host] else Sensor.ERROR,
-                                     okay_res[_f.host])
-        okay_res = THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='host_okay')
-        for _x in self.xhosts:
-            _name = 'xeng_lru_%s' % _x.host
-            self._sensors[_name].set(time.time(),
-                                     Sensor.NOMINAL if okay_res[_x.host] else Sensor.ERROR,
-                                     okay_res[_x.host])
-
-        Timer(self.sensor_poll_time, self._update_sensors).start()
 
     # def qdr_calibrate_SERIAL(self):
     #     for hostlist in [self.fhosts, self.xhosts]:
@@ -397,8 +300,8 @@ class FxCorrelator(Instrument):
         if targetsrc is None:
             raise RuntimeError('Could not find target %s' % target_name)
 
-	pol_id = targetsrc.source_number % 2
-     	targetsrc.fr_delay_set(pol_id, delay, delay_rate, fringe_phase, fringe_rate, ld_time, ld_check, extra_wait_time)
+        pol_id = targetsrc.source_number % 2
+        targetsrc.fr_delay_set(pol_id, delay, delay_rate, fringe_phase, fringe_rate, ld_time, ld_check, extra_wait_time)
 
     def feng_eq_get(self, source_name=None):
         """
@@ -531,12 +434,12 @@ class FxCorrelator(Instrument):
                 break
         if targetsrc is None:
             raise RuntimeError('Could not find source %s' % source_name)
-        
+
 	if targetsrc.source_number % 2 == 0:
             snapshot = targetsrc.host.snapshots.snap_quant0_ss
         else:
             snapshot = targetsrc.host.snapshots.snap_quant1_ss
-	
+
         snapshot.arm()
         sdata = snapshot.read(arm=False)['data']
         compl = []

@@ -9,7 +9,7 @@ import Queue
 
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
-from corr2 import fxcorrelator
+from corr2 import fxcorrelator, sensors
 
 
 class KatcpLogFormatter(logging.Formatter):
@@ -80,7 +80,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         try:
             self.instrument.initialise(program=program, tvg=False)
-            self.instrument.setup_sensors(katcp_server=self)
+            sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
             return 'ok',
         except Exception as e:
             localexc = e
