@@ -493,8 +493,8 @@ class FxCorrelator(Instrument):
                                   self.fengine_output.ip_address, self.fengine_output.port))
                 macbase += 1
                 feng_ip_base += 1
-                #gbe.tap_start(restart=True)
-                gbe.dhcp_start()
+                gbe.tap_start(restart=True)
+                # gbe.dhcp_start()
             f.registers.tx_metadata.write(board_id=board_id, porttx=self.fengine_output.port)
             board_id += 1
 
@@ -581,8 +581,8 @@ class FxCorrelator(Instrument):
                                  (f.host, gbe, this_mac, this_ip, xeng_port, board_id))
                 macbase += 1
                 xeng_ip_base += 1
-                #gbe.tap_start(restart=True)
-                gbe.dhcp_start()
+                gbe.tap_start(restart=True)
+                # gbe.dhcp_start()
             board_id += 1  # 1 on new systems, 4 on old xeng_rx_reorder system
 
         # clear gbe status
