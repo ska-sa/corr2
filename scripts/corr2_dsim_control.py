@@ -1,5 +1,3 @@
-#! /usr/bin/env python
-
 __author__ = 'paulp'
 
 import argparse
@@ -155,13 +153,16 @@ if args.sine_source:
 
 if args.zeros_sine:
     """Set all sine sources to zeros"""
-    try:
-        dhost.sine_sources.sin_0.set(0, 0)
-        dhost.sine_sources.sin_1.set(0, 0)
-        dhost.sine_sources.sin_corr.set(0, 0)
-        print "All sine sources set to Scale:0, Freq:0"
-    except:
-        print "An error occured"
+    sources_names = dhost.sine_sources.names()
+    for source in sources_names:
+        try:
+            sine_source = getattr(dhost.sine_sources, '{}'.format(source))
+            sine_source.set(0, 0)
+            print "sine source {}, set to {}.".format(sine_source.name,
+                sine_source.scale)
+        except:
+            print "An error occured."
+            sys.exit(1)
     something_happened = True
 
 if args.noise_source:
@@ -175,7 +176,6 @@ if args.noise_source:
         try:
             source_from.set(scale=noise_scale)
         except ValueError:
-            # Read values from object
             print "Valid scale input is between 0 - 1."
             sys.exit(1)
         print ""
@@ -185,13 +185,16 @@ if args.noise_source:
 
 if args.zeros_noise:
     """Set all sine sources to zeros"""
-    try:
-        dhost.noise_sources.noise_0.set(0)
-        dhost.noise_sources.noise_1.set(0)
-        dhost.noise_sources.noise_corr.set(0)
-        print "All noise sources set to Scale:0"
-    except:
-        print "An error occured"
+    sources_names = dhost.noise_sources.names()
+    for source in sources_names:
+        try:
+            noise_source = getattr(dhost.noise_sources, '{}'.format(source))
+            noise_source.set(0)
+            print "noise source {}, set to {}.".format(noise_source.name,
+                noise_source.scale)
+        except:
+            print "An error occured."
+            sys.exit(1)
     something_happened = True
 
 if args.output_type:
