@@ -146,21 +146,27 @@ class FpgaHost(Host, KatcpFpga):
         """
         start_time = time.time()
         ctrs0 = self.read_spead_counters()
-        still_the_same = [True for gbe in ctrs0]
+        if len(ctrs0) != len(self.tengbes):
+            errstr = 'FPGA host has {} 10gbe cores, but read_spead_counters ' \
+                     'returned {} results'.format(len(self.tengbes), len(ctrs0))
+            LOGGER.error(errstr)
+            raise RuntimeError(errstr)
+        spead_errors = [True] * len(ctrs0)
         while (time.time() < start_time + max_waittime) and \
-                (still_the_same.count(True) > 0):
+                (spead_errors.count(True) > 0):
             time.sleep(0.1)
             ctrs1 = self.read_spead_counters()
-            for _core_ctr in range(0, len(still_the_same)):
-                if (ctrs1[_core_ctr][0] != ctrs0[_core_ctr][0]) and \
-                        (ctrs1[_core_ctr][1] == ctrs0[_core_ctr][1]):
-                    still_the_same[_core_ctr] = False
-        if still_the_same.count(True) > 0:
+            for _core_ctr in range(0, len(spead_errors)):
+                counter_incrementing = ctrs1[_core_ctr][0] != ctrs0[_core_ctr][0]
+                errors_the_same = ctrs1[_core_ctr][1] == ctrs0[_core_ctr][1]
+                if counter_incrementing and errors_the_same:
+                    spead_errors[_core_ctr] = False
+        if spead_errors.count(True) > 0:
             LOGGER.error('Host %s is not receiving good SPEAD data '
                          'over a %i second period. Errors on '
                          'interfaces: %s.\n\t%s -> %s' % (self.host,
                                                           max_waittime,
-                                                          still_the_same,
+                                                          spead_errors,
                                                           ctrs0, ctrs1, ))
             return False
         else:
