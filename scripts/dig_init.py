@@ -81,7 +81,10 @@ if setup_gbe:
     ipbase = int(ip_bits[3])
     mac_bits = mac_start.split(':')
     macbase = int(mac_bits[5])
-    for ctr in range(0,4):
+    num_tengbes = len(fdig.tengbes)
+    if num_tengbes < 1:
+        raise RuntimeError('D-engine with no 10gbe cores %s' % fdig.host)
+    for ctr in range(0, num_tengbes):
         mac = '%s:%s:%s:%s:%s:%d' % (mac_bits[0], mac_bits[1], mac_bits[2], mac_bits[3], mac_bits[4], macbase + ctr)
         ip = '%s.%s.%s.%d' % (ip_bits[0], ip_bits[1], ip_bits[2], ipbase + ctr)
         fdig.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=7777)

@@ -189,7 +189,9 @@ class FpgaDsimHost(FpgaHost):
         start_ip = self.config['10gbe_start_ip']
         start_mac = self.config['10gbe_start_mac']
         port = int(self.config['10gbe_port'])
-        num_tengbes = 4         # Hardcoded assumption
+        num_tengbes = len(self.tengbes)
+        if num_tengbes < 1:
+            raise RuntimeError('D-engine with no 10gbe cores %s' % self.host)
         gbes_per_pol = 2        # Hardcoded assumption
         num_pols = num_tengbes // gbes_per_pol
 
