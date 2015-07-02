@@ -80,8 +80,7 @@ if len(snapshot_missing) > 0:
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
 
-
-def exit_gracefully(signal, frame):
+def exit_gracefully(_, __):
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)
 signal.signal(signal.SIGINT, exit_gracefully)
@@ -90,7 +89,7 @@ signal.signal(signal.SIGINT, exit_gracefully)
 if args.fftshift != -1:
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(args.fftshift))
 current_fft_shift = fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.read())
-print current_fft_shift
+print 'Current FFT shift is: ', current_fft_shift
 
 # select the polarisation
 fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snappfb_dsel=args.pol))

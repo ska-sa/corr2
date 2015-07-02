@@ -22,3 +22,7 @@ Thumbs.db
 MANIFEST
 build
 dist
+
+#    PyCharm      #
+###################
+.idea

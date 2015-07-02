@@ -159,9 +159,9 @@ class FpgaHost(Host, KatcpFpga):
             LOGGER.error('Host %s is not receiving good SPEAD data '
                          'over a %i second period. Errors on '
                          'interfaces: %s.\n\t%s -> %s' % (self.host,
-                                                    max_waittime,
-                                                    still_the_same,
-                                                    ctrs0, ctrs1, ))
+                                                          max_waittime,
+                                                          still_the_same,
+                                                          ctrs0, ctrs1, ))
             return False
         else:
             LOGGER.info('Host %s is receiving good SPEAD data.' % self.host)

@@ -88,7 +88,6 @@ if args.rstcnt:
                                       lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
                                                                                   up_cnt_rst='pulse'))
 
-
 def get_fpga_data(fpga):
     rv = {}
     one = fpga.registers.ct_errcnt.read()['data']

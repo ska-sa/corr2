@@ -52,6 +52,7 @@ class FpgaFilterHost(FpgaHost):
         Initialise this filter board once data from the digitiser is available.
         :return:
         """
+        self.registers.receptor_id.write(pol0_id=0, pol1_id=1)
         self.set_igmp_version(self._instrument_config['FxCorrelator']['igmp_version'])
         self._set_destinations()
         self._handle_sources()
@@ -77,7 +78,7 @@ class FpgaFilterHost(FpgaHost):
         Set the destination for the filtered data, as configured
         :return:
         """
-        _destinations_per_filter = 2  # eish, this is hardcoded for now...
+        _destinations_per_filter = 4  # eish, this is hardcoded for now...
         _destinations = parse_sources(name_string=self._instrument_config['fengine']['source_names'],
                                       ip_string=self._instrument_config['fengine']['source_mcast_ips'],)
         LOGGER.info('Assuming {} source items per filter board'.format(_destinations_per_filter))
@@ -89,9 +90,21 @@ class FpgaFilterHost(FpgaHost):
                 self.host, _destinations[_ctr], _ctr,
             ))
         assert len(self.data_destinations) == _destinations_per_filter,\
-            'Currently only 2 outputs are accepted for filter boards.'
+            'Currently only %i outputs are accepted for filter boards.' % _destinations_per_filter
+
+        for d in self.data_destinations:
+            print str(d.ip_address)
+
+        from casperfpga import tengbe
+        self.data_destinations[0].ip_address = tengbe.IpAddress('239.2.0.20')
+        self.data_destinations[1].ip_address = tengbe.IpAddress('239.2.0.21')
+        self.data_destinations[2].ip_address = tengbe.IpAddress('239.2.0.22')
+        self.data_destinations[3].ip_address = tengbe.IpAddress('239.2.0.23')
+
         self.registers.gbe_iptx0.write_int(int(self.data_destinations[0].ip_address))
         self.registers.gbe_iptx1.write_int(int(self.data_destinations[1].ip_address))
+        self.registers.gbe_iptx2.write_int(int(self.data_destinations[2].ip_address))
+        self.registers.gbe_iptx3.write_int(int(self.data_destinations[3].ip_address))
         self.registers.gbe_porttx.write_int(self.data_destinations[0].port)
 
     def clear_status(self):
