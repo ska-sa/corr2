@@ -202,7 +202,9 @@ class FpgaDsimHost(FpgaHost):
             ip = '%s.%s.%s.%d' % (ip_bits[0], ip_bits[1], ip_bits[2], ipbase + ctr)
             self.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=port)
         for gbe in self.tengbes:
-            gbe.tap_start(True)
+            LOGGER.info('Not using tap_start!')
+            #gbe.tap_start(True)
+            gbe.dhcp_start()
 
         # set the destination IP and port for the tx
         gbe_ctr = 0             # pol-global counter for gbe's
