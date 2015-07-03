@@ -8,7 +8,6 @@ from host_fpga import FpgaHost
 
 LOGGER = logging.getLogger(__name__)
 
-
 class FpgaFHost(FpgaHost):
     """
     A Host, that hosts Fengines, that is a CASPER KATCP FPGA.
@@ -24,7 +23,6 @@ class FpgaFHost(FpgaHost):
             self.fft_shift = int(config['fft_shift'])
             self.n_chans = int(config['n_chans'])
         else:
-            raise RuntimeError('At the moment I want this to be populated.')
             self.num_fengines = None
             self.ports_per_fengine = None
             self.fft_shift = None
@@ -49,6 +47,7 @@ class FpgaFHost(FpgaHost):
         """
         _sleeptime = 1
         if not self.check_rx():
+            LOGGER.error('%s: host_okay() - FALSE, RX error.' % self.host)
             return False
         ct_ctrs = self.registers.ct_ctrs.read()['data']
         time.sleep(_sleeptime)
@@ -56,9 +55,9 @@ class FpgaFHost(FpgaHost):
                 (ct_ctrs['ct_err_cnt1'] == 0) and
                 (ct_ctrs['ct_parerr_cnt0'] == 0) and
                 (ct_ctrs['ct_parerr_cnt1'] == 0)):
-            LOGGER.info('F host %s host_okay() - FALSE.' % self.host)
+            LOGGER.error('%s: host_okay() - FALSE, CT error.' % self.host)
             return False
-        LOGGER.info('F host %s host_okay() - TRUE.' % self.host)
+        LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
 
     def check_rx_reorder(self):
@@ -98,7 +97,7 @@ class FpgaFHost(FpgaHost):
         if rxregs_new['discard'] != rxregs['discard']:
             raise RuntimeError('F host %s discarding packets. %i -> %i' % (
                 self.host, rxregs_new['discard'], rxregs['discard']))
-        LOGGER.info('F host %s is reordering data okay.' % self.host)
+        LOGGER.info('%s: is reordering data okay.' % self.host)
         return True
 
     def read_spead_counters(self):
@@ -108,7 +107,7 @@ class FpgaFHost(FpgaHost):
         """
         rv = []
         spead_ctrs = self.registers.spead_ctrs.read()['data']
-        for core_ctr in range(0, 4):
+        for core_ctr in range(0, len(self.tengbes)):
             counter = spead_ctrs['rx_cnt%i' % core_ctr]
             error = spead_ctrs['err_cnt%i' % core_ctr]
             rv.append((counter, error))
@@ -172,7 +171,7 @@ class FpgaFHost(FpgaHost):
         :return:
         """
         for eqname in self.eqs.keys():
-            LOGGER.debug('Writing EQ %s' % eqname)
+            LOGGER.debug('%s: writing EQ %s' % (self.host, eqname))
             self.write_eq(eq_name=eqname)
 
     def write_eq(self, eq_tuple=None, eq_name=None):
@@ -260,6 +259,28 @@ class FpgaFHost(FpgaHost):
         snapdata = self.snapshots.snapquant_ss.read(arm=False)['data']
         raise RuntimeError
         """
+        targetsrc = None
+        for src in self.fengine_sources:
+            if src.name == source_name:
+                targetsrc = src
+                break
+        if targetsrc is None:
+            raise RuntimeError('Could not find source %s' % source_name)
+
+        if targetsrc.source_number % 2 == 0:
+            snapshot = targetsrc.host.snapshots.snap_quant0_ss
+        else:
+            snapshot = targetsrc.host.snapshots.snap_quant1_ss
+
+        snapshot.arm()
+        sdata = snapshot.read(arm=False)['data']
+        compl = []
+        for ctr in range(0, len(sdata['real0'])):
+            compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
+            compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
+            compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
+            compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
+        return compl
 
     def get_pfb_snapshot(self, pol=0):
         # select the pol
@@ -293,11 +314,11 @@ class FpgaFHost(FpgaHost):
         for cnt in range(0, 1):
             err = self.registers.ct_ctrs.read()['data']['ct_parerr_cnt%d' % cnt]
             if err == 0:
-                LOGGER.info('Reg ct_parerr_cnt%d on F host %s okay.' % (cnt, self.host))
+                LOGGER.info('%s: ct_parerr_cnt%d okay.' % (self.host, cnt))
             else:
-                LOGGER.error('Reg ct_parerr_cnt%d on F host %s not zero.' % (cnt, self.host))
+                LOGGER.error('%s: ct_parerr_cnt%d not zero.' % (self.host, cnt))
                 return False
-        LOGGER.info('F host QDR %s okay.' % self.host)
+        LOGGER.info('%s: QDR okay.' % self.host)
         return True
 
 #     def fr_delay_set(self, pol_id, delay=0, delay_rate=0, fringe_phase=0, fringe_rate=0, ld_time=-1, ld_check = True, extra_wait_time = 0):

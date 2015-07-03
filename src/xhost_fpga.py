@@ -40,9 +40,9 @@ class FpgaXHost(FpgaHost):
         :return:
         """
         if not (self.check_rx() and self.vacc_okay()):
-            LOGGER.error('X host %s host_okay() - FALSE.' % self.host)
+            LOGGER.error('%s: host_okay() - FALSE.' % self.host)
             return False
-        LOGGER.info('X host %s host_okay() - TRUE.' % self.host)
+        LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
 
     def check_rx_reorder(self):
@@ -65,19 +65,19 @@ class FpgaXHost(FpgaHost):
         rxregs_new = get_gbe_data()
         for ctr in range(0, self.x_per_fpga):
             if rxregs_new['rcvcnt%i' % ctr] <= rxregs['rcvcnt%i' % ctr]:
-                LOGGER.error('X host %s is not receiving reordered data.' % self.host)
+                LOGGER.error('%s: not receiving reordered data.' % self.host)
                 return False
             if ((rxregs_new['ercv%i' % ctr] > rxregs['ercv%i' % ctr]) or
                     (rxregs_new['etim%i' % ctr] > rxregs['etim%i' % ctr]) or
                     (rxregs_new['edisc%i' % ctr] > rxregs['edisc%i' % ctr])):
-                LOGGER.error('X host %s reports reorder errors: '
+                LOGGER.error('%s: reports reorder errors: '
                              'ercv(%i) etime(%i) edisc(%i)' %
                              (self.host,
                               rxregs_new['ercv%i' % ctr] - rxregs['ercv%i' % ctr],
                               rxregs_new['etim%i' % ctr] - rxregs['etim%i' % ctr],
                               rxregs_new['edisc%i' % ctr] - rxregs['edisc%i' % ctr]))
                 return False
-        LOGGER.info('X host %s is reordering data okay.' % self.host)
+        LOGGER.info('%s: reordering data okay.' % self.host)
         return True
 
     def read_spead_counters(self):
@@ -89,7 +89,7 @@ class FpgaXHost(FpgaHost):
         for core_ctr in range(0, len(self.tengbes)):
             counter = self.registers['rx_cnt%i' % core_ctr].read()['data']['reg']
             error = self.registers['rx_err_cnt%i' % core_ctr].read()['data']['reg']
-            rv.append((counter,error))
+            rv.append((counter, error))
         return rv
 
     def vacc_accumulations_per_second(self, xnum=-1):
@@ -216,11 +216,11 @@ class FpgaXHost(FpgaHost):
         for xeng in range(0, self.x_per_fpga):
             err = self.registers['vacc_errors%d' % xeng].read()['data']['parity']
             if err == 0:
-                LOGGER.info('X-eng %d on X host %s okay.' % (xeng, self.host))
+                LOGGER.info('%s: xeng %d okay.' % (self.host, xeng))
             else:
-                LOGGER.error('X-eng %d on X host %s has parity errors.' % (xeng, self.host))
+                LOGGER.error('%s: xeng %d has parity errors.' % (self.host, xeng))
                 return False
-        LOGGER.info('X host QDR %s okay.' % self.host)
+        LOGGER.info('%s: QDR okay.' % self.host)
         return True
 
     # def set_accumulation_length(self, accumulation_length, issue_meta=True):

@@ -44,19 +44,19 @@ class FpgaHost(Host, KatcpFpga):
                     if not equal:
                         if _d2[keyname]['data']['reg'] == _d1[keyname]['data']['reg']\
                                 and _d3[keyname]['data']['reg'] == _d2[keyname]['data']['reg']:
-                            LOGGER.info('%s - %s not changing' % (self.host, keyname))
+                            LOGGER.info('%s: %s not changing' % (self.host, keyname))
                             return False
                     else:
                         if _d2[keyname]['data']['reg'] != _d1[keyname]['data']['reg']\
                                 and _d3[keyname]['data']['reg'] != _d2[keyname]['data']['reg']:
-                            LOGGER.info('%s - %s changing' % (self.host, keyname))
+                            LOGGER.info('%s: %s changing' % (self.host, keyname))
                             return False
                 else:
                     if required:
-                        LOGGER.error('%s - %s does not exist' % (self.host, keyname))
+                        LOGGER.error('%s: %s does not exist' % (self.host, keyname))
                         return False
                     else:
-                        LOGGER.warn('%s - %s does not exist' % (self.host, keyname))
+                        LOGGER.warn('%s: %s does not exist' % (self.host, keyname))
                 return True
 
             # tx counter and error counter registers MUST exist
@@ -87,21 +87,24 @@ class FpgaHost(Host, KatcpFpga):
         """
         start_time = time.time()
         if not self.check_rx_spead(max_waittime=max_waittime):
-            LOGGER.error('\tSPEAD RX check failed.')
+            LOGGER.error('{}: SPEAD RX check failed.'.format(self.host))
             _waittime = max_waittime - (time.time() - start_time)
             if _waittime < 0:
+                LOGGER.error('{}: check_rx() timed out.'.format(self.host))
                 return False
             if not self.check_rx_raw(max_waittime=_waittime):
-                LOGGER.error('\tRaw RX also failed.')
+                LOGGER.error('{}: raw RX also failed.'.format(self.host))
             else:
-                LOGGER.error('\tRaw RX passed - problem is likely in the SPEAD stage.')
+                LOGGER.error('{}: raw RX passed - problem is likely in '
+                             'the SPEAD stage.'.format(self.host))
             return False
         else:
-            LOGGER.info('\tSPEAD RX passed - checking reorder stage.')
+            LOGGER.info('{}: SPEAD RX passed - checking reorder '
+                        'stage.'.format(self.host))
         if not self.check_rx_reorder():
-            LOGGER.error('FPGA host {0} reorder RX check failed.'.format(self.host))
+            LOGGER.error('{}: reorder RX check failed.'.format(self.host))
             return False
-        LOGGER.info('FPGA host %s check_rx() - TRUE.' % self.host)
+        LOGGER.info('{}: check_rx() - TRUE.'.format(self.host))
         return True
 
     def check_rx_raw(self, max_waittime=5):
@@ -130,12 +133,12 @@ class FpgaHost(Host, KatcpFpga):
             if (rxctr_old != rxctr_new) and (rxerr_old == rxerr_new):
                 still_the_same.remove(core)
         if len(still_the_same) > 0:
-            LOGGER.error('Host %s is not receiving 10GbE data on interfaces %s, '
+            LOGGER.error('%s: not receiving 10GbE data on interfaces %s, '
                          'or is receiving bad data, over a %.3f second '
                          'period.' % (self.host, still_the_same, max_waittime))
             return False
         else:
-            LOGGER.info('Host %s is receiving data on all '
+            LOGGER.info('%s: receiving data on all '
                         'GbE interfaces.' % self.host)
             return True
 
@@ -147,11 +150,13 @@ class FpgaHost(Host, KatcpFpga):
         start_time = time.time()
         ctrs0 = self.read_spead_counters()
         if len(ctrs0) != len(self.tengbes):
-            errstr = 'FPGA host has {} 10gbe cores, but read_spead_counters ' \
-                     'returned {} results'.format(len(self.tengbes), len(ctrs0))
+            errstr = '{}: has {} 10gbe cores, but read_spead_counters ' \
+                     'returned {} results'.format(self.host, len(self.tengbes),
+                                                  len(ctrs0))
             LOGGER.error(errstr)
             raise RuntimeError(errstr)
         spead_errors = [True] * len(ctrs0)
+        ctrs1 = None
         while (time.time() < start_time + max_waittime) and \
                 (spead_errors.count(True) > 0):
             time.sleep(0.1)
@@ -162,7 +167,7 @@ class FpgaHost(Host, KatcpFpga):
                 if counter_incrementing and errors_the_same:
                     spead_errors[_core_ctr] = False
         if spead_errors.count(True) > 0:
-            LOGGER.error('Host %s is not receiving good SPEAD data '
+            LOGGER.error('%s: not receiving good SPEAD data '
                          'over a %i second period. Errors on '
                          'interfaces: %s.\n\t%s -> %s' % (self.host,
                                                           max_waittime,
@@ -170,5 +175,5 @@ class FpgaHost(Host, KatcpFpga):
                                                           ctrs0, ctrs1, ))
             return False
         else:
-            LOGGER.info('Host %s is receiving good SPEAD data.' % self.host)
+            LOGGER.info('%s: receiving good SPEAD data.' % self.host)
             return True

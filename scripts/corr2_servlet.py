@@ -14,8 +14,16 @@ from corr2 import fxcorrelator, sensors
 
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
+        translate_levels = {
+            'INFO': 'info',
+            'DEBUG': 'debug',
+            'WARNING': 'warn'
+        }
+        if record.levelname in translate_levels:
+            record.levelname = translate_levels(record.levelname)
+        else:
+            record.levelname = record.levelname.lower()
         record.msg = record.msg.replace(' ', '\_')
-        record.levelname = record.levelname.lower()
         return super(KatcpLogFormatter, self).format(record)
 
 class KatcpLogEmitHandler(logging.StreamHandler):

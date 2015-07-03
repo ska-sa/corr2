@@ -71,7 +71,7 @@ class FpgaFilterHost(FpgaHost):
         :return:
         """
         self.registers.control.write(gbe_txen=True)
-        LOGGER.info('Filter {} output enabled.'.format(self.host))
+        LOGGER.info('{}: filter output enabled.'.format(self.host))
 
     def _set_destinations(self):
         """
@@ -81,7 +81,8 @@ class FpgaFilterHost(FpgaHost):
         _destinations_per_filter = 4  # eish, this is hardcoded for now...
         _destinations = parse_sources(name_string=self._instrument_config['fengine']['source_names'],
                                       ip_string=self._instrument_config['fengine']['source_mcast_ips'],)
-        LOGGER.info('Assuming {} source items per filter board'.format(_destinations_per_filter))
+        LOGGER.info('{}: assuming {} source items per filter board'.format(
+            self.host, _destinations_per_filter))
         _offset = self.board_id * _destinations_per_filter
         self.data_destinations = []
         for _ctr in range(_offset, _offset + _destinations_per_filter):
@@ -137,7 +138,7 @@ class FpgaFilterHost(FpgaHost):
             this_ip = '%s%d' % (_ip_prefix, _ip_base)
             _gbe.setup(mac=this_mac, ipaddress=this_ip,
                        port=_port)
-            LOGGER.info('filthost({}) gbe({}) MAC({}) IP({}) port({}) board({})'.format(
+            LOGGER.info('{}: gbe({}) MAC({}) IP({}) port({}) board({})'.format(
                 self.host, _gbe.name, this_mac, this_ip, _port, self.board_id))
             _mac_base += 1
             _ip_base += 1
@@ -154,7 +155,8 @@ class FpgaFilterHost(FpgaHost):
                                  ip_string=self._config['source_mcast_ips'])
         # assign the correct sources to this filter host
         _sources_per_filter = len(_sources) / len(self._config['hosts'].strip().split(','))
-        LOGGER.info('Assuming {} source items per filter board'.format(_sources_per_filter))
+        LOGGER.info('{}: assuming {} source items per filter board'.format(
+            self.host, _sources_per_filter))
 
         _source_offset = self.board_id * _sources_per_filter
         self.data_sources = []
@@ -169,7 +171,7 @@ class FpgaFilterHost(FpgaHost):
         Subscribe the multicast source data as configured.
         :return:
         """
-        LOGGER.info('{} subscribing to filter datasources...'.format(
+        LOGGER.info('{}: subscribing to filter datasources...'.format(
             self.host))
         gbe_ctr = 0
         for source in self.data_sources:
@@ -198,8 +200,9 @@ class FpgaFilterHost(FpgaHost):
         :return:
         """
         if not self.check_rx():
+            LOGGER.error('{}: host_okay() - FALSE.'.format(self.host))
             return False
-        LOGGER.info('Filter host {} host_okay() - TRUE.'.format(self.host))
+        LOGGER.info('{}: host_okay() - TRUE.'.format(self.host))
         return True
 
     def check_rx_reorder(self):
@@ -225,35 +228,35 @@ class FpgaFilterHost(FpgaHost):
         time.sleep(_sleeptime)
         rxregs_new = get_gbe_data()
         if rxregs_new['valid_arb'] == rxregs['valid_arb']:
-            LOGGER.error('Filter host %s arbiter is not counting packets. %i -> %i' %
+            LOGGER.error('%s: arbiter is not counting packets. %i -> %i' %
                          (self.host, rxregs_new['valid_arb'], rxregs['valid_arb']))
             return False
         if rxregs_new['valid_reord'] == rxregs['valid_reord']:
-            LOGGER.error('Filter host %s reorder is not counting packets. %i -> %i' %
+            LOGGER.error('%s: reorder is not counting packets. %i -> %i' %
                          (self.host, rxregs_new['valid_reord'], rxregs['valid_reord']))
             return False
         if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
-            LOGGER.error('Filter host %s mcnt_relock is triggering. %i -> %i' %
+            LOGGER.error('%s: mcnt_relock is triggering. %i -> %i' %
                          (self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
             return False
         for pol in [0, 1]:
             if rxregs_new['re%i_cnt' % pol] > rxregs['re%i_cnt' % pol]:
-                LOGGER.error('Filter host %s pol %i reorder count error. %i -> %i' %
+                LOGGER.error('%s: pol %i reorder count error. %i -> %i' %
                              (self.host, pol, rxregs_new['re%i_cnt' % pol], rxregs['re%i_cnt' % pol]))
                 return False
             if rxregs_new['re%i_time' % pol] > rxregs['re%i_time' % pol]:
-                LOGGER.error('Filter host %s pol %i reorder time error. %i -> %i' %
+                LOGGER.error('%s: pol %i reorder time error. %i -> %i' %
                              (self.host, pol, rxregs_new['re%i_time' % pol], rxregs['re%i_time' % pol]))
                 return False
             if rxregs_new['re%i_tstep' % pol] > rxregs['re%i_tstep' % pol]:
-                LOGGER.error('Filter host %s pol %i timestep error. %i -> %i' %
+                LOGGER.error('%s: pol %i timestep error. %i -> %i' %
                              (self.host, pol, rxregs_new['re%i_tstep' % pol], rxregs['re%i_tstep' % pol]))
                 return False
             if rxregs_new['timerror%i' % pol] > rxregs['timerror%i' % pol]:
-                LOGGER.error('Filter host %s pol %i time error? %i -> %i' %
+                LOGGER.error('%s: pol %i time error? %i -> %i' %
                              (self.host, pol, rxregs_new['timerror%i' % pol], rxregs['timerror%i' % pol]))
                 return False
-        LOGGER.info('Filter host %s is reordering data okay.' % self.host)
+        LOGGER.info('%s: reordering data okay.' % self.host)
         return True
 
     def read_spead_counters(self):
