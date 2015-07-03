@@ -69,7 +69,7 @@ def parse_ini_file(ini_file='', required_sections=None):
         if not parser.has_section(check_section):
             raise ValueError(
                 'The config file does not seem to have the required %s section?' % (
-                    check_section,) )
+                    check_section,))
     config = {}
     for section in parser.sections():
         config[section] = {}
