@@ -83,7 +83,7 @@ class FpgaFHost(FpgaHost):
             data['timerror'] = reorder_ctrs['timestep_error']
             data['discard'] = reorder_ctrs['discard']
             num_tengbes = len(self.tengbes)
-            for gbe in range(0, num_tengbes):
+            for gbe in range(num_tengbes):
                 data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]
             for pol in range(0, 2):
                 data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]
@@ -95,7 +95,7 @@ class FpgaFHost(FpgaHost):
         num_tengbes = len(self.tengbes)
         if num_tengbes < 1:
             raise RuntimeError('F-host with no 10gbe cores %s' % self.host)
-        for gbe in range(0, num_tengbes):
+        for gbe in range(num_tengbes):
             if rxregs_new['pktof_ctr%i' % gbe] != rxregs['pktof_ctr%i' % gbe]:
                 raise RuntimeError('F host %s packet overflow on interface gbe%i. %i -> %i' % (
                     self.host, gbe, rxregs_new['pktof_ctr%i' % gbe], rxregs['pktof_ctr%i' % gbe]))
