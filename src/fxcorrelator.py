@@ -17,6 +17,7 @@ import logging
 import socket
 import time
 import sys
+
 import numpy
 import struct
 import spead64_48 as spead
@@ -25,6 +26,7 @@ import log
 import utils
 import xhost_fpga
 import fhost_fpga
+
 from instrument import Instrument
 from data_source import DataSource
 from casperfpga import tengbe
@@ -467,40 +469,48 @@ class FxCorrelator(Instrument):
         self.feng_clear_status_all()
 
         # where does the f-engine data go?
-        self.fengine_output = DataSource.from_mcast_string(self.configd['fengine']['destination_mcast_ips'])
+        self.fengine_output = DataSource.from_mcast_string(
+            self.configd['fengine']['destination_mcast_ips'])
         self.fengine_output.name = 'fengine_destination'
         fdest_ip = int(self.fengine_output.ip_address)
-        THREADED_FPGA_OP(self.fhosts, timeout=10,
-                         target_function=(lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),))
+        THREADED_FPGA_OP(self.fhosts, timeout=10, target_function=(
+            lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),) )
 
         # set up the cores
-        feng_ip_octets = [int(bit) for bit in self.configd['fengine']['10gbe_start_ip'].split('.')]
         feng_port = int(self.configd['fengine']['10gbe_port'])
-        assert len(feng_ip_octets) == 4, 'That\'s an odd IP address.'
-        feng_ip_base = feng_ip_octets[3]
-        feng_ip_prefix = '%d.%d.%d.' % (feng_ip_octets[0], feng_ip_octets[1], feng_ip_octets[2])
         macprefix = self.configd['fengine']['10gbe_macprefix']
         macbase = int(self.configd['fengine']['10gbe_macbase'])
+        # Set up shared board info
+        boards_info = {}
         board_id = 0
-        for ctr, f in enumerate(self.fhosts):
+        for f in self.fhosts:
+            macs = []
+            ips = []
             for gbe in f.tengbes:
                 this_mac = '%s%02x' % (macprefix, macbase)
-                this_ip = '%s%d' % (feng_ip_prefix, feng_ip_base)
-                gbe.setup(mac=this_mac, ipaddress=this_ip,
-                          port=feng_port)
-                self.logger.info('fhost(%s) gbe(%s) MAC(%s) IP(%s) port(%i) board(%i) txIPbase(%s) txPort(%i)' %
-                                 (f.host, gbe.name, this_mac, this_ip, feng_port, board_id,
-                                  self.fengine_output.ip_address, self.fengine_output.port))
+                macs.append(this_mac)
                 macbase += 1
-                feng_ip_base += 1
-                #gbe.tap_start(restart=True)
-                gbe.dhcp_start()
-            f.registers.tx_metadata.write(board_id=board_id, porttx=self.fengine_output.port)
+                boards_info[f.host] = board_id, macs
             board_id += 1
 
+        def setup_gbes(f):
+            board_id, macs = boards_info[f.host]
+
+            f.registers.tx_metadata.write(
+                board_id=board_id, porttx=self.fengine_output.port)
+            for gbe, this_mac in zip(f.tengbes, macs):
+                gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
+                self.logger.info(
+                    'fhost(%s) gbe(%s) MAC(%s) port(%i) board(%i) txIPbase(%s) txPort(%i)' %
+                    (f.host, gbe.name, this_mac, feng_port, board_id,
+                     self.fengine_output.ip_address, self.fengine_output.port))
+                #gbe.tap_start(restart=True)
+                gbe.dhcp_start()
+        THREADED_FPGA_OP(self.fhosts, timeout=10, target_function=(setup_gbes,))
+
         # release from reset
-        THREADED_FPGA_OP(self.fhosts, timeout=5,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+        THREADED_FPGA_OP(self.fhosts, timeout=5, target_function=(
+            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),) )
 
     def _fengine_subscribe_to_multicast(self):
         """
@@ -562,28 +572,34 @@ class FxCorrelator(Instrument):
         self.set_meta_destination()
 
         # set up 10gbe cores
-        xeng_ip_octets = [int(bit) for bit in self.configd['xengine']['10gbe_start_ip'].split('.')]
-        assert len(xeng_ip_octets) == 4, 'That\'s an odd IP address.'
-        xeng_ip_base = xeng_ip_octets[3]
-        xeng_ip_prefix = '%d.%d.%d.' % (xeng_ip_octets[0], xeng_ip_octets[1], xeng_ip_octets[2])
         xeng_port = int(self.configd['xengine']['10gbe_port'])
         macprefix = self.configd['xengine']['10gbe_macprefix']
         macbase = int(self.configd['xengine']['10gbe_macbase'])
         board_id = 0
+        boards_info = {}
         for f in self.xhosts:
-            f.registers.board_id.write(reg=board_id)
+            macs = []
+            ips = []
             for gbe in f.tengbes:
                 this_mac = '%s%02x' % (macprefix, macbase)
-                this_ip = '%s%d' % (xeng_ip_prefix, xeng_ip_base)
-                gbe.setup(mac='%s%02x' % (macprefix, macbase), ipaddress='%s%d' % (xeng_ip_prefix, xeng_ip_base),
-                          port=xeng_port)
-                self.logger.info('xhost(%s) gbe(%s) MAC(%s) IP(%s) port(%i) board(%i)' %
-                                 (f.host, gbe, this_mac, this_ip, xeng_port, board_id))
+                macs.append(this_mac)
                 macbase += 1
-                xeng_ip_base += 1
+            boards_info[f.host] = board_id, macs
+            board_id += 1
+
+
+        def setup_gbes(f):
+            board_id, macs = boards_info[f.host]
+            f.registers.board_id.write(reg=board_id)
+
+            for gbe, this_mac in zip(f.tengbes, macs):
+                gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
+                self.logger.info('xhost(%s) gbe(%s) MAC(%s) port(%i) board(%i)' %
+                                 (f.host, gbe, this_mac, xeng_port, board_id))
                 #gbe.tap_start(restart=True)
                 gbe.dhcp_start()
-            board_id += 1  # 1 on new systems, 4 on old xeng_rx_reorder system
+
+        THREADED_FPGA_OP(self.xhosts, timeout=10, target_function=(setup_gbes,))
 
         # clear gbe status
         THREADED_FPGA_OP(self.xhosts, timeout=10,
