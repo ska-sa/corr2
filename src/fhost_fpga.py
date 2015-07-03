@@ -40,22 +40,33 @@ class FpgaFHost(FpgaHost):
         """
         self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
 
+    def ct_okay(self, sleeptime=1):
+        """
+        Is the corner turner working?
+        :return: True or False,
+        """
+        ct_ctrs0 = self.registers.ct_ctrs.read()['data']
+        time.sleep(sleeptime)
+        ct_ctrs1 = self.registers.ct_ctrs.read()['data']
+
+        err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
+        err1_diff = ct_ctrs1['ct_err_cnt1'] - ct_ctrs0['ct_err_cnt1']
+        parerr0_diff = ct_ctrs1['ct_parerr_cnt0'] - ct_ctrs0['ct_parerr_cnt0']
+        parerr1_diff = ct_ctrs1['ct_parerr_cnt1'] - ct_ctrs0['ct_parerr_cnt1']
+
+        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
+            LOGGER.error('%s: ct_status() - FALSE, CT error.' % self.host)
+            return False
+        LOGGER.info('%s: ct_status() - TRUE.' % self.host)
+        return True
+
     def host_okay(self):
         """
         Is this host/LRU okay?
         :return:
         """
-        _sleeptime = 1
-        if not self.check_rx():
-            LOGGER.error('%s: host_okay() - FALSE, RX error.' % self.host)
-            return False
-        ct_ctrs = self.registers.ct_ctrs.read()['data']
-        time.sleep(_sleeptime)
-        if not ((ct_ctrs['ct_err_cnt0'] == 0) and
-                (ct_ctrs['ct_err_cnt1'] == 0) and
-                (ct_ctrs['ct_parerr_cnt0'] == 0) and
-                (ct_ctrs['ct_parerr_cnt1'] == 0)):
-            LOGGER.error('%s: host_okay() - FALSE, CT error.' % self.host)
+        if (not self.check_rx()) or (not self.ct_okay()):
+            LOGGER.error('%s: host_okay() - FALSE.' % self.host)
             return False
         LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
