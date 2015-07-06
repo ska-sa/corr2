@@ -169,7 +169,7 @@ class FxCorrelator(Instrument):
                 self.logger.info('Skipping QDR cal - are you sure you want to do this?')
 
             # init the f engines
-            self._fengine_initialise()
+            fengops.feng_initialise(self)
 
             # init the x engines
             xengops.xeng_initialise(self)
@@ -188,7 +188,7 @@ class FxCorrelator(Instrument):
             # sys.stdout.flush()
 
             # subscribe all the engines to the multicast groups
-            self._fengine_subscribe_to_multicast()
+            fengops.feng_subscribe_to_multicast()
             xengops.xeng_subscribe_to_multicast(self)
             post_mess_delay = 5
             self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
@@ -200,11 +200,11 @@ class FxCorrelator(Instrument):
             time.sleep(1)
 
             # reset all counters on fhosts and xhosts
-            self.feng_clear_status_all()
+            fengops.feng_clear_status_all()
             xengops.xeng_clear_status_all(self)
 
             # check to see if the f engines are receiving all their data
-            if not self._feng_check_rx():
+            if not fengops.feng_check_rx():
                 raise RuntimeError('The f-engines RX have a problem.')
 
             # start f-engine TX
@@ -213,7 +213,7 @@ class FxCorrelator(Instrument):
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
 
             # check that the F-engines are transmitting data correctly
-            if not self._feng_check_tx():
+            if not fengops.feng_check_tx():
                 raise RuntimeError('The f-engines TX have a problem.')
 
             # check that the X-engines are receiving data
@@ -224,7 +224,7 @@ class FxCorrelator(Instrument):
             xengops.xeng_vacc_sync(self)
 
         # reset all counters on fhosts and xhosts
-        self.feng_clear_status_all()
+        fengops.feng_clear_status_all()
         xengops.xeng_clear_status_all(self)
 
         # set an initialised flag
@@ -270,262 +270,6 @@ class FxCorrelator(Instrument):
         # for host in self.xhosts:
         #     for qdr in host.qdrs:
         #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
-
-    def _feng_check_rx(self, max_waittime=30):
-        """
-        Check that the f-engines are receiving data correctly
-        :param max_waittime:
-        :return:
-        """
-        self.logger.info('Checking F hosts are receiving data...')
-        results = THREADED_FPGA_FUNC(self.fhosts, timeout=max_waittime+1,
-                                     target_function=('check_rx', (max_waittime,),))
-        all_okay = True
-        for _v in results.values():
-            all_okay = all_okay and _v
-        if not all_okay:
-            self.logger.error('\tERROR in F-engine rx data.')
-        self.logger.info('\tdone.')
-        return all_okay
-
-    def feng_set_delay(self, target_name, delay=0, delay_rate=0, fringe_phase=0, fringe_rate=0, ld_time=-1, ld_check=True, extra_wait_time=0):
-        """
-        :param target_name:
-        :return:
-        """
-        targetsrc = None
-        for src in self.fengine_sources:
-            if src.name == target_name:
-                targetsrc = src
-                break
-        if targetsrc is None:
-            raise RuntimeError('Could not find target %s' % target_name)
-
-        pol_id = targetsrc.source_number % 2
-        targetsrc.fr_delay_set(pol_id, delay, delay_rate, fringe_phase, fringe_rate, ld_time, ld_check, extra_wait_time)
-
-    def _feng_check_tx(self):
-        """
-        Check that the f-engines are sending data correctly
-        :return:
-        """
-        self.logger.info('Checking F hosts are transmitting data...')
-        results = THREADED_FPGA_FUNC(self.fhosts, timeout=5,
-                                     target_function='check_tx_raw')
-        all_okay = True
-        for _v in results.values():
-            all_okay = all_okay and _v
-        if not all_okay:
-            self.logger.error('\tERROR in F-engine tx data.')
-        self.logger.info('\tdone.')
-        return all_okay
-
-    def feng_eq_get(self, source_name=None):
-        """
-        Return the EQ arrays in a dictionary, arranged by source name.
-        :return:
-        """
-        eq_table = {}
-        for fhost in self.fhosts:
-            eq_table.update(fhost.eqs)
-            if source_name is not None and source_name in eq_table.keys():
-                return {source_name: eq_table[source_name]}
-        return eq_table
-
-    def feng_eq_set(self, write=True, source_name=None, new_eq=None):
-        """
-        Set the EQ for a specific source
-        :param write: should the value be written to BRAM on the device?
-        :param source_name: the source name
-        :param new_eq: an eq list or value or poly
-        :return:
-        """
-        if new_eq is None:
-            raise ValueError('New EQ of nothing makes no sense.')
-        # if no source is given, apply the new eq to all sources
-        if source_name is None:
-            self.logger.info('Setting EQ on all sources to new given EQ.')
-            for fhost in self.fhosts:
-                for src_nm in fhost.eqs.keys():
-                    self.feng_eq_set(write=False, source_name=src_nm, new_eq=new_eq)
-            if write:
-                self.feng_eq_write_all()
-        else:
-            for fhost in self.fhosts:
-                if source_name in fhost.eqs.keys():
-                    old_eq = fhost.eqs[source_name]['eq'][:]
-                    try:
-                        neweq = utils.process_new_eq(new_eq)
-                        fhost.eqs[source_name]['eq'] = neweq
-                        self.logger.info('Updated EQ value for source %s: %s...' %
-                                         (source_name, neweq[0:min(10, len(neweq))]))
-                        if write:
-                            fhost.write_eq(eq_name=source_name)
-                    except Exception as e:
-                        fhost.eqs[source_name]['eq'] = old_eq[:]
-                        self.logger.error('New EQ error - REVERTED to old value! - %s' % e.message)
-                        raise ValueError('New EQ error - REVERTED to old value! - %s' % e.message)
-                    return
-            raise ValueError('Unknown source name %s' % source_name)
-
-    def feng_eq_write_all(self, new_eq_dict=None):
-        """
-        Set the EQ gain for given sources and write the changes to memory.
-        :param new_eq_dict: a dictionary of new eq values to store
-        :return:
-        """
-        if new_eq_dict is not None:
-            self.logger.info('Updating some EQ values before writing.')
-            for src, new_eq in new_eq_dict:
-                self.feng_eq_set(write=False, source_name=src, new_eq=new_eq)
-        self.logger.info('Writing EQ on all fhosts based on stored per-source EQ values...')
-        THREADED_FPGA_FUNC(self.fhosts, timeout=10, target_function='write_eq_all')
-        if self.spead_meta_ig is not None:
-            self._feng_eq_update_metadata()
-            self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
-        self.logger.info('done.')
-
-    def _feng_eq_update_metadata(self):
-        """
-        Update the EQ metadata for this correlator.
-        :return:
-        """
-        all_eqs = self.feng_eq_get()
-        for source_ctr, source in enumerate(self.fengine_sources):
-            eqlen = len(all_eqs[source.name]['eq'])
-            self.spead_meta_ig.add_item(name='eq_coef_%s' % source.name,
-                                        id=0x1400 + source_ctr,
-                                        description='The unitless per-channel digital scaling factors implemented '
-                                                    'prior to requantisation, post-FFT, for input %s. '
-                                                    'Complex number real,imag 32 bit integers.' %
-                                                    source.name,
-                                        shape=[eqlen, 2],
-                                        fmt=spead.mkfmt(('u', 32)),
-                                        init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
-                                                  for eq_coeff in all_eqs[source.name]['eq']])
-
-    def feng_set_fft_shift_all(self, shift_value=None):
-        """
-        Set the FFT shift on all boards.
-        :param shift_value:
-        :return:
-        """
-        if shift_value is None:
-            shift_value = int(self.configd['fengine']['fft_shift'])
-        if shift_value < 0:
-            raise RuntimeError('Shift value cannot be less than zero')
-        self.logger.info('Setting FFT shift to %i on all f-engine boards...' % shift_value)
-        THREADED_FPGA_FUNC(self.fhosts, timeout=10,
-                           target_function=('set_fft_shift', (shift_value,),))
-        self.logger.info('done.')
-        if self.spead_meta_ig is not None:
-            self.spead_meta_ig['fft_shift'] = int(self.configd['fengine']['fft_shift'])
-            self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
-        return shift_value
-
-    def feng_get_fft_shift_all(self):
-        """
-        Get the FFT shift value on all boards.
-        :return:
-        """
-        # get the fft shift values
-        return THREADED_FPGA_FUNC(self.fhosts, timeout=10, target_function='get_fft_shift')
-
-    def feng_clear_status_all(self):
-        """
-        Clear the various status registers and counters on all the fengines
-        :return:
-        """
-        THREADED_FPGA_FUNC(self.fhosts, timeout=10, target_function='clear_status')
-
-    def _fengine_initialise(self):
-        """
-        Set up f-engines on this device.
-        :return:
-        """
-        # set eq and shift
-        self.feng_eq_write_all()
-        self.feng_set_fft_shift_all()
-
-        # set up the fpga comms
-        THREADED_FPGA_OP(self.fhosts, timeout=10,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
-        THREADED_FPGA_OP(self.fhosts, timeout=10,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
-        self.feng_clear_status_all()
-
-        # where does the f-engine data go?
-        self.fengine_output = DataSource.from_mcast_string(
-            self.configd['fengine']['destination_mcast_ips'])
-        self.fengine_output.name = 'fengine_destination'
-        fdest_ip = int(self.fengine_output.ip_address)
-        THREADED_FPGA_OP(self.fhosts, timeout=10, target_function=(
-            lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),) )
-
-        # set up the cores
-        feng_port = int(self.configd['fengine']['10gbe_port'])
-        macprefix = self.configd['fengine']['10gbe_macprefix']
-        macbase = int(self.configd['fengine']['10gbe_macbase'])
-        # Set up shared board info
-        boards_info = {}
-        board_id = 0
-        for f in self.fhosts:
-            macs = []
-            ips = []
-            for gbe in f.tengbes:
-                this_mac = '%s%02x' % (macprefix, macbase)
-                macs.append(this_mac)
-                macbase += 1
-                boards_info[f.host] = board_id, macs
-            board_id += 1
-
-        def setup_gbes(f):
-            board_id, macs = boards_info[f.host]
-            f.registers.tx_metadata.write(
-                board_id=board_id, porttx=self.fengine_output.port)
-            for gbe, this_mac in zip(f.tengbes, macs):
-                gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
-                self.logger.info(
-                    'fhost(%s) gbe(%s) MAC(%s) port(%i) board(%i) txIPbase(%s) txPort(%i)' %
-                    (f.host, gbe.name, this_mac, feng_port, board_id,
-                     self.fengine_output.ip_address, self.fengine_output.port))
-                #gbe.tap_start(restart=True)
-                gbe.dhcp_start()
-        THREADED_FPGA_OP(self.fhosts, timeout=10, target_function=(setup_gbes,))
-
-        # release from reset
-        THREADED_FPGA_OP(self.fhosts, timeout=5, target_function=(
-            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),) )
-
-    def _fengine_subscribe_to_multicast(self):
-        """
-        Subscribe all f-engine data sources to their multicast data
-        :return:
-        """
-        self.logger.info('Subscribing f-engine datasources...')
-        for fhost in self.fhosts:
-            self.logger.info('\t%s:' % fhost.host)
-            gbe_ctr = 0
-            for source in fhost.data_sources:
-                if not source.is_multicast():
-                    self.logger.info('\t\tsource address %s is not multicast?' % source.ip_address)
-                else:
-                    rxaddr = str(source.ip_address)
-                    rxaddr_bits = rxaddr.split('.')
-                    rxaddr_base = int(rxaddr_bits[3])
-                    rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
-                    if (len(fhost.tengbes) / self.f_per_fpga) != source.ip_range:
-                        raise RuntimeError(
-                            '10Gbe ports (%d) do not match sources IPs (%d)' %
-                            (len(fhost.tengbes), source.ip_range))
-                    for ctr in range(0, source.ip_range):
-                        gbename = fhost.tengbes.names()[gbe_ctr]
-                        gbe = fhost.tengbes[gbename]
-                        rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-                        self.logger.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
-                        gbe.multicast_receive(rxaddress, 0)
-                        gbe_ctr += 1
-        self.logger.info('done.')
 
     def set_labels(self, newlist):
         """
@@ -1032,7 +776,7 @@ class FxCorrelator(Instrument):
         #                        init_val=)
 
         # 0x1400 +++
-        self._feng_eq_update_metadata()
+        fengops.feng_eq_update_metadata()
 
         # spead_ig.add_item(name='eq_coef_MyAntStr', id=0x1400+inputN,
         #                        description='',
@@ -1143,102 +887,4 @@ class FxCorrelator(Instrument):
         self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
         self.logger.info('Issued SPEAD data descriptor to %s:%i.' % (self.meta_destination[0],
                                                                      self.meta_destination[1]))
-
-    # def _get_fxcorrelator_config(self):
-    #     """
-    #     """
-    #     # attributes we need
-    #     self.n_ants = None
-    #     self.x_ip_base = None
-    #     self.x_port = None
-    #
-    #     self.fengines = []
-    #     self.xengines = []
-
-    ###################################
-    # Host creation and configuration #
-    ###################################
-    '''
-    def fxcorrelator_initialise(self, start_tx_f=True, issue_meta=True):
-        """
-        @param start_tx_f: start f engine transmission
-        """
-
-        #set up and start output from fengines
-        if start_tx_f:
-            ip_base = self.x_ip_base
-            port = self.x_port
-
-            #turn on fengine outputs
-            for fengine in self.fengines:
-                #we will wait to issue spead meta data if initialising
-                fengine.set_txip(ip_base, issue_meta=False)
-                fengine.set_txport(port, issue_meta=False)
-
-                #turn on transmission
-                fengine.start_tx()
-
-        if issue_meta:
-            self.spead_issue_meta()
-
-    ###########################
-    # f and x engine creation #
-    ###########################
-
-    def create_fengines(self):
-        """ Generic commands, overload if different
-        """
-        for ant_id in range(self.n_ants):
-            engine = self.create_fengine(ant_id)
-            # from an fxcorrelator's view, it is important that these are in order
-            self.fengines.append(engine)
-        return self.fengines
-
-    def create_xengines(self):
-        """ Generic xengine creation, overload if different
-        """
-        for xengine_index in range(self.n_xengines):
-            engine = self.create_xengine(xengine_index)
-            # f7rom an fxcorrelator's view, it is important that these are in order
-            self.xengines.append(engine)
-        return self.xengines
-
-    # the specific fxcorrelator must know about it's specific f and x engine components
-    def create_fengine(self, ant_id):
-        """Create an fengine.
-           Overload in decendant class
-        """
-        raise NotImplementedError('%s.create_fengine not implemented'%self.descriptor)
-
-    def create_xengine(self, xengine_index):
-        """ Create an xengine.
-        """
-        raise NotImplementedError('%s.create_xengine not implemented'%self.descriptor)
-    ########################
-    # operational commands #
-    ########################
-
-    # These can all be done with generic f and xengine commands
-    def check_host_links(self):
-        """Ping hosts to see if katcp connections are functioning.
-        """
-        return (False in self.ping_hosts().values())
-
-    def calculate_integration_time(self):
-        """Calculate the number of accumulations and integration time for this system.
-        """
-        raise NotImplementedError('%s.calculate_integration_time not implemented'%self.descriptor)
-
-    def calculate_bandwidth(self):
-        """Determine the bandwidth the system is processing.
-        The ADC on the running system must report how much bandwidth it is processing.
-        """
-        raise NotImplementedError('%s.calculate_bandwidth not implemented'%self.descriptor)
-
-    def connect(self):
-        """Connect to the correlator and test connections to all the nodes.
-        """
-        return self.ping_hosts()
-    '''
-
 # end

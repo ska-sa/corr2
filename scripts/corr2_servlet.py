@@ -12,6 +12,7 @@ from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 from corr2 import fxcorrelator
 from corr2 import sensors
 from corr2 import fxcorrelator_xengine as xengops
+from corr2 import fxcorrelator_fengine as fengops
 
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
@@ -251,10 +252,10 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', 'no source name given'
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.feng_eq_set(True, source_name, list(eq_vals))
+                fengops.feng_eq_set(self.instrument, True, source_name, list(eq_vals))
             except Exception as e:
                 return 'fail', 'unknown exception: %s' % e.message
-        eqstring = str(self.instrument.feng_eq_get(source_name)[source_name]['eq'])
+        eqstring = str(fengops.feng_eq_get(self.instrument, source_name)[source_name]['eq'])
         eqstring = eqstring.replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace(',', '')
         return 'ok', eqstring
 
@@ -294,7 +295,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         try:
-            snapdata = self.instrument.feng_get_quant_snap(source_name)
+            snapdata = fengops.feng_get_quant_snap(self.instrument, source_name)
         except Exception as e:
             logging.info(e)
             return 'fail', 'failed to read quant snap data for given source %s' % source_name
@@ -358,9 +359,9 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if new_shift >= 0:
-            current_shift_value = self.instrument.feng_set_fft_shift_all(new_shift)
+            current_shift_value = fengops.feng_set_fft_shift_all(self.instrument, new_shift)
         else:
-            current_shift_value = self.instrument.feng_get_fft_shift_all()
+            current_shift_value = fengops.feng_get_fft_shift_all(self.instrument)
             current_shift_value = current_shift_value[current_shift_value.keys()[0]]
         return 'ok', current_shift_value
 
@@ -388,9 +389,9 @@ class Corr2Server(katcp.DeviceServer):
     #     :return:
     #     """
     #     if new_shift >= 0:
-    #         current_shift_value = self.instrument.feng_set_eq_all(new_real, new_imag)
+    #         current_shift_value = fengops.feng_set_eq_all(self.instrument, new_real, new_imag)
     #     else:
-    #         current_shift_value = self.instrument.feng_get_fft_shift_all()
+    #         current_shift_value = fengops.feng_get_fft_shift_all(self.instrument)
     #         current_shift_value = current_shift_value[current_shift_value.keys()[0]]
     #     return 'ok', current_shift_value
 
