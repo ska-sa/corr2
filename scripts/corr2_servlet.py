@@ -12,7 +12,7 @@ from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 from corr2 import fxcorrelator
 from corr2 import sensors
 from corr2 import fxcorrelator_xengine as xengops
-from corr2 import fxcorrelator_fengine as fengops
+from corr2 import fxcorrelator_fengops as fengops
 
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):

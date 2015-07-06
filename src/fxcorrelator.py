@@ -32,7 +32,7 @@ import fhost_fpga
 
 from instrument import Instrument
 from data_source import DataSource
-import fxcorrelator_fengine as fengops
+import fxcorrelator_fengops as fengops
 import fxcorrelator_xengine as xengops
 
 use_xeng_sim = False
