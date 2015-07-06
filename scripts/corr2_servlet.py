@@ -9,8 +9,9 @@ import Queue
 
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
-from corr2 import fxcorrelator, sensors
-
+from corr2 import fxcorrelator
+from corr2 import sensors
+from corr2 import fxcorrelator_xengine as xengops
 
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
@@ -278,10 +279,10 @@ class Corr2Server(katcp.DeviceServer):
         """
         if new_acc_time != -1.0:
             try:
-                self.instrument.xeng_set_acc_time(new_acc_time)
+                xengops.xeng_set_acc_time(self.instrument, new_acc_time)
             except:
                 return 'fail', 'could not set accumulation length'
-        return 'ok', self.instrument.xeng_get_acc_time()
+        return 'ok', xengops.xeng_get_acc_time(self.instrument)
 
     @request(Str(default=''))
     @return_reply(Str(multiple=True))
@@ -345,7 +346,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        self.instrument.xeng_vacc_sync()
+        xengops.xeng_vacc_sync(self.instrument)
         return 'ok',
 
     @request(Int(default=-1))

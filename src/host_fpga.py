@@ -107,18 +107,23 @@ class FpgaHost(Host, KatcpFpga):
         LOGGER.info('{}: check_rx() - TRUE.'.format(self.host))
         return True
 
+    def get_tengbe_counters(self):
+        """
+        Read all the tengbe counters on this device.
+        :return:
+        """
+        returndata = {}
+        for gbecore in self.tengbes:
+            returndata[gbecore.name] = gbecore.read_counters()
+        return returndata
+
     def check_rx_raw(self, max_waittime=5):
         """
         Is this host receiving 10gbe data correctly?
         :param max_waittime: maximum time to try for data
         :return:
         """
-        def get_gbe_data():
-            returndata = {}
-            for gbecore in self.tengbes:
-                returndata[gbecore.name] = gbecore.read_counters()
-            return returndata
-        rxregs = get_gbe_data()
+        rxregs = self.get_tengbe_counters()
         start_time = time.time()
         still_the_same = self.tengbes.names()[:]
         while (time.time() < start_time + max_waittime) and \
