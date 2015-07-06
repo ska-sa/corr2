@@ -193,14 +193,14 @@ class FxCorrelator(Instrument):
             post_mess_delay = 5
             self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
             time.sleep(post_mess_delay)
-            
+
             self.logger.info('Forcing an f-engine resync')
             for f in self.fhosts:
                 f.registers.control.write(sys_rst='pulse')
             time.sleep(1)
 
             # reset all counters on fhosts and xhosts
-            fengops.feng_clear_status_all()
+            fengops.feng_clear_status_all(self)
             xengops.xeng_clear_status_all(self)
 
             # check to see if the f engines are receiving all their data
@@ -224,7 +224,7 @@ class FxCorrelator(Instrument):
             xengops.xeng_vacc_sync(self)
 
         # reset all counters on fhosts and xhosts
-        fengops.feng_clear_status_all()
+        fengops.feng_clear_status_all(self)
         xengops.xeng_clear_status_all(self)
 
         # set an initialised flag
@@ -538,7 +538,7 @@ class FxCorrelator(Instrument):
         # make a new SPEAD transmitter
         del self.spead_tx, self.spead_meta_ig
         self.spead_tx = spead.Transmitter(spead.TransportUDPtx(*self.meta_destination))
-        # update the multicast socket option to use a TTL of 2, 
+        # update the multicast socket option to use a TTL of 2,
         # in order to traverse the L3 network on site.
         ttl_bin = struct.pack('@i', 2)
         self.spead_tx.t._udp_out.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl_bin)
@@ -776,7 +776,7 @@ class FxCorrelator(Instrument):
         #                        init_val=)
 
         # 0x1400 +++
-        fengops.feng_eq_update_metadata()
+        fengops.feng_eq_update_metadata(self)
 
         # spead_ig.add_item(name='eq_coef_MyAntStr', id=0x1400+inputN,
         #                        description='',
@@ -791,7 +791,7 @@ class FxCorrelator(Instrument):
                                                 'number by timestamp_scale (id=0x1046) to get back to seconds since '
                                                 'last sync when this integration was actually started.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
-        
+
         self.spead_meta_ig.add_item(name='flags_xeng_raw', id=0x1601,
                                     description='Flags associated with xeng_raw data output.'
                                                 'bit 34 - corruption or data missing during integration '
@@ -800,7 +800,7 @@ class FxCorrelator(Instrument):
                                                 'bits 0 - 31 reserved for internal debugging',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
 
-        ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(self.xeng_get_baseline_order()), 2)
+        ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(xengops.xeng_get_baseline_order(self)), 2)
         self.spead_meta_ig.add_item(name='xeng_raw', id=0x1800,
                                     description='Raw data for %i xengines in the system. This item represents a '
                                                 'full spectrum (all frequency channels) assembled from lowest '
