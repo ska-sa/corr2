@@ -1,6 +1,7 @@
 import numpy
 import spead64_48 as spead
 from casperfpga import utils as fpgautils
+from casperfpga import tengbe
 
 from data_source import DataSource
 import utils
@@ -32,40 +33,39 @@ def feng_initialise(corr):
     THREADED_FPGA_OP(corr.fhosts, timeout=10, target_function=(
         lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),) )
 
-    # set up the cores
+    # set up the 10gbe cores
     feng_port = int(corr.configd['fengine']['10gbe_port'])
-    macprefix = corr.configd['fengine']['10gbe_macprefix']
-    macbase = int(corr.configd['fengine']['10gbe_macbase'])
-    # Set up shared board info
+    mac_start = tengbe.Mac(corr.configd['fengine']['10gbe_start_mac'])
+
+    # set up shared board info
     boards_info = {}
     board_id = 0
+    mac = int(mac_start)
     for f in corr.fhosts:
         macs = []
-        ips = []
         for gbe in f.tengbes:
-            this_mac = '%s%02x' % (macprefix, macbase)
-            macs.append(this_mac)
-            macbase += 1
-            boards_info[f.host] = board_id, macs
+            macs.append(mac)
+            mac += 1
+        boards_info[f.host] = board_id, macs
         board_id += 1
 
     def setup_gbes(f):
         board_id, macs = boards_info[f.host]
-        f.registers.tx_metadata.write(
-            board_id=board_id, porttx=corr.fengine_output.port)
+        f.registers.tx_metadata.write(board_id=board_id,
+                                      porttx=corr.fengine_output.port)
         for gbe, this_mac in zip(f.tengbes, macs):
             gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
             corr.logger.info(
-                'fhost(%s) gbe(%s) MAC(%s) port(%i) board(%i) txIPbase(%s) txPort(%i)' %
-                (f.host, gbe.name, this_mac, feng_port, board_id,
+                'fhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i) tx(%s:%i)' %
+                (f.host, gbe.name, str(gbe.mac), feng_port, board_id,
                  corr.fengine_output.ip_address, corr.fengine_output.port))
-            #gbe.tap_start(restart=True)
+            # gbe.tap_start(restart=True)
             gbe.dhcp_start()
     THREADED_FPGA_OP(corr.fhosts, timeout=10, target_function=(setup_gbes,))
 
     # release from reset
     THREADED_FPGA_OP(corr.fhosts, timeout=5, target_function=(
-        lambda fpga_: fpga_.registers.control.write(gbe_rst=False),) )
+        lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
 
 def feng_check_rx(corr, max_waittime=30):
     """

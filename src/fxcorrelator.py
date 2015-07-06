@@ -188,7 +188,7 @@ class FxCorrelator(Instrument):
             # sys.stdout.flush()
 
             # subscribe all the engines to the multicast groups
-            fengops.feng_subscribe_to_multicast()
+            fengops.feng_subscribe_to_multicast(self)
             xengops.xeng_subscribe_to_multicast(self)
             post_mess_delay = 5
             self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
