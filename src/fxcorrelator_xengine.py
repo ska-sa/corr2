@@ -81,10 +81,10 @@ def xeng_initialise(corr):
                      target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
     THREADED_FPGA_OP(corr.xhosts, timeout=10,
                      target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
-    corr.xeng_clear_status_all()
+    xeng_clear_status_all(corr)
 
     # set up accumulation length
-    corr.xeng_set_acc_len()
+    xeng_set_acc_len(corr)
 
     # set up default destination ip and port
     corr.set_stream_destination()
