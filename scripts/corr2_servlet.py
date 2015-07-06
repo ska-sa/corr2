@@ -11,7 +11,7 @@ import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 from corr2 import fxcorrelator
 from corr2 import sensors
-from corr2 import fxcorrelator_xengine as xengops
+from corr2 import fxcorrelator_xengops as xengops
 from corr2 import fxcorrelator_fengops as fengops
 
 class KatcpLogFormatter(logging.Formatter):
