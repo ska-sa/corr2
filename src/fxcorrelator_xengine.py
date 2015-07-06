@@ -73,71 +73,67 @@ def xeng_initialise(corr):
     # simulator
     if use_xeng_sim:
         THREADED_FPGA_OP(corr.xhosts, timeout=10,
-                         target_function=(lambda fpga_:
-                                          fpga_.registers.simulator.write(en=False,
-                                                                          rst='pulse'),))
+                         target_function=(
+                             lambda fpga_: fpga_.registers.simulator.write(en=False, rst='pulse'),))
 
-    # disable transmission, place cores in reset, and
-    # give control register a known state
+    # disable transmission, place cores in reset, and give control register a known state
     THREADED_FPGA_OP(corr.xhosts, timeout=10,
-                     target_function=(lambda fpga_:
-                                      fpga_.registers.control.write(gbe_txen=False),))
+                     target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
     THREADED_FPGA_OP(corr.xhosts, timeout=10,
-                     target_function=(lambda fpga_:
-                                      fpga_.registers.control.write(gbe_rst=True),))
-    xeng_clear_status_all(corr)
+                     target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
+    corr.xeng_clear_status_all()
 
     # set up accumulation length
-    xeng_set_acc_len(corr)
+    corr.xeng_set_acc_len()
 
     # set up default destination ip and port
     corr.set_stream_destination()
     corr.set_meta_destination()
 
     # set up 10gbe cores
-    xeng_ip_octets = [int(bit) for bit in corr.configd['xengine']['10gbe_start_ip'].split('.')]
-    assert len(xeng_ip_octets) == 4, 'That\'s an odd IP address.'
-    xeng_ip_base = xeng_ip_octets[3]
-    xeng_ip_prefix = '%d.%d.%d.' % (xeng_ip_octets[0], xeng_ip_octets[1], xeng_ip_octets[2])
     xeng_port = int(corr.configd['xengine']['10gbe_port'])
     macprefix = corr.configd['xengine']['10gbe_macprefix']
     macbase = int(corr.configd['xengine']['10gbe_macbase'])
     board_id = 0
+    boards_info = {}
     for f in corr.xhosts:
-        f.registers.board_id.write(reg=board_id)
+        macs = []
+        ips = []
         for gbe in f.tengbes:
             this_mac = '%s%02x' % (macprefix, macbase)
-            this_ip = '%s%d' % (xeng_ip_prefix, xeng_ip_base)
-            gbe.setup(mac='%s%02x' % (macprefix, macbase), ipaddress='%s%d' % (xeng_ip_prefix, xeng_ip_base),
-                      port=xeng_port)
-            corr.logger.info('xhost(%s) gbe(%s) MAC(%s) IP(%s) port(%i) board(%i)' %
-                             (f.host, gbe, this_mac, this_ip, xeng_port, board_id))
+            macs.append(this_mac)
             macbase += 1
-            xeng_ip_base += 1
-            gbe.tap_start(restart=True)
-            # gbe.dhcp_start()
-        board_id += 1  # 1 on new systems, 4 on old xeng_rx_reorder system
+        boards_info[f.host] = board_id, macs
+        board_id += 1
+
+    def setup_gbes(f):
+        board_id, macs = boards_info[f.host]
+        f.registers.board_id.write(reg=board_id)
+        for gbe, this_mac in zip(f.tengbes, macs):
+            gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
+            corr.logger.info('xhost(%s) gbe(%s) MAC(%s) port(%i) board(%i)' %
+                             (f.host, gbe, this_mac, xeng_port, board_id))
+            #gbe.tap_start(restart=True)
+            gbe.dhcp_start()
+
+    THREADED_FPGA_OP(corr.xhosts, timeout=10, target_function=(setup_gbes,))
 
     # clear gbe status
     THREADED_FPGA_OP(corr.xhosts, timeout=10,
-                     target_function=(lambda fpga_:
-                                      fpga_.registers.control.write(gbe_debug_rst='pulse'),))
+                     target_function=(lambda fpga_: fpga_.registers.control.write(gbe_debug_rst='pulse'),))
 
     # release cores from reset
     THREADED_FPGA_OP(corr.xhosts, timeout=10,
-                     target_function=(lambda fpga_:
-                                      fpga_.registers.control.write(gbe_rst=False),))
+                     target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
 
     # simulator
     if use_xeng_sim:
         THREADED_FPGA_OP(corr.xhosts, timeout=10,
-                         target_function=(lambda fpga_:
-                                          fpga_.registers.simulator.write(en=True),))
+                         target_function=(lambda fpga_: fpga_.registers.simulator.write(en=True),))
 
     # clear general status
     THREADED_FPGA_OP(corr.xhosts, timeout=10,
-                     target_function=(lambda fpga_:
-                                      fpga_.registers.control.write(status_clr='pulse'),))
+                     target_function=(lambda fpga_: fpga_.registers.control.write(status_clr='pulse'),))
 
     # check for errors
     # TODO - read status regs?
