@@ -800,7 +800,7 @@ class FxCorrelator(Instrument):
                                                 'bits 0 - 31 reserved for internal debugging',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
 
-        ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(self.xeng_get_baseline_order()), 2)
+        ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(xengops.xeng_get_baseline_order(self)), 2)
         self.spead_meta_ig.add_item(name='xeng_raw', id=0x1800,
                                     description='Raw data for %i xengines in the system. This item represents a '
                                                 'full spectrum (all frequency channels) assembled from lowest '
