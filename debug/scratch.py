@@ -5,14 +5,49 @@ Created on Mon Mar 31 13:10:05 2014
 @author: paulp
 """
 
-import logging, sys
+import threading
+import time
+import sys
+
+def check_vaccs_okay(arg1, arg2):
+    print arg1, arg2, time.time()
+    threading.Timer(5, check_vaccs_okay, [arg1+1], {'arg2': arg2}).start()
+
+
+threading.Timer(5, check_vaccs_okay, [3], {'arg2': 'sam'}).start()
+
+print 'timer is running'
+
+stime = time.time()
+while time.time() < stime + 21:
+    time.sleep(0.2)
+
+print 'all done'
+sys.exit(0)
+
+import logging
+import sys
+
+
+logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+logging.root.setLevel(logging.DEBUG)
 
 LOGGER = logging.getLogger(__name__)
 
+def emit(self, record):
+    record.msg = 'ADDING EXTRA FOO:' + record.msg
 
-hosts = 'roach020958','roach02091b','roach020914','roach020922',\
-        'roach020921','roach020927','roach020919','roach020925',\
-        'roach02091a','roach02091e','roach020923','roach020924', 'roach020959', 'roach020915'
+LOGGER.addHandler(HostLogHandler())
+LOGGER.info('woooo')
+
+
+
+sys.exit(0)
+
+
+hosts = 'roach020958', 'roach02091b', 'roach020914', 'roach020922',\
+        'roach020921', 'roach020927', 'roach020919', 'roach020925',\
+        'roach02091a', 'roach02091e', 'roach020923', 'roach020924', 'roach020959', 'roach020915'
 
 import corr2.utils as utils
 import casperfpga
