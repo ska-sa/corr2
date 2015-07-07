@@ -204,7 +204,7 @@ class FxCorrelator(Instrument):
             xengops.xeng_clear_status_all(self)
 
             # check to see if the f engines are receiving all their data
-            if not fengops.feng_check_rx():
+            if not fengops.feng_check_rx(self):
                 raise RuntimeError('The f-engines RX have a problem.')
 
             # start f-engine TX
@@ -213,7 +213,7 @@ class FxCorrelator(Instrument):
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
 
             # check that the F-engines are transmitting data correctly
-            if not fengops.feng_check_tx():
+            if not fengops.feng_check_tx(self):
                 raise RuntimeError('The f-engines TX have a problem.')
 
             # check that the X-engines are receiving data
