@@ -231,7 +231,7 @@ class FxCorrelator(Instrument):
         self._initialised = True
 
         # start the vacc check timer
-        xengops.xeng_setup_vacc_check_timer(self)
+        #xengops.xeng_setup_vacc_check_timer(self)
 
     # def qdr_calibrate_SERIAL(self):
     #     for hostlist in [self.fhosts, self.xhosts]:
