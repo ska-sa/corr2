@@ -3,6 +3,7 @@ import numpy
 import threading
 
 from casperfpga import utils as fpgautils
+from casperfpga.tengbe import Mac
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -92,17 +93,15 @@ def xeng_initialise(corr):
 
     # set up 10gbe cores
     xeng_port = int(corr.configd['xengine']['10gbe_port'])
-    macprefix = corr.configd['xengine']['10gbe_macprefix']
-    macbase = int(corr.configd['xengine']['10gbe_macbase'])
+    start_mac = int(Mac(corr.configd['xengine']['10gbe_start_mac']))
     board_id = 0
     boards_info = {}
     for f in corr.xhosts:
         macs = []
-        ips = []
+        # ips = [] #  not used
         for gbe in f.tengbes:
-            this_mac = '%s%02x' % (macprefix, macbase)
+            this_mac = start_mac + gbe
             macs.append(this_mac)
-            macbase += 1
         boards_info[f.host] = board_id, macs
         board_id += 1
 
@@ -112,7 +111,7 @@ def xeng_initialise(corr):
         for gbe, this_mac in zip(f.tengbes, macs):
             gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
             corr.logger.info('xhost(%s) gbe(%s) MAC(%s) port(%i) board(%i)' %
-                             (f.host, gbe, this_mac, xeng_port, board_id))
+                             (f.host, gbe, str(Mac(this_mac)), xeng_port, board_id))
             #gbe.tap_start(restart=True)
             gbe.dhcp_start()
 

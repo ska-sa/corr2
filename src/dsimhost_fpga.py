@@ -186,8 +186,8 @@ class FpgaDsimHost(FpgaHost):
 
     def setup_tengbes(self):
         """Set up 10GbE MACs, IPs and destination address/port"""
-        start_ip = self.config['10gbe_start_ip']
-        start_mac = self.config['10gbe_start_mac']
+        start_ip = int(tengbe.IpAddress(self.config['10gbe_start_ip']))
+        start_mac = int(tengbe.Mac(self.config['10gbe_start_mac']))
         port = int(self.config['10gbe_port'])
         num_tengbes = len(self.tengbes)
         if num_tengbes < 1:
@@ -195,13 +195,9 @@ class FpgaDsimHost(FpgaHost):
         gbes_per_pol = 2        # Hardcoded assumption
         num_pols = num_tengbes // gbes_per_pol
 
-        ip_bits = start_ip.split('.')
-        ipbase = int(ip_bits[3])
-        mac_bits = start_mac.split(':')
-        macbase = int(mac_bits[5])
         for ctr in range(num_tengbes):
-            mac = '%s:%d' % (':'.join(mac_bits[0:5]), macbase + ctr)
-            ip = '%s.%s.%s.%d' % (ip_bits[0], ip_bits[1], ip_bits[2], ipbase + ctr)
+            mac = str(tengbe.Mac(start_mac + ctr))
+            ip = str(tengbe.IpAddress(start_ip + ctr))
             self.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=port)
         for gbe in self.tengbes:
             LOGGER.info('Not using tap_start!')

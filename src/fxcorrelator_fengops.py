@@ -1,6 +1,8 @@
 import numpy
 import spead64_48 as spead
 from casperfpga import utils as fpgautils
+from casperfpga.tengbe import Mac
+# from casperfpga.tengbe import IpAddress
 
 from data_source import DataSource
 import utils
@@ -34,18 +36,16 @@ def feng_initialise(corr):
 
     # set up the cores
     feng_port = int(corr.configd['fengine']['10gbe_port'])
-    macprefix = corr.configd['fengine']['10gbe_macprefix']
-    macbase = int(corr.configd['fengine']['10gbe_macbase'])
+    start_mac = int(Mac(corr.configd['fengine']['10gbe_start_mac']))
     # Set up shared board info
     boards_info = {}
     board_id = 0
     for f in corr.fhosts:
         macs = []
-        ips = []
+        # ips = [] #  not used
         for gbe in f.tengbes:
-            this_mac = '%s%02x' % (macprefix, macbase)
+            this_mac = start_mac + gbe
             macs.append(this_mac)
-            macbase += 1
             boards_info[f.host] = board_id, macs
         board_id += 1
 
@@ -57,7 +57,7 @@ def feng_initialise(corr):
             gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
             corr.logger.info(
                 'fhost(%s) gbe(%s) MAC(%s) port(%i) board(%i) txIPbase(%s) txPort(%i)' %
-                (f.host, gbe.name, this_mac, feng_port, board_id,
+                (f.host, gbe.name, str(Mac(this_mac)), feng_port, board_id,
                  corr.fengine_output.ip_address, corr.fengine_output.port))
             #gbe.tap_start(restart=True)
             gbe.dhcp_start()

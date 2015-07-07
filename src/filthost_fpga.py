@@ -5,6 +5,8 @@ import logging
 
 from host_fpga import FpgaHost
 from data_source import DataSource
+from casperfpga.tengbe import Mac
+from casperfpga.tengbe import IpAddress
 
 LOGGER = logging.getLogger(__name__)
 
@@ -129,17 +131,18 @@ class FpgaFilterHost(FpgaHost):
         _ip_octets = [int(bit) for bit in self._config['10gbe_start_ip'].split('.')]
         _port = int(self._config['10gbe_port'])
         assert len(_ip_octets) == 4, 'That\'s an odd IP address: {}'.format(str(_ip_octets))
-        _ip_base = _ip_octets[3] + (self.board_id * _num_tengbes)
-        _ip_prefix = '%d.%d.%d.' % (_ip_octets[0], _ip_octets[1], _ip_octets[2])
-        _mac_prefix = self._config['10gbe_macprefix']
-        _mac_base = int(self._config['10gbe_macbase']) + (self.board_id * _num_tengbes)
+        _ip_base = 0 + (self.board_id * _num_tengbes)
+        _ip_start = int(IpAddress(self._config['10gbe_start_ip']))
+
+        _mac_start = int(Mac(self._config['10gbe_start_mac']))
+        _mac_base = 0 + (self.board_id * _num_tengbes)
         for _gbe in self.tengbes:
-            this_mac = '%s%02x' % (_mac_prefix, _mac_base)
-            this_ip = '%s%d' % (_ip_prefix, _ip_base)
+            this_mac = _mac_start + _mac_base
+            this_ip = _ip_start + _ip_base
             _gbe.setup(mac=this_mac, ipaddress=this_ip,
                        port=_port)
             LOGGER.info('{}: gbe({}) MAC({}) IP({}) port({}) board({})'.format(
-                self.host, _gbe.name, this_mac, this_ip, _port, self.board_id))
+                self.host, _gbe.name, str(Mac(this_mac)), str(IpAddress(this_ip)), _port, self.board_id))
             _mac_base += 1
             _ip_base += 1
         for _gbe in self.tengbes:
