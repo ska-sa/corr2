@@ -27,7 +27,7 @@ parser.add_argument('--pulse', action='store_true', default=False, help=
                     'already transmitting, use --stop first. It will only work '
                     'once until the dsim-engine is reset, e.g using --resync '
                     'which can be used with --pulse (--resync will be applied first).')
-parser.add_argument('--pulse-packets', action='store', default=100, help=
+parser.add_argument('--pulse-packets', action='store', default=100, type=int, help=
                     'Send out out this many data packets per polarisation if --pulse '
                     'is specified (default: %(default)d.')
 parser.add_argument('--resync', action='store_true', default=False,
