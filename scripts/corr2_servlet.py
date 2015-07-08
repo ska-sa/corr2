@@ -17,8 +17,6 @@ from corr2 import fxcorrelator_fengops as fengops
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
-            'INFO': 'info',
-            'DEBUG': 'debug',
             'WARNING': 'warn'
         }
         if record.levelname in translate_levels:
