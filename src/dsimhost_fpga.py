@@ -24,42 +24,48 @@ def remove_nones(write_vars):
 
 class Source(object):
     def __init__(self, register, name):
-        self.register = register
         self.parent = register.parent
         self.name = name
 
 class SineSource(Source):
-    def __init__(self, register, name):
-        super(SineSource, self).__init__(register, name)
+    def __init__(self, freq_register, scale_register, name):
+        super(SineSource, self).__init__(freq_register, name)
+        self.freq_register = freq_register
+        self.scale_register = scale_register
         self.sample_rate_hz = float(self.parent.config['sample_rate_hz'])
-        freq_field = self.register.field_get_by_name('frequency')
+        freq_field = self.freq_register.field_get_by_name('frequency')
         self.nr_freq_steps = 2**(freq_field.width_bits)
         self.max_freq = self.sample_rate_hz / 2.
         self.delta_freq = self.max_freq / (self.nr_freq_steps - 1)
 
     @property
     def frequency(self):
-        return self.register.read()['data']['frequency'] * self.delta_freq
+        return self.freq_register.read()['data']['frequency'] * self.delta_freq
 
     @property
     def scale(self):
-        return self.register.read()['data']['scale']
+        return self.scale_register.read()['data']['scale']
 
     def set(self, scale=None, frequency=None):
-        freq_steps = (int(round(frequency / self.delta_freq))
-                      if frequency is not None else None)
-        write_vars = remove_nones(dict(scale=scale, frequency=freq_steps))
-        self.register.write(**write_vars)
+        if scale is not None:
+            self.scale_register.write(scale=scale)
+        if frequency is not None:
+            freq_steps = int(round(frequency / self.delta_freq))
+            self.freq_register.write(frequency=freq_steps)
 
 class NoiseSource(Source):
+    def __init__(self, scale_register, name):
+        self.scale_register = scale_register
+        super(NoiseSource, self).__init__(scale_register, name)
+
     @property
     def scale(self):
-        return self.register.read()['data']['scale']
+        return self.scale_register.read()['data']['scale']
 
     def set(self, scale=None):
         # TODO work in 'human' units such W / Hz?
         write_vars = remove_nones(dict(scale=scale))
-        self.register.write(**write_vars)
+        self.scale_register.write(**write_vars)
 
 class Output(object):
     def __init__(self, name, scale_register, control_register):
@@ -114,7 +120,11 @@ class FpgaDsimHost(FpgaHost):
             noise_name = get_prefixed_name('scale_wng', reg.name)
             output_scale_name = get_prefixed_name('scale_out', reg.name)
             if sin_name is not None:
-                setattr(self.sine_sources, 'sin_'+ sin_name, SineSource(reg, sin_name))
+                scale_reg_postfix = (
+                    '_'+sin_name if reg.name.endswith('_'+sin_name) else sin_name)
+                scale_reg = getattr(self.registers, 'scale_cwg' + scale_reg_postfix)
+                setattr(self.sine_sources, 'sin_'+ sin_name, SineSource(
+                    reg, scale_reg, sin_name))
             elif noise_name is not None:
                 setattr(self.noise_sources, 'noise_' + noise_name,
                         NoiseSource(reg, noise_name))
