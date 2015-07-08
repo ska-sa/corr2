@@ -139,10 +139,10 @@ class FpgaFilterHost(FpgaHost):
         for _gbe in self.tengbes:
             this_mac = _mac_start + _mac_base
             this_ip = _ip_start + _ip_base
-            _gbe.setup(mac=this_mac, ipaddress=this_ip,
+            _gbe.setup(mac=Mac(this_mac), ipaddress=IpAddress(this_ip),
                        port=_port)
             LOGGER.info('{}: gbe({}) MAC({}) IP({}) port({}) board({})'.format(
-                self.host, _gbe.name, str(Mac(this_mac)), str(IpAddress(this_ip)), _port, self.board_id))
+                self.host, _gbe.name, Mac(this_mac), IpAddress(this_ip), _port, self.board_id))
             _mac_base += 1
             _ip_base += 1
         for _gbe in self.tengbes:

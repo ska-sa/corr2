@@ -53,10 +53,10 @@ def feng_initialise(corr):
         f.registers.tx_metadata.write(
             board_id=board_id, porttx=corr.fengine_output.port)
         for gbe, this_mac in zip(f.tengbes, macs):
-            gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
+            gbe.setup(mac=Mac(this_mac), ipaddress='0.0.0.0', port=feng_port)
             corr.logger.info(
                 'fhost(%s) gbe(%s) MAC(%s) port(%i) board(%i) txIPbase(%s) txPort(%i)' %
-                (f.host, gbe.name, str(Mac(this_mac)), feng_port, board_id,
+                (f.host, gbe.name, Mac(this_mac), feng_port, board_id,
                  corr.fengine_output.ip_address, corr.fengine_output.port))
             #gbe.tap_start(restart=True)
             gbe.dhcp_start()

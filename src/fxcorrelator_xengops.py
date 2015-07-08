@@ -108,9 +108,9 @@ def xeng_initialise(corr):
         board_id, macs = boards_info[f.host]
         f.registers.board_id.write(reg=board_id)
         for gbe, this_mac in zip(f.tengbes, macs):
-            gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
+            gbe.setup(mac=Mac(this_mac), ipaddress='0.0.0.0', port=xeng_port)
             corr.logger.info('xhost(%s) gbe(%s) MAC(%s) port(%i) board(%i)' %
-                             (f.host, gbe, str(Mac(this_mac)), xeng_port, board_id))
+                             (f.host, gbe, Mac(this_mac), xeng_port, board_id))
             #gbe.tap_start(restart=True)
             gbe.dhcp_start()
 
