@@ -43,5 +43,8 @@ class DataSource(object):
         """
         return (int(self.ip_address) >> 24) == 239
 
+    def __repr__(self):
+        return self.__str__()
+
     def __str__(self):
         return 'DataSource(%s) @ %s+%i port(%i)' % (self.name, self.ip_address, self.ip_range-1, self.port)

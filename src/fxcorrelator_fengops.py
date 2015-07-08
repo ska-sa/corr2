@@ -30,7 +30,7 @@ def feng_initialise(corr):
         corr.configd['fengine']['destination_mcast_ips'])
     corr.fengine_output.name = 'fengine_destination'
     fdest_ip = int(corr.fengine_output.ip_address)
-    THREADED_FPGA_OP(corr.fhosts, timeout=10, target_function=(
+    THREADED_FPGA_OP(corr.fhosts, timeout=5, target_function=(
         lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),) )
 
     # set up the 10gbe cores

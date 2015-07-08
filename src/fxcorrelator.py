@@ -72,6 +72,7 @@ class FxCorrelator(Instrument):
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []
+        self.filthosts = None
 
         # attributes
         self.katcp_port = None
@@ -97,41 +98,12 @@ class FxCorrelator(Instrument):
         """
         Set up the correlator using the information in the config file.
         :return:
-
-        fengine init:
-            eq
-            set up interfaces (10gbe) - remember the sequence of holding in reset
-            check feng rx
-            check producing data?
-            enable feng tx
-            (check status?)
-            check qdr cal?
-
-        xengine init:
-            vacc
-            set up interfaces (10gbe) - remember the sequence of holding in reset
-            check rx
-            errors?
-            check producing
-            enable tx
         """
 
         # set up the filter boards if we need to
         if 'filter' in self.configd:
-            self.logger.info('Adding filter hosts:')
-            import filthost_fpga
-            self.filthosts = []
-            _filthosts = self.configd['filter']['hosts'].strip().split(',')
-            for ctr, _ in enumerate(_filthosts):
-                _fpga = filthost_fpga.FpgaFilterHost(ctr, self.configd)
-                self.filthosts.append(_fpga)
-                self.logger.info('\tFilter host {} added'.format(_fpga.host))
-            self.logger.info('done.')
-            # program the boards
-            THREADED_FPGA_FUNC(self.filthosts, timeout=10, target_function=('upload_to_ram_and_program',
-                                                                            (self.filthosts[0].boffile,),))
-            # initialise them
-            THREADED_FPGA_FUNC(self.filthosts, timeout=10, target_function=('initialise', (),))
+            import fxcorrelator_filterops as filterops
+            filterops.filter_initialise(corr=self, program=program)
 
         # connect to the other hosts that make up this correlator
         THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
@@ -158,8 +130,8 @@ class FxCorrelator(Instrument):
 
         # load information from the running boffiles
         self.logger.info('Loading design information')
-        THREADED_FPGA_FUNC(self.fhosts, timeout=10, target_function='get_system_information')
-        THREADED_FPGA_FUNC(self.xhosts, timeout=10, target_function='get_system_information')
+        THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='get_system_information')
+        THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='get_system_information')
 
         if program:
             # cal the qdr on all boards
@@ -231,7 +203,8 @@ class FxCorrelator(Instrument):
         self._initialised = True
 
         # start the vacc check timer
-        xengops.xeng_setup_vacc_check_timer(self)
+        # TODO
+        # xengops.xeng_setup_vacc_check_timer(self)
 
     # def qdr_calibrate_SERIAL(self):
     #     for hostlist in [self.fhosts, self.xhosts]:
