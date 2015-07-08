@@ -42,7 +42,6 @@ def feng_initialise(corr):
     board_id = 0
     for f in corr.fhosts:
         macs = []
-        # ips = [] #  not used
         for gbe in f.tengbes:
             this_mac = start_mac + gbe
             macs.append(this_mac)

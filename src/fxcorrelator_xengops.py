@@ -98,7 +98,6 @@ def xeng_initialise(corr):
     boards_info = {}
     for f in corr.xhosts:
         macs = []
-        # ips = [] #  not used
         for gbe in f.tengbes:
             this_mac = start_mac + gbe
             macs.append(this_mac)
