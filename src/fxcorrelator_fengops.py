@@ -36,16 +36,17 @@ def feng_initialise(corr):
 
     # set up the cores
     feng_port = int(corr.configd['fengine']['10gbe_port'])
-    start_mac = int(Mac(corr.configd['fengine']['10gbe_start_mac']))
+    start_mac = Mac(corr.configd['fengine']['10gbe_start_mac'])
     # Set up shared board info
     boards_info = {}
     board_id = 0
+    mac = int(start_mac)
     for f in corr.fhosts:
         macs = []
         for gbe in f.tengbes:
-            this_mac = start_mac + gbe
-            macs.append(this_mac)
-            boards_info[f.host] = board_id, macs
+            macs.append(mac)
+            mac += 1
+        boards_info[f.host] = board_id, macs
         board_id += 1
 
     def setup_gbes(f):

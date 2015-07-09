@@ -93,14 +93,15 @@ def xeng_initialise(corr):
 
     # set up 10gbe cores
     xeng_port = int(corr.configd['xengine']['10gbe_port'])
-    start_mac = int(Mac(corr.configd['xengine']['10gbe_start_mac']))
+    start_mac = Mac(corr.configd['xengine']['10gbe_start_mac'])
     board_id = 0
     boards_info = {}
+    mac = int(start_mac)
     for f in corr.xhosts:
         macs = []
         for gbe in f.tengbes:
-            this_mac = start_mac + gbe
-            macs.append(this_mac)
+            macs.append(mac)
+            mac += 1
         boards_info[f.host] = board_id, macs
         board_id += 1
 
