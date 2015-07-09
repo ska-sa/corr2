@@ -34,7 +34,7 @@ class AdcData(object):
         :return: a list of 80-bit words, as rxd from the ADC
         """
         words80 = []
-        for wordctr in range(0, len(list_w64)-4, 5):
+        for wordctr in range(0, len(list_w64), 5):
             word64_0 = list_w64[wordctr + 0]
             word64_1 = list_w64[wordctr + 1]
             word64_2 = list_w64[wordctr + 2]
