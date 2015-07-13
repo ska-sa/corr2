@@ -115,7 +115,7 @@ def xeng_initialise(corr):
                              (f.host, gbe, str(gbe.mac), xeng_port, board_id))
             # gbe.tap_start(restart=True)
             gbe.dhcp_start()
-    THREADED_FPGA_OP(corr.xhosts, timeout=10, target_function=(setup_gbes,))
+    THREADED_FPGA_OP(corr.xhosts, timeout=30, target_function=(setup_gbes,))
 
     # clear gbe status
     THREADED_FPGA_OP(corr.xhosts, timeout=10,
