@@ -83,15 +83,15 @@ for fpga in fpgas:
     else:
         already_deprogrammed.append(fpga.host)
 
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 if len(deprogrammed) != 0:
     print deprogrammed, ': deprogrammed okay.'
 if len(already_deprogrammed) != 0:
     print already_deprogrammed, ': already deprogrammed.'
 
 if args.reboot:
-    for host in hosts:
-        reboot_cmd = 'kcpcmd -s {} restart | grep restart'.format(host)
-        print "\nRebooting {}...".format(host)
-        os.system(reboot_cmd)
+    for fpga in fpgas:
+        fpga.katcprequest(name='restart', request_timeout=-1.0,
+            require_ok=True, request_args=())
+        print "Restarting {}".format(fpga.host)
+fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 # EOF
