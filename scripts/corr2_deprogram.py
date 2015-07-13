@@ -20,6 +20,8 @@ parser.add_argument('--class', dest='hclass', action='store', default='',
                     help='start/stop a class: fengine or xengine')
 parser.add_argument('--dnsmasq', dest='dnsmasq', action='store_true', default=False,
                     help='search for roach hostnames in /var/lib/misc/dnsmasq.leases')
+parser.add_argument('--reboot', action='store_true', default=False,
+                    help='reboot roach in /var/lib/misc/dnsmasq.leases')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
@@ -80,9 +82,16 @@ for fpga in fpgas:
         deprogrammed.append(fpga.host)
     else:
         already_deprogrammed.append(fpga.host)
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+
 if len(deprogrammed) != 0:
     print deprogrammed, ': deprogrammed okay.'
 if len(already_deprogrammed) != 0:
     print already_deprogrammed, ': already deprogrammed.'
-# end
+
+if args.reboot:
+    for fpga in fpgas:
+        fpga.katcprequest(name='restart', request_timeout=-1.0,
+            require_ok=True, request_args=())
+        print "Restarting {}".format(fpga.host)
+fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+# EOF
