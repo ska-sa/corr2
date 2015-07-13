@@ -71,12 +71,6 @@ class FpgaFHost(FpgaHost):
         LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
 
-    def check_pfb(self):
-        #self.registers.local_time_lsw.read() +
-        #self.registers.local_time_msw.read() * 2e32
-        import IPython
-        IPython.embed()
-
     def check_rx_reorder(self):
         """
         Is this F host reordering received data correctly?
