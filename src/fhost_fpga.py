@@ -71,6 +71,12 @@ class FpgaFHost(FpgaHost):
         LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
 
+    def check_pfb(self):
+        #self.registers.local_time_lsw.read() +
+        #self.registers.local_time_msw.read() * 2e32
+        import IPython
+        IPython.embed()
+
     def check_rx_reorder(self):
         """
         Is this F host reordering received data correctly?
@@ -348,30 +354,30 @@ class FpgaFHost(FpgaHost):
 #         Notes: \n
 #         IS A ONCE-OFF UPDATE (no babysitting by software)\n"""
 #         #Fix to fine delay calc on 2010-11-19
-# 	if pol_id == 0:
-# 		fd_status_reg = self.registers.tl_fd0_status
-# 		fd_control_reg = self.registers.tl_fd0_control
-# 		fd_control0_reg = self.registers.tl_fd0_control0
-# 		cd_status_reg = self.registers.tl_cd0_status
-# 		cd_control_reg = self.registers.tl_cd0_control
-# 		cd_control0_reg = self.registers.tl_cd0_control0
-# 		coarse_delay_reg = self.registers.coarse_delay0
-# 		fractional_delay_reg = self.registers.fractional_delay0
-# 		delay_delta_reg = self.registers.delay_delta0
-# 		phase_offset_reg = self.registers.phase_offset0
-# 		phase_offset_delta_reg = self.registers.phase_offset_delta0
-# 	else:
-# 		fd_status_reg = self.registers.tl_fd1_status
-# 		fd_control_reg = self.registers.tl_fd1_control
-# 		fd_control0_reg = self.registers.tl_fd1_control0
-# 		cd_status_reg = self.registers.tl_cd1_status
-# 		cd_control_reg = self.registers.tl_cd1_control
-# 		cd_control0_reg = self.registers.tl_cd1_control0
-# 		coarse_delay_reg = self.registers.coarse_delay1
-# 		fractional_delay_reg = self.registers.fractional_delay1
-# 		delay_delta_reg = self.registers.delay_delta1
-# 		phase_offset_reg = self.registers.phase_offset1
-# 		phase_offset_delta_reg = self.registers.phase_offset_delta1
+#   if pol_id == 0:
+#       fd_status_reg = self.registers.tl_fd0_status
+#       fd_control_reg = self.registers.tl_fd0_control
+#       fd_control0_reg = self.registers.tl_fd0_control0
+#       cd_status_reg = self.registers.tl_cd0_status
+#       cd_control_reg = self.registers.tl_cd0_control
+#       cd_control0_reg = self.registers.tl_cd0_control0
+#       coarse_delay_reg = self.registers.coarse_delay0
+#       fractional_delay_reg = self.registers.fractional_delay0
+#       delay_delta_reg = self.registers.delay_delta0
+#       phase_offset_reg = self.registers.phase_offset0
+#       phase_offset_delta_reg = self.registers.phase_offset_delta0
+#   else:
+#       fd_status_reg = self.registers.tl_fd1_status
+#       fd_control_reg = self.registers.tl_fd1_control
+#       fd_control0_reg = self.registers.tl_fd1_control0
+#       cd_status_reg = self.registers.tl_cd1_status
+#       cd_control_reg = self.registers.tl_cd1_control
+#       cd_control0_reg = self.registers.tl_cd1_control0
+#       coarse_delay_reg = self.registers.coarse_delay1
+#       fractional_delay_reg = self.registers.fractional_delay1
+#       delay_delta_reg = self.registers.delay_delta1
+#       phase_offset_reg = self.registers.phase_offset1
+#       phase_offset_delta_reg = self.registers.phase_offset_delta1
 #
 #         fine_delay_bits =       16
 #         coarse_delay_bits =     16
@@ -393,12 +399,12 @@ class FpgaFHost(FpgaHost):
 #         # figure out the fringe as a fraction of a cycle
 #         fr_offset = int(fringe_phase/float(360) * (2**(fringe_offset_bits)))
 #         # figure out the fringe rate. Input is in cycles per second (Hz). 1) divide by brd clock rate to get cycles per clock. 2) multiply by 2**20
-# 	# TODO adc_demux_factor
-# 	feng_clk = (self.sample_rate_hz/8)
+#   # TODO adc_demux_factor
+#   feng_clk = (self.sample_rate_hz/8)
 #         fr_rate = int(float(fringe_rate) / feng_clk * (2**(bitshift_schedule + fringe_rate_bits-1)))
 #
 #         # read the arm and load counts - they must increment after the delay has been loaded
-# 	status = fd_status_reg.read()
+#   status = fd_status_reg.read()
 #         arm_count_before = status['arm_count']
 #         ld_count_before = status['load_count']
 #
@@ -460,8 +466,8 @@ class FpgaFHost(FpgaHost):
 #         # fine delay (LSbs) is fraction of a cycle * 2^15 (16 bits allocated, signed integer).
 #         # increment fine_delay by MSbs much every FPGA clock cycle shifted 2**20???
 #         fractional_delay_reg.write(fractional_delay = fine_delay_i)
-# 	delay_delta_reg.write(fractional_delay = fine_delay_rate)
-# 	LOGGER.debug("Wrote %4x to fractional_delay and %4x to delay_delta register" % (fine_delay_i, fine_delay_rate))
+#   delay_delta_reg.write(fractional_delay = fine_delay_rate)
+#   LOGGER.debug("Wrote %4x to fractional_delay and %4x to delay_delta register" % (fine_delay_i, fine_delay_rate))
 #
 #         # setup the fringe rotation
 #         # LSbs is offset as a fraction of a cycle in fix_16_15 (1 = pi radians ; -1 = -1radians).
@@ -477,8 +483,8 @@ class FpgaFHost(FpgaHost):
 # #        self.ffpgas[ffpga_n].write_int('ld_time_lsw%i' % feng_input, (mcnt_ld&0xffffffff))
 # #        self.ffpgas[ffpga_n].write_int('ld_time_msw%i' % feng_input, (mcnt_ld>>32)&0x7fffffff)
 # #        self.ffpgas[ffpga_n].write_int('ld_time_msw%i' % feng_input, (mcnt_ld>>32)|(1<<31))
-# 	cd_control0_reg.write(arm = 'pulse', load_immediate = 'pulse')
-# 	fd_control0_reg.write(arm = 'pulse', load_immediate = 'pulse')
+#   cd_control0_reg.write(arm = 'pulse', load_immediate = 'pulse')
+#   fd_control0_reg.write(arm = 'pulse', load_immediate = 'pulse')
 #
 #         if ld_check == False:
 #             return {
