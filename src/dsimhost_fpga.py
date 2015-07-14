@@ -83,6 +83,10 @@ class Output(object):
         else:
             return 'signal'
 
+    @property
+    def scale(self):
+        return self.scale_register.read()['data']['scale']
+
     def select_output(self, output_type):
         if output_type == 'test_vectors':
             self.control_register.write(**{self.tgv_select_field: 0})
@@ -94,6 +98,7 @@ class Output(object):
 
     def scale_output(self, scale):
         self.scale_register.write(scale=scale)
+
 
 class FpgaDsimHost(FpgaHost):
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
