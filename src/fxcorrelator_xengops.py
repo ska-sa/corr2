@@ -115,7 +115,7 @@ def xeng_initialise(corr):
                              (f.host, gbe, str(gbe.mac), xeng_port, board_id))
             # gbe.tap_start(restart=True)
             gbe.dhcp_start()
-    THREADED_FPGA_OP(corr.xhosts, timeout=10, target_function=(setup_gbes,))
+    THREADED_FPGA_OP(corr.xhosts, timeout=30, target_function=(setup_gbes,))
 
     # clear gbe status
     THREADED_FPGA_OP(corr.xhosts, timeout=10,
@@ -197,7 +197,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
             raise RuntimeError('Load time of %.4f makes no sense at current time %.4f' %
                                (vacc_load_time, time_now))
         unix_time_diff = vacc_load_time - time.time()
-    wait_time = unix_time_diff + 3 
+    wait_time = unix_time_diff + 3
 
     corr.logger.info('xeng_vacc_sync: in %is' % unix_time_diff)
 
@@ -319,9 +319,9 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
                        target_function='clear_status')
     time.sleep(xeng_get_acc_time(corr)+1)
-    
+
     # if accumulation_len in config is long, we get some parity errors when we read
-    # the status here, but not again :( 
+    # the status here, but not again :(
     corr.logger.info('\tChecking for errors & accumulations...')
     vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
                                      target_function='vacc_get_status')
