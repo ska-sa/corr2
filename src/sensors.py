@@ -1,8 +1,13 @@
+import time
+import tornado.gen
+
 from katcp import Sensor
 from tornado.ioloop import IOLoop
-import time
+from concurrent import futures
 
-def _sensor_cb_flru(instr, sensor):
+
+@tornado.gen.coroutine
+def _sensor_cb_flru(instr, sensor, executor):
     """
     Sensor call back function for f-engine LRU
     :param sensor:
@@ -10,14 +15,18 @@ def _sensor_cb_flru(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _fhost in instr.fhosts:
-        if _fhost.host == host_name:
-            result = _fhost.host_okay()
+    try:
+        for _fhost in instr.fhosts:
+            if _fhost.host == host_name:
+                result = yield executor.submit(_fhost.host_okay)
+    except Exception:
+        instr.logger.exception('Exception updating flru sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_sensor_cb_flru ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _sensor_cb_flru, instr, sensor)
+    IOLoop.current().call_later(10, _sensor_cb_flru, instr, sensor, executor)
 
-def _sensor_cb_xlru(instr, sensor):
+@tornado.gen.coroutine
+def _sensor_cb_xlru(instr, sensor, executor):
     """
     Sensor call back function for x-engine LRU
     :param sensor:
@@ -25,14 +34,18 @@ def _sensor_cb_xlru(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _xhost in instr.xhosts:
-        if _xhost.host == host_name:
-            result = _xhost.host_okay()
+    try:
+        for _xhost in instr.xhosts:
+            if _xhost.host == host_name:
+                result = yield executor.submit(_xhost.host_okay)
+    except Exception:
+        instr.logger.exception('Exception updating xlru sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_sensor_cb_xlru ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _sensor_cb_xlru, instr, sensor)
+    IOLoop.current().call_later(10, _sensor_cb_xlru, instr, sensor, executor)
 
-def _sensor_feng_tx(instr, sensor):
+@tornado.gen.coroutine
+def _sensor_feng_tx(instr, sensor, executor):
     """
     f-engine tx counters
     :param sensor:
@@ -40,16 +53,20 @@ def _sensor_feng_tx(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _fhost in instr.fhosts:
-        if _fhost.host == host_name:
-            result = True
-            for tengbe in _fhost.tengbes:
-                result &= tengbe.tx_okay()
+    try:
+        for _fhost in instr.fhosts:
+            if _fhost.host == host_name:
+                result = True
+                for tengbe in _fhost.tengbes:
+                    result &= yield executor.submit(tengbe.tx_okay)
+    except Exception:
+        instr.logger.exception('Exception updating feng_tx sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_sensor_feng_tx ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _sensor_feng_tx, instr, sensor)
+    IOLoop.current().call_later(10, _sensor_feng_tx, instr, sensor, executor)
 
-def _sensor_feng_rx(instr, sensor):
+@tornado.gen.coroutine
+def _sensor_feng_rx(instr, sensor, executor):
     """
     f-engine rx counters
     :param sensor:
@@ -57,14 +74,18 @@ def _sensor_feng_rx(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _fhost in instr.fhosts:
-        if _fhost.host == host_name:
-            result = _fhost.check_rx_reorder()
+    try:
+        for _fhost in instr.fhosts:
+            if _fhost.host == host_name:
+                result = yield executor.submit(_fhost.check_rx_reorder)
+    except Exception:
+        instr.logger.exception('Exception updating feng_rx sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_sensor_feng_rx ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _sensor_feng_rx, instr, sensor)
+    IOLoop.current().call_later(10, _sensor_feng_rx, instr, sensor, executor)
 
-def _sensor_xeng_tx(instr, sensor):
+@tornado.gen.coroutine
+def _sensor_xeng_tx(instr, sensor, executor):
     """
     x-engine tx counters
     :param sensor:
@@ -72,16 +93,21 @@ def _sensor_xeng_tx(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _xhost in instr.xhosts:
-        if _xhost.host == host_name:
-            result = True
-            for tengbe in _xhost.tengbes:
-                result &= tengbe.tx_okay()
+    try:
+
+        for _xhost in instr.xhosts:
+            if _xhost.host == host_name:
+                result = True
+                for tengbe in _xhost.tengbes:
+                    result &= yield executor.submit(tengbe.tx_okay)
+    except Exception:
+        instr.logger.exception('Exception updating xeng_tx sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_sensor_xeng_tx ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _sensor_xeng_tx, instr, sensor)
+    IOLoop.current().call_later(10, _sensor_xeng_tx, instr, sensor, executor)
 
-def _sensor_xeng_rx(instr, sensor):
+@tornado.gen.coroutine
+def _sensor_xeng_rx(instr, sensor, executor):
     """
     x-engine rx counters
     :param sensor:
@@ -89,14 +115,18 @@ def _sensor_xeng_rx(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _xhost in instr.xhosts:
-        if _xhost.host == host_name:
-            result = _xhost.check_rx_reorder()
+    try:
+        for _xhost in instr.xhosts:
+            if _xhost.host == host_name:
+                result = yield executor.submit(_xhost.check_rx_reorder)
+    except Exception:
+        instr.logger.exception('Exception updating xeng_rx sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_sensor_xeng_rx ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _sensor_xeng_rx, instr, sensor)
+    IOLoop.current().call_later(10, _sensor_xeng_rx, instr, sensor, executor)
 
-def _sensor_feng_phy(instr, sensor):
+@tornado.gen.coroutine
+def _sensor_feng_phy(instr, sensor, executor):
     """
     f-engine PHY counters
     :param sensor:
@@ -104,14 +134,18 @@ def _sensor_feng_phy(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _fhost in instr.fhosts:
-        if _fhost.host == host_name:
-            result = _fhost.check_phy_counter()
+    try:
+        for _fhost in instr.fhosts:
+            if _fhost.host == host_name:
+                result = yield executor.submit(_fhost.check_phy_counter)
+    except Exception:
+        instr.logger.exception('Exception updating feng_phy sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_sensor_feng_phy ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _sensor_feng_phy, instr, sensor)
+    IOLoop.current().call_later(10, _sensor_feng_phy, instr, sensor, executor)
 
-def _sensor_xeng_phy(instr, sensor):
+@tornado.gen.coroutine
+def _sensor_xeng_phy(instr, sensor, executor):
     """
     x-engine PHY counters
     :param sensor:
@@ -119,14 +153,18 @@ def _sensor_xeng_phy(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _xhost in instr.xhosts:
-        if _xhost.host == host_name:
-            result = _xhost.check_phy_counter()
+    try:
+        for _xhost in instr.xhosts:
+            if _xhost.host == host_name:
+                result = yield executor.submit(_xhost.check_phy_counter)
+    except Exception:
+        instr.logger.exception('Exception updating xeng_phy sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_sensor_xeng_phy ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _sensor_xeng_phy, instr, sensor)
+    IOLoop.current().call_later(10, _sensor_xeng_phy, instr, sensor, executor)
 
-def _xeng_qdr_okay(instr, sensor):
+@tornado.gen.coroutine
+def _xeng_qdr_okay(instr, sensor, executor):
     """
     x-engine QDR check
     :param sensor:
@@ -134,14 +172,18 @@ def _xeng_qdr_okay(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _xhost in instr.xhosts:
-        if _xhost.host == host_name:
-            result = _xhost.qdr_okay()
+    try:
+        for _xhost in instr.xhosts:
+            if _xhost.host == host_name:
+                result = yield executor.submit(_xhost.qdr_okay)
+    except Exception:
+        instr.logger.exception('Exception updating xeng qdr sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_xeng_qdr_okay ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _xeng_qdr_okay, instr, sensor)
+    IOLoop.current().call_later(10, _xeng_qdr_okay, instr, sensor, executor)
 
-def _feng_qdr_okay(instr, sensor):
+@tornado.gen.coroutine
+def _feng_qdr_okay(instr, sensor, executor):
     """
     f-engine QDR check
     :param sensor:
@@ -149,12 +191,15 @@ def _feng_qdr_okay(instr, sensor):
     """
     host_name = sensor.name.split('_')[2]
     result = False
-    for _fhost in instr.fhosts:
-        if _fhost.host == host_name:
-            result = _fhost.qdr_okay()
+    try:
+        for _fhost in instr.fhosts:
+            if _fhost.host == host_name:
+                result = yield executor.submit(_fhost.qdr_okay)
+    except Exception:
+        instr.logger.exception('Exception updating feng qdr sensor for {}'.format(host_name))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     instr.logger.debug('_feng_qdr_okay ran on {}'.format(host_name))
-    IOLoop.current().call_later(10, _feng_qdr_okay, instr, sensor)
+    IOLoop.current().call_later(10, _feng_qdr_okay, instr, sensor, executor)
 
 def setup_sensors(instrument, katcp_server):
     """
@@ -162,6 +207,9 @@ def setup_sensors(instrument, katcp_server):
     :param katcp_server: the katcp server with which to register the sensors
     :return:
     """
+
+    nr_engines = len(instrument.fhosts + instrument.xhosts)
+    executor = futures.ThreadPoolExecutor(max_workers=nr_engines)
     if not instrument._initialised:
         raise RuntimeError('Cannot set up sensors until instrument is initialised.')
 
@@ -180,7 +228,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_sensor_cb_flru, instrument, sensor)
+        ioloop.add_callback(_sensor_cb_flru, instrument, sensor, executor)
 
     # x-engine lru
     for _x in instrument.xhosts:
@@ -189,7 +237,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_sensor_cb_xlru, instrument, sensor)
+        ioloop.add_callback(_sensor_cb_xlru, instrument, sensor, executor)
 
 #     # self._sensors = {'time': Sensor(sensor_type=Sensor.FLOAT, name='time_sensor', description='The time.',
 #     #                                units='s', params=[-(2**64), (2**64)-1], default=-1),
@@ -208,7 +256,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_sensor_feng_tx, instrument, sensor)
+        ioloop.add_callback(_sensor_feng_tx, instrument, sensor, executor)
 
     # f-engine rx counters
     for _f in instrument.fhosts:
@@ -217,7 +265,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_sensor_feng_rx, instrument, sensor)
+        ioloop.add_callback(_sensor_feng_rx, instrument, sensor, executor)
 
     # x-engine tx counters
     for _x in instrument.xhosts:
@@ -226,7 +274,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_sensor_xeng_tx, instrument, sensor)
+        ioloop.add_callback(_sensor_xeng_tx, instrument, sensor, executor)
 
     # x-engine rx counters
     for _x in instrument.xhosts:
@@ -235,7 +283,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_sensor_xeng_rx, instrument, sensor)
+        ioloop.add_callback(_sensor_xeng_rx, instrument, sensor, executor)
 
     # x-engine QDR errors
     for _x in instrument.xhosts:
@@ -244,7 +292,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_xeng_qdr_okay, instrument, sensor)
+        ioloop.add_callback(_xeng_qdr_okay, instrument, sensor, executor)
 
     # f-engine QDR errors
     for _f in instrument.fhosts:
@@ -253,7 +301,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_feng_qdr_okay, instrument, sensor)
+        ioloop.add_callback(_feng_qdr_okay, instrument, sensor, executor)
 
     # x-engine PHY counters
     for _x in instrument.xhosts:
@@ -262,7 +310,7 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_sensor_xeng_phy, instrument, sensor)
+        ioloop.add_callback(_sensor_xeng_phy, instrument, sensor, executor)
 
     # f-engine PHY counters
     for _f in instrument.fhosts:
@@ -271,4 +319,4 @@ def setup_sensors(instrument, katcp_server):
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
-        ioloop.add_callback(_sensor_feng_phy, instrument, sensor)
+        ioloop.add_callback(_sensor_feng_phy, instrument, sensor, executor)
