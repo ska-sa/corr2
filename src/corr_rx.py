@@ -107,7 +107,7 @@ class CorrRx(threading.Thread):
         single item-group as a parameter.
         """
 
-    def get_clean_dump(self, dump_timeout=None):
+    def get_clean_dump(self, dump_timeout=None, discard=2):
         """Discard any queued dumps, discard one more, then return the next dump"""
         # discard any existing queued dumps -- they may be from another test
         try:
@@ -117,8 +117,8 @@ class CorrRx(threading.Thread):
             pass
 
         # discard next dump too, in case
-        LOGGER.info('Discarding first dump:')
-        self.data_queue.get(timeout=dump_timeout)
+        LOGGER.info('Discarding {discard} initial dump(s):'.format(discard=discard))
+        for i in range(discard):
+            self.data_queue.get(timeout=dump_timeout)
         LOGGER.info('Waiting for a clean dump:')
         return self.data_queue.get(timeout=dump_timeout)
-
