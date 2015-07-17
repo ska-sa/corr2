@@ -341,8 +341,11 @@ class FxCorrelator(Instrument):
         self.n_antennas = int(self.configd['fengine']['n_antennas'])
         self.adc_demux_factor = int(self.configd['fengine']['adc_demux_factor'])
 
-        self.set_stream_destination(self.configd['xengine']['output_destination_ip'],
-                                    int(self.configd['xengine']['output_destination_port']))
+        #record the destination port and ip, checking it before
+        txip = tengbe.str2ip(self.configd['xengine']['output_destination_ip'])
+        txport = int(self.configd['xengine']['output_destination_port'])
+        self.xeng_tx_destination = (tengbe.ip2str(txip), txport)
+
         self.set_meta_destination(self.configd['xengine']['output_destination_ip'],
                                   int(self.configd['xengine']['output_destination_port']))
 
@@ -473,11 +476,9 @@ class FxCorrelator(Instrument):
                          (tengbe.ip2str(txip), txport))
         try:
             THREADED_FPGA_OP(self.xhosts, timeout=10,
-                             target_function=(lambda fpga_:
-                                              fpga_.registers.gbe_iptx.write(reg=txip),))
-            THREADED_FPGA_OP(self.xhosts, timeout=10,
-                             target_function=(lambda fpga_:
-                                              fpga_.registers.gbe_porttx.write(reg=txport),))
+                            target_function=(lambda fpga_: fpga_.registers.gbe_iptx.write(reg=txip),))
+            THREADED_FPGA_OP(self.xhosts, timeout=10, 
+                            target_function=(lambda fpga_: fpga_.registers.gbe_porttx.write(reg=txport),))
         except AttributeError:
             self.logger.warning('Set SPEAD stream destination called, but '
                                 'devices NOT written! Have they been created?')
