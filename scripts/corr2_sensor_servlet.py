@@ -92,8 +92,6 @@ if __name__ == '__main__':
     except:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 
-    ioloop = IOLoop.current()
-
     # set up the logger
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
@@ -109,16 +107,17 @@ if __name__ == '__main__':
         root_logger.addHandler(console_handler)
         use_katcp_logging = False
 
+    ioloop = IOLoop.current()
+    sensor_server = Corr2SensorServer('127.0.0.1', args.port)
     try:
         print 'Sensor Server listening on port %d, ' % args.port
-        sensor_server = Corr2SensorServer('127.0.0.1', args.port)
         sensor_server.set_ioloop(ioloop)
         ioloop.add_callback(sensor_server.start)
         config_file = os.environ['CORR2INI']
         instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
         ioloop.add_callback(sensor_server.initialise, instrument)
         ioloop.start()
-        print 'Sensor Server finished ini'
-    except ValueError:
-        print 'Failed'
+    except KeyboardInterrupt:
+        print 'Shutting down...'
+        ioloop.add_callback(sensor_server.stop(timeout=1))
 # end
