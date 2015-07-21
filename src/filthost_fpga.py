@@ -4,6 +4,7 @@ import time
 import logging
 
 from host_fpga import FpgaHost
+import utils as c2_utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -18,7 +19,12 @@ class FpgaFilterHost(FpgaHost):
         :param instrument_config:
         :return:
         """
+        if isinstance(instrument_config, basestring):
+            instrument_config = c2_utils.parse_ini_file(instrument_config)
         self._config = instrument_config['filter']
+
+        self.new_style = self._config['new_style'] == 'true'
+
         self._instrument_config = instrument_config
         _katcp_port = int(self._instrument_config['FxCorrelator']['katcp_port'])
         _bof = self._config['bitstream']
@@ -41,7 +47,12 @@ class FpgaFilterHost(FpgaHost):
         Clear the status registers and counters on this filter board
         :return:
         """
-        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
+        if not self.new_style:
+            self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
+                                         cnt_rst='pulse', unpack_cnt_rst='pulse')
+        else:
+            self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
+                                         cnt_rst='pulse', )
         LOGGER.debug('{}: filter status cleared.'.format(self.host))
 
     def subscribe_to_source_data(self):
@@ -85,6 +96,74 @@ class FpgaFilterHost(FpgaHost):
 
     def check_rx_reorder(self):
         """
+        Is this F host reordering received data correctly?
+        :return:
+        """
+
+        if not self.new_style:
+            return self.OLD_check_rx_reorder()
+
+        def get_gbe_data():
+            data = {}
+            reorder_ctrs = self.registers.reorder_ctrs.read()['data']
+            data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
+            data['timerror'] = reorder_ctrs['timestep_error']
+            data['discard'] = reorder_ctrs['discard']
+            num_tengbes = len(self.tengbes)
+            for gbe in range(num_tengbes):
+                data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]
+            for pol in range(0, 2):
+                data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]
+            return data
+        _sleeptime = 1
+        rxregs = get_gbe_data()
+        time.sleep(_sleeptime)
+        rxregs_new = get_gbe_data()
+        num_tengbes = len(self.tengbes)
+        if num_tengbes < 1:
+            raise RuntimeError('F-host with no 10gbe cores %s' % self.host)
+        got_errors = False
+        for gbe in range(num_tengbes):
+            if rxregs_new['pktof_ctr%i' % gbe] != rxregs['pktof_ctr%i' % gbe]:
+                LOGGER.error('F host %s packet overflow on interface gbe%i. %i -> %i' % (
+                    self.host, gbe, rxregs_new['pktof_ctr%i' % gbe],
+                    rxregs['pktof_ctr%i' % gbe]))
+                got_errors = True
+        for pol in range(0, 2):
+            if rxregs_new['recverr_ctr%i' % pol] != rxregs['recverr_ctr%i' % pol]:
+                LOGGER.error('F host %s pol %i reorder count error. %i -> %i' % (
+                    self.host, pol, rxregs_new['recverr_ctr%i' % pol],
+                    rxregs['recverr_ctr%i' % pol]))
+                got_errors = True
+        if rxregs_new['mcnt_relock'] != rxregs['mcnt_relock']:
+            LOGGER.error('F host %s mcnt_relock is changing. %i -> %i' % (
+                self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
+            got_errors = True
+        if rxregs_new['timerror'] != rxregs['timerror']:
+            LOGGER.error('F host %s timestep error is changing. %i -> %i' % (
+                self.host, rxregs_new['timerror'], rxregs['timerror']))
+            got_errors = True
+        if rxregs_new['discard'] != rxregs['discard']:
+            LOGGER.error('F host %s discarding packets. %i -> %i' % (
+                self.host, rxregs_new['discard'], rxregs['discard']))
+            got_errors = True
+        if got_errors:
+            LOGGER.error('One or more errors detected, check logs.')
+            return False
+        LOGGER.info('%s: is reordering data okay.' % self.host)
+        return True
+
+    def OLD_check_rx_reorder(self):
+        attempts = 5
+        done = self._check_rx_reorder()
+        while (not done) and (attempts > 0):
+            self.clear_status()
+            done = self._check_rx_reorder()
+            attempts -= 1
+        return done
+
+    def _check_rx_reorder(self):
+        """
         Is this Filter host reordering received data correctly?
         :return:
         """
@@ -95,7 +174,6 @@ class FpgaFilterHost(FpgaHost):
                 data['re%i_cnt' % pol] = reord_errors['cnt']
                 data['re%i_time' % pol] = reord_errors['time']
                 data['re%i_tstep' % pol] = reord_errors['timestep']
-                data['timerror%i' % pol] = reord_errors['timestep']
             valid_cnt = self.registers.updebug_validcnt.read()['data']
             data['valid_arb'] = valid_cnt['arb']
             data['valid_reord'] = valid_cnt['reord']
@@ -105,39 +183,31 @@ class FpgaFilterHost(FpgaHost):
         rxregs = get_gbe_data()
         time.sleep(_sleeptime)
         rxregs_new = get_gbe_data()
+        got_error = False
         if rxregs_new['valid_arb'] == rxregs['valid_arb']:
             LOGGER.error('%s: arbiter is not counting packets. %i -> %i' %
                          (self.host, rxregs_new['valid_arb'], rxregs['valid_arb']))
-            return False
+            got_error = True
         if rxregs_new['valid_reord'] == rxregs['valid_reord']:
             LOGGER.error('%s: reorder is not counting packets. %i -> %i' %
                          (self.host, rxregs_new['valid_reord'], rxregs['valid_reord']))
-            return False
+            got_error = True
         if rxregs_new['mcnt_relock'] > rxregs['mcnt_relock']:
             LOGGER.error('%s: mcnt_relock is triggering. %i -> %i' %
                          (self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
-            return False
+            got_error = True
         for pol in [0, 1]:
-            if rxregs_new['re%i_cnt' % pol] > rxregs['re%i_cnt' % pol]:
-                LOGGER.error('%s: pol %i reorder count error. %i -> %i' %
-                             (self.host, pol, rxregs_new['re%i_cnt' % pol], rxregs['re%i_cnt' % pol]))
-                return False
-            if rxregs_new['re%i_time' % pol] > rxregs['re%i_time' % pol]:
-                LOGGER.error('%s: pol %i reorder time error. %i -> %i' %
-                             (self.host, pol, rxregs_new['re%i_time' % pol], rxregs['re%i_time' % pol]))
-                return False
-            if rxregs_new['re%i_tstep' % pol] > rxregs['re%i_tstep' % pol]:
-                LOGGER.error('%s: pol %i timestep error. %i -> %i' %
+            regname = 're%i_tstep' % pol
+            if (rxregs_new[regname] != 0) or (rxregs[regname] != 0):
+                LOGGER.error('%s: pol %i timestep error. %i, %i' %
                              (self.host, pol, rxregs_new['re%i_tstep' % pol], rxregs['re%i_tstep' % pol]))
-                return False
-            if rxregs_new['timerror%i' % pol] > rxregs['timerror%i' % pol]:
-                LOGGER.error('%s: pol %i time error? %i -> %i' %
-                             (self.host, pol, rxregs_new['timerror%i' % pol], rxregs['timerror%i' % pol]))
-                return False
+                got_error = True
+        if got_error:
+            return False
         LOGGER.info('%s: reordering data okay.' % self.host)
         return True
 
-    def read_spead_counters(self):
+    def OLD_read_spead_counters(self):
         """
         Read the SPEAD rx and error counters for this Filter host
         :return:
@@ -146,6 +216,23 @@ class FpgaFilterHost(FpgaHost):
         for core_ctr in range(0, len(self.tengbes)):
             counter = self.registers['updebug_sp_val%i' % core_ctr].read()['data']['reg']
             error = self.registers['updebug_sp_err%i' % core_ctr].read()['data']['reg']
+            rv.append((counter, error))
+        return rv
+
+    def read_spead_counters(self):
+        """
+        Read the SPEAD rx and error counters for this F host
+        :return:
+        """
+
+        if not self.new_style:
+            return self.OLD_read_spead_counters()
+
+        rv = []
+        spead_ctrs = self.registers.spead_ctrs.read()['data']
+        for core_ctr in range(0, len(self.tengbes)):
+            counter = spead_ctrs['rx_cnt%i' % core_ctr]
+            error = spead_ctrs['err_cnt%i' % core_ctr]
             rv.append((counter, error))
         return rv
 
