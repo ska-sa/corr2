@@ -111,7 +111,6 @@ class Corr2Server(katcp.DeviceServer):
         """
         try:
             self.instrument.initialise(program=program, tvg=False)
-            sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
             return 'ok',
         except Exception as e:
             localexc = e
