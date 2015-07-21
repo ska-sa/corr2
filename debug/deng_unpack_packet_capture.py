@@ -10,7 +10,7 @@ import bitstring
 
 import numpy as np
 
-from corr2.utils import AdcData
+from corr2.utils import UnpackDengPacketCapture
 
 logger = logging.getLogger()
 
@@ -66,49 +66,12 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 
-header_list = ['HEAP ID','HEAP Size','HEAP Offset','HEAP Payload','Timestamp',
-               'Digitiser ID','Digitiser Status','Reserved']
-
-pcap_reader = dpkt.pcap.Reader(open(args.pcap))
-data_blocks = {}                # Data blocks keyed by timestamp
-
-for i, (ts, pkt) in enumerate(pcap_reader):
-    # WARNING (NM, 2015-05-29): Stuff stolen from simonr, now idea how he determined the
-    # various hard-coded constants below, though I assume it involved studying the
-    # structure of a SPEAD packet.
-    enc = pkt.encode('hex_codec')
-    header_line = enc[84:228]
-    bs = bitstring.BitString(hex='0x' + header_line[22:32])
-    timestamp = bs.unpack('uint:40')[0]
-    data_line = enc[228:]
-    if len(data_line) != 10240:
-        print "Error reading packet for ts {}. Expected 10240 but got {}.".format(
-            timestamp, len(data_line))
-        continue
-
-    datalist = []
-    for x in range(0, len(data_line),16):
-        datalist.append(int(data_line[x:x+16], 16))
-    words80 = AdcData.sixty_four_to_eighty(datalist)
-    words10 = AdcData.eighty_to_ten(words80)
-
-    assert timestamp not in data_blocks
-    data_blocks[timestamp] = words10
-
-print "Packets decoded"
-sorted_time_keys = np.array(sorted(data_blocks.keys()))
-data = np.hstack(data_blocks[ts] for ts in sorted_time_keys)
-print "Data shuffled"
-samples_per_pkt = 4096
-time_jumps = sorted_time_keys[1:] - sorted_time_keys[:-1]
-
-if not np.all(time_jumps == samples_per_pkt):
-    print "It looks like gaps exist in captured data -- were packets dropped?"
-
-print 'Data checked'
+unpacker = UnpackDengPacketCapture(args.pcap)
+_, data = unpacker.decode()
 
 # NM (2015-07-09) Note, numpy.savetxt is horrendously slow, the pandas module
 # has much faster csv handling code but I don't want to introduce more
 # dependencies just yet
+logger.info('Writing csv file')
 np.savetxt(args.csv, data, delimiter=',')
 
