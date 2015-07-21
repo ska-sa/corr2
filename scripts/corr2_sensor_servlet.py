@@ -119,5 +119,5 @@ if __name__ == '__main__':
         ioloop.start()
     except KeyboardInterrupt:
         print 'Shutting down...'
-        ioloop.add_callback(sensor_server.stop(timeout=1))
+        ioloop.run_sync(sensor_server.stop, timeout=1.0)
 # end
