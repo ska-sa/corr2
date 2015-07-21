@@ -9,6 +9,7 @@ from data_source import DataSource
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
+
 def filter_initialise(corr, program=True):
     """
     Set up filter engines
@@ -28,7 +29,6 @@ def filter_initialise(corr, program=True):
     _process_destinations(corr)
 
     # program the boards
-    program=False
     if program:
         THREADED_FPGA_FUNC(corr.filthosts, timeout=10,
                            target_function=('upload_to_ram_and_program',
@@ -49,8 +49,6 @@ def filter_initialise(corr, program=True):
                      target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
     THREADED_FPGA_OP(corr.filthosts, timeout=5,
                      target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
-    THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
-                       target_function='clear_status')
 
     # write the TX registers
     _write_tx_registers(corr)
@@ -67,23 +65,66 @@ def filter_initialise(corr, program=True):
     THREADED_FPGA_OP(corr.filthosts, timeout=5,
                      target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
 
+    # disable data to the FIFOs
+    corr.logger.info('Disabling RX FIFOs.')
+    THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                     target_function=(lambda fpga_: fpga_.registers.ctrl_snap.write(en_fifod=False),))
+
     # subscribe to multicast data
     THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
                        target_function='subscribe_to_source_data')
 
     # check the RX data
+    corr.logger.info('Waiting for data. Like Godot, but data instead.')
+    time.sleep(10.0)
+
+    # enable data to the FIFOs
+    corr.logger.info('Enabling RX FIFOs.')
+    THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                     target_function=(lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
+    THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                     target_function=(lambda fpga_: fpga_.registers.ctrl_snap.write(en_fifod=True),))
+    THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
+                       target_function='clear_status')
+    corr.logger.info('Waiting...')
+    time.sleep(2.0)
+
+    # # time how long it takes for timestep errors to stop
+    # f = corr.filthosts[0]
+    # def check_step_errors():
+    #     attempts = 5
+    #     d = f.registers.reorder_ctrs.read()['data']['timestep_error']
+    #     for _ in range(0, attempts):
+    #         new_d = f.registers.reorder_ctrs.read()['data']['timestep_error']
+    #         if d != new_d:
+    #             return False
+    #     return True
+    # tic = time.time()
+    # logtic = tic
+    # while not check_step_errors():
+    #     if time.time() - logtic > 5.0:
+    #         corr.logger.info('Still waiting for timestep errors to stop - %.3f seconds in.' % (time.time() - tic))
+    #         logtic = time.time()
+    # logtic = time.time()
+    # while not check_step_errors():
+    #     if time.time() - logtic > 5.0:
+    #         corr.logger.info('Still waiting for timestep errors to stop - %.3f seconds in.' % (time.time() - tic))
+    #         logtic = time.time()
+    # toc = time.time()
+    # corr.logger.info('It took %.3f seconds for timestep errors to stop' % (toc - tic))
+
     if not _check_rx(corr):
         raise RuntimeError('One or more filter engines are not receiving data.')
 
     # enable TX
     THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
                        target_function='enable_tx')
-
-    time.sleep(1.0)
-
     # check the TX data
+    THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
+                       target_function='clear_status')
     if not _check_tx_raw(corr):
         raise RuntimeError('One or more filter engines are not transmitting data.')
+
 
 def _check_tx_raw(corr, max_waittime=30):
     """
@@ -91,7 +132,7 @@ def _check_tx_raw(corr, max_waittime=30):
     :param max_waittime:
     :return:
     """
-    corr.logger.info('Checking Filter hosts are receiving data...')
+    corr.logger.info('Checking Filter hosts are transmitting data...')
     results = THREADED_FPGA_FUNC(corr.filthosts, timeout=max_waittime+1,
                                  target_function='check_tx_raw',)
     all_okay = True
@@ -120,6 +161,7 @@ def _check_rx(corr, max_waittime=30):
     corr.logger.info('\tdone.')
     return all_okay
 
+
 def _setup_tengbe(corr):
     """
     Set up the 10gbe cores on the filter hosts
@@ -145,11 +187,18 @@ def _setup_tengbe(corr):
         board_id, macs = boards_info[f.host]
         for gbe, this_mac in zip(f.tengbes, macs):
             gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
-            corr.logger.info(
+            corr.logger.debug(
                 'filthost(%s) gbe(%s) mac(%s) port(%i) board_id(%i)' %
                 (f.host, gbe.name, str(gbe.mac), feng_port, f.board_id,))
             gbe.dhcp_start()
-    THREADED_FPGA_OP(corr.filthosts, timeout=30, target_function=(setup_gbes,))
+    # THREADED_FPGA_OP(corr.filthosts, timeout=30, target_function=(setup_gbes,))
+    for _fpga in corr.filthosts:
+        setup_gbes(_fpga)
+
+    for _fpga in corr.filthosts:
+        for _gbe in _fpga.tengbes:
+            corr.logger.info('{}: {} got address {}'.format(_fpga.host, _gbe.name,
+                                                            _gbe.core_details['ip']))
 
 def parse_sources(name_string, ip_string):
     """
