@@ -103,7 +103,16 @@ class FxCorrelator(Instrument):
         # set up the filter boards if we need to
         if 'filter' in self.configd:
             import fxcorrelator_filterops as filterops
-            filterops.filter_initialise(corr=self, program=program)
+            try:
+                filterops.filter_initialise(corr=self, program=program)
+            except:
+                # arm
+                self.filthosts[0].snapshots.updebug_ss.arm(circular_capture=True)
+                self.filthosts[0].snapshots.updebug1_ss.arm(circular_capture=True)
+                self.filthosts[0].registers.ctrl_snap.write(trig_upsnap='pulse')
+                self.snapd0 = self.filthosts[0].snapshots.updebug_ss.read(circular_capture=True, arm=False)
+                self.snapd1 = self.filthosts[0].snapshots.updebug1_ss.read(circular_capture=True, arm=False)
+                return
 
         # connect to the other hosts that make up this correlator
         THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
@@ -125,13 +134,6 @@ class FxCorrelator(Instrument):
             for f in self.fhosts:
                 ftups.append((f, f.boffile))
             fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
-            # this does not wait for the programming to complete, so it won't get all the
-            # system information
-
-        # load information from the running boffiles
-        self.logger.info('Loading design information')
-        THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='get_system_information')
-        THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='get_system_information')
 
         if program:
             # cal the qdr on all boards
