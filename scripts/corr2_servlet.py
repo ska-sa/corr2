@@ -10,15 +10,12 @@ import Queue
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 from corr2 import fxcorrelator
-from corr2 import sensors
 from corr2 import fxcorrelator_xengops as xengops
 from corr2 import fxcorrelator_fengops as fengops
 
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
-            'INFO': 'info',
-            'DEBUG': 'debug',
             'WARNING': 'warn'
         }
         if record.levelname in translate_levels:
@@ -62,13 +59,6 @@ class Corr2Server(katcp.DeviceServer):
         super(Corr2Server, self).__init__(*args, **kwargs)
         self.instrument = None
 
-    def setup_sensors(self):
-        """
-        Must be implemented in interface.
-        :return: nothing
-        """
-        pass
-
     @request()
     @return_reply()
     def request_ping(self, sock):
@@ -105,7 +95,6 @@ class Corr2Server(katcp.DeviceServer):
     def request_initialise(self, sock, program):
         """
         Initialise self.instrument
-        Setup and start sensors
         :param sock:
         :return:
         """

@@ -18,6 +18,8 @@ ToDo:
     - Make it work!
 
 Release Notes:
+    - 2015-07-08: Updated for new DEng registers, requires a DEng build newer
+      than around 2015-07-01 to work.
     - 2015-05-21: requires rootfs
       roach2-root-unknown-katonly-private-5911330-2015-05-19.romfs or newer for
       the IGMP protocol version setting to work. Roach file-system 'keep' file
