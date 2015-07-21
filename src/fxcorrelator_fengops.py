@@ -84,24 +84,6 @@ def feng_check_rx(corr, max_waittime=30):
     corr.logger.info('\tdone.')
     return all_okay
 
-def feng_set_delay(corr, target_name, delay=0, delay_rate=0, fringe_phase=0,
-                   fringe_rate=0, ld_time=-1, ld_check=True, extra_wait_time=0):
-    """
-    :param target_name:
-    :return:
-    """
-    targetsrc = None
-    for src in corr.fengine_sources:
-        if src.name == target_name:
-            targetsrc = src
-            break
-    if targetsrc is None:
-        raise RuntimeError('Could not find target %s' % target_name)
-
-    pol_id = targetsrc.source_number % 2
-    targetsrc.fr_delay_set(pol_id, delay, delay_rate, fringe_phase,
-                           fringe_rate, ld_time, ld_check, extra_wait_time)
-
 def feng_check_tx(corr):
     """
     Check that the f-engines are sending data correctly
@@ -266,10 +248,10 @@ def feng_subscribe_to_multicast(corr):
                     gbe_ctr += 1
     corr.logger.info('done.')
 
-def feng_set_delay(corr, source_name=None, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, ld_time=-1):
+def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, ld_time=-1):
     """
     Set delay correction values for specified source. This is a blocking call. \n
-    By default, it will wait 'till load time and verify that things worked as expected. This check can be disabled by setting ld_check param to False. \n
+    By default, it will wait until load time and verify that things worked as expected. This check can be disabled by setting ld_check param to False. \n
     Load time is optional; if not specified, load ASAP.\n
     :return
     """
