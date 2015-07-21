@@ -66,9 +66,12 @@ class FpgaHost(Host, KatcpFpga):
                 return False
 
             # certain registers can not exist but absence are noted
-            _checkregs('{}_txvldctr'.format(_core), required=False, equal=False)
-            _checkregs('{}_txofctr'.format(_core), required=False, equal=True)
-            _checkregs('{}_txfullctr'.format(_core), required=False, equal=True)
+            if not _checkregs('{}_txvldctr'.format(_core), required=False, equal=False):
+                return False
+            if not _checkregs('{}_txofctr'.format(_core), required=False, equal=True):
+                return False
+            if not _checkregs('{}_txfullctr'.format(_core), required=False, equal=True):
+                return False
 
 #            if ((_d2['%s_txctr' % _core]['data']['reg'] - _d1['%s_txctr' % _core]['data']['reg'] <= 0) or
 #                    (_d2['%s_txvldctr' % _core]['data']['reg'] - _d1['%s_txvldctr' % _core]['data']['reg'] <= 0)):
