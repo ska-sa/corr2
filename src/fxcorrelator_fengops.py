@@ -61,7 +61,7 @@ def feng_initialise(corr):
                  corr.fengine_output.ip_address, corr.fengine_output.port))
             # gbe.tap_start(restart=True)
             gbe.dhcp_start()
-    THREADED_FPGA_OP(corr.fhosts, timeout=30, target_function=(setup_gbes,))
+    THREADED_FPGA_OP(corr.fhosts, timeout=40, target_function=(setup_gbes,))
 
     # release from reset
     THREADED_FPGA_OP(corr.fhosts, timeout=5, target_function=(

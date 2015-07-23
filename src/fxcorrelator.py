@@ -209,7 +209,7 @@ class FxCorrelator(Instrument):
 
             # start f-engine TX
             self.logger.info('Starting f-engine datastream')
-            THREADED_FPGA_OP(self.fhosts, timeout=5,
+            THREADED_FPGA_OP(self.fhosts, timeout=10,
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
 
             # check that the F-engines are transmitting data correctly
