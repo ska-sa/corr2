@@ -336,6 +336,23 @@ class FpgaFHost(FpgaHost):
         LOGGER.info('%s: QDR okay.' % self.host)
         return True
 
+    def check_fft_overflow(self):
+        """
+        Checks if pfb counters on f-eng are not incrementing
+        :return: True/False
+        """
+        for cnt in range(0, 1):
+            overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+            time.sleep(1)
+            overflow1 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+            if overflow0 == overflow1:
+                LOGGER.info('%s: pfb_of%d_cnt okay.' % (self.host, cnt))
+            else:
+                LOGGER.error('%s: pfb_of%d_cnt incrementing.' % (self.host, cnt))
+                return False
+        LOGGER.info('%s: PFB okay.' % self.host)
+        return True
+
 #     def fr_delay_set(self, pol_id, delay=0, delay_rate=0, fringe_phase=0, fringe_rate=0, ld_time=-1, ld_check = True, extra_wait_time = 0):
 #         """
 #         Configures a given antenna to a delay in seconds using both the coarse and the fine delay. Also configures the fringe rotation components. This is a blocking call. \n
