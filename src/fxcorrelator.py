@@ -240,6 +240,18 @@ class FxCorrelator(Instrument):
     #             for qdr in host.qdrs:
     #                 qdr.qdr_cal(fail_hard=False, verbosity=2)
 
+    def time_from_mcnt(self, pcnt):
+        """Returns the unix time UTC equivalent to the board timestamp. Does NOT account for wrapping timestamps."""
+        if self.synchronisation<0:
+            raise RuntimeError("Synchronisation epoch has not been set!")
+        return self.synchronisation_epoch + (float(pcnt) / float(self.sample_rate_hz))
+
+    def mcnt_from_time(self, time_seconds):
+        """Returns the board timestamp from a given UTC system time (seconds since Unix Epoch). Accounts for wrapping timestamps."""
+        if self.synchronisation<0:
+            raise RuntimeError("Synchronisation epoch has not been set!")
+        return int((time_seconds - self.synchronisation_epoch)*self.sample_rate_hz)%(2**self.configd['FxCorrelator']['timestamp_bits'])
+
     def qdr_calibrate(self):
         """
         Run a software calibration routine on all the FPGA hosts.
