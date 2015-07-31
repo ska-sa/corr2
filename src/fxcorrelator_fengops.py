@@ -9,6 +9,7 @@ import utils
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
+
 def feng_initialise(corr):
     """
     Set up f-engines on this device.
@@ -61,11 +62,14 @@ def feng_initialise(corr):
                  corr.fengine_output.ip_address, corr.fengine_output.port))
             # gbe.tap_start(restart=True)
             gbe.dhcp_start()
-    THREADED_FPGA_OP(corr.fhosts, timeout=30, target_function=(setup_gbes,))
+
+    timeout = len(corr.fhosts[0].tengbes) * 30 * 1.1
+    THREADED_FPGA_OP(corr.fhosts, timeout=timeout, target_function=(setup_gbes,))
 
     # release from reset
     THREADED_FPGA_OP(corr.fhosts, timeout=5, target_function=(
         lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+
 
 def feng_check_rx(corr, max_waittime=30):
     """
@@ -83,6 +87,7 @@ def feng_check_rx(corr, max_waittime=30):
         corr.logger.error('\tERROR in F-engine rx data.')
     corr.logger.info('\tdone.')
     return all_okay
+
 
 def feng_set_delay(corr, target_name, delay=0, delay_rate=0, fringe_phase=0,
                    fringe_rate=0, ld_time=-1, ld_check=True, extra_wait_time=0):
@@ -102,6 +107,7 @@ def feng_set_delay(corr, target_name, delay=0, delay_rate=0, fringe_phase=0,
     targetsrc.fr_delay_set(pol_id, delay, delay_rate, fringe_phase,
                            fringe_rate, ld_time, ld_check, extra_wait_time)
 
+
 def feng_check_tx(corr):
     """
     Check that the f-engines are sending data correctly
@@ -118,6 +124,7 @@ def feng_check_tx(corr):
     corr.logger.info('\tdone.')
     return all_okay
 
+
 def feng_eq_get(corr, source_name=None):
     """
     Return the EQ arrays in a dictionary, arranged by source name.
@@ -129,6 +136,7 @@ def feng_eq_get(corr, source_name=None):
         if source_name is not None and source_name in eq_table.keys():
             return {source_name: eq_table[source_name]}
     return eq_table
+
 
 def feng_eq_set(corr, write=True, source_name=None, new_eq=None):
     """
@@ -166,6 +174,7 @@ def feng_eq_set(corr, write=True, source_name=None, new_eq=None):
                 return
         raise ValueError('Unknown source name %s' % source_name)
 
+
 def feng_eq_write_all(corr, new_eq_dict=None):
     """
     Set the EQ gain for given sources and write the changes to memory.
@@ -182,6 +191,7 @@ def feng_eq_write_all(corr, new_eq_dict=None):
         feng_eq_update_metadata(corr)
         corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
     corr.logger.info('done.')
+
 
 def feng_eq_update_metadata(corr):
     """
@@ -202,6 +212,7 @@ def feng_eq_update_metadata(corr):
                                     init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
                                               for eq_coeff in all_eqs[source.name]['eq']])
 
+
 def feng_set_fft_shift_all(corr, shift_value=None):
     """
     Set the FFT shift on all boards.
@@ -221,6 +232,7 @@ def feng_set_fft_shift_all(corr, shift_value=None):
         corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
     return shift_value
 
+
 def feng_get_fft_shift_all(corr):
     """
     Get the FFT shift value on all boards.
@@ -229,12 +241,14 @@ def feng_get_fft_shift_all(corr):
     # get the fft shift values
     return THREADED_FPGA_FUNC(corr.fhosts, timeout=10, target_function='get_fft_shift')
 
+
 def feng_clear_status_all(corr):
     """
     Clear the various status registers and counters on all the fengines
     :return:
     """
     THREADED_FPGA_FUNC(corr.fhosts, timeout=10, target_function='clear_status')
+
 
 def feng_subscribe_to_multicast(corr):
     """
