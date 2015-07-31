@@ -13,6 +13,8 @@ parser.add_argument('--noprogram', dest='noprogram', action='store_true', defaul
                     help='do NOT program the FPGAs, and everything that goes with that')
 parser.add_argument('--noqdrcal', dest='no_qdr_cal', action='store_true', default=False,
                     help='do NOT calibrate the QDRs')
+parser.add_argument('--ipython', dest='ipython', action='store_true', default=False,
+                    help='start an ipython session after completion/error')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -35,7 +37,9 @@ try:
     c.initialise(program=not args.noprogram, qdr_cal=not args.no_qdr_cal)
 except Exception as e:
     print e
-	import IPython
-	IPython.embed()
+
+if args.ipython:
+    import IPython
+    IPython.embed()
 
 # end
