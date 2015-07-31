@@ -99,20 +99,13 @@ class FxCorrelator(Instrument):
         Set up the correlator using the information in the config file.
         :return:
         """
-
         # set up the filter boards if we need to
         if 'filter' in self.configd:
             import fxcorrelator_filterops as filterops
             try:
                 filterops.filter_initialise(corr=self, program=program)
-            except:
-                # arm
-                self.filthosts[0].snapshots.updebug_ss.arm(circular_capture=True)
-                self.filthosts[0].snapshots.updebug1_ss.arm(circular_capture=True)
-                self.filthosts[0].registers.ctrl_snap.write(trig_upsnap='pulse')
-                self.snapd0 = self.filthosts[0].snapshots.updebug_ss.read(circular_capture=True, arm=False)
-                self.snapd1 = self.filthosts[0].snapshots.updebug1_ss.read(circular_capture=True, arm=False)
-                return
+            except Exception as e:
+                raise e
 
         # connect to the other hosts that make up this correlator
         THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
@@ -152,21 +145,10 @@ class FxCorrelator(Instrument):
             #     fpga_.tap_arp_reload()
             # for fpga_ in self.xhosts:
             #     fpga_.tap_arp_reload()
-            self.logger.info('Waiting %d seconds for ARP to settle...' % self.arp_wait_time)
-            sys.stdout.flush()
-            starttime = time.time()
-            time.sleep(self.arp_wait_time)
-            # raw_input('wait for arp')
-            end_time = time.time()
-            self.logger.info('\tDone. That took %d seconds.' % (end_time - starttime))
-            # sys.stdout.flush()
 
             # subscribe all the engines to the multicast groups
             fengops.feng_subscribe_to_multicast(self)
             xengops.xeng_subscribe_to_multicast(self)
-            post_mess_delay = 5
-            self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
-            time.sleep(post_mess_delay)
 
             self.logger.info('Forcing an f-engine resync')
             for f in self.fhosts:

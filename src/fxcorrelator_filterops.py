@@ -65,54 +65,18 @@ def filter_initialise(corr, program=True):
     THREADED_FPGA_OP(corr.filthosts, timeout=5,
                      target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
 
-    # disable data to the FIFOs
-    corr.logger.info('Disabling RX FIFOs.')
-    THREADED_FPGA_OP(corr.filthosts, timeout=5,
-                     target_function=(lambda fpga_: fpga_.registers.ctrl_snap.write(en_fifod=False),))
-
     # subscribe to multicast data
     THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
                        target_function='subscribe_to_source_data')
 
     # check the RX data
-    corr.logger.info('Waiting for data. Like Godot, but data instead.')
-    time.sleep(10.0)
-
-    # enable data to the FIFOs
-    corr.logger.info('Enabling RX FIFOs.')
+    corr.logger.info('filter_ops: waiting for data.')
+    time.sleep(5.0)
     THREADED_FPGA_OP(corr.filthosts, timeout=5,
                      target_function=(lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
-    THREADED_FPGA_OP(corr.filthosts, timeout=5,
-                     target_function=(lambda fpga_: fpga_.registers.ctrl_snap.write(en_fifod=True),))
     THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
                        target_function='clear_status')
-    corr.logger.info('Waiting...')
-    time.sleep(2.0)
-
-    # # time how long it takes for timestep errors to stop
-    # f = corr.filthosts[0]
-    # def check_step_errors():
-    #     attempts = 5
-    #     d = f.registers.reorder_ctrs.read()['data']['timestep_error']
-    #     for _ in range(0, attempts):
-    #         new_d = f.registers.reorder_ctrs.read()['data']['timestep_error']
-    #         if d != new_d:
-    #             return False
-    #     return True
-    # tic = time.time()
-    # logtic = tic
-    # while not check_step_errors():
-    #     if time.time() - logtic > 5.0:
-    #         corr.logger.info('Still waiting for timestep errors to stop - %.3f seconds in.' % (time.time() - tic))
-    #         logtic = time.time()
-    # logtic = time.time()
-    # while not check_step_errors():
-    #     if time.time() - logtic > 5.0:
-    #         corr.logger.info('Still waiting for timestep errors to stop - %.3f seconds in.' % (time.time() - tic))
-    #         logtic = time.time()
-    # toc = time.time()
-    # corr.logger.info('It took %.3f seconds for timestep errors to stop' % (toc - tic))
-
+    time.sleep(1.0)
     if not _check_rx(corr):
         raise RuntimeError('One or more filter engines are not receiving data.')
 
