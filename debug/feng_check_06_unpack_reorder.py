@@ -2,29 +2,15 @@
 # -*- coding: utf-8 -*-
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
-"""
-Check the debug registers after the reorder block inside the unpack section of the f-engine.
-
-The unpack block has hardware error checking of the data inside the reordered packets.
-
-1. Is the data ramp inside the packet payload present?
-2. Does the time in the data payload match the SPEAD time?
-3. Do successive packets have successive timestamps? This is a decent link quality check. It also checks the functionality of the reorder block.
-
-Created on Fri Jan  3 10:40:53 2014
-
-@author: paulp
-"""
 import sys
 import time
 import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
+from corr2 import fhost_fpga
 
 parser = argparse.ArgumentParser(description='Check the flags out of the FIFO section in the unpack block. They'
                                              'should be zero of OFs and constantly incrementing for the VFIFOs.',
@@ -37,8 +23,6 @@ parser.add_argument('-p', '--polltime', dest='polltime', action='store',
 parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
                     default=False,
                     help='reset all counters at script startup')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -51,25 +35,22 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
-
 if 'CORR2INI' in os.environ.keys() and args.hosts == '':
     args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
+
 def get_fpga_data(fpga):
-    data = fpga.registers.reorder_ctrs.read()['data']
+    data = fpga._get_rxreg_data()
     spead_data = fpga.registers.spead_ctrs.read()['data']
     spead_pkts = 0
     for ctr in range(0, 4):
         spead_pkts += spead_data['rx_cnt%i' % ctr]
     data['spd_rx'] = spead_pkts
     return data
+
 
 def signal_handler(sig, frame):
     print sig, frame
@@ -81,7 +62,7 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGHUP, signal_handler)
 
 # make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(fhost_fpga.DigitiserDataReceiver, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 registers_missing = []
 max_hostname = -1
