@@ -10,6 +10,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 use_xeng_sim = False
 
+
 def _xeng_vacc_check_errcheck(corr, last_values):
     """
 
@@ -39,6 +40,7 @@ def _xeng_vacc_check_errcheck(corr, last_values):
     corr.logger.debug(logstr + 'all okay')
     return False, new_data
 
+
 def _xeng_vacc_check_cb(corr, last_values, vacc_check_time):
     """
     Run the vacc sync if there are errors necessitating it.
@@ -53,6 +55,7 @@ def _xeng_vacc_check_cb(corr, last_values, vacc_check_time):
     IOLoop.current().call_later(vacc_check_time, _xeng_vacc_check_cb,
                                 [corr, vals, vacc_check_time], {})
 
+
 def xeng_setup_vacc_check_timer(corr, vacc_check_time=10):
     """
 
@@ -63,6 +66,7 @@ def xeng_setup_vacc_check_timer(corr, vacc_check_time=10):
     corr.logger.info('xeng_setup_vacc_check_timer: setting up the vacc check timer')
     IOLoop.current().call_later(vacc_check_time, _xeng_vacc_check_cb,
                                 [corr, None, vacc_check_time], {})
+
 
 def xeng_initialise(corr):
     """
@@ -135,12 +139,14 @@ def xeng_initialise(corr):
     # check for errors
     # TODO - read status regs?
 
+
 def xeng_clear_status_all(corr):
     """
     Clear the various status registers and counters on all the fengines
     :return:
     """
     THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function='clear_status')
+
 
 def xeng_subscribe_to_multicast(corr):
     """
@@ -164,6 +170,7 @@ def xeng_subscribe_to_multicast(corr):
     else:
         corr.logger.info('F > X is unicast from base %s' % corr.fengine_output)
 
+
 def xeng_check_rx(corr, max_waittime=30):
     """
     Check that the x hosts are receiving data correctly
@@ -180,6 +187,7 @@ def xeng_check_rx(corr, max_waittime=30):
         corr.logger.error('\tERROR in X-engine rx data.')
     corr.logger.info('\tdone.')
     return all_okay
+
 
 def xeng_vacc_sync(corr, vacc_load_time=None):
     """
@@ -353,6 +361,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     corr.logger.info('\t...accumulations rolling in without error.')
     return unix_quant_time
 
+
 def xeng_set_acc_time(corr, acc_time_s):
     """
     Set the vacc accumulation length based on a required dump time, in seconds
@@ -378,6 +387,7 @@ def xeng_get_acc_time(corr):
     """
     return (corr.xeng_accumulation_len * corr.accumulation_len * corr.n_chans * 2.0) / corr.sample_rate_hz
 
+
 def xeng_set_acc_len(corr, acc_len=None):
     """
     Set the QDR vector accumulation length.
@@ -395,6 +405,7 @@ def xeng_set_acc_len(corr, acc_len=None):
         corr.spead_meta_ig['n_accs'] = corr.accumulation_len * corr.xeng_accumulation_len
         corr.spead_meta_ig['int_time'] = xeng_get_acc_time(corr)
         corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
+
 
 def xeng_get_baseline_order(corr):
         """
