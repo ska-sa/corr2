@@ -336,14 +336,14 @@ class FpgaFHost(FpgaHost):
         LOGGER.info('%s: QDR okay.' % self.host)
         return True
 
-    def check_fft_overflow(self):
+    def check_fft_overflow(self, wait_time=2e-3):
         """
-        Checks if pfb counters on f-eng are not incrementing
+        Checks if pfb counters on f-eng are not incrementing i.e. fft is not overflowing
         :return: True/False
         """
         for cnt in range(0, 1):
             overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
-            time.sleep(1)
+            time.sleep(wait_time)
             overflow1 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
             if overflow0 == overflow1:
                 LOGGER.info('%s: pfb_of%d_cnt okay.' % (self.host, cnt))
