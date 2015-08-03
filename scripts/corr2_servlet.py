@@ -90,6 +90,13 @@ class Corr2Server(katcp.DeviceServer):
         logging.error('create threw Exception: %s' % localexc.message)
         return 'fail', 'create threw Exception: %s' % localexc.message
 
+    def setup_sensors(self):
+        """
+        Must be implemented in interface.
+        :return: nothing
+        """
+        pass
+
     @request(Bool(default=True))
     @return_reply()
     def request_initialise(self, sock, program):

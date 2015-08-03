@@ -6,13 +6,11 @@ import logging
 import sys
 import argparse
 import os
-import Queue
-
 import katcp
+import signal
+import tornado
 
 from tornado.ioloop import IOLoop
-
-from katcp.kattypes import request, return_reply, Bool
 from corr2 import sensors, fxcorrelator
 
 class KatcpLogFormatter(logging.Formatter):
@@ -76,6 +74,12 @@ class Corr2SensorServer(katcp.DeviceServer):
         self.instrument.initialise(program=False, tvg=False)
         sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
 
+@tornado.gen.coroutine
+def on_shutdown(ioloop, server):
+    print('Shutting down')
+    yield server.stop()
+    ioloop.stop()
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Start a corr2 sensor server.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -109,15 +113,12 @@ if __name__ == '__main__':
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
-    try:
-        print 'Sensor Server listening on port %d, ' % args.port
-        sensor_server.set_ioloop(ioloop)
-        ioloop.add_callback(sensor_server.start)
-        config_file = os.environ['CORR2INI']
-        instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
-        ioloop.add_callback(sensor_server.initialise, instrument)
-        ioloop.start()
-    except KeyboardInterrupt:
-        print 'Shutting down...'
-        ioloop.add_callback(sensor_server.stop(timeout=1))
-# end
+    signal.signal(signal.SIGINT, lambda sig, frame: ioloop.add_callback_from_signal(on_shutdown,
+                                                                                        ioloop, sensor_server))
+    print 'Sensor Server listening on port %d, ' % args.port
+    sensor_server.set_ioloop(ioloop)
+    ioloop.add_callback(sensor_server.start)
+    config_file = os.environ['CORR2INI']
+    instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
+    ioloop.add_callback(sensor_server.initialise, instrument)
+    ioloop.start()
