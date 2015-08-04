@@ -127,6 +127,11 @@ class FxCorrelator(Instrument):
             for f in self.fhosts:
                 ftups.append((f, f.boffile))
             fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
+        else:
+            # load information from the running boffiles
+            self.logger.info('Loading design information')
+            THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='get_system_information')
+            THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='get_system_information')
 
         if program:
             # cal the qdr on all boards
