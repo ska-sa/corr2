@@ -196,8 +196,10 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
         if corr.synchronisation_epoch < -1:
             corr.logger.warn("System sync epoch not set. Approximating.")
             corr.synchronisation_epoch = time.time()-corr.time_from_mcnt(corr.fhosts[0].get_local_time())
+
     if vacc_load_time < time.time() + min_ld_time:
-        raise RuntimeError('Cannot load at a time in the past. Need at least %2.2f seconds lead time. You asked for %s, and it is now %s.' %
+        raise RuntimeError('Cannot load at a time in the past. '
+                           'Need at least %2.2f seconds lead time. You asked for %s, and it is now %s.' %
                                (min_ld_time,vacc_load_time, time_now))
 
     corr.logger.info('xeng vaccs syncing at %s (in %is)' %(time.ctime(),vacc_load_time-time.time()) )
@@ -224,15 +226,8 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
                 corr.logger.error(errstr)
                 raise RuntimeError(errstr)
 
-    # get current time from an f-engine
-    mcnt_before = corr.fhosts[0].get_local_time()
-    assert mcnt_before & 0xfff == 0, 'Bottom 12 bits of timestamp from f-engine are not zero?!'
-    corr.logger.info('\tCurrent f engine time: %i' % mcnt_before)
-
-
-
-    # use that time to set the vacc load time on the xengines
-    ldmcnt = int(corr.mcnt_from_time(vacc_sync_time))
+    # set the vacc load time on the xengines
+    ldmcnt = int(corr.mcnt_from_time(vacc_load_time))
     quantisation_bits = int(numpy.log2(int(corr.configd['fengine']['n_chans'])) + 1
                             + numpy.log2(int(corr.configd['xengine']['xeng_accumulation_len'])))
     ldmcnt = (ldmcnt >> quantisation_bits) << quantisation_bits
@@ -304,7 +299,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
 
     # wait for the vaccs to arm
     wait_time = corr.time_from_mcnt(ldmcnt) - time.time() + 0.2
-    corr.logger.info('\tWaiting %i seconds for arm to trigger.' % wait_time)
+    corr.logger.info('\tWaiting %2.2f seconds for arm to trigger.' % wait_time)
     time.sleep(wait_time)
     # check the status to see that the load count increased
     vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
@@ -319,7 +314,8 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     corr.logger.info('\tAll VACCs triggered correctly.')
 
     #allow vacc to flush and correctly populate parity bits:
-    corr.logger.info('\tWaiting %is for an accumulation to flush, to correctly populate parity bits.'%xeng_get_acc_time(corr))
+    corr.logger.info('\tWaiting %2.2fs for an accumulation to flush, '
+                     'to correctly populate parity bits.'%xeng_get_acc_time(corr))
     time.sleep(xeng_get_acc_time(corr)+0.2)
 
     corr.logger.info('\tClearing status and reseting counters.')
@@ -327,7 +323,8 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
                        target_function='clear_status')
 
     #wait for a good accumulation to finish.
-    corr.logger.info('\tWaiting %is for an accumulation to flush before checking counters.'%xeng_get_acc_time(corr))
+    corr.logger.info('\tWaiting %2.2fs for an accumulation to flush '
+                     'before checking counters.'%xeng_get_acc_time(corr))
     time.sleep(xeng_get_acc_time(corr)+0.2)
 
     corr.logger.info('\tChecking for errors & accumulations...')
@@ -367,7 +364,8 @@ def xeng_set_acc_time(corr, acc_time_s):
     if use_xeng_sim:
         raise RuntimeError('That\'s not an option anymore.')
     else:
-        new_acc_len = (corr.sample_rate_hz * acc_time_s) / (corr.xeng_accumulation_len * corr.n_chans * 2.0)
+        new_acc_len = (corr.sample_rate_hz * acc_time_s) / \
+                        (corr.xeng_accumulation_len * corr.n_chans * 2.0)
         new_acc_len = round(new_acc_len)
         xeng_set_acc_len(corr, new_acc_len)
 
