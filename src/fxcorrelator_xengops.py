@@ -191,18 +191,20 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     """
     min_ld_time=1
     if vacc_load_time is None:
-        vacc_load_time = time.time()+2
         corr.logger.info("Vacc sync time not specified. Syncing in ~2 seconds' time.")
-        if corr.synchronisation_epoch < -1:
-            corr.logger.warn("System sync epoch not set. Approximating.")
-            corr.synchronisation_epoch = time.time()-corr.time_from_mcnt(corr.fhosts[0].get_local_time())
+        vacc_load_time = time.time()+2
 
-    if vacc_load_time < time.time() + min_ld_time:
+    t_now=time.time()
+    if vacc_load_time < t_now + min_ld_time:
         raise RuntimeError('Cannot load at a time in the past. '
-                           'Need at least %2.2f seconds lead time. You asked for %s, and it is now %s.' %
-                               (min_ld_time,vacc_load_time, time_now))
+                           'Need at least %2.2f seconds lead time. You asked for %s.%i, and it is now %s.%i.' %(\
+                           min_ld_time,\
+                           time.strftime('%H:%M:%S',time.gmtime(vacc_load_time)),\
+                           (vacc_load_time-int(vacc_load_time))*100,\
+                           time.strftime('%H:%M:%S',time.gmtime(t_now)),\
+                           (t_now-int(t_now))*100))
 
-    corr.logger.info('xeng vaccs syncing at %s (in %is)' %(time.ctime(),vacc_load_time-time.time()) )
+    corr.logger.info('xeng vaccs syncing at %s (in %2.2fs)' %(time.ctime(),vacc_load_time-time.time()) )
 
     # check if the vaccs need resetting
     vaccstat = THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
@@ -230,7 +232,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     ldmcnt = int(corr.mcnt_from_time(vacc_load_time))
     quantisation_bits = int(numpy.log2(int(corr.configd['fengine']['n_chans'])) + 1
                             + numpy.log2(int(corr.configd['xengine']['xeng_accumulation_len'])))
-    ldmcnt = (ldmcnt >> quantisation_bits) << quantisation_bits
+    ldmcnt = ((ldmcnt >> quantisation_bits)+1) << quantisation_bits
 
     if corr.time_from_mcnt(ldmcnt) < time.time():
         corr.logger.warn('Warning: the board timestamp has probably wrapped!')
@@ -394,7 +396,7 @@ def xeng_set_acc_len(corr, acc_len=None,vacc_resync=True):
         corr.spead_meta_ig['int_time'] = xeng_get_acc_time(corr)
         corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
     if vacc_resync:
-        xeng_vacc_sync()
+        xeng_vacc_sync(corr)
 
 def xeng_get_baseline_order(corr):
         """
