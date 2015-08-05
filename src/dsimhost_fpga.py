@@ -75,19 +75,19 @@ class PulsarSource(Source):
     def __init__(self, freq_register,
                  scale_register,
                  name,
-                 freq_sampling=7.5e+6,
-                 fft_size=1024,
+                 # freq_sampling=7.5e+6,
+                 # fft_size=1024,
                  freq_centre=38.0e+6,
                  sim_time=1.0):
         super(PulsarSource, self).__init__(freq_register, name)
         self.freq_register = freq_register
         self.scale_register = scale_register
-        self.freq_sampling = freq_sampling  # [ samples per second ]
+        self.freq_sampling = float(self.parent.config['sample_rate_hz'])  # [ samples per second ]
         self.t_samp = 1/self.freq_sampling  # Time domain sample period
-        self.fft_size = fft_size  # size of FFT
+        self.fft_size = 1024  # size of FFT
         self.f_samp = self.freq_sampling/self.fft_size  # FFT bin width
         self.fft_period = self.fft_size * self.t_samp  # FFT period
-        self.freq_centre = freq_centre  # [Hz] center frequency of passband (as received )
+        self.freq_centre = float(self.parent.config['true_cf'])  # [Hz] center frequency of passband (as received )
         self.sim_time = sim_time  # duration of simulation
         self.fft_blocks = math.ceil(self.sim_time/self.fft_period)  # number of FFT input blocks to process
         self.n_samp = self.fft_blocks*self.fft_size  # number of samples
