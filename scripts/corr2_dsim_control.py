@@ -161,7 +161,7 @@ if args.zeros_sine:
             sine_source = getattr(dhost.sine_sources, '{}'.format(source))
             sine_source.set(0, 0)
             print "sine source {}, set to {}.".format(sine_source.name,
-                sine_source.scale)
+                                                      sine_source.scale)
         except:
             print "An error occured."
             sys.exit(1)
@@ -204,7 +204,7 @@ if args.output_type:
         try:
             type_from = getattr(dhost.outputs, 'out_{}'.format(output_type))
         except AttributeError:
-            print "You can only select between, Output_0 or Output_1'."
+            print "You can only select between, Output_0 or Output_1."
             sys.exit(1)
         try:
             type_from.select_output(output_type_s)

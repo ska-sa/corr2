@@ -16,7 +16,7 @@ parser.add_argument('--config', dest='config', type=str, action='store', default
                     help='corr2 config file')
 parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
                     help='katcp (default) or dcp?')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
