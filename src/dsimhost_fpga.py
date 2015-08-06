@@ -5,6 +5,7 @@ import time
 import re
 import math
 import struct
+import os.path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -75,9 +76,6 @@ class PulsarSource(Source):
     def __init__(self, freq_register,
                  scale_register,
                  name,
-                 # freq_sampling=7.5e+6,
-                 # fft_size=1024,
-                 freq_centre=38.0e+6,
                  sim_time=1.0):
         super(PulsarSource, self).__init__(freq_register, name)
         self.freq_register = freq_register
@@ -159,6 +157,25 @@ class PulsarSource(Source):
             b += 1
         return X
 
+    def write_impulse_to_bin(self, t=0):
+        """
+
+        :param duty_cycle: the fraction of the pulse period in which the pulse is actually on
+        :param t: time
+        :return: vector with delayed pulse
+        """
+        b = 0  # count bins
+        tbin = self.relative_delay
+        X = [0] * self.fft_size
+        fbin = self.fft_bin
+        for f in range(len(fbin)):  # loop over FFT bins
+            t2a = tbin[b+1]  # delay for max frequency in this bin
+            t2b = tbin[b]  # delay for min frequency in this bin
+            if t > t2a and t <= t2b:
+                X[b] = 1  # impulse
+            b += 1
+        return X
+
     def fftshift(self, x):
         """
         FFT shift into screwy FFT order
@@ -198,31 +215,38 @@ class PulsarSource(Source):
             x = self.ifft(X)*lfft
             self.raw_data[(k-1)*lfft:k*lfft] = x
 
-    def write_file(self, file_name='test'):
+    def write_file(self, file_name='test', path_name=False):
         """
 
         :param file_name:
         :return:
         """
+        if path_name != False:
+            completeName = os.path.join(path_name, file_name)
+        else:
+            completeName = file_name
         xs = self.raw_data
         p_amp = 1  # amplitude of the pulse in time domain
         max_xs = max(np.absolute(xs))
-        with open(file_name, 'ab') as myfile:
+        with open(completeName, 'ab') as myfile:
             for l in range(len(xs)):
                 xr = int(round(10*(p_amp*np.real(xs[l])/max_xs+np.random.standard_normal())))
                 xi = int(round(10*(p_amp*np.imag(xs[l])/max_xs+np.random.standard_normal())))
                 mybuffer = struct.pack("bb", xr, xi)
                 myfile.write(mybuffer)
 
-    def plot(self, file_name='test'):
+    def plot(self, file_name='test', path_name=False):
         """
 
         :param file_name:
         :return:
         """
-        with open(file_name, 'rb') as fh:
+        if path_name != False:
+            completeName = os.path.join(path_name, file_name)
+        else:
+            completeName = file_name
+        with open(completeName, 'rb') as fh:
             loaded_array = np.frombuffer(fh.read(), dtype=np.int8)
-
         xr = loaded_array[0:len(loaded_array)-1:2]
         xi = loaded_array[1:len(loaded_array):2]
         cX = xr + xi*1j
