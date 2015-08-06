@@ -37,57 +37,58 @@ def filter_initialise(corr, program=True):
         THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
                            target_function='get_system_information')
 
-    # TODO read the pol IDs from the stream?
-    THREADED_FPGA_OP(corr.filthosts, timeout=5,
-                     target_function=(lambda fpga_:
-                                      fpga_.registers.receptor_id.write(pol0_id=0, pol1_id=1),))
-    THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
-                       target_function=('set_igmp_version',
-                                        (corr.configd['FxCorrelator']['igmp_version'])))
+    if program:
+        # TODO read the pol IDs from the stream?
+        THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                         target_function=(lambda fpga_:
+                                          fpga_.registers.receptor_id.write(pol0_id=0, pol1_id=1),))
+        THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
+                           target_function=('set_igmp_version',
+                                            (corr.configd['FxCorrelator']['igmp_version'])))
 
-    THREADED_FPGA_OP(corr.filthosts, timeout=5,
-                     target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
-    THREADED_FPGA_OP(corr.filthosts, timeout=5,
-                     target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
+        THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+        THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
 
-    # write the TX registers
-    _write_tx_registers(corr)
+        # write the TX registers
+        _write_tx_registers(corr)
 
-    # write the TX port
-    THREADED_FPGA_OP(corr.filthosts, timeout=5,
-                     target_function=(lambda fpga_:
-                                      fpga_.registers.gbe_porttx.write_int(
-                                          fpga_.data_destinations[0].port),))
+        # write the TX port
+        THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                         target_function=(lambda fpga_:
+                                          fpga_.registers.gbe_porttx.write_int(
+                                              fpga_.data_destinations[0].port),))
 
-    # set up the 10gbe cores
-    _setup_tengbe(corr)
+        # set up the 10gbe cores
+        _setup_tengbe(corr)
 
-    THREADED_FPGA_OP(corr.filthosts, timeout=5,
-                     target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+        THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
 
-    # subscribe to multicast data
-    THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
-                       target_function='subscribe_to_source_data')
+        # subscribe to multicast data
+        THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
+                           target_function='subscribe_to_source_data')
 
-    # check the RX data
-    corr.logger.info('filter_ops: waiting for data.')
-    time.sleep(5.0)
-    THREADED_FPGA_OP(corr.filthosts, timeout=5,
-                     target_function=(lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
-    THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
-                       target_function='clear_status')
-    time.sleep(1.0)
-    if not _check_rx(corr):
-        raise RuntimeError('One or more filter engines are not receiving data.')
+        # check the RX data
+        corr.logger.info('filter_ops: waiting for data.')
+        time.sleep(5.0)
+        THREADED_FPGA_OP(corr.filthosts, timeout=5,
+                         target_function=(lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
+        THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
+                           target_function='clear_status')
+        time.sleep(1.0)
+        if not _check_rx(corr):
+            raise RuntimeError('One or more filter engines are not receiving data.')
 
-    # enable TX
-    THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
-                       target_function='enable_tx')
-    # check the TX data
-    THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
-                       target_function='clear_status')
-    if not _check_tx_raw(corr):
-        raise RuntimeError('One or more filter engines are not transmitting data.')
+        # enable TX
+        THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
+                           target_function='enable_tx')
+        # check the TX data
+        THREADED_FPGA_FUNC(corr.filthosts, timeout=5,
+                           target_function='clear_status')
+        if not _check_tx_raw(corr):
+            raise RuntimeError('One or more filter engines are not transmitting data.')
 
 
 def _check_tx_raw(corr, max_waittime=30):
@@ -164,6 +165,7 @@ def _setup_tengbe(corr):
             corr.logger.info('{}: {} got address {}'.format(_fpga.host, _gbe.name,
                                                             _gbe.core_details['ip']))
 
+
 def parse_sources(name_string, ip_string):
     """
     Parse lists of source name and IPs into a list of DataSource objects.
@@ -186,6 +188,7 @@ def parse_sources(name_string, ip_string):
                 'DataSources have to offer the same IP range.'
         source_ctr += 1
     return _sources
+
 
 def _process_destinations(corr):
     """
@@ -213,6 +216,7 @@ def _process_destinations(corr):
             'Currently only %i outputs are accepted for filter ' \
             'boards.' % _destinations_per_filter
 
+
 def _write_tx_registers(corr):
     """
     Actually write the IP addresses to the TX registers
@@ -230,6 +234,7 @@ def _write_tx_registers(corr):
                 _dest_ctr += 1
     THREADED_FPGA_OP(corr.filthosts, timeout=5,
                      target_function=_write_tx_regs)
+
 
 def _process_sources(corr):
     """
