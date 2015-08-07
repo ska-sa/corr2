@@ -395,6 +395,14 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('%s: PFB okay.' % self.host)
         return True
 
+    def get_adc_snapshots(self):
+        """
+        Read the ADC snapshots from this Fhost
+        """
+        p0 = self.snapshots.snap_adc0_ss.read()['data']
+        p1 = self.snapshots.snap_adc1_ss.read()['data']
+        return {'p0': p0, 'p1': p1}
+
 #     def fr_delay_set(self, pol_id, delay=0, delay_rate=0, fringe_phase=0, fringe_rate=0, ld_time=-1, ld_check = True, extra_wait_time = 0):
 #         """
 #         Configures a given antenna to a delay in seconds using both the coarse and the fine delay. Also configures the fringe rotation components. This is a blocking call. \n
