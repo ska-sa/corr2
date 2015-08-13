@@ -15,9 +15,15 @@ Revisions:
 2013-03-05 AM SPEAD metadata
 \n"""
 
-import corr, numpy, logging, struct, socket
-import spead64_48 as spead
+import numpy
 import inspect
+import logging
+import struct
+import socket
+import spead64_48 as spead
+from host_fpga import FpgaHost
+
+LOGGER = logging.getLogger(__name__)
 
 class fbfException(Exception):
     def __init__(self, errno, msg, trace=None, logger=None):
@@ -28,26 +34,17 @@ class fbfException(Exception):
         if logger:
             logger.error('BFError: %s\n%s' % (msg, trace))
 
-class fbf:
-    """Class for frequency-domain beamformers"""
-    def __init__(self, host_correlator, log_level=logging.INFO, simulate=False, optimisations=True):
-        self.c = host_correlator
+class FrequencyBeamformer(FpgaHost):
+    def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
+        FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
+        self.config = config
+        self.b_per_fpga = 4
 
-        self.config = self.c.config
-
-        #  simulate operations (and output debug data). Useful for when there is no hardware
-        self.config.simulate = simulate
         #  optimisations on writes (that currently expose bugs)
-        self.optimisations = optimisations
-
-        self.log_handler = host_correlator.log_handler
-        self.syslogger = logging.getLogger('fbfsys')
-        self.syslogger.addHandler(self.log_handler)
-        self.syslogger.setLevel(log_level)
-        self.c.b = self
+        # self.optimisations = optimisations
+        self.beamformer = self
 
         self.spead_initialise()
-        self.syslogger.info('Beamformer created')
 
 # -----------------------
 #  helper functions
