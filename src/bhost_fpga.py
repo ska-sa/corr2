@@ -21,7 +21,6 @@ import logging
 import struct
 import socket
 import spead64_48 as spead
-from host_fpga import FpgaHost
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,73 +33,82 @@ class fbfException(Exception):
         if logger:
             logger.error('BFError: %s\n%s' % (msg, trace))
 
-class FrequencyBeamformer(FpgaHost):
-    def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
-        FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
-        self.config = config
-        self.b_per_fpga = 4
+class FrequencyBeamformer:
+    def __init__(self, host_correlator, simulate=False, optimisations=True):
+        self.c = host_correlator
 
+        self.config = self.c.configd
         #  optimisations on writes (that currently expose bugs)
-        # self.optimisations = optimisations
-        self.beamformer = self
+        self.optimisations = optimisations
+        #  simulate operations (and output debug data). Useful for when there is no hardware
+        self.simulate = simulate
+        self.c.b = self
 
         self.spead_initialise()
+        LOGGER.info('Beamformer created')
 
 # -----------------------
 #  helper functions
 # -----------------------
 
-    def get_param(self, param):
-        """Read beamformer parameter from config dictionary"""
-        try:
-            value = self.config[param]
-        except KeyError as ke:
-            self.syslogger.error('get_param: error getting value of self.config[%s]' % ke)
-            raise  # simply raise to the calling function
-        except Exception as err:
-            #  Issues a message at the ERROR level and adds exception information to the log message
-            self.syslogger.exception(err.__class__)
-            raise
-        return value
-
+    # TODO
     def set_param(self, param, value):
+        """
+        Set beamformer parameter value
+        :param param:
+        :param value:
+        :return:
+        """
         try:
             self.config[param] = value
         except KeyError as ke:
-            self.syslogger.error('set_param: error setting value of self.config[%s]' % ke)
+            LOGGER.error('set_param: error setting value of self.config[%s]' % ke)
             raise
         except Exception as err:
-            # Issues a message at the ERROR level and addes exception information to the log message
-            self.syslogger.exception(err.__class__)
+            # Issues a message at the ERROR level and adds exception information to the log message
+            LOGGER.exception(err.__class__)
             raise
 
     def get_beam_param(self, beams, param):
+        """
+        Read beamformer parameter per beam
+        :param beams: string
+        :param param: string
+        :return: values
+        """
         values = []
         beams = self.beams2beams(beams)
         beam_indices = self.beam2index(beams)
         if beam_indices == []:
             raise fbfException(1, 'Error locating beams',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         for beam_index in beam_indices:
-            values.append(self.get_param('bf_%s_beam%d' % (param, beam_index)))
+            values.append(self.config['beamformer']['bf_%s_beam%d' % (param, beam_index)])
         # for single item
         if len(values) == 1:
             values = values[0]
         return values
 
     def set_beam_param(self, beams, param, values):
+        """
+
+        :param beams:
+        :param param:
+        :param values:
+        :return:
+        """
         beams = self.beams2beams(beams)
         # check vector lengths match up
         if type(values) == list and len(values) != len(beams):
             raise fbfException(1, 'Beam vector must be same length as value vector if passing many values',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         beam_indices = self.beam2index(beams)
         if len(beam_indices) == 0:
             raise fbfException(1, 'Error locating beams',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         for index, beam_index in enumerate(beam_indices):
             if type(values) == list:
                 value = values[index]
@@ -109,38 +117,55 @@ class FrequencyBeamformer(FpgaHost):
             self.set_param('bf_%s_beam%d' % (param, beam_index), value)
 
     def get_fpgas(self, names=False):
+        """
+        Get fpga names that host b-eng (for now x-eng)
+        :return: all_fpgas
+        """
         # if doing dummy load (no correlator), use roach names as have not got fpgas yet
-        if self.config.simulate == False and names == False:
+        if self.simulate == False and names == False:
             try:
-                all_fpgas = self.c.xfpgas
-            except:
-                raise fbfException(1, 'Error accessing self.c.xfpgas',
-                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
-        else:
-            try:
-                all_fpgas = self.c.xsrvs
+                all_fpgas = self.config['xengine']['hosts']
+                all_fpgas = all_fpgas.split(',')
             except:
                 raise fbfException(1, 'Error accessing self.c.xsrvs',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
+        else:
+            try:
+                all_fpgas = self.c.xhosts
+            except:
+                raise fbfException(1, 'Error accessing self.c.xsrvs',
+                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
+                                   LOGGER)
         return all_fpgas
 
     def get_bfs(self):
-        """get bf blocks per fpga"""
-        all_bfs = range(self.get_param('bf_be_per_fpga'))
+        """
+        get bf blocks per fpga
+        :return: all_bfs
+        """
+        all_bfs = range(int(self.config['beamformer']['bf_be_per_fpga']))
         return all_bfs
 
     def get_beams(self):
-        """get a list of beam names in system"""
+        """
+        get a list of beam names in system
+        :return: all_beams
+        """
         all_beams = []
-        n_beams = self.get_param('bf_n_beams')
+        n_beams = int(self.config['beamformer']['bf_n_beams'])
         for beam_index in range(n_beams):
-            all_beams.append(self.get_param('bf_name_beam%i' % beam_index))
+            all_beams.append(self.config['beamformer']['bf_name_beam%i' % beam_index])
         return all_beams
 
+    # TODO not working need attribute '_get_ant_mapping_list'
     def map_ant_to_input(self, beam, ant_strs=all):
-        """maps antenna strings specified to input to beamformer"""
+        """
+        maps antenna strings specified to input to beamformer
+        :param beam:
+        :param ant_strs:
+        :return: inputs
+        """
         beam_ants = self.ants2ants(beam=beam, ant_strs=all)
         inputs = []
         for ant_str in ant_strs:
@@ -149,8 +174,14 @@ class FrequencyBeamformer(FpgaHost):
             inputs.append(beam_ants.index(ant_str))
         return inputs
 
+    # TODO not working need attribute '_get_ant_mapping_list'
     def ants2ants(self, beam, ant_strs=all):
-        """expands all, None etc into valid antenna strings. Checks for valid antenna strings"""
+        """
+        expands all, None etc into valid antenna strings. Checks for valid antenna strings
+        :param beam:
+        :param ant_strs:
+        :return: ants
+        """
         ants = []
         if ant_strs == None:
             return []
@@ -173,13 +204,17 @@ class FrequencyBeamformer(FpgaHost):
             if beam_ants.count(ant_str) == 0:
                 raise fbfException(1, '%s not found in antenna mapping for beam %s' % (ant_str, beam),
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
             else:
                 ants.append(ant_str)
         return ants
 
     def beams2beams(self, beams=all):
-        """expands all, None etc into valid beam names. Checks for valid beam names"""
+        """
+        expands all, None etc into valid beam names. Checks for valid beam names
+        :param beams:
+        :return: new_beams
+        """
         new_beams = []
         if beams == None:
             return
@@ -196,11 +231,15 @@ class FrequencyBeamformer(FpgaHost):
                     new_beams.append(beam)
                 except:
                     raise fbfException(1, '%s not found in our system' % beam, 'function %s, line no %s\n'
-                                       % (__name__, inspect.currentframe().f_lineno), self.syslogger)
+                                       % (__name__, inspect.currentframe().f_lineno), LOGGER)
         return new_beams
 
     def beam2index(self, beams=all):
-        """returns index of beam with specified name"""
+        """
+        returns index of beam with specified name
+        :param beams:
+        :return: indices
+        """
         indices = []
         # expand all etc, check for valid names etc
         beams = self.beams2beams(beams)
@@ -210,16 +249,22 @@ class FrequencyBeamformer(FpgaHost):
         return indices
 
     def frequency2fpgas(self, frequencies=all, fft_bins=[], unique=False):
-        """returns fpgas associated with frequencies specified. unique only returns unique fpgas"""
+        """
+        returns fpgas associated with frequencies specified. unique only returns unique fpgas
+        :param frequencies:
+        :param fft_bins:
+        :param unique:
+        :return: fpgas
+        """
         fpgas = []
         if len(fft_bins) == 0:
             fft_bins = self.frequency2fft_bin(frequencies)
         all_fpgas = self.get_fpgas()
-        n_chans = self.get_param('n_chans')
-        n_chans_per_fpga = n_chans/len(all_fpgas)
+        n_chans = self.config['fengine']['n_chans']
+        n_chans_per_fpga = int(n_chans)/len(all_fpgas)
         prev_index = -1
         for fft_bin in fft_bins:
-            index = numpy.int(fft_bin/n_chans_per_fpga) #floor built in
+            index = numpy.int(fft_bin/n_chans_per_fpga)  # floor built in
             if index < 0 or index > len(all_fpgas)-1:
                 raise fbfException(1, 'FPGA index calculated out of range',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
@@ -230,7 +275,13 @@ class FrequencyBeamformer(FpgaHost):
         return fpgas
 
     def frequency2bf_label(self, frequencies=all, fft_bins=[], unique=False):
-        """returns bf labels associated with the frequencies specified"""
+        """
+        returns bf labels associated with the frequencies specified
+        :param frequencies:
+        :param fft_bins:
+        :param unique:
+        :return: bf_labels
+        """
         bf_labels = []
         bf_be_per_fpga = len(self.get_bfs())
         bf_indices = self.frequency2bf_index(frequencies, fft_bins, unique=unique)
@@ -239,14 +290,20 @@ class FrequencyBeamformer(FpgaHost):
         return bf_labels
 
     def frequency2bf_index(self, frequencies=all, fft_bins=[], unique=False):
-        """returns bf indices associated with the frequencies specified"""
+        """
+        returns bf indices associated with the frequencies specified
+        :param frequencies:
+        :param fft_bins:
+        :param unique:
+        :return: bf_indices
+        """
         bf_indices = []
         if len(fft_bins) == 0:
             fft_bins = self.frequency2fft_bin(frequencies)
         n_fpgas = len(self.get_fpgas())
         bf_be_per_fpga = len(self.get_bfs())
         n_bfs = n_fpgas*bf_be_per_fpga
-        n_chans = self.get_param('n_chans')
+        n_chans = int(self.config['fengine']['n_chans'])
         n_chans_per_bf = n_chans/n_bfs
         if max(fft_bins) > n_chans-1 or min(fft_bins) < 0:
             raise fbfException(1, 'FFT bin/s out of range', 'function %s, line no %s\n' %
@@ -258,32 +315,41 @@ class FrequencyBeamformer(FpgaHost):
         return bf_indices
 
     def frequency2frequency_reg_index(self, frequencies=all, fft_bins=[]):
-        """Returns list of values to write into frequency register corresponding to frequency specified"""
+        """
+        Returns list of values to write into frequency register corresponding to frequency specified
+        :param frequencies:
+        :param fft_bins:
+        :return: indices
+        """
         indices = []
         if len(fft_bins) == 0:
             fft_bins = self.frequency2fft_bin(frequencies)
-        n_chans = self.get_param('n_chans')
+        n_chans = int(self.config['fengine']['n_chans'])
         bf_be_per_fpga = len(self.get_bfs())
         n_fpgas = len(self.get_fpgas())
         divisions = n_fpgas * bf_be_per_fpga
         if max(fft_bins) > n_chans-1 or min(fft_bins) < 0:
             raise fbfException(1, 'FFT bin/s out of range',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         for fft_bin in fft_bins:
             indices.append(numpy.mod(fft_bin, n_chans/divisions))
         return indices
 
     def frequency2fft_bin(self, frequencies=all):
-        """returns fft bin associated with specified frequencies"""
+        """
+        returns fft bin associated with specified frequencies
+        :param frequencies:
+        :return: fft_bins
+        """
         fft_bins = []
-        n_chans = self.get_param('n_chans')
+        n_chans = int(self.config['fengine']['n_chans'])
         if frequencies == None:
             fft_bins = []
         elif frequencies == all:
             fft_bins = range(n_chans)
         else:
-            bandwidth = self.get_param('bandwidth')
+            bandwidth = float(self.config['fengine']['bandwidth'])
             start_freq = 0
             channel_width = bandwidth/n_chans
             for frequency in frequencies:
@@ -292,40 +358,53 @@ class FrequencyBeamformer(FpgaHost):
         return fft_bins
 
     def get_bf_bandwidth(self):
-        """Returns the bandwidth for one bf engine"""
-        bandwidth = self.get_param('bandwidth')
+        """
+        Returns the bandwidth for one bf engine
+        :return: bf_bandwidth
+        """
+        bandwidth = self.config['fengine']['bandwidth']
         bf_be_per_fpga = len(self.get_bfs())
         n_fpgas = len(self.get_fpgas())
         bf_bandwidth = float(bandwidth)/(bf_be_per_fpga*n_fpgas)
         return bf_bandwidth
 
     def get_bf_fft_bins(self):
-        """Returns the number of fft bins for one bf engine"""
-        n_chans = self.get_param('n_chans')
+        """
+        Returns the number of fft bins for one bf engine
+        :return: bf_fft_bins
+        """
+        n_chans = int(self.config['fengine']['n_chans'])
         bf_be_per_fpga = len(self.get_bfs())
         n_fpgas = len(self.get_fpgas())
         bf_fft_bins = n_chans/(bf_be_per_fpga*n_fpgas)
         return bf_fft_bins
 
     def get_fft_bin_bandwidth(self):
-        """get bandwidth of single fft bin"""
-        n_chans = self.get_param('n_chans')
-        bandwidth = self.get_param('bandwidth')
+        """
+        get bandwidth of single fft bin
+        :return: fft_bin_bandwidth
+        """
+        n_chans = int(self.config['fengine']['n_chans'])
+        bandwidth = int(self.config['fengine']['bandwidth'])
         fft_bin_bandwidth = bandwidth/n_chans
         return fft_bin_bandwidth
 
     def fft_bin2frequency(self, fft_bins=all):
-        """returns a list of centre frequencies associated with the fft bins supplied"""
+        """
+        returns a list of centre frequencies associated with the fft bins supplied
+        :param fft_bins:
+        :return: frequencies
+        """
         frequencies = []
-        n_chans = self.get_param('n_chans')
+        n_chans = int(self.config['fengine']['n_chans'])
         if fft_bins == all:
             fft_bins = range(n_chans)
         if type(fft_bins) == int:
             fft_bins = [fft_bins]
         if max(fft_bins) > n_chans or min(fft_bins) < 0:
             raise fbfException(1, 'fft_bins out of range 0 -> %d' % (n_chans-1), 'function %s, line no %s\n'
-                               % (__name__, inspect.currentframe().f_lineno), self.syslogger)
-        bandwidth = self.get_param('bandwidth')
+                               % (__name__, inspect.currentframe().f_lineno), LOGGER)
+        bandwidth = int(self.config['fengine']['bandwidth'])
         for fft_bin in fft_bins:
             frequencies.append((float(fft_bin)/n_chans)*bandwidth)
         return frequencies
@@ -334,11 +413,15 @@ class FrequencyBeamformer(FpgaHost):
         """
         returns a list of dictionaries {fpga, beamformer_index} based on frequency.
         unique gives only unique values
+        :param frequencies:
+        :param fft_bins:
+        :param unique:
+        :return: locations
         """
         locations = []
         if unique != True and unique != False:
             raise fbfException(1, 'unique must be True or False', 'function %s, line no %s\n' %
-                               (__name__, inspect.currentframe().f_lineno), self.syslogger)
+                               (__name__, inspect.currentframe().f_lineno), LOGGER)
         if len(fft_bins) == 0:
             fft_bins = self.frequency2fft_bin(frequencies)
         fpgas = self.frequency2fpgas(fft_bins=fft_bins)
@@ -346,7 +429,7 @@ class FrequencyBeamformer(FpgaHost):
         if len(fpgas) != len(bfs):
             raise fbfException(1, 'fpga and bfs associated with frequencies not the same length',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         else:
             pfpga = []
             pbf = []
@@ -360,7 +443,14 @@ class FrequencyBeamformer(FpgaHost):
         return locations
 
     def beam_frequency2location_fpga_bf(self, beams=all, frequencies=all, fft_bins=[], unique=False):
-        """returns list of dictionaries {location, fpga, beamformer index} based on beam name, and frequency"""
+        """
+        returns list of dictionaries {location, fpga, beamformer index} based on beam name, and frequency
+        :param beams:
+        :param frequencies:
+        :param fft_bins:
+        :param unique:
+        :return: locations
+        """
         indices = []
         # get beam locations
         locations = self.beam2location(beams)
@@ -374,7 +464,11 @@ class FrequencyBeamformer(FpgaHost):
         return indices
 
     def beam2location(self, beams=all):
-        """returns location of beam with associated name or index"""
+        """
+        returns location of beam with associated name or index
+        :param beams:
+        :return: locations
+        """
         locations = []
         beams = self.beams2beams(beams)
         for beam in beams:
@@ -383,8 +477,14 @@ class FrequencyBeamformer(FpgaHost):
         return locations
 
     def antenna2antenna_indices(self, beam, ant_strs=all):
+        """
+
+        :param beam:
+        :param ant_strs:
+        :return: antenna_indices
+        """
         antenna_indices = []
-        n_ants = self.get_param('n_ants')
+        n_ants = int(self.config['fengine']['n_antennas'])
         if ant_strs == all:
             antenna_indices.extend(range(n_ants))
         # map antenna strings to inputs
@@ -392,8 +492,18 @@ class FrequencyBeamformer(FpgaHost):
             antenna_indices = self.map_ant_to_input(beam=beam, ant_strs=ant_strs)
         return antenna_indices
 
+    # TODO
     def write_int(self, device_name, data, offset=0, frequencies=all, fft_bins=[], blindwrite=False):
-        """Writes data to all devices on all bfs in all fpgas associated with the frequencies specified"""
+        """
+        Writes data to all devices on all bfs in all fpgas associated with the frequencies specified
+        :param device_name:
+        :param data:
+        :param offset:
+        :param frequencies:
+        :param fft_bins:
+        :param blindwrite:
+        :return:
+        """
         # TODO work this out properly
         timeout = 1
         # get all fpgas, bfs associated with frequencies specified
@@ -401,8 +511,8 @@ class FrequencyBeamformer(FpgaHost):
         if len(data) > 1 and len(targets) != len(data):
             raise fbfException(1, 'Many data but size (%d) does not match length of targets (%d)'
                                % (len(data), len(targets)), 'function %s, line no %s\n'
-                               % (__name__, inspect.currentframe().f_lineno), self.syslogger)
-        bf_register_prefix = self.get_param('bf_register_prefix')
+                               % (__name__, inspect.currentframe().f_lineno), LOGGER)
+        bf_register_prefix = self.config['beamformer']['bf_register_prefix']
         # if optimisations are enabled and (same data, and multiple targets)
         # write to all targets with the same register name
         if self.optimisations and (len(data) == 1 and len(targets) > 1):
@@ -430,12 +540,12 @@ class FrequencyBeamformer(FpgaHost):
                         if nottimedout == False:
                             raise fbfException(1, 'Timeout asynchronously writing 0x%.8x to %s on %d fpgas offset %i'
                                                % (data[0], name, len(fpgas), offset), 'function %s, line no %s\n'
-                                               % (__name__, inspect.currentframe().f_lineno), self.syslogger)
+                                               % (__name__, inspect.currentframe().f_lineno), LOGGER)
                         for k, v in rv.items():
                             if v['reply'] != 'ok':
                                 raise fbfException(1, 'Got %s instead of ''ok'' when writing 0x%.8x to %s:%s offset %i'
                                                    % (v['reply'], data[0], k, name, offset), 'function %s, line no %s\n'
-                                                   % (__name__, inspect.currentframe().f_lineno), self.syslogger)
+                                                   % (__name__, inspect.currentframe().f_lineno), LOGGER)
         # optimisations off, or (many data, or a single target) so many separate writes
         else:
             if self.config.simulate == True:
@@ -462,15 +572,23 @@ class FrequencyBeamformer(FpgaHost):
                     except:
                         raise fbfException(1, 'Error writing 0x%.8x to %s:%s offset %i'
                                            % (datum, target['fpga'], name, offset*4), 'function %s, line no %s\n'
-                                           % (__name__, inspect.currentframe().f_lineno), self.syslogger)
+                                           % (__name__, inspect.currentframe().f_lineno), LOGGER)
 
+    # TODO
     def read_int(self, device_name, offset=0, frequencies=all, fft_bins=[]):
-        """Reads data from all devices on all bfs in all fpgas associated with the frequencies specified"""
+        """
+        Reads data from all devices on all bfs in all fpgas associated with the frequencies specified
+        :param device_name:
+        :param offset:
+        :param frequencies:
+        :param fft_bins:
+        :return: values
+        """
         values = []
         # get all unique fpgas, bfs associated with the specified frequencies
         targets = self.frequency2fpga_bf(frequencies, fft_bins, unique=True)
         for target_index, target in enumerate(targets):
-            name = '%s%s_%s' % (self.get_param('bf_register_prefix'), target['bf'], device_name)
+            name = '%s%s_%s' % (self.config['beamformer']['bf_register_prefix'], target['bf'], device_name)
             # pretend to read if no FPGA
             if self.config.simulate == True:
                 print 'dummy read from %s:%s offset %i' % (target['fpga'], name, offset)
@@ -480,10 +598,17 @@ class FrequencyBeamformer(FpgaHost):
                 except:
                     raise fbfException(1, 'Error reading from %s:%s offset %i' % (target['fpga'], name, offset),
                                        'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                       self.syslogger)
+                                       LOGGER)
         return values
 
     def bf_control_lookup(self, destination, write=True, read=True):
+        """
+
+        :param destination:
+        :param write:
+        :param read:
+        :return: control
+        """
         control = 0
         if destination == 'duplicate':
             id = 0
@@ -504,34 +629,44 @@ class FrequencyBeamformer(FpgaHost):
         else:
             raise fbfException(1, 'Invalid destination: %s' % destination,
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         if write == True:
             control = control | (0x00000001 << id)
         if read == True:
             control = control | (id << 16)
         return control
 
-    def bf_read_int(self, beam, destination, offset=0, antennas=None, frequencies=None, fft_bins=[], blindwrite=True):
-        """read from destination in the bf block for a particular beam"""
+    # using non-working functions map_ant_to_input and ants2ants
+    def bf_read_int(self, beam, destination, antennas=None, frequencies=None, fft_bins=[], blindwrite=True):
+        """
+        read from destination in the bf block for a particular beam
+        :param beam:
+        :param destination:
+        :param antennas:
+        :param frequencies:
+        :param fft_bins:
+        :param blindwrite:
+        :return: values
+        """
         values = []
         if destination == 'calibrate':
             if antennas == None:
                 raise fbfException(1, 'Need to specify an antenna when reading from calibrate block',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
             if frequencies==None and len(fft_bins) == 0:
                 raise fbfException(1, 'Need to specify a frequency or fft bin when reading from calibrate block',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
         elif destination == 'filter':
             if antennas != None:
                 raise fbfException(1, 'Can''t specify antenna when reading from filter block',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
         else:
             raise fbfException(1, 'Invalid destination: %s'%destination,
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         if len(fft_bins) == 0:
             fft_bins = self.frequency2fft_bin(frequencies)
         location = self.beam2location(beams=beam)[0]
@@ -568,32 +703,44 @@ class FrequencyBeamformer(FpgaHost):
             values = self.read_int('value_out', offset=0, fft_bins=fft_bins)
         return values
 
+    # TODO
     def bf_write_int(self, destination, data, offset=0, beams=all, antennas=None, frequencies=None, fft_bins=[],
                      blindwrite=True):
-        """write to various destinations in the bf block for a particular beam"""
+        """
+        write to various destinations in the bf block for a particular beam
+        :param destination:
+        :param data:
+        :param offset:
+        :param beams:
+        :param antennas:
+        :param frequencies:
+        :param fft_bins:
+        :param blindwrite:
+        :return:
+        """
         if destination == 'calibrate':
             if antennas == None:
                 raise fbfException(1, 'Need to specify an antenna when writing to calibrate block',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
             if frequencies == None and len(fft_bins) == 0:
                 raise fbfException(1, 'Need to specify a frequency or fft bin when writing to calibrate block',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
         elif destination == 'filter':
             if antennas != None:
                 raise fbfException(1, 'Can''t specify antenna for filter block',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
         else:
             raise fbfException(1, 'Invalid destination: %s' % destination,
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         # convert frequencies to list of fft_bins
         if len(fft_bins) == 0:
             fft_bins = self.frequency2fft_bin(frequencies)
         # assuming people don't write to the same frequency twice
-        if len(fft_bins) == self.get_param('n_chans'):
+        if len(fft_bins) == int(self.config['fengine']['n_chans']):
             all_freqs = True
         else:
             all_freqs = False
@@ -601,7 +748,7 @@ class FrequencyBeamformer(FpgaHost):
         if len(data) > 1 and len(fft_bins) != len(data):
             raise fbfException(1, 'data and frequency vector lengths incompatible',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         # disable writes
         # print 'bf_write_int: disabling everything'
         self.write_int('control', [0x0], 0, fft_bins=fft_bins, blindwrite=blindwrite)
@@ -700,19 +847,24 @@ class FrequencyBeamformer(FpgaHost):
                 self.write_int('control', [control], 0, fft_bins=fft_bins, blindwrite=blindwrite)
 
     def cf_bw2fft_bins(self, centre_frequency, bandwidth):
-        """returns fft bins associated with provided centre_frequency and bandwidth
-        centre_frequency is assumed to be the centre of the 2^(N-1) fft bin"""
-        bins = []
-        n_chans = self.get_param('n_chans')
-        max_bandwidth = self.get_param('bandwidth')
+        """
+        returns fft bins associated with provided centre_frequency and bandwidth
+        centre_frequency is assumed to be the centre of the 2^(N-1) fft bin
+        :param centre_frequency:
+        :param bandwidth:
+        :return: bins
+        """
+        max_bandwidth = float(self.config['fengine']['bandwidth'])
         fft_bin_width = self.get_fft_bin_bandwidth()
+        centre_frequency = float(centre_frequency)
+        bandwidth = float(bandwidth)
         # TODO spectral line mode systems??
         if (centre_frequency-bandwidth/2) < 0 or \
            (centre_frequency+bandwidth/2) > max_bandwidth or \
            (centre_frequency-bandwidth/2) >= (centre_frequency+bandwidth/2):
             raise fbfException(1, 'Band specified not valid for our system',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         # get fft bin for edge frequencies
         edge_bins = self.frequency2fft_bin(frequencies=[centre_frequency-bandwidth/2,
                                                         centre_frequency+bandwidth/2-fft_bin_width])
@@ -720,11 +872,15 @@ class FrequencyBeamformer(FpgaHost):
         return bins
 
     def cf_bw2cf_bw(self, centre_frequency, bandwidth):
-        """converts specfied centre_frequency, bandwidth to values possible for our system"""
+        """
+        converts specfied centre_frequency, bandwidth to values possible for our system
+        :param centre_frequency:
+        :param bandwidth:
+        :return: beam_centre_frequency, beam_bandwidth
+        """
         bins = self.cf_bw2fft_bins(centre_frequency, bandwidth)
         bfs = self.frequency2bf_index(fft_bins=bins, unique=True)
         bf_bandwidth = self.get_bf_bandwidth()
-        fft_bin_bandwidth = self.get_fft_bin_bandwidth()
         # calculate start frequency accounting for frequency specified in centre of bin
         start_frequency = min(bfs)*bf_bandwidth
         beam_centre_frequency = start_frequency+bf_bandwidth*(float(len(bfs))/2)
@@ -732,15 +888,23 @@ class FrequencyBeamformer(FpgaHost):
         return beam_centre_frequency, beam_bandwidth
 
     def get_enabled_fft_bins(self, beam):
-        """Returns fft bins representing band that is enabled for beam"""
+        """
+        Returns fft bins representing band that is enabled for beam
+        :param beam:
+        :return: bins
+        """
         bins = []
-        cf = self.get_beam_param(beam, 'centre_frequency')
-        bw = self.get_beam_param(beam, 'bandwidth')
+        cf = float(self.get_beam_param(beam, 'centre_frequency'))
+        bw = float(self.get_beam_param(beam, 'bandwidth'))
         bins = self.cf_bw2fft_bins(cf, bw)
         return bins
 
     def get_disabled_fft_bins(self, beam):
-        """Returns fft bins representing band that is disabled for beam"""
+        """
+        Returns fft bins representing band that is disabled for beam
+        :param beam:
+        :return:
+        """
         all_bins = self.frequency2fft_bin(frequencies=all)
         enabled_bins = self.get_enabled_fft_bins(beam)
         for fft_bin in enabled_bins:
@@ -752,24 +916,30 @@ class FrequencyBeamformer(FpgaHost):
 # -----------------------------------
 
     def initialise(self, set_cal=True, config_output=True, send_spead=True):
-        """Initialises the system and checks for errors."""
+        """
+        Initialises the system and checks for errors.
+        :param set_cal:
+        :param config_output:
+        :param send_spead:
+        :return:
+        """
         # disable all beams that are transmitting
         beams = self.beams2beams(all)
         for beam in beams:
             if self.tx_status_get(beam):
                 self.tx_stop(beam)
-                self.syslogger.info('Stopped beamformer %s' % beam)
+                LOGGER.info('Stopped beamformer %s' % beam)
         # configure spead_meta data transmitter and spead data destination,
         # don't issue related spead meta-data as will do in spead_issue_all
         if config_output:
             self.config_udp_output(all, issue_spead=False)
             self.config_meta_output(all, issue_spead=False)
         else:
-            self.syslogger.info('Skipped output configuration of beamformer.')
+            LOGGER.info('Skipped output configuration of beamformer.')
         if set_cal:
             self.cal_set_all(all, spead_issue=False)
         else:
-            self.syslogger.info('Skipped calibration config of beamformer.')
+            LOGGER.info('Skipped calibration config of beamformer.')
         # if we set up calibration weights, then config has these already so don't
         # read from fpga
         if set_cal:
@@ -779,12 +949,16 @@ class FrequencyBeamformer(FpgaHost):
         if send_spead:
             self.spead_issue_all(beams=all, from_fpga=from_fpga)
         else:
-            self.syslogger.info('Skipped issue of spead meta data.')
-        self.syslogger.info("Beamformer initialisation complete.")
+            LOGGER.info('Skipped issue of spead meta data.')
+        LOGGER.info("Beamformer initialisation complete.")
 
     def tx_start(self, beams=all):
-        """Start outputting SPEAD products. Only works for systems with 10GbE output atm."""
-        if self.get_param('out_type') == '10gbe':
+        """
+        Start outputting SPEAD products. Only works for systems with 10GbE output atm.
+        :param beams:
+        :return:
+        """
+        if self.config['xengine']['output_products'] == '10gbe':
             # NOTE that the order of the following operations is significant
             # output from bfs will be enabled if any component frequencies are required
             # convert to actual beam names
@@ -826,52 +1000,61 @@ class FrequencyBeamformer(FpgaHost):
                     print 'enabling included bfs'
                 # lastly enable those parts
                 self.bf_write_int(destination='filter', data=[0x1], offset=0x0, beams=beam, fft_bins=enabled_fft_bins)
-                self.syslogger.info('Output for %s started' % beam)
+                LOGGER.info('Output for %s started' % beam)
         else:
             raise fbfException(1, 'Sorry, your output type is not supported. Could not enable output.',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
 
     def tx_stop(self, beams=all, spead_stop=True):
-        """Stops outputting SPEAD data over 10GbE links for specified beams.
-        Sends SPEAD packets indicating end of stream if required"""
+        """
+        Stops outputting SPEAD data over 10GbE links for specified beams.
+        Sends SPEAD packets indicating end of stream if required
+        :param beams:
+        :param spead_stop:
+        :return:
+        """
         beams = self.beams2beams(beams)
-        if self.get_param('out_type') == '10gbe':
+        if self.config['xengine']['output_products'] == '10gbe':
             for beam in beams:
                 # disable all bf outputs
                 self.bf_write_int(destination='filter', data=[0x0], offset=0x0, beams=beams)
-                self.syslogger.info("Beamformer output paused for beam %s" % beam)
+                LOGGER.info("Beamformer output paused for beam %s" % beam)
                 if spead_stop:
-                    if self.config.simulate == True:
+                    if self.simulate == True:
                         print 'tx_stop: dummy ending SPEAD stream for beam %s' % beam
                     else:
                         spead_tx = self.get_spead_tx(beam)
                         spead_tx.send_halt()
-                        self.syslogger.info("Sent SPEAD end-of-stream notification for beam %s" % beam)
+                        LOGGER.info("Sent SPEAD end-of-stream notification for beam %s" % beam)
                 else:
-                    self.syslogger.info("Did not send SPEAD end-of-stream notification for beam %s" % beam)
+                    LOGGER.info("Did not send SPEAD end-of-stream notification for beam %s" % beam)
         else:
             raise fbfException(1, 'Sorry, your output type is not supported. Cannot disable output for beam %s.'
                                % beams, 'function %s, line no %s\n'
-                               % (__name__, inspect.currentframe().f_lineno), self.syslogger)
+                               % (__name__, inspect.currentframe().f_lineno), LOGGER)
 
     def tx_status_get(self, beam):
-        """Returns boolean true/false if the beamformer is currently outputting data.
-        Currently only works on systems with 10GbE output."""
+        """
+        Returns boolean true/false if the beamformer is currently outputting data.
+        Currently only works on systems with 10GbE output.
+        :param beam:
+        :return:
+        """
         # if simulating, no beam is enabled
-        if self.config.simulate:
+        if self.simulate:
             return False
-        if self.get_param('out_type') != '10gbe':
+        if self.config['xengine']['output_products'] != '10gbe':
                 raise fbfException(1, 'This function only works for systems with 10GbE output!',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   self.syslogger)
+                                   LOGGER)
         rv = True
         # check 10Ge cores are not in reset
         stat = self.c.xeng_ctrl_get_all()
         for xn in stat:
             if xn['gbe_out_rst'] != False:
                 rv = False
-        self.syslogger.info('10Ge output is currently %s' % ('enabled' if rv else 'disabled'))
+        LOGGER.info('10Ge output is currently %s' % ('enabled' if rv else 'disabled'))
         # read output status of beams
         mask = self.bf_read_int(beam=beam, destination='filter')
         # look to see if any portion in enabled
@@ -881,9 +1064,17 @@ class FrequencyBeamformer(FpgaHost):
             rv = False
         return rv
 
+    # TODO python error
     def config_meta_output(self, beams=all, dest_ip_str=None, dest_port=None, issue_spead=True):
-        """Configures the destination IP and port for SPEAD meta-data outputs. dest_port and
-        dest_ip are optional parameters to override the config file defaults."""
+        """
+        Configures the destination IP and port for SPEAD meta-data outputs. dest_port and
+        dest_ip are optional parameters to override the config file defaults.
+        :param beams:
+        :param dest_ip_str:
+        :param dest_port:
+        :param issue_spead:
+        :return:
+        """
         beams = self.beams2beams(beams)
         for beam in beams:
             if dest_ip_str == None:
@@ -894,22 +1085,29 @@ class FrequencyBeamformer(FpgaHost):
                 self.set_beam_param(beam, 'rx_meta_ip', struct.unpack('>L', socket.inet_aton(dest_ip_str))[0])
 
             if dest_port == None:
-                rx_meta_port = self.get_beam_param(beam, 'rx_meta_port')
+                rx_meta_port = self.get_beam_param(beam, 'rx_udp_port')
             else:
                 rx_meta_port = dest_port
-                self.set_beam_param(beam, 'rx_meta_port', dest_port)
+                self.set_beam_param(beam, 'rx_udp_port', dest_port)
 
             self.spead_tx['bf_spead_tx_beam%i' % self.beam2index(beam)[0]] = \
                 spead.Transmitter(spead.TransportUDPtx(rx_meta_ip_str, rx_meta_port))
-            self.syslogger.info("Destination for SPEAD meta data transmitter for beam %s changed. "
-                                "New destination IP = %s, port = %d" % (beam, rx_meta_ip_str, rx_meta_port))
+            LOGGER.info("Destination for SPEAD meta data transmitter for beam %s changed. "
+                        "New destination IP = %s, port = %d" % (beam, rx_meta_ip_str, int(rx_meta_port)))
             # reissue all SPEAD meta-data to new receiver
             if issue_spead:
                 self.spead_issue_all(beam)
 
     def config_udp_output(self, beams=all, dest_ip_str=None, dest_port=None, issue_spead=True):
-        """Configures the destination IP and port for B engine data outputs. dest_port and dest_ip
-        are optional parameters to override the config file defaults."""
+        """
+        Configures the destination IP and port for B engine data outputs. dest_port and dest_ip
+        are optional parameters to override the config file defaults.
+        :param beams:
+        :param dest_ip_str:
+        :param dest_port:
+        :param issue_spead:
+        :return:
+        """
         beams = self.beams2beams(beams)
         for beam in beams:
             if dest_ip_str == None:
@@ -932,16 +1130,22 @@ class FrequencyBeamformer(FpgaHost):
             self.write_int('dest', data=[dest_ip], offset=(beam_offset*2))
             self.write_int('dest', data=[rx_udp_port], offset=(beam_offset*2+1))
             # each beam output from each beamformer group can be configured differently
-            self.syslogger.info("Beam %s configured to output to %s:%i." % (beam, rx_udp_ip_str, rx_udp_port))
+            LOGGER.info("Beam %s configured to output to %s:%i." % (beam, rx_udp_ip_str, rx_udp_port))
             if issue_spead:
                 self.spead_destination_meta_issue(beam)
             if restart:
                 self.tx_start(beam)
 
     def set_passband(self, beams=all, centre_frequency=None, bandwidth=None, spead_issue=True):
-        """sets the centre frequency and/or bandwidth for the specified beams"""
+        """
+        sets the centre frequency and/or bandwidth for the specified beams
+        :param beams:
+        :param centre_frequency:
+        :param bandwidth:
+        :param spead_issue:
+        :return:
+        """
         beams = self.beams2beams(beams)
-        max_bandwidth = self.get_param('bandwidth')
         for beam in beams:
             # parameter checking
             if centre_frequency == None:
@@ -955,10 +1159,10 @@ class FrequencyBeamformer(FpgaHost):
             cf_actual, b_actual = self.cf_bw2cf_bw(cf, b)
             if centre_frequency != None:
                 self.set_beam_param(beam, 'centre_frequency', cf_actual)
-                self.syslogger.info('Centre frequency for beam %s set to %i Hz' % (beam, cf_actual))
+                LOGGER.info('Centre frequency for beam %s set to %i Hz' % (beam, cf_actual))
             if bandwidth != None:
                 self.set_beam_param(beam, 'bandwidth', b_actual)
-                self.syslogger.info('Bandwidth for beam %s set to %i Hz' % (beam, b_actual))
+                LOGGER.info('Bandwidth for beam %s set to %i Hz' % (beam, b_actual))
             if centre_frequency != None or bandwidth != None:
                 # restart if currently transmitting
                 restart = self.tx_status_get(beam)
@@ -968,11 +1172,15 @@ class FrequencyBeamformer(FpgaHost):
                 if spead_issue:
                     self.spead_passband_meta_issue(beam)
                 if restart:
-                    self.syslogger.info('Restarting beam %s with new passband parameters' % beam)
+                    LOGGER.info('Restarting beam %s with new passband parameters' % beam)
                     self.tx_start(beam)
 
     def get_passband(self, beam):
-        """gets the centre frequency and bandwidth for the specified beam"""
+        """
+        gets the centre frequency and bandwidth for the specified beam
+        :param beam:
+        :return:
+        """
         # parameter checking
         cf = self.get_beam_param(beam, 'centre_frequency')
         b = self.get_beam_param(beam, 'bandwidth')
@@ -980,7 +1188,11 @@ class FrequencyBeamformer(FpgaHost):
         return cf_actual, b_actual
 
     def get_n_chans(self, beam):
-        """gets the number of active channels for the specified beam"""
+        """
+        gets the number of active channels for the specified beam
+        :param beam:
+        :return:
+        """
         fft_bin_bandwidth = self.get_fft_bin_bandwidth()
         cf, bw = self.get_passband(beam)
         n_chans = bw/fft_bin_bandwidth
@@ -988,9 +1200,17 @@ class FrequencyBeamformer(FpgaHost):
 
 #   CALIBRATION
 
+    # TODO not working need attribute '_get_ant_mapping_list'
     def cal_set_all(self, beams, init_poly=[], init_coeffs=[], spead_issue=True):
-        """Initialise all antennas for all specified beams' calibration factors to given polynomial.
-        If no polynomial or coefficients are given, use defaults from config file."""
+        """
+        Initialise all antennas for all specified beams' calibration factors to given polynomial.
+        If no polynomial or coefficients are given, use defaults from config file.
+        :param beams:
+        :param init_poly:
+        :param init_coeffs:
+        :param spead_issue:
+        :return:
+        """
         beams = self.beams2beams(beams)
         # go through all beams specified
         for beam in beams:
@@ -1004,33 +1224,47 @@ class FrequencyBeamformer(FpgaHost):
             if spead_issue:
                 self.spead_cal_meta_issue(beam, from_fpga=False)
 
+    # TODO not working need attribute '_get_ant_mapping_list'
     def cal_default_get(self, beam, ant_str):
-        """Fetches the default calibration configuration from the config file and returns
-        a list of the coefficients for a given beam and antenna."""
-        n_coeffs = self.get_param('n_chans')
+        """
+        Fetches the default calibration configuration from the config file and returns
+        a list of the coefficients for a given beam and antenna.
+        :param beam:
+        :param ant_str:
+        :return:
+        """
+        n_coeffs = self.config['fengine']['n_chans']
         input_n = self.map_ant_to_input(beam=beam, ant_strs=[ant_str])[0]
-        cal_default = self.get_beam_param(beam,'cal_default_input%i' % input_n)
+        cal_default = self.get_beam_param(beam, 'cal_default_input%i' % input_n)
         if cal_default == 'coeffs':
             calibration = self.get_beam_param(beam, 'cal_coeffs_input%i' % input_n)
         elif cal_default == 'poly':
             poly = self.get_beam_param(beam, 'cal_poly_input%i' % input_n)
             calibration = numpy.polyval(poly, range(n_coeffs))
-            if self.get_param('bf_cal_type') == 'complex':
+            if self.config['beamformer']['bf_cal_type'] == 'complex':
                 calibration = [cal+0*1j for cal in calibration]
         else:
             raise fbfException(1, 'Your default beamformer calibration type, %s, is not understood.' % cal_default,
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         if len(calibration) != n_coeffs:
             raise fbfException(1, 'Something\'s wrong. I have %i calibration coefficients when I should have %i.'
                                % (len(calibration), n_coeffs),
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         return calibration
 
+    # TODO not working need attribute '_get_ant_mapping_list'
     def cal_default_set(self, beam, ant_str, init_coeffs=[], init_poly=[]):
-        """store current calibration settings in configuration"""
-        n_coeffs = self.get_param('n_chans')
+        """
+        store current calibration settings in configuration
+        :param beam:
+        :param ant_str:
+        :param init_coeffs:
+        :param init_poly:
+        :return:
+        """
+        n_coeffs = self.config['fengine']['n_chans']
         input_n = self.map_ant_to_input(beam=beam, ant_strs=[ant_str])[0]
         if len(init_coeffs) == n_coeffs:
             self.set_beam_param(beam, 'cal_coeffs_input%i' % input_n, [init_coeffs])
@@ -1041,13 +1275,17 @@ class FrequencyBeamformer(FpgaHost):
         else:
             raise fbfException(1, 'calibration settings are not sensical',
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
 
+    # TODO 'bf_cal_bin_pt' not in the config file
     def cal_fpga2floats(self, data):
-        """Converts vector of values in format as from FPGA to float vector"""
+        """
+        Converts vector of values in format as from FPGA to float vector
+        :param data:
+        :return:
+        """
         values = []
-        n_bits = self.get_param('bf_cal_n_bits')
-        bin_pt = self.get_param('bf_cal_bin_pt')
+        bin_pt = self.config['beamformer']['bf_cal_bin_pt']  # not in the config file
         for datum in data:
             val_real = (numpy.int16((datum & 0xFFFF0000) >> 16))
             val_imag = (numpy.int16(datum & 0x0000FFFF))
@@ -1057,12 +1295,17 @@ class FrequencyBeamformer(FpgaHost):
         return values
 
     def cal_spectrum_get(self, beam, ant_str, from_fpga=True):
-        """Retrieves the calibration settings currently programmed in all bengines
-        for the given beam and antenna. Returns an array of length n_chans."""
+        """
+        Retrieves the calibration settings currently programmed in all bengines
+        for the given beam and antenna. Returns an array of length n_chans.
+        :param beam:
+        :param ant_str:
+        :param from_fpga:
+        :return:
+        """
         if from_fpga:
             # read them directly from fpga
-            fpga_values = self.bf_read_int(beam=beam, destination='calibrate', offset=0, antennas=[ant_str],
-                                           frequencies=all)
+            fpga_values = self.bf_read_int(beam=beam, destination='calibrate', antennas=[ant_str], frequencies=all)
             # float_values are not assigned here
         else:
             base_values = self.cal_default_get(beam, ant_str)
@@ -1071,10 +1314,15 @@ class FrequencyBeamformer(FpgaHost):
             float_values = self.cal_fpga2floats(fpga_values)
         return float_values
 
+    # TODO 'bf_cal_bin_pt' not in the config file
     def cal_floats2fpga(self, data):
-        """Convert floating point values to vector for writing to FPGA"""
+        """
+        Convert floating point values to vector for writing to FPGA
+        :param data:
+        :return:
+        """
         values = []
-        bf_cal_type = self.get_param('bf_cal_type')
+        bf_cal_type = self.config['beamformer']['bf_cal_type']
         if bf_cal_type == 'scalar':
             data = numpy.real(data)
         elif bf_cal_type == 'complex':
@@ -1082,16 +1330,16 @@ class FrequencyBeamformer(FpgaHost):
         else:
             raise fbfException(1, 'Sorry, your beamformer calibration type is not supported. Expecting scalar '
                                   'or complex.', 'function %s, line no %s\n'
-                               % (__name__, inspect.currentframe().f_lineno), self.syslogger)
-        n_bits = self.get_param('bf_cal_n_bits')
-        bin_pt = self.get_param('bf_cal_bin_pt')
+                               % (__name__, inspect.currentframe().f_lineno), LOGGER)
+        n_bits = self.config['beamformer']['bf_bits_out']  # bf_cal_n_bits replaced
+        bin_pt = self.config['beamformer']['bf_cal_bin_pt']  # not in the config file
         whole_bits = n_bits-bin_pt
         top = 2**(whole_bits-1)-1
         bottom = -2**(whole_bits-1)
         if (max(numpy.real(data)) > top or min(numpy.real(data)) < bottom):
-            self.syslogger.info('real calibration values out of range, will saturate')
+            LOGGER.info('real calibration values out of range, will saturate')
         if (max(numpy.imag(data)) > top or min(numpy.imag(data)) < bottom):
-            self.syslogger.info('imaginary calibration values out of range, will saturate')
+            LOGGER.info('imaginary calibration values out of range, will saturate')
         # convert data
         for datum in data:
             datum_real = numpy.real(datum)
@@ -1103,11 +1351,12 @@ class FrequencyBeamformer(FpgaHost):
             values.append((val_real << 16) | (val_imag & 0x0000FFFF))
         return values
 
+    # TODO not working need attribute '_get_ant_mapping_list'
     def cal_spectrum_set(self, beam, ant_str, init_coeffs=[], init_poly=[], spead_issue=True):
         """Set given beam and antenna calibration settings to given co-efficients."""
-        if self.config.simulate:
+        if self.simulate:
             print 'setting spectrum for beam %s antenna %s' % (beam, ant_str)
-        n_coeffs = self.get_param('n_chans')
+        n_coeffs = self.config['fengine']['n_chans']
         if init_coeffs == [] and init_poly == []:
             coeffs = self.cal_default_get(beam=beam, ant_str=ant_str)
         elif len(init_coeffs) == n_coeffs:
@@ -1117,7 +1366,7 @@ class FrequencyBeamformer(FpgaHost):
             raise fbfException(1, 'You specified %i coefficients, but there are %i cal coefficients '
                                   'required for this design.' % (len(init_coeffs), n_coeffs),
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         else:
             coeffs = numpy.polyval(init_poly, range(n_coeffs))
             self.cal_default_set(beam, ant_str, init_poly=init_poly)
@@ -1132,18 +1381,26 @@ class FrequencyBeamformer(FpgaHost):
 # -----------
 
     def spead_initialise(self):
-        """creates spead transmitters that will be used by the beams in our system"""
+        """
+        creates spead transmitters that will be used by the beams in our system
+        :return:
+        """
         self.spead_tx = dict()
         # create a spead transmitter for every beam and store in config
         for beam in self.beams2beams(all):
             ip_str = self.get_beam_param(beam, 'rx_meta_ip_str')
-            port = self.get_beam_param(beam, 'rx_meta_port')
+            port = self.get_beam_param(beam, 'rx_udp_port')
             self.spead_tx['bf_spead_tx_beam%i' % self.beam2index(beam)[0]] = \
                 spead.Transmitter(spead.TransportUDPtx(ip_str, port))
-            self.syslogger.info("Created spead transmitter for beam %s. Destination IP = %s, port = %d"
-                                % (beam, ip_str, port))
+            LOGGER.info("Created spead transmitter for beam %s. Destination IP = %s, port = %d"
+                        % (beam, ip_str, int(port)))
 
     def get_spead_tx(self, beam):
+        """
+
+        :param beam:
+        :return:
+        """
         beam = self.beams2beams(beam)
         beam_index = self.beam2index(beam)[0]
         try:
@@ -1151,209 +1408,318 @@ class FrequencyBeamformer(FpgaHost):
         except:
             raise fbfException(1, 'Error locating SPEAD transmitter for beam %s' % beam,
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                               self.syslogger)
+                               LOGGER)
         return spead_tx
 
+    # ig
     def send_spead_heap(self, beam, ig):
-        """Sends spead item group via transmitter for beam specified"""
-
+        """
+        Sends spead item group via transmitter for beam specified
+        :param beam:
+        :param ig:
+        :return:
+        """
         beam = self.beams2beams(beam)
         spead_tx = self.get_spead_tx(beam)
-        if self.config.simulate:
+        if self.simulate:
             print 'dummy sending spead heap'
         else:
             spead_tx.send_heap(ig.get_heap())
 
+    # TODO no adc_lru_mapping_get attribute + spead issue
     def spead_labelling_issue(self, beams=all):
-        """Issues the SPEAD metadata packets describing the labelling/location/connections
-        of the system's analogue inputs."""
+        """
+        Issues the SPEAD metadata packets describing the labelling/location/connections
+        of the system's analogue inputs.
+        :param beams:
+        :return:
+        """
         beams = self.beams2beams(beams)
         spead_ig = spead.ItemGroup()
-        spead_ig.add_item(name="input_labelling", id=0x100E,
-            description="The physical location of each antenna connection.",
-            init_val=numpy.array([(ant_str, input_n, lru, feng_input) for
-                                  (ant_str, input_n, lru, feng_input) in self.c.adc_lru_mapping_get()]))
+        # spead_ig.add_item(name="input_labelling",
+        #                   id=0x100E,
+        #                   description="The physical location of each antenna connection.",
+        #                   init_val=numpy.array([(ant_str, input_n, lru, feng_input) for
+        #                                         (ant_str, input_n, lru, feng_input) in self.c.adc_lru_mapping_get()]))
         for beam in beams:
-            if self.config.simulate:
+            if self.simulate:
                 print 'Issuing labelling meta data for beam %s' % beam
             self.send_spead_heap(beam, spead_ig)
-            self.syslogger.info("Issued SPEAD metadata describing baseline labelling and "
-                                    "input mapping for beam %s" % beam)
+            LOGGER.info("Issued SPEAD metadata describing baseline labelling and input mapping for beam %s" % beam)
 
+    # TODO spead issue
     def spead_static_meta_issue(self, beams=all):
-        """ Issues the SPEAD metadata packets containing the payload and options descriptors and unpack sequences."""
+        """
+        Issues the SPEAD metadata packets containing the payload and options descriptors and unpack sequences.
+        :param beams:
+        :return:
+        """
         beams = self.beams2beams(beams)
         # spead stuff that does not care about beam
         spead_ig = spead.ItemGroup()
-        spead_ig.add_item(name="adc_clk", id=0x1007, description="Clock rate of ADC (samples per second).", shape=[],
-                          fmt=spead.mkfmt(('u', 64)), init_val=self.get_param('adc_clk'))
-        spead_ig.add_item(name="n_ants", id=0x100A, description="The total number of dual-pol antennas in the system.",
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=self.get_param('n_ants'))
-        spead_ig.add_item(name="n_bengs", id=0x100F, description="The total number of B engines in the system.",
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=self.get_param('bf_be_per_fpga')*len(self.get_fpgas()))
+        spead_ig.add_item(name="adc_clk",
+                          id=0x1007,
+                          description="Clock rate of ADC (samples per second).",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', 64)),
+                          init_val=self.config['FxCorrelator']['sample_rate_hz'])
+        spead_ig.add_item(name="n_ants",
+                          id=0x100A,
+                          description="The total number of dual-pol antennas in the system.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['fengine']['n_antennas'])
+        spead_ig.add_item(name="n_bengs",
+                          id=0x100F,
+                          description="The total number of B engines in the system.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['beamformer']['bf_be_per_fpga']*len(self.get_fpgas()))
         # 1015/1016 are taken (see time_metadata_issue below)
-        spead_ig.add_item(name="xeng_acc_len", id=0x101F,
+        spead_ig.add_item(name="xeng_acc_len",
+                          id=0x101F,
                           description="Number of spectra accumulated inside X engine. Determines minimum integration "
-                          "time and user-configurable integration time stepsize. X-engine correlator internals.",
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=self.get_param('xeng_acc_len'))
-        spead_ig.add_item(name="requant_bits", id=0x1020,
+                                      "time and user-configurable integration time stepsize. X-engine correlator "
+                                      "internals.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['xengine']['xeng_accumulation_len'])
+        spead_ig.add_item(name="requant_bits",
+                          id=0x1020,
                           description="Number of bits after requantisation in the F engines (post FFT and any "
-                                      "phasing stages).", shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=self.get_param('feng_bits'))
-        spead_ig.add_item(name="feng_pkt_len", id=0x1021,
+                                      "phasing stages).",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['fengine']['sample_bits'])
+        spead_ig.add_item(name="feng_pkt_len",
+                          id=0x1021,
                           description="Payload size of 10GbE packet exchange between F and X engines in 64 bit words. "
                                       "Usually equal to the number of spectra accumulated inside X engine. F-engine "
-                                      "correlator internals.", shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                                      init_val=self.get_param('10gbe_pkt_len'))
-        spead_ig.add_item(name="feng_udp_port", id=0x1023, description="Destination UDP port for B engine data exchange.",
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=self.get_param('10gbe_port'))
-        spead_ig.add_item(name="feng_start_ip", id=0x1025, description="F engine starting IP address.", shape=[],
-                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=self.get_param('10gbe_ip'))
+                                      "correlator internals.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['fengine']['10gbe_pkt_len'])
+        spead_ig.add_item(name="feng_udp_port",
+                          id=0x1023,
+                          description="Destination UDP port for B engine data exchange.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['fengine']['10gbe_port'])
+        spead_ig.add_item(name="feng_start_ip",
+                          id=0x1025,
+                          description="F engine starting IP address.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['fengine']['10gbe_start_ip'])
         # TODO ADD VERSION INFO!
-        spead_ig.add_item(name="b_per_fpga", id=0x1047, description="The number of b-engines per fpga.", shape=[],
-                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=self.get_param('bf_be_per_fpga'))
-        spead_ig.add_item(name="ddc_mix_freq", id=0x1043, description="Digital downconverter mixing freqency as a "
-                                                                      "fraction of the ADC sampling frequency. eg: "
-                                                                      "0.25. Set to zero if no DDC is present.",
-                          shape=[], fmt=spead.mkfmt(('f', 64)), init_val=self.get_param('ddc_mix_freq'))
-        spead_ig.add_item(name="adc_bits", id=0x1045, description="ADC quantisation (bits).", shape=[],
-                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=self.get_param('adc_bits'))
-        spead_ig.add_item(name="beng_out_bits_per_sample", id=0x1050, description="The number of bits per value in "
-                                                                                  "the beng output. Note that this is "
-                                                                                  "for a single value, not the combined"
-                                                                                  " complex value size.", shape=[],
-                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=self.get_param('bf_bits_out'))
-        spead_ig.add_item(name="fft_shift", id=0x101E, description="The FFT bitshift pattern. F-engine correlator "
-                                                                   "internals.", shape=[],
-                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=self.config['fft_shift'])
+        spead_ig.add_item(name="b_per_fpga",
+                          id=0x1047,
+                          description="The number of b-engines per fpga.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['beamformer']['bf_be_per_fpga'])
+        # spead_ig.add_item(name="ddc_mix_freq",
+        #                   id=0x1043,
+        #                   description="Digital downconverter mixing freqency as a fraction of the ADC "
+        #                               "sampling frequency. eg: 0.25. Set to zero if no DDC is present.",
+        #                   shape=[],
+        #                   fmt=spead.mkfmt(('f', 64)),
+        #                   init_val=self.config[]['ddc_mix_freq'])  # not in ini file
+        spead_ig.add_item(name="adc_bits",
+                          id=0x1045,
+                          description="ADC quantisation (bits).",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['fengine']['sample_bits'])
+        spead_ig.add_item(name="beng_out_bits_per_sample", id=0x1050,
+                          description="The number of bits per value in the beng output. Note that this "
+                                      "is for a single value, not the combined complex value size.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['beamformer']['bf_bits_out'])
+        spead_ig.add_item(name="fft_shift",
+                          id=0x101E,
+                          description="The FFT bitshift pattern. F-engine correlator internals.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=self.config['fengine']['fft_shift'])
         # timestamp
-        spead_ig.add_item(name='timestamp', id=0x1600, description='Timestamp of start of this block of data. '
-                                                                   'uint counting multiples of ADC samples since last '
-                                                                   'sync (sync_time, id=0x1027). Divide this number by '
-                                                                   'timestamp_scale (id=0x1046) to get back to seconds '
-                                                                   'since last sync when this block of data started.',
-                          shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=0)
+        spead_ig.add_item(name='timestamp',
+                          id=0x1600,
+                          description='Timestamp of start of this block of data. uint counting multiples '
+                                      'of ADC samples since last sync (sync_time, id=0x1027). Divide this number'
+                                      ' by timestamp_scale (id=0x1046) to get back to seconds since last sync '
+                                      'when this block of data started.',
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=0)
         for beam in beams:
-            if self.config.simulate:
+            if self.simulate:
                 print 'Issuing static meta data for beam %s' % beam
             self.send_spead_heap(beam, spead_ig)
-            self.syslogger.info("Issued static SPEAD metadata for beam %s" % beam)
+            LOGGER.info("Issued static SPEAD metadata for beam %s" % beam)
 
     def spead_destination_meta_issue(self, beams=all):
-        """Issues a SPEAD packet to notify the receiver of changes to destination"""
+        """
+        Issues a SPEAD packet to notify the receiver of changes to destination
+        :param beams:
+        :return:
+        """
         beams = self.beams2beams(beams)
         for beam in beams:
             spead_ig = spead.ItemGroup()
-            spead_ig.add_item(name="rx_udp_port", id=0x1022, description="Destination UDP port for B engine output.",
-                              shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+            spead_ig.add_item(name="rx_udp_port",
+                              id=0x1022,
+                              description="Destination UDP port for B engine output.",
+                              shape=[],
+                              fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                               init_val=self.get_beam_param(beam, 'rx_udp_port'))
-            spead_ig.add_item(name="rx_udp_ip_str", id=0x1024, description="Destination IP address for B engine "
-                                                                           "output UDP packets.", shape=[-1],
-                              fmt=spead.STR_FMT, init_val=self.get_beam_param(beam, 'rx_udp_ip_str'))
-            if self.config.simulate:
+            spead_ig.add_item(name="rx_udp_ip_str",
+                              id=0x1024,
+                              description="Destination IP address for B engine output UDP packets.",
+                              shape=[-1],
+                              fmt=spead.STR_FMT,
+                              init_val=self.get_beam_param(beam, 'rx_udp_ip_str'))
+            if self.simulate:
                 print 'Issuing destination meta data for beam %s' % beam
                 self.send_spead_heap(beam, spead_ig)
-                self.syslogger.info("Issued destination SPEAD metadata for beam %s" % beam)
+                LOGGER.info("Issued destination SPEAD metadata for beam %s" % beam)
 
     def spead_passband_meta_issue(self, beams=all):
-        """Issues a SPEAD packet to notify the receiver of changes to passband parameters"""
+        """
+        Issues a SPEAD packet to notify the receiver of changes to passband parameters
+        :param beams:
+        :return:
+        """
         beams = self.beams2beams(beams)
         for beam in beams:
             spead_ig = spead.ItemGroup()
             cf, bw = self.get_passband(beam)
-            spead_ig.add_item(name="center_freq", id=0x1011, description="The center frequency of the output data "
-                                                                         "in Hz, 64-bit IEEE floating-point number.",
-                              shape=[], fmt=spead.mkfmt(('f', 64)), init_val=cf)
-            spead_ig.add_item(name="bandwidth", id=0x1013, description="The analogue bandwidth of the digitally "
-                                                                       "processed signal in Hz.", shape=[],
-                              fmt=spead.mkfmt(('f',64)), init_val=bw)
-            spead_ig.add_item(name="n_chans", id=0x1009, description="The total number of frequency channels present "
-                                                                     "in the output data.", shape=[],
-                              fmt=spead.mkfmt(('u',spead.ADDRSIZE)), init_val=self.get_n_chans(beam))
+            spead_ig.add_item(name="center_freq",
+                              id=0x1011,
+                              description="The center frequency of the output data in Hz, 64-bit IEEE "
+                                          "floating-point number.",
+                              shape=[],
+                              fmt=spead.mkfmt(('f', 64)),
+                              init_val=cf)
+            spead_ig.add_item(name="bandwidth",
+                              id=0x1013,
+                              description="The analogue bandwidth of the digitally processed signal in Hz.",
+                              shape=[],
+                              fmt=spead.mkfmt(('f', 64)),
+                              init_val=bw)
+            spead_ig.add_item(name="n_chans",
+                              id=0x1009,
+                              description="The total number of frequency channels present in the output data.",
+                              shape=[],
+                              fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                              init_val=self.get_n_chans(beam))
             # data item
             beam_index = self.beam2index(beam)[0]
             # id is 0xB + 12 least sig bits id of each beam
             beam_data_id = 0xB000 | (beam_index & 0x00000FFF)
-            spead_ig.add_item(name=beam, id=beam_data_id, description="Raw data for bengines in the system. "
-                                                                      "Frequencies are assembled from lowest frequency "
-                                                                      "to highest frequency. Frequencies come in blocks"
-                                                                      " of values in time order where the number of "
-                                                                      "samples in a block is given by xeng_acc_len "
-                                                                      "(id 0x101F). Each value is a complex number -- "
-                                                                      "two (real and imaginary) signed integers.",
-                              ndarray=numpy.ndarray(shape=(self.get_n_chans(beam), self.get_param('xeng_acc_len'), 2),
+            spead_ig.add_item(name=beam,
+                              id=beam_data_id,
+                              description="Raw data for bengines in the system. Frequencies are assembled from "
+                                          "lowest frequency to highest frequency. Frequencies come in blocks of "
+                                          "values in time order where the number of samples in a block is given "
+                                          "by xeng_acc_len (id 0x101F). Each value is a complex number -- "
+                                          "two (real and imaginary) signed integers.",
+                              ndarray=numpy.ndarray(shape=(self.get_n_chans(beam),
+                                                           int(self.config['xengine']['xeng_accumulation_len']), 2),
                                                     dtype=numpy.int8))
-            if self.config.simulate:
+            if self.simulate:
                 print 'Issuing passband meta data for beam %s' % beam
                 self.send_spead_heap(beam, spead_ig)
-                self.syslogger.info("Issued passband SPEAD metadata for beam %s" % beam)
+                LOGGER.info("Issued passband SPEAD metadata for beam %s" % beam)
 
+    # TODO sync_time not in ini file + spead_timestamp_scale_factor + spead problem
     def spead_time_meta_issue(self, beams=all):
-        """Issues a SPEAD packet to notify the receiver that we've resync'd the system, acc len has changed etc."""
+        """
+        Issues a SPEAD packet to notify the receiver that we've resync'd the system, acc len has changed etc.
+        :param beams:
+        :return:
+        """
         beams = self.beams2beams(beams)
         spead_ig = spead.ItemGroup()
         # sync time
-        if self.config.simulate:
+        if self.simulate:
             val = 0
         else:
-            val = self.get_param('sync_time')
-        spead_ig.add_item(name='sync_time', id=0x1027, description="Time at which the system was last synchronised "
-                                                                   "(armed and triggered by a 1PPS) in seconds since"
-                                                                   " the Unix Epoch.", shape=[],
-                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)), init_val=val)
+            val = 0  # val = self.config[]['sync_time']
+        spead_ig.add_item(name='sync_time',
+                          id=0x1027,
+                          description="Time at which the system was last synchronised (armed and triggered "
+                                      "by a 1PPS) in seconds since the Unix Epoch.",
+                          shape=[],
+                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                          init_val=val)
         # scale factor for timestamp
-        spead_ig.add_item(name="scale_factor_timestamp", id=0x1046, description="Timestamp scaling factor. Divide the "
-                                                                                "SPEAD data packet timestamp by this "
-                                                                                "number to get back to seconds since"
-                                                                                " last sync.", shape=[],
-                          fmt=spead.mkfmt(('f', 64)), init_val=self.get_param('spead_timestamp_scale_factor'))
+        spead_ig.add_item(name="scale_factor_timestamp",
+                          id=0x1046,
+                          description="Timestamp scaling factor. Divide the SPEAD data packet timestamp "
+                                      "by this number to get back to seconds since last sync.",
+                          shape=[],
+                          fmt=spead.mkfmt(('f', 64)))
+                          # init_val=self.config[]['spead_timestamp_scale_factor'])
         for beam in beams:
             ig = spead_ig
-            if self.config.simulate:
+            if self.simulate:
                     print 'Issuing time meta data for beam %s' % beam
             self.send_spead_heap(beam, ig)
-            self.syslogger.info("Issued SPEAD timing metadata for beam %s" % beam)
+            LOGGER.info("Issued SPEAD timing metadata for beam %s" % beam)
 
+    # TODO adc_type, rf_gain_ not in ini file, _get_ant_mapping_list, eq_default_get
     def spead_eq_meta_issue(self, beams=all):
-        """Issues a SPEAD heap for the RF gain and EQ settings settings."""
+        """
+        Issues a SPEAD heap for the RF gain and EQ settings settings.
+        :param beams:
+        :return:
+        """
         beams = self.beams2beams(beams)
         spead_ig = spead.ItemGroup()
         # RF
-        if self.get_param('adc_type') == 'katadc':
-            for input_n, ant_str in enumerate(self.c.config._get_ant_mapping_list()):
-                spead_ig.add_item(name="rf_gain_%i" % input_n, id=0x1200+input_n, description="The analogue RF gain "
-                                                                                              "applied at the ADC for "
-                                                                                              "input %i (ant %s) in dB."
-                                                                                              % (input_n, ant_str),
-                                  shape=[], fmt=spead.mkfmt(('f', 64)), init_val=self.get_param('rf_gain_%i'
-                                                                                                % input_n))
+        # if self.config[]['adc_type'] == 'katadc':
+        #     for input_n, ant_str in enumerate(self.c.config._get_ant_mapping_list()):
+        #         spead_ig.add_item(name="rf_gain_%i" % input_n,
+        #                           id=0x1200+input_n,
+        #                           description="The analogue RF gain applied at the ADC for input "
+        #                                       "%i (ant %s) in dB."  % (input_n, ant_str),
+        #                           shape=[],
+        #                           fmt=spead.mkfmt(('f', 64)),
+        #                           init_val=self.config[]['rf_gain_%i' % input_n])
         # equaliser settings
         for in_n, ant_str in enumerate(self.c.config._get_ant_mapping_list()):
             if self.config.simulate:
                 vals = [[numpy.real(coeff), numpy.imag(coeff)] for coeff in self.c.eq_default_get(ant_str)]
             else:
                 vals = [[numpy.real(coeff),numpy.imag(coeff)] for coeff in self.c.eq_spectrum_get(ant_str)]
-            spead_ig.add_item(name="eq_coef_%s" % ant_str, id=0x1400+in_n, description="The unitless per-channel "
-                                                                                       "digital scaling factors "
-                                                                                       "implemented prior to "
-                                                                                       "requantisation, post-FFT, for "
-                                                                                       "input %s. Complex number real,"
-                                                                                       "imag 32 bit integers."
-                                                                                       % ant_str,
-                              shape=[self.get_param('n_chans'), 2], fmt=spead.mkfmt(('u', 32)), init_val=vals)
+            spead_ig.add_item(name="eq_coef_%s" % ant_str,
+                              id=0x1400+in_n,
+                              description="The unitless per-channel digital scaling factors implemented "
+                                          "prior to requantisation, post-FFT, for input %s. Complex number "
+                                          "real, imag 32 bit integers." % ant_str,
+                              shape=[self.config['fengine']['n_chans'], 2],
+                              fmt=spead.mkfmt(('u', 32)),
+                              init_val=vals)
         for beam in beams:
-            if self.config.simulate:
+            if self.simulate:
                 print 'Issuing equalisation and rf meta data for beam %s' % beam
             self.send_spead_heap(beam, spead_ig)
-            self.syslogger.info("Issued SPEAD EQ and RF metadata for beam %s" % beam)
+            LOGGER.info("Issued SPEAD EQ and RF metadata for beam %s" % beam)
 
+    # TODO _get_ant_mapping_list
     def spead_cal_meta_issue(self, beams=all, from_fpga=True):
-        """Issues a SPEAD heap for the RF gain, EQ settings and calibration settings."""
+        """
+        Issues a SPEAD heap for the RF gain, EQ settings and calibration settings.
+        :param beams:
+        :param from_fpga:
+        :return:
+        """
         beams = self.beams2beams(beams)
         spead_ig = spead.ItemGroup()
         # override if simulating
-        if self.config.simulate:
+        if self.simulate:
             from_fpga = False
         for beam in beams:
             ig = spead_ig
@@ -1361,22 +1727,27 @@ class FrequencyBeamformer(FpgaHost):
             for in_n, ant_str in enumerate(self.ants2ants(beam, all)):
                 vals = [[numpy.real(coeff), numpy.imag(coeff)] for coeff in
                         self.cal_spectrum_get(beam, ant_str, from_fpga)]
-                ig.add_item(name="beamweight_input%s" % ant_str, id=0x2000+in_n, description="The unitless per-channel "
-                                                                                             "digital scaling factors "
-                                                                                             "implemented prior to "
-                                                                                             "combining antenna signals"
-                                                                                             " during beamforming for "
-                                                                                             "input %s. Complex number "
-                                                                                             "real,imag 64 bit floats."
-                                                                                             % ant_str,
-                            shape=[self.get_param('n_chans'), 2], fmt=spead.mkfmt(('f', 64)), init_val=vals)
-            if self.config.simulate:
+                ig.add_item(name="beamweight_input%s" % ant_str,
+                            id=0x2000+in_n,
+                            description="The unitless per-channel digital scaling factors implemented prior to "
+                                        "combining antenna signals during beamforming for input %s. Complex number "
+                                        "real,imag 64 bit floats." % ant_str,
+                            shape=[self.config['fengine']['n_chans'], 2],
+                            fmt=spead.mkfmt(('f', 64)),
+                            init_val=vals)
+            if self.simulate:
                 print 'Issuing calibration meta data for beam %s' % beam
                 self.send_spead_heap(beam, ig)
-                self.syslogger.info("Issued SPEAD EQ metadata for beam %s" % beam)
+                LOGGER.info("Issued SPEAD EQ metadata for beam %s" % beam)
 
+    # TODO spead
     def spead_issue_all(self, beams=all, from_fpga=True):
-        """Issues all SPEAD metadata."""
+        """
+        Issues all SPEAD metadata.
+        :param beams:
+        :param from_fpga:
+        :return:
+        """
         self.spead_static_meta_issue(beams)
         self.spead_passband_meta_issue(beams)
         self.spead_destination_meta_issue(beams)
