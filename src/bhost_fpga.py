@@ -55,6 +55,7 @@ class FrequencyBeamformer:
     # from corr.cn_conf.py
     def _get_ant_mapping_list(self):
         """
+        assign index to each antenna and each beam for that antenna
         there's no current mapping or the mapping is bad... set default:
         :return:
         """
@@ -86,9 +87,10 @@ class FrequencyBeamformer:
 
     def get_beam_param(self, beams, param):
         """
-        Read beamformer parameter per beam
+        Read beam parameter (same for all antennas)
         :param beams: string
-        :param param: string
+        :param param: location, name, centre_frequency, bandwidth, rx_meta_ip_str,
+                      rx_udp_ip_str, rx_udp_port
         :return: values
         """
         values = []
@@ -164,7 +166,7 @@ class FrequencyBeamformer:
 
     def get_beams(self):
         """
-        get a list of beam names in system
+        get a list of beam names in system (same for all antennas)
         :return: all_beams
         """
         all_beams = []
@@ -173,14 +175,14 @@ class FrequencyBeamformer:
             all_beams.append(self.config['beamformer']['bf_name_beam%i' % beam_index])
         return all_beams
 
-    def map_ant_to_input(self, beam):
+    def map_ant_to_input(self, beam, ant_strs=[]):
         """
         maps antenna strings specified to input to beamformer
-        :param beam:
-        :param ant_strs:
+        :param beam: 'i' or 'q'
+        :param ant_strs: ['0\x00', '0\x01', '1\x00', '1\x01', '2\x00', '2\x01', '3\x00', '3\x01']
         :return: inputs
         """
-        beam_ants = self.ants2ants(beam=beam, ant_strs=all)
+        beam_ants = self.ants2ants(beam=beam, ant_strs=ant_strs)
         ant_strs = self._get_ant_mapping_list()
         inputs = []
         for ant_str in beam_ants:
@@ -189,7 +191,7 @@ class FrequencyBeamformer:
             inputs.append(ant_strs.index(ant_str))
         return inputs
 
-    def ants2ants(self, beam, ant_strs=all):
+    def ants2ants(self, beam, ant_strs=[]):
         """
         From antenna+polarisation list extract only the str for the beam
         (expands all, None etc into valid antenna strings. Checks for valid antenna strings)
@@ -213,7 +215,7 @@ class FrequencyBeamformer:
                 if self.simulate:
                     print 'adding ant %s for beam %s' % (ant_str, beam)
                 beam_ants.append(ant_str)
-        if ant_strs == all:
+        if ant_strs == all_ants:
             return beam_ants
         for ant_str in ant_strs:
             if beam_ants.count(ant_str) == 0:
@@ -224,17 +226,17 @@ class FrequencyBeamformer:
                 ants.append(ant_str)
         return ants
 
-    def beams2beams(self, beams=all):
+    def beams2beams(self, beams=[]):
         """
         expands all, None etc into valid beam names. Checks for valid beam names
-        :param beams:
+        :param beams: ['i', 'q']
         :return: new_beams
         """
         new_beams = []
         if beams == None:
             return
         all_beams = self.get_beams()
-        if beams == all:
+        if beams == all_beams:
             new_beams = all_beams
         else:
             if type(beams) == str:
@@ -249,21 +251,20 @@ class FrequencyBeamformer:
                                        % (__name__, inspect.currentframe().f_lineno), LOGGER)
         return new_beams
 
-    def beam2index(self, beams=all):
+    def beam2index(self, beams=[]):
         """
         returns index of beam with specified name
-        :param beams:
+        :param beams: 'i' or 'q' or all
         :return: indices
         """
         indices = []
         # expand all etc, check for valid names etc
-        beams = self.beams2beams(beams)
         all_beams = self.get_beams()
         for beam in beams:
             indices.append(all_beams.index(beam))
         return indices
 
-    def frequency2fpgas(self, frequencies=all, fft_bins=[], unique=False):
+    def frequency2fpgas(self, frequencies=[], fft_bins=[], unique=False):
         """
         returns fpgas associated with frequencies specified. unique only returns unique fpgas
         e.g. for 8 x-eng there are 4096 channels produced by the f-eng and 512 different freqs per x-eng
@@ -274,7 +275,7 @@ class FrequencyBeamformer:
         """
         fpgas = []
         if len(fft_bins) == 0:
-            fft_bins = self.frequency2fft_bin(frequencies)
+            fft_bins = self.frequency2fft_bin(frequencies=frequencies)
         all_fpgas = self.get_fpgas()
         n_chans = self.config['fengine']['n_chans']
         n_chans_per_fpga = int(n_chans)/len(all_fpgas)
@@ -290,7 +291,7 @@ class FrequencyBeamformer:
             prev_index = index
         return fpgas
 
-    def frequency2bf_label(self, frequencies=all, fft_bins=[], unique=False):
+    def frequency2bf_label(self, frequencies=[], fft_bins=[], unique=False):
         """
         returns bf labels associated with the frequencies specified
         :param frequencies:
@@ -305,7 +306,7 @@ class FrequencyBeamformer:
             bf_labels.append(numpy.mod(bf_index, bf_be_per_fpga))
         return bf_labels
 
-    def frequency2bf_index(self, frequencies=all, fft_bins=[], unique=False):
+    def frequency2bf_index(self, frequencies=[], fft_bins=[], unique=False):
         """
         returns bf indices associated with the frequencies specified
         :param frequencies:
@@ -315,7 +316,7 @@ class FrequencyBeamformer:
         """
         bf_indices = []
         if len(fft_bins) == 0:
-            fft_bins = self.frequency2fft_bin(frequencies)
+            fft_bins = self.frequency2fft_bin(frequencies=frequencies)
         n_fpgas = len(self.get_fpgas())  # x-eng
         bf_be_per_fpga = len(self.get_bfs())
         n_bfs = n_fpgas*bf_be_per_fpga  # total number of bfs
@@ -330,7 +331,7 @@ class FrequencyBeamformer:
                 bf_indices.append(bf_index)
         return bf_indices
 
-    def frequency2frequency_reg_index(self, frequencies=all, fft_bins=[]):
+    def frequency2frequency_reg_index(self, frequencies=[], fft_bins=[]):
         """
         Returns list of values to write into frequency register corresponding to frequency specified
         :param frequencies:
@@ -352,7 +353,7 @@ class FrequencyBeamformer:
             indices.append(numpy.mod(fft_bin, n_chans/divisions))
         return indices
 
-    def frequency2fft_bin(self, frequencies=all):
+    def frequency2fft_bin(self, frequencies=[]):
         """
         returns fft bin associated with specified frequencies
         :param frequencies:
@@ -362,7 +363,7 @@ class FrequencyBeamformer:
         n_chans = int(self.config['fengine']['n_chans'])
         if frequencies == None:
             fft_bins = []
-        elif frequencies == all:
+        elif frequencies == range(n_chans):
             fft_bins = range(n_chans)
         else:
             bandwidth = float(self.config['fengine']['bandwidth'])
@@ -405,7 +406,7 @@ class FrequencyBeamformer:
         fft_bin_bandwidth = bandwidth/n_chans
         return fft_bin_bandwidth
 
-    def fft_bin2frequency(self, fft_bins=all):
+    def fft_bin2frequency(self, fft_bins=[]):
         """
         returns a list of centre frequencies associated with the fft bins supplied
         :param fft_bins:
@@ -413,7 +414,7 @@ class FrequencyBeamformer:
         """
         frequencies = []
         n_chans = int(self.config['fengine']['n_chans'])
-        if fft_bins == all:
+        if fft_bins == range(n_chans):
             fft_bins = range(n_chans)
         if type(fft_bins) == int:
             fft_bins = [fft_bins]
@@ -426,7 +427,7 @@ class FrequencyBeamformer:
         return frequencies
 
     # TODO fix the 'str' object has no attribute 'nb_request'
-    def frequency2fpga_bf(self, frequencies=all, fft_bins=[], unique=False):
+    def frequency2fpga_bf(self, frequencies=[], fft_bins=[], unique=False):
         """
         returns a list of dictionaries {fpga, beamformer_index} based on frequency.
         unique gives only unique values
@@ -1384,7 +1385,8 @@ class FrequencyBeamformer:
         """
         self.spead_tx = dict()
         # create a spead transmitter for every beam and store in config
-        for beam in self.beams2beams(all):
+        beams = self.beams2beams(beams=['i', 'q'])  # hardcoded for now
+        for beam in beams:
             ip_str = self.get_beam_param(beam, 'rx_meta_ip_str')
             port = self.get_beam_param(beam, 'rx_udp_port')
             self.spead_tx['bf_spead_tx_beam%i' % self.beam2index(beam)[0]] = \
