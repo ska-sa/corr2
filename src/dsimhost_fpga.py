@@ -73,10 +73,7 @@ class NoiseSource(Source):
         self.scale_register.write(**write_vars)
 
 class PulsarSource(Source):
-    def __init__(self, freq_register,
-                 scale_register,
-                 name,
-                 sim_time=1.0):
+    def __init__(self, freq_register, scale_register, name):
         super(PulsarSource, self).__init__(freq_register, name)
         self.freq_register = freq_register
         self.scale_register = scale_register
@@ -86,10 +83,30 @@ class PulsarSource(Source):
         self.f_samp = self.freq_sampling/self.fft_size  # FFT bin width
         self.fft_period = self.fft_size * self.t_samp  # FFT period
         self.freq_centre = float(self.parent.config['true_cf'])  # [Hz] center frequency of passband (as received )
-        self.sim_time = sim_time  # duration of simulation
+        self.sim_time = float(self.parent.config['pulsar_sim_time'])  # duration of simulation
         self.fft_blocks = math.ceil(self.sim_time/self.fft_period)  # number of FFT input blocks to process
         self.n_samp = self.fft_blocks*self.fft_size  # number of samples
         self.raw_data = np.array([])
+        freq_field = self.freq_register.field_get_by_name('frequency')
+        self.nr_freq_steps = 2**(freq_field.width_bits)
+        self.max_freq = self.freq_sampling / 2.
+        self.delta_freq = self.max_freq / (self.nr_freq_steps - 1)
+        self.dm = float(self.parent.config['pulsar_dm'])  # dispersion measure
+
+    @property
+    def frequency(self):
+        return self.freq_register.read()['data']['frequency'] * self.delta_freq
+
+    @property
+    def scale(self):
+        return self.scale_register.read()['data']['scale']
+
+    def set(self, scale=None, frequency=None):
+        if scale is not None:
+            self.scale_register.write(scale=scale)
+        if frequency is not None:
+            freq_steps = int(round(frequency / self.delta_freq))
+            self.freq_register.write(frequency=freq_steps)
 
     def _initialise_fft_bins(self):
         """
@@ -106,38 +123,38 @@ class PulsarSource(Source):
         self._initialise_fft_bins()
         self.fch1 = self.freq_centre + max(self.fft_bin)/2
 
-    def _initialise_start_freq_delay(self, dm):
+    def _initialise_start_freq_delay(self):
         """
         reference delay for start freq (f1) i.e. the shortest delay at the highest freq [s]
         :param dm: dispersion measure
         :return:
         """
         self._initialise_start_freq()
-        self.dch1 = dm/(alpha*(self.fch1**2))
+        self.dch1 = self.dm/(alpha*(self.fch1**2))
 
-    def _initialise_delay_bins(self, dm):
+    def _initialise_delay_bins(self):
         """
 
         :param dm: dispersion measure
         :return:
         """
-        self._initialise_start_freq_delay(dm)
+        self._initialise_start_freq_delay()
         fc = self.freq_centre
         df = self.f_samp
         f2 = fc + self.fft_bin - df/2
         t1 = self.dch1
-        tbin = (dm/(alpha*(f2**2))) - t1  # [s] delay relative to t1 for lowest frequency in each bin
+        tbin = (self.dm/(alpha*(f2**2))) - t1  # [s] delay relative to t1 for lowest frequency in each bin
         fbin = self.fft_bin
         lfft = self.fft_size
-        self.relative_delay = np.append(tbin, (dm/(alpha*((fc+fbin[lfft-1]+df/2)**2)))-t1)  # to simplify algorithm
+        self.relative_delay = np.append(tbin, (self.dm/(alpha*((fc+fbin[lfft-1]+df/2)**2)))-t1)  # to simplify algorithm
 
-    def initialise_data(self, dm):
+    def initialise_data(self):
         """
 
         :param dm: dispersion measure
         :return:
         """
-        self._initialise_delay_bins(dm)
+        self._initialise_delay_bins()
         self.raw_data = np.zeros(self.n_samp, dtype=np.complex64)
 
     def write_pulse_to_bin(self, duty_cycle=0.05, t=0):
@@ -192,12 +209,7 @@ class PulsarSource(Source):
         """
         return np.fft.ifft(x)
 
-    def add_pulsar(self,
-                   period_s=.1,
-                   duty_cycle=0.05,
-                   # dm=5.,
-                   # snr = 1.
-                   ):
+    def add_pulsar(self, duty_cycle=0.05):
         """
 
         :param period_s: the time between two pulses
@@ -310,6 +322,7 @@ class FpgaDsimHost(FpgaHost):
         self.boffile = boffile
         self.sine_sources = AttributeContainer()
         self.noise_sources = AttributeContainer()
+        self.pulsar_sources = AttributeContainer()
         self.outputs = AttributeContainer()
 
     def get_system_information(self, filename=None, fpg_info=None):
@@ -317,10 +330,12 @@ class FpgaDsimHost(FpgaHost):
         FpgaHost.get_system_information(self, filename=filename, fpg_info=fpg_info)
         self.sine_sources.clear()
         self.noise_sources.clear()
+        self.pulsar_sources.clear()
         self.outputs.clear()
         for reg in self.registers:
             sin_name = get_prefixed_name('freq_cwg', reg.name)
             noise_name = get_prefixed_name('scale_wng', reg.name)
+            pulsar_name = get_prefixed_name('freq_pulsar', reg.name)
             output_scale_name = get_prefixed_name('scale_out', reg.name)
             if sin_name is not None:
                 scale_reg_postfix = (
@@ -331,6 +346,12 @@ class FpgaDsimHost(FpgaHost):
             elif noise_name is not None:
                 setattr(self.noise_sources, 'noise_' + noise_name,
                         NoiseSource(reg, noise_name))
+            elif pulsar_name is not None:
+                scale_reg_postfix = (
+                    '_'+pulsar_name if reg.name.endswith('_'+pulsar_name) else pulsar_name)
+                scale_reg = getattr(self.registers, 'scale_pulsar' + scale_reg_postfix)
+                setattr(self.pulsar_sources, 'pulsar_'+pulsar_name, PulsarSource(
+                    reg, scale_reg, pulsar_name))
             elif output_scale_name is not None:
                 setattr(self.outputs, 'out_' + output_scale_name,
                         Output(output_scale_name, reg, self.registers.control))
