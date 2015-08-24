@@ -202,17 +202,20 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
                          % (2*min_ld_time))
         vacc_load_time = time.time()+2*min_ld_time
 
-    t_now=time.time()
+    t_now = time.time()
     if vacc_load_time < (t_now + min_ld_time):
-        raise RuntimeError('Cannot load at a time in the past. '
-                           'Need at least %2.2f seconds lead time. You asked for %s.%i, and it is now %s.%i.' %(\
-                           min_ld_time,\
-                           time.strftime('%H:%M:%S',time.gmtime(vacc_load_time)),\
-                           (vacc_load_time-int(vacc_load_time))*100,\
-                           time.strftime('%H:%M:%S',time.gmtime(t_now)),\
-                           (t_now-int(t_now))*100))
+        raise RuntimeError(
+            'Cannot load at a time in the past. '
+            'Need at least %2.2f seconds lead time. You asked for %s.%i, '
+            'and it is now %s.%i.' % (
+                               min_ld_time,
+                               time.strftime('%H:%M:%S',time.gmtime(vacc_load_time)),
+                               (vacc_load_time-int(vacc_load_time))*100,
+                               time.strftime('%H:%M:%S',time.gmtime(t_now)),
+                               (t_now-int(t_now))*100) )
 
-    corr.logger.info('xeng vaccs syncing at %s (in %2.2fs)' %(time.ctime(),vacc_load_time-time.time()) )
+    corr.logger.info('xeng vaccs syncing at %s (in %2.2fs)'
+                     % (time.ctime(),vacc_load_time-time.time()) )
 
     # check if the vaccs need resetting
     vaccstat = THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
