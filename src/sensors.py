@@ -287,7 +287,7 @@ def setup_sensors(instrument, katcp_server):
 
     # x-engine PHY counters
     for _x in instrument.xhosts:
-        sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='%s_xeng_PHY' % _x.host,
+        sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='%s_xeng_phy' % _x.host,
                         description='X-engine PHY okay',
                         default=True)
         katcp_server.add_sensor(sensor)
@@ -296,7 +296,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine PHY counters
     for _f in instrument.fhosts:
-        sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='%s_feng_PHY' % _f.host,
+        sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='%s_feng_phy' % _f.host,
                         description='F-engine PHY okay',
                         default=True)
         katcp_server.add_sensor(sensor)
