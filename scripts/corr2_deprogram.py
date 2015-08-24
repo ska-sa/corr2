@@ -75,13 +75,15 @@ if len(hosts) == 0:
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 running = fpgautils.threaded_fpga_function(fpgas, 10, 'is_running')
 deprogrammed = []
+to_deprogram = []
 already_deprogrammed = []
 for fpga in fpgas:
     if running[fpga.host]:
-        fpga.deprogram()
         deprogrammed.append(fpga.host)
+        to_deprogram.append(fpga)
     else:
         already_deprogrammed.append(fpga.host)
+running = fpgautils.threaded_fpga_function(to_deprogram, 10, 'deprogram')
 
 if len(deprogrammed) != 0:
     print deprogrammed, ': deprogrammed okay.'
@@ -91,7 +93,7 @@ if len(already_deprogrammed) != 0:
 if args.reboot:
     for fpga in fpgas:
         fpga.katcprequest(name='restart', request_timeout=-1.0,
-            require_ok=True, request_args=())
+                          require_ok=True, request_args=())
         print "Restarting {}".format(fpga.host)
 fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 # EOF

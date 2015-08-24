@@ -8,12 +8,131 @@ from host_fpga import FpgaHost
 
 LOGGER = logging.getLogger(__name__)
 
-class FpgaFHost(FpgaHost):
+
+class DigitiserDataReceiver(FpgaHost):
+    """
+    The RX section of a fengine and filter engine are the same - receive the digitiser data
+    """
+
+    def __init__(self, host, katcp_port=7147, boffile=None, connect=True):
+        super(DigitiserDataReceiver, self).__init__(host, katcp_port=katcp_port,
+                                                    boffile=boffile, connect=connect)
+
+    def _get_rxreg_data(self):
+        """
+        Get the rx register data for this host
+        :return:
+        """
+        data = {}
+        if 'reorder_ctrs1' in self.registers.names():
+            reorder_ctrs = self.registers.reorder_ctrs.read()['data']
+            reorder_ctrs.update(self.registers.reorder_ctrs1.read()['data'])
+        else:
+            reorder_ctrs = self.registers.reorder_ctrs.read()['data']
+        data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
+        data['timerror'] = reorder_ctrs['timestep_error']
+        data['discard'] = reorder_ctrs['discard']
+        num_tengbes = len(self.tengbes)
+        for gbe in range(num_tengbes):
+            data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]
+        for pol in range(0, 2):
+            data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]
+        return data
+
+    def check_rx_reorder(self):
+        """
+        Is this F host reordering received data correctly?
+        :return:
+        """
+        _required_repetitions = 5
+        _sleeptime = 0.2
+
+        num_tengbes = len(self.tengbes)
+        if num_tengbes < 1:
+            raise RuntimeError('F-host with no 10gbe cores %s?' % self.host)
+
+        test_data = []
+        for _ctr in range(0, _required_repetitions):
+            test_data.append(self._get_rxreg_data())
+            time.sleep(_sleeptime)
+
+        got_errors = False
+        for _ctr in range(1, _required_repetitions):
+            for gbe in range(num_tengbes):
+                if test_data[_ctr]['pktof_ctr%i' % gbe] != test_data[0]['pktof_ctr%i' % gbe]:
+                    LOGGER.error('F host %s packet overflow on interface gbe%i. %i -> %i' % (
+                        self.host, gbe, test_data[_ctr]['pktof_ctr%i' % gbe],
+                        test_data[0]['pktof_ctr%i' % gbe]))
+                    got_errors = True
+            for pol in range(0, 2):
+                if test_data[_ctr]['recverr_ctr%i' % pol] != test_data[0]['recverr_ctr%i' % pol]:
+                    LOGGER.error('F host %s pol %i reorder count error. %i -> %i' % (
+                        self.host, pol, test_data[_ctr]['recverr_ctr%i' % pol],
+                        test_data[0]['recverr_ctr%i' % pol]))
+                    got_errors = True
+            if test_data[_ctr]['mcnt_relock'] != test_data[0]['mcnt_relock']:
+                LOGGER.error('F host %s mcnt_relock is changing. %i -> %i' % (
+                    self.host, test_data[_ctr]['mcnt_relock'], test_data[0]['mcnt_relock']))
+                got_errors = True
+            if test_data[_ctr]['timerror'] != test_data[0]['timerror']:
+                LOGGER.error('F host %s timestep error is changing. %i -> %i' % (
+                    self.host, test_data[_ctr]['timerror'], test_data[0]['timerror']))
+                got_errors = True
+            if test_data[_ctr]['discard'] != test_data[0]['discard']:
+                LOGGER.error('F host %s discarding packets. %i -> %i' % (
+                    self.host, test_data[_ctr]['discard'], test_data[0]['discard']))
+                got_errors = True
+        if got_errors:
+            LOGGER.error('One or more errors detected, check logs.')
+            return False
+        LOGGER.info('%s: is reordering data okay.' % self.host)
+        return True
+
+    def read_spead_counters(self):
+        """
+        Read the SPEAD rx and error counters for this F host
+        :return:
+        """
+        rv = []
+        spead_ctrs = self.registers.spead_ctrs.read()['data']
+        for core_ctr in range(0, len(self.tengbes)):
+            counter = spead_ctrs['rx_cnt%i' % core_ctr]
+            error = spead_ctrs['err_cnt%i' % core_ctr]
+            rv.append((counter, error))
+        return rv
+
+    def get_local_time(self):
+        """
+        Get the local timestamp of this board, received from the digitiser
+        :return: time in samples since the digitiser epoch
+        """
+        first_msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
+        while self.registers.local_time_msw.read()['data']['timestamp_msw'] == first_msw:
+            time.sleep(0.01)
+        lsw = self.registers.local_time_lsw.read()['data']['timestamp_lsw']
+        msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
+        assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
+        return (msw << 32) | lsw
+
+    def clear_status(self):
+        """
+        Clear the status registers and counters on this host
+        :return:
+        """
+        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
+                                     cnt_rst='pulse')
+        LOGGER.debug('{}: status cleared.'.format(self.host))
+
+
+class FpgaFHost(DigitiserDataReceiver):
     """
     A Host, that hosts Fengines, that is a CASPER KATCP FPGA.
     """
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
-        FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
+        super(FpgaFHost, self).__init__(host,
+                                        katcp_port=katcp_port,
+                                        boffile=boffile,
+                                        connect=connect)
         self._config = config
         self.data_sources = []  # a list of DataSources received by this f-engine host
         self.eqs = {}  # a dictionary, indexed on source name, containing tuples of poly and bram name
@@ -32,13 +151,6 @@ class FpgaFHost(FpgaHost):
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
         return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
-
-    def clear_status(self):
-        """
-        Clear the status registers and counters on this f-engine host
-        :return:
-        """
-        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse', cnt_rst='pulse')
 
     def ct_okay(self, sleeptime=1):
         """
@@ -70,76 +182,6 @@ class FpgaFHost(FpgaHost):
             return False
         LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
-
-    def check_rx_reorder(self):
-        """
-        Is this F host reordering received data correctly?
-        :return:
-        """
-        def get_gbe_data():
-            data = {}
-            reorder_ctrs = self.registers.reorder_ctrs.read()['data']
-            data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
-            data['timerror'] = reorder_ctrs['timestep_error']
-            data['discard'] = reorder_ctrs['discard']
-            num_tengbes = len(self.tengbes)
-            for gbe in range(num_tengbes):
-                data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]
-            for pol in range(0, 2):
-                data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]
-            return data
-        _sleeptime = 1
-        rxregs = get_gbe_data()
-        time.sleep(_sleeptime)
-        rxregs_new = get_gbe_data()
-        num_tengbes = len(self.tengbes)
-        if num_tengbes < 1:
-            raise RuntimeError('F-host with no 10gbe cores %s' % self.host)
-        for gbe in range(num_tengbes):
-            if rxregs_new['pktof_ctr%i' % gbe] != rxregs['pktof_ctr%i' % gbe]:
-                raise RuntimeError('F host %s packet overflow on interface gbe%i. %i -> %i' % (
-                    self.host, gbe, rxregs_new['pktof_ctr%i' % gbe], rxregs['pktof_ctr%i' % gbe]))
-        for pol in range(0, 2):
-            if rxregs_new['recverr_ctr%i' % pol] != rxregs['recverr_ctr%i' % pol]:
-                raise RuntimeError('F host %s pol %i reorder count error. %i -> %i' % (
-                    self.host, pol, rxregs_new['recverr_ctr%i' % pol], rxregs['recverr_ctr%i' % pol]))
-        if rxregs_new['mcnt_relock'] != rxregs['mcnt_relock']:
-            raise RuntimeError('F host %s mcnt_relock is changing. %i -> %i' % (
-                self.host, rxregs_new['mcnt_relock'], rxregs['mcnt_relock']))
-        if rxregs_new['timerror'] != rxregs['timerror']:
-            raise RuntimeError('F host %s timestep error is changing. %i -> %i' % (
-                self.host, rxregs_new['timerror'], rxregs['timerror']))
-        if rxregs_new['discard'] != rxregs['discard']:
-            raise RuntimeError('F host %s discarding packets. %i -> %i' % (
-                self.host, rxregs_new['discard'], rxregs['discard']))
-        LOGGER.info('%s: is reordering data okay.' % self.host)
-        return True
-
-    def read_spead_counters(self):
-        """
-        Read the SPEAD rx and error counters for this F host
-        :return:
-        """
-        rv = []
-        spead_ctrs = self.registers.spead_ctrs.read()['data']
-        for core_ctr in range(0, len(self.tengbes)):
-            counter = spead_ctrs['rx_cnt%i' % core_ctr]
-            error = spead_ctrs['err_cnt%i' % core_ctr]
-            rv.append((counter, error))
-        return rv
-
-    def get_local_time(self):
-        """
-        Get the local timestamp of this board, received from the digitiser
-        :return: time in samples since the digitiser epoch
-        """
-        first_msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
-        while self.registers.local_time_msw.read()['data']['timestamp_msw'] == first_msw:
-            time.sleep(0.01)
-        lsw = self.registers.local_time_lsw.read()['data']['timestamp_lsw']
-        msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
-        assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
-        return (msw << 32) | lsw
 
     def add_source(self, data_source):
         """
@@ -335,6 +377,31 @@ class FpgaFHost(FpgaHost):
                 return False
         LOGGER.info('%s: QDR okay.' % self.host)
         return True
+
+    def check_fft_overflow(self, wait_time=2e-3):
+        """
+        Checks if pfb counters on f-eng are not incrementing i.e. fft is not overflowing
+        :return: True/False
+        """
+        for cnt in range(0, 1):
+            overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+            time.sleep(wait_time)
+            overflow1 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+            if overflow0 == overflow1:
+                LOGGER.info('%s: pfb_of%d_cnt okay.' % (self.host, cnt))
+            else:
+                LOGGER.error('%s: pfb_of%d_cnt incrementing.' % (self.host, cnt))
+                return False
+        LOGGER.info('%s: PFB okay.' % self.host)
+        return True
+
+    def get_adc_snapshots(self):
+        """
+        Read the ADC snapshots from this Fhost
+        """
+        p0 = self.snapshots.snap_adc0_ss.read()['data']
+        p1 = self.snapshots.snap_adc1_ss.read()['data']
+        return {'p0': p0, 'p1': p1}
 
 #     def fr_delay_set(self, pol_id, delay=0, delay_rate=0, fringe_phase=0, fringe_rate=0, ld_time=-1, ld_check = True, extra_wait_time = 0):
 #         """
