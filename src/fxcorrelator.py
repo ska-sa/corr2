@@ -202,6 +202,28 @@ class FxCorrelator(Instrument):
     #             for qdr in host.qdrs:
     #                 qdr.qdr_cal(fail_hard=False, verbosity=2)
 
+    def est_sync_epoch(self):
+        """Estimates the synchronisation epoch based on current F-engine timestamp, and the system time."""
+        self.logger.warn("Estimating synchronisation epoch...")
+        # get current time from an f-engine
+        mcnt_before = self.fhosts[0].get_local_time()
+        self.synchronisation_epoch = time.time()-mcnt_before/float(self.sample_rate_hz)
+        self.logger.info('Current f engine timetamp: %i' % mcnt_before)
+        assert mcnt_before & 0xfff == 0, 'Bottom 12 bits of timestamp from f-engine are not zero?!'
+
+
+    def time_from_mcnt(self, mcnt):
+        """Returns the unix time UTC equivalent to the board timestamp. Does NOT account for wrapping timestamps."""
+        if self.synchronisation_epoch<0:
+            self.est_sync_epoch()
+        return self.synchronisation_epoch + (float(mcnt) / float(self.sample_rate_hz))
+
+    def mcnt_from_time(self, time_seconds):
+        """Returns the board timestamp from a given UTC system time (seconds since Unix Epoch). Accounts for wrapping timestamps."""
+        if self.synchronisation_epoch<0:
+            self.est_sync_epoch()
+        return int((time_seconds - self.synchronisation_epoch)*self.sample_rate_hz)%(2**int(self.configd['FxCorrelator']['timestamp_bits']))
+
     def qdr_calibrate(self):
         """
         Run a software calibration routine on all the FPGA hosts.
