@@ -378,8 +378,8 @@ def xeng_set_acc_time(corr, acc_time_s, vacc_resync=True):
     if use_xeng_sim:
         raise RuntimeError('That\'s not an option anymore.')
     else:
-        new_acc_len = (corr.sample_rate_hz * acc_time_s) /
-                       (corr.xeng_accumulation_len * corr.n_chans * 2.0)
+        new_acc_len = ((corr.sample_rate_hz * acc_time_s) /
+                       (corr.xeng_accumulation_len * corr.n_chans * 2.0))
         new_acc_len = round(new_acc_len)
         xeng_set_acc_len(corr, new_acc_len, vacc_resync)
 
