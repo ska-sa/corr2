@@ -16,7 +16,6 @@ Created on Feb 28, 2013
 import logging
 import socket
 import time
-import sys
 
 import numpy
 import struct
@@ -39,6 +38,7 @@ use_xeng_sim = False
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+
 
 class FxCorrelator(Instrument):
     """
@@ -132,6 +132,9 @@ class FxCorrelator(Instrument):
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='get_system_information')
             THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='get_system_information')
+
+        # remove test hardware from designs
+        utils.remove_test_objects(self)
 
         if program:
             # cal the qdr on all boards
