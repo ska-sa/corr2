@@ -56,7 +56,9 @@ parser.add_argument('--zeros-sine', action='store_true', default=False, help=
                     'Sets all sine sources to 0 scale and 0 Frequency.')
 parser.add_argument('--zeros-noise', action='store_true', default=False, help=
                     'Sets all  noise sources to 0 scale.')
-
+parser.add_argument('--pulsar-source', action='append', default=[], nargs=3, help=
+                    'Choose which sine to source, pulsar_0 or pulsar_1.\
+                    Set Scale and Frequency')
 args = parser.parse_args()
 
 
@@ -197,6 +199,35 @@ if args.zeros_noise:
         except:
             print "An error occured."
             sys.exit(1)
+    something_happened = True
+
+if args.pulsar_source:
+    for pulsar_source, xscale_s, yfreq_s in args.pulsar_source:
+        xscale = float(xscale_s)
+        yfreq = float(yfreq_s)
+        try:
+            pulsar_sources = getattr(dhost.pulsar_sources, 'pulsar_{}'.format(pulsar_source))
+        except AttributeError:
+            print "You can only select between pulsar sources: {}".format([
+                ss.name for ss in dhost.pulsar_sources])
+            sys.exit(1)
+        try:
+            pulsar_sources.set(scale=xscale, frequency=yfreq)
+        except ValueError:
+            print "\nError, verify your inputs for pulsar_%s" % pulsar_sources.name
+            print "Max Frequency should be {}MHz".format(pulsar_sources.max_freq/1e6)
+            print "Scale should be between 0 and 1"
+            sys.exit(1)
+        print ""
+        print "pulsar source:", pulsar_sources.name
+        print "scale:", pulsar_sources.scale
+        print "frequency:", pulsar_sources.frequency
+        # print 'Initialising data '
+        # pulsar_sources.initialise_data()
+        # print 'Add pulsar (this takes time)'
+        # pulsar_sources.add_pulsar(duty_cycle=0.05)
+        # print 'Write file'
+        # pulsar_sources.write_file('test_2', path_name=path)
     something_happened = True
 
 if args.output_type:
