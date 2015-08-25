@@ -248,6 +248,7 @@ def remove_test_objects(corr_instance):
     :return:
     """
     from casperfpga import casperfpga as ccasperfpga
+    _changes_made = False
     for hosts in [corr_instance.fhosts, corr_instance.xhosts]:
         for host in hosts:
             for container_ in ccasperfpga.CASPER_MEMORY_DEVICES.values():
@@ -255,4 +256,6 @@ def remove_test_objects(corr_instance):
                     for attr_name in attr_container.names():
                         if attr_name.find('test_') == 0:
                             attr_container.remove_attribute(attr_name)
-                            print 'removed', attr_name
+                            _changes_made = True
+    if _changes_made:
+        LOGGER.info('One or more test_ devices were removed. Just so you know.')
