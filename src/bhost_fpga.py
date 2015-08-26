@@ -608,7 +608,8 @@ class FrequencyBeamformer(object):
                     datum_str = struct.pack(">i", datum)
                 else:
                     datum_str = struct.pack(">I", datum)
-                    name = '%s%d_%s' % (bf_register_prefix, int(targets[target_index]['bf']), device_name)
+                    # name = '%s%d_%s' % (bf_register_prefix, int(targets[target_index]['bf']), device_name)
+                    name = '%s_%s' % (bf_register_prefix, device_name)
                 # pretend to write if no FPGA
                 if self.simulate == True:
                     print 'dummy write of 0x%.8x to %s:%s offset %i' % (datum, targets[target_index]['fpga'],
@@ -640,7 +641,8 @@ class FrequencyBeamformer(object):
         # get all unique fpgas, bfs associated with the specified frequencies
         targets = self.frequency2fpga_bf(frequencies, fft_bins, unique=True)
         for target_index, target in enumerate(targets):
-            name = '%s%s_%s' % (self.config['beamformer']['bf_register_prefix'], target['bf'], device_name)
+            # name = '%s%s_%s' % (self.config['beamformer']['bf_register_prefix'], target['bf'], device_name)
+            name = '%s_%s' % (self.config['beamformer']['bf_register_prefix'], device_name)
             # pretend to read if no FPGA
             if self.simulate == True:
                 print 'dummy read from %s:%s offset %i' % (target['fpga'], name, offset)
@@ -688,6 +690,7 @@ class FrequencyBeamformer(object):
             control = control | (id << 16)
         return control
 
+    #TODO re-write completely
     def bf_read_int(self, beam, destination, antennas=None, frequencies=[], fft_bins=[], blindwrite=True):
         """
         read from destination in the bf block for a particular beam
@@ -754,6 +757,7 @@ class FrequencyBeamformer(object):
             values = self.read_int('value_out', offset=0, fft_bins=fft_bins)
         return values
 
+    #TODO re-write completely
     def bf_write_int(self, destination, data, offset=0, beams=[], antennas=None, frequencies=[], fft_bins=[],
                      blindwrite=True):
         """
@@ -961,6 +965,33 @@ class FrequencyBeamformer(object):
             all_bins.remove(fft_bin)
         return all_bins
 
+    def read_bf_config(self):
+        """
+        Reads data from bf_config register from all x-eng
+        :return: dictionary
+        """
+        bfs = self.get_fpgas()
+        data_values = []
+        for bf in bfs:
+            data = bf.registers['bf_config'].read()['data']
+            data_values.append(data)
+        return data_values
+
+    def read_bf_control(self):
+        """
+        Reads data from bf_control register from all x-eng
+        :return: dictionary
+        """
+        bfs = self.get_fpgas()
+        data_values = []
+        for bf in bfs:
+            data = bf.registers['bf_control'].read()['data']
+            data_values.append(data)
+        return data_values
+
+    def bf_write_destination(self):
+        return
+
 # -----------------------------------
 #  Interface for standard operation
 # -----------------------------------
@@ -1026,6 +1057,8 @@ class FrequencyBeamformer(object):
                 if self.simulate == True:
                     print 'configuring excluded bfs'
                 # configure disabled beamformers to output to HEAP 0 HEAP size of 0, offset 0
+                # bf_config = ((0 << 16) & (2**32 - 2**31 - 2**16) | (0 << 8) & (2**16 - 2**8) | 0 & (2**8 - 1)
+
                 bf_config = ((0 << 16) & 0x7fff0000 | (0 << 8) & 0x0000ff00 | 0 & 0x000000ff)
                 self.write_int('cfg%i' % beam_index, [bf_config], 0, fft_bins=disabled_fft_bins)
             # get frequency_indices associated with enabled parts of beams
