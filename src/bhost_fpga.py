@@ -34,7 +34,7 @@ class fbfException(Exception):
         if logger:
             logger.error('BFError: %s\n%s' % (msg, trace))
 
-class FrequencyBeamformer:
+class FrequencyBeamformer(object):
     def __init__(self, host_correlator, simulate=False, optimisations=True):
         self.c = host_correlator
 
@@ -161,13 +161,13 @@ class FrequencyBeamformer:
                 value = values
             self.set_param('bf_%s_beam%d' % (param, beam_index), value)
 
-    def get_fpgas(self, names=False):
+    def get_fpgas(self):
         """
         Get fpga names that host b-eng (for now x-eng)
         :return: all_fpgas
         """
         # if doing dummy load (no correlator), use roach names as have not got fpgas yet
-        if self.simulate == False and names == False:
+        if self.simulate == True:
             try:
                 all_fpgas = self.config['xengine']['hosts']
                 all_fpgas = all_fpgas.split(',')
