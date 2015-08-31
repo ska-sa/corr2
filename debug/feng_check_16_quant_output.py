@@ -78,6 +78,7 @@ if len(snapshot_missing) > 0:
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
 
+
 def exit_gracefully(_, __):
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)
@@ -98,13 +99,14 @@ print 'Snapshot is %i samples long' % snapshot_samples
 loops_necessary = EXPECTED_FREQS / snapshot_samples
 print 'Will need to read the snapshot %i times' % loops_necessary
 
+
 def get_data():
     # read the data
     snapdata = []
     for loop_ctr in range(0, loops_necessary):
         temp_snapdata = {}
         for snap in required_snaps:
-            offset = 1024*loop_ctr*8
+            offset = 8*1024*loop_ctr
             # print 'reading at offset %i' % offset
             temp_snapdata[snap] = fpgautils.threaded_fpga_operation(
                 fpgas, 10, lambda fpga_: fpga_.snapshots[snap].read(offset=offset))
@@ -133,6 +135,7 @@ def get_data():
         fpga_data[fpga]['p1'] = p1_data
     return fpga_data
 
+
 def plot_func(figure, sub_plots, idata, ictr, pctr):
     data = get_data()
     ictr += 1
@@ -146,10 +149,13 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
             idata[fpga][1][ctr] += p1_data[ctr]
         print '\tMean:   %.10f' % numpy.mean(p0_data[1000:3000])
         print '\tStddev: %.10f' % numpy.std(p0_data[1000:3000])
+        # print '\tp0[0]: %.10f' % p0_data[0]
+        # print '\tp0[1]: %.10f' % p0_data[1]
+
     # actually draw the plots
     for fpga_ctr, intdata in enumerate(idata.values()):
         sub_plots[fpga_ctr].cla()
-        sub_plots[fpga_ctr].set_title(idata.keys()[fpga_ctr])
+        sub_plots[fpga_ctr].set_title('%s, %i, %i' % (idata.keys()[fpga_ctr], ictr, pctr))
         subplots[fpga_ctr].grid(True)
         for ctr, data in enumerate(intdata.values()):
             if args.linear:
