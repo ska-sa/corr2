@@ -164,6 +164,7 @@ def process_new_eq(eq):
         eqlist[ctr] = complex(eq)
     return eqlist
 
+
 class UnpackDengPacketCapture(object):
     def __init__(self, pcap_file_or_name):
         try:
@@ -236,5 +237,25 @@ class UnpackDengPacketCapture(object):
                         "packets dropped?")
 
         self.pcap_file.close()
-        return (sorted_time_keys, data)
+        return sorted_time_keys, data
 
+
+def remove_test_objects(corr_instance):
+    """
+    Any hardware device whose name starts with test_ must be removed from the
+    attribute list.
+    :param corr_instance:
+    :return:
+    """
+    from casperfpga import casperfpga as ccasperfpga
+    _changes_made = False
+    for hosts in [corr_instance.fhosts, corr_instance.xhosts]:
+        for host in hosts:
+            for container_ in ccasperfpga.CASPER_MEMORY_DEVICES.values():
+                    attr_container = getattr(host, container_['container'])
+                    for attr_name in attr_container.names():
+                        if attr_name.find('test_') == 0:
+                            attr_container.remove_attribute(attr_name)
+                            _changes_made = True
+    if _changes_made:
+        LOGGER.info('One or more test_ devices were removed. Just so you know.')

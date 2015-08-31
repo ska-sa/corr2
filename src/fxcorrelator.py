@@ -16,7 +16,6 @@ Created on Feb 28, 2013
 import logging
 import socket
 import time
-import sys
 
 import numpy
 import struct
@@ -39,6 +38,7 @@ use_xeng_sim = False
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+
 
 class FxCorrelator(Instrument):
     """
@@ -133,6 +133,9 @@ class FxCorrelator(Instrument):
             THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='get_system_information')
             THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='get_system_information')
 
+        # remove test hardware from designs
+        utils.remove_test_objects(self)
+
         if program:
             # cal the qdr on all boards
             if qdr_cal:
@@ -203,7 +206,9 @@ class FxCorrelator(Instrument):
     #                 qdr.qdr_cal(fail_hard=False, verbosity=2)
 
     def est_sync_epoch(self):
-        """Estimates the synchronisation epoch based on current F-engine timestamp, and the system time."""
+        """
+        Estimates the synchronisation epoch based on current F-engine timestamp, and the system time.
+        """
         self.logger.warn("Estimating synchronisation epoch...")
         # get current time from an f-engine
         mcnt_before = self.fhosts[0].get_local_time()
@@ -211,18 +216,25 @@ class FxCorrelator(Instrument):
         self.logger.info('Current f engine timetamp: %i' % mcnt_before)
         assert mcnt_before & 0xfff == 0, 'Bottom 12 bits of timestamp from f-engine are not zero?!'
 
-
     def time_from_mcnt(self, mcnt):
-        """Returns the unix time UTC equivalent to the board timestamp. Does NOT account for wrapping timestamps."""
-        if self.synchronisation_epoch<0:
+        """
+        Returns the unix time UTC equivalent to the board timestamp. Does
+        NOT account for wrapping timestamps.
+        """
+        if self.synchronisation_epoch < 0:
             self.est_sync_epoch()
         return self.synchronisation_epoch + (float(mcnt) / float(self.sample_rate_hz))
 
     def mcnt_from_time(self, time_seconds):
-        """Returns the board timestamp from a given UTC system time (seconds since Unix Epoch). Accounts for wrapping timestamps."""
-        if self.synchronisation_epoch<0:
+        """
+        Returns the board timestamp from a given UTC system time
+        (seconds since Unix Epoch). Accounts for wrapping timestamps.
+        """
+        if self.synchronisation_epoch < 0:
             self.est_sync_epoch()
-        return int((time_seconds - self.synchronisation_epoch)*self.sample_rate_hz)%(2**int(self.configd['FxCorrelator']['timestamp_bits']))
+        time_diff_from_synch_epoch = time_seconds - self.synchronisation_epoch
+        time_diff_in_samples = int(time_diff_from_synch_epoch * self.sample_rate_hz)
+        return time_diff_in_samples % (2**int(self.configd['FxCorrelator']['timestamp_bits']))
 
     def qdr_calibrate(self):
         """

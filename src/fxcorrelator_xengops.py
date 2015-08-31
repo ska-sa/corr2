@@ -208,14 +208,14 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
             'Cannot load at a time in the past. '
             'Need at least %2.2f seconds lead time. You asked for %s.%i, '
             'and it is now %s.%i.' % (
-                               min_ld_time,
-                               time.strftime('%H:%M:%S',time.gmtime(vacc_load_time)),
-                               (vacc_load_time-int(vacc_load_time))*100,
-                               time.strftime('%H:%M:%S',time.gmtime(t_now)),
-                               (t_now-int(t_now))*100) )
+                min_ld_time,
+                time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
+                (vacc_load_time-int(vacc_load_time))*100,
+                time.strftime('%H:%M:%S', time.gmtime(t_now)),
+                (t_now-int(t_now))*100))
 
     corr.logger.info('xeng vaccs syncing at %s (in %2.2fs)'
-                     % (time.ctime(),vacc_load_time-time.time()) )
+                     % (time.ctime(), vacc_load_time-time.time()))
 
     # check if the vaccs need resetting
     vaccstat = THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
@@ -326,7 +326,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
                 raise RuntimeError('VACC did not trigger!')
     corr.logger.info('\tAll VACCs triggered correctly.')
 
-    #allow vacc to flush and correctly populate parity bits:
+    # allow vacc to flush and correctly populate parity bits:
     corr.logger.info('\tWaiting %2.2fs for an accumulation to flush, '
                      'to correctly populate parity bits.' %
                      xeng_get_acc_time(corr))
@@ -336,9 +336,9 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
                        target_function='clear_status')
 
-    #wait for a good accumulation to finish.
+    # wait for a good accumulation to finish.
     corr.logger.info('\tWaiting %2.2fs for an accumulation to flush '
-                     'before checking counters.'%xeng_get_acc_time(corr))
+                     'before checking counters.' % xeng_get_acc_time(corr))
     time.sleep(xeng_get_acc_time(corr)+0.2)
 
     corr.logger.info('\tChecking for errors & accumulations...')
@@ -383,12 +383,14 @@ def xeng_set_acc_time(corr, acc_time_s, vacc_resync=True):
         new_acc_len = round(new_acc_len)
         xeng_set_acc_len(corr, new_acc_len, vacc_resync)
 
+
 def xeng_get_acc_time(corr):
     """
     Get the dump time currently being used.
     :return:
     """
     return (corr.xeng_accumulation_len * corr.accumulation_len * corr.n_chans * 2.0) / corr.sample_rate_hz
+
 
 def xeng_set_acc_len(corr, acc_len=None, vacc_resync=True):
     """
