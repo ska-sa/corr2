@@ -20,6 +20,7 @@ import inspect
 import logging
 import struct
 import socket
+import time
 import spead64_48 as spead
 from casperfpga import utils
 
@@ -207,6 +208,7 @@ class FrequencyBeamformer(object):
     def map_ant_to_input(self, beam, antennas=[]):
         """
         maps antenna strings specified to input to beamformer
+        gives index of antennas in the list of all_antennas
         :param beam: 'i' or 'q'
         :param ant_strs: ['0\x00', '0\x01', '1\x00', '1\x01', '2\x00', '2\x01', '3\x00', '3\x01']
         :return: inputs
@@ -228,32 +230,32 @@ class FrequencyBeamformer(object):
         :param ant_strs:
         :return: ants
         """
-        ants = []
         if antennas == None:
             return []
-        all_ants = self._get_ant_mapping_list()
         beam = self.beams2beams(beams=beam)[0]
         # construct a list of valid ant_strs for each beam, then check specified ants are in
         if self.simulate:
             print 'finding ants for beam %s' % beam
         beam_ants = []
-        beam_idx = self.beam2index(beam)
-        offset = numpy.mod(beam_idx, 2)
-        for n, ant_str in enumerate(all_ants):
-            if numpy.mod(n+offset, 2) == 0:
-                if self.simulate:
-                    print 'adding ant %s for beam %s' % (ant_str, beam)
-                beam_ants.append(ant_str)
-        if antennas == all_ants:
-            return beam_ants
+        beam_idx = self.beam2index(beam)[0]
         for ant_str in antennas:
-            if beam_ants.count(ant_str) == 0:
-                raise fbfException(1, '%s not found in antenna mapping for beam %s' % (ant_str, beam),
-                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   LOGGER)
-            else:
-                ants.append(ant_str)
-                return ants
+            if ord(ant_str[-1]) == beam_idx:
+                beam_ants.append(ant_str)
+        return beam_ants
+
+    def input2ants(self, beam, antennas=[]):
+        if antennas == None:
+            return []
+        beam = self.beams2beams(beams=beam)[0]
+        # construct a list of valid ant_strs for each beam, then check specified ants are in
+        if self.simulate:
+            print 'finding ants for beam %s' % beam
+        beam_ants = []
+        beam_idx = self.beam2index(beam)[0]
+        for ant_str in antennas:
+            if ord(ant_str[-1]) == beam_idx:
+                beam_ants.append(int(ant_str[0]))
+        return beam_ants
 
     def beams2beams(self, beams=[]):
         """
@@ -541,8 +543,7 @@ class FrequencyBeamformer(object):
             antenna_indices = self.map_ant_to_input(beam, antennas=antennas)
         return antenna_indices
 
-    # line 552 use b.frequency2fpga_bf(fft_bins=enabled_fft_bins, unique=True) for fpga object
-    def write_int(self, device_name, data, offset=0, frequencies=[], fft_bins=[], blindwrite=False):
+    def write_int(self, device_name, data, offset=0, frequencies=[], fft_bins=[], blindwrite=False, beam=False):
         """
         Writes data to all devices on all bfs in all fpgas associated with the frequencies specified
         :param device_name:
@@ -605,11 +606,13 @@ class FrequencyBeamformer(object):
                 else:
                     datum = data[target_index]
                 if datum < 0:
+                    # big-endian integer
                     datum_str = struct.pack(">i", datum)
                 else:
+                    # big-endian unsigned integer
                     datum_str = struct.pack(">I", datum)
-                    # name = '%s%d_%s' % (bf_register_prefix, int(targets[target_index]['bf']), device_name)
-                    name = '%s_%s' % (bf_register_prefix, device_name)
+                    name = '%s%d_%s' % (bf_register_prefix, int(targets[target_index]['bf']), device_name)
+                    # name = '%s_%s' % (bf_register_prefix, device_name)
                 # pretend to write if no FPGA
                 if self.simulate == True:
                     print 'dummy write of 0x%.8x to %s:%s offset %i' % (datum, targets[target_index]['fpga'],
@@ -629,6 +632,7 @@ class FrequencyBeamformer(object):
     def read_int(self, device_name, offset=0, frequencies=[], fft_bins=[]):
         """
         Reads data from all devices on all bfs in all fpgas associated with the frequencies specified
+        (less registers in new design - might be redundant as only 8 targets not 32)
         :param device_name:
         :param offset:
         :param frequencies:
@@ -641,8 +645,8 @@ class FrequencyBeamformer(object):
         # get all unique fpgas, bfs associated with the specified frequencies
         targets = self.frequency2fpga_bf(frequencies, fft_bins, unique=True)
         for target_index, target in enumerate(targets):
-            # name = '%s%s_%s' % (self.config['beamformer']['bf_register_prefix'], target['bf'], device_name)
-            name = '%s_%s' % (self.config['beamformer']['bf_register_prefix'], device_name)
+            name = '%s%s_%s' % (self.config['beamformer']['bf_register_prefix'], target['bf'], device_name)
+            # name = '%s_%s' % (self.config['beamformer']['bf_register_prefix'], device_name)
             # pretend to read if no FPGA
             if self.simulate == True:
                 print 'dummy read from %s:%s offset %i' % (target['fpga'], name, offset)
@@ -655,61 +659,98 @@ class FrequencyBeamformer(object):
                                        LOGGER)
         return values
 
-    def bf_control_lookup(self, destination, write=True, read=True):
+    def read_int_bf_config(self, device_name):
         """
+        Reads data from all devices on all bfs in all fpgas associated with the frequencies specified
+        (config)
+        :param device_name: 'data_id', 'time_id'
+        :return: values
+        """
+        values = []
+        # get all unique fpgas
+        name = '%s_config_%s' % (self.config['beamformer']['bf_register_prefix'], device_name)
+            # pretend to read if no FPGA
+        if self.simulate == True:
+            print 'dummy read from %s:%s offset %i' % name
+        else:
+            try:
+                values = self.read_bf_config(param=device_name)
+            except:
+                raise fbfException(1, 'Error reading from %s' % name,
+                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
+                                   LOGGER)
+        return values
 
-        :param destination:
-        :param write:
-        :param read:
-        :return: control
+    def read_int_bf_control(self, device_name):
         """
-        control = 0
+        Reads data from all devices on all bfs in all fpgas associated with the frequencies specified
+        (config)
+        :param device_name: 'antenna' 'beng' 'frequency' 'read_destination' 'stream' 'write_destination'
+        :return: values
+        """
+        values = []
+        # get all unique fpgas
+        name = '%s_control_%s' % (self.config['beamformer']['bf_register_prefix'], device_name)
+            # pretend to read if no FPGA
+        if self.simulate == True:
+            print 'dummy read from %s:%s offset %i' % name
+        else:
+            try:
+                values = self.read_bf_control(param=device_name)
+            except:
+                raise fbfException(1, 'Error reading from %s' % name,
+                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
+                                   LOGGER)
+        return values
+
+    def bf_control_lookup(self, destination):
+        """
+        Return write/read destination
+        :param destination:
+        :return: id
+        """
+        id_control = -1
         if destination == 'duplicate':
-            id = 0
+            id_control = 0
         elif destination == 'calibrate':
-            id = 1
+            id_control = 1
         elif destination == 'steer':
-            id = 2
+            id_control = 2
         elif destination == 'combine':
-            id = 3
+            id_control = 3
         elif destination == 'visibility':
-            id = 4
+            id_control = 4
         elif destination == 'accumulate':
-            id = 5
+            id_control = 5
         elif destination == 'requantise':
-            id = 6
+            id_control = 6
         elif destination == 'filter':
-            id = 7
+            id_control = 7
         else:
             raise fbfException(1, 'Invalid destination: %s' % destination,
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
                                LOGGER)
-        if write == True:
-            control = control | (0x00000001 << id)
-        if read == True:
-            control = control | (id << 16)
+        return id_control
+
+    def bf_control_shift(self, id_control):
+        control = 0
+        control = control | (0x00000001 << id_control)
         return control
 
     #TODO re-write completely
-    def bf_read_int(self, beam, destination, antennas=None, frequencies=[], fft_bins=[], blindwrite=True):
+    def bf_read_int(self, beam, destination, antennas=None, blindwrite=True):
         """
         read from destination in the bf block for a particular beam
         :param beam:
         :param destination:
         :param antennas:
         :param frequencies:
-        :param fft_bins:
         :param blindwrite:
         :return: values
         """
-        values = []
         if destination == 'calibrate':
             if antennas == None:
                 raise fbfException(1, 'Need to specify an antenna when reading from calibrate block',
-                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   LOGGER)
-            if frequencies==[] and len(fft_bins) == 0:
-                raise fbfException(1, 'Need to specify a frequency or fft bin when reading from calibrate block',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
                                    LOGGER)
         elif destination == 'filter':
@@ -721,40 +762,47 @@ class FrequencyBeamformer(object):
             raise fbfException(1, 'Invalid destination: %s'%destination,
                                'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
                                LOGGER)
-        if len(fft_bins) == 0:
-            fft_bins = self.frequency2fft_bin(frequencies)
-        location = self.beam2location(beams=beam)[0]
-        # look up control value required to read
-        control = self.bf_control_lookup(destination, write=False, read=True)
-        # print 'bf_read_int: disabling writes, setting up reads'
-        self.write_int('control', [control], offset=0, fft_bins=fft_bins, blindwrite=blindwrite)
-        # expand, check and convert to input indices
-        antennas = self.ants2ants(beam, antennas)
-        antenna_indices = self.antenna2antenna_indices(beam=beam, antennas=antennas)
-        # print 'bf_read_int: setting up location'
-        # set up target stream (location of beam in set )
-        self.write_int('stream', [int(location)], offset=0, fft_bins=fft_bins, blindwrite=blindwrite)
-        # go through antennas (normally just one but may be all or none)
-        for antenna_index in antenna_indices:
-            # print 'bf_read_int: setting up antenna'
-            # set up antenna register
-            self.write_int('antenna', [antenna_index], 0, fft_bins=fft_bins, blindwrite=blindwrite)
-            # cycle through frequencies (cannot have frequencies without antenna component)
-            for index, fft_bin in enumerate(fft_bins):
-                # print 'bf_read_int: setting up frequency'
-                # set up frequency register
-                self.write_int('frequency', [self.frequency2frequency_reg_index(fft_bins=[fft_bin])][0], 0,
-                               fft_bins=[fft_bin], blindwrite=blindwrite)
-                values.extend(self.read_int('value_out', offset=0, fft_bins=[fft_bin]))
-            # if no frequency component, read
-            if len(fft_bins) == 0:
-                # read
-                # print 'bf_read_int: reading for no frequencies'
-                values = self.read_int('value_out', offset=0, fft_bins=fft_bins)
-        if len(antenna_indices) == 0:
-            # read
-            # print 'bf_read_int: reading for no antennas'
-            values = self.read_int('value_out', offset=0, fft_bins=fft_bins)
+        # loop over fpgas and set the registers
+        fpga_int = []
+        for bf in self.get_fpgas():
+            # get beam location
+            location = self.beam2location(beams=beam)[0]
+            # set beam (stream) based on location
+            self.write_stream(bf, value=int(location))
+            # set read/write destination
+            id_control = self.bf_control_lookup(destination)
+            control = self.bf_control_shift(id_control)
+            self.write_write_destination(bf, value=control)
+            # set antenna if needed
+            if antennas != None:
+                ant_n = self.input2ants(beam, antennas=antennas)
+                if len(ant_n) == 1:
+                    self.write_antenna(bf, value=ant_n[0], blindwrite=blindwrite)
+                else:
+                    raise fbfException(1, 'Need to specify a single antenna. Got many. Function %s, line no %s\n'
+                                       % (__name__, inspect.currentframe().f_lineno), LOGGER)
+            # loop over b-engs
+            beng_int = []
+            for beng in self.get_bfs():
+                # set beng
+                self.write_beng(bf, value=beng, blindwrite=blindwrite)
+                # triggering write
+                self.write_read_destination(bf, value=id_control)
+                # read value out
+                value_beng = self.read_value_out(bf)
+                beng_int.append(value_beng)
+            if beng_int.count(beng_int[0]) == len(beng_int):  # values are the same
+                fpga_int.append(beng_int[0])
+            else:
+                raise fbfException(1, 'Problem: value_out on b-engines are not the same. Function %s, line no %s\n'
+                                       % (__name__, inspect.currentframe().f_lineno), LOGGER)
+        # check if values are the same
+        if fpga_int.count(fpga_int[0]) == len(fpga_int):
+            values = fpga_int[0]
+        else:
+            raise fbfException(1, 'Problem: value_out on fpgas are not the same. Function %s, line no %s\n'
+                                       % (__name__, inspect.currentframe().f_lineno), LOGGER)
+        # return single integer
         return values
 
     #TODO re-write completely
@@ -812,7 +860,7 @@ class FrequencyBeamformer(object):
             # set up the value to be written
             self.write_int('value_in', data, offset, fft_bins=fft_bins, blindwrite=blindwrite)
         # look up control value required to write when triggering write
-        control = self.bf_control_lookup(destination, write=True, read=True)
+        control = self.bf_control_lookup(destination)
         # beams = self.beams2beams(beams)  # check if output of this fn is correct
         # cycle through beams to be written to
         for beam in beams:
@@ -965,32 +1013,91 @@ class FrequencyBeamformer(object):
             all_bins.remove(fft_bin)
         return all_bins
 
-    def read_bf_config(self):
+    def read_bf_config(self, param=''):
         """
         Reads data from bf_config register from all x-eng
+        :param 'data_id', 'time_id'
         :return: dictionary
         """
         bfs = self.get_fpgas()
-        data_values = []
+        param_values = []
         for bf in bfs:
-            data = bf.registers['bf_config'].read()['data']
-            data_values.append(data)
-        return data_values
+            data = bf.registers['bf_config'].read()['data'][param]
+            param_values.append(data)
+        return param_values
 
-    def read_bf_control(self):
+    def read_value_out(self, bf):
+        # bfs = self.get_fpgas()
+        data = bf.registers.bf_value_out.read()['data']['reg']
+        return data
+
+    def beng_value_out(self):
+        """
+        Read value_out register from all boards and all b-engines
+        :return:
+        """
+        n_beng = self.get_bfs()
+        bfs = self.get_fpgas()
+        data = []
+        for bf in bfs:
+            val = []
+            for beng in n_beng:
+                self.write_beng(bf, value=beng, blindwrite=True)  # iterate over b_eng
+                time.sleep(0.1)
+                val.append(self.read_value_out(bf))
+            if val.count(val[0]) == len(val):  # val_out are the same
+                data.append({'val_out': val})
+            else:
+                raise fbfException(1, 'value_out associated with fpga and bfs not the same',
+                               'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno), LOGGER)
+        return data
+
+    def write_data_id(self, bf, value=0):
+        bf.registers['bf_config'].write(data_id=value)
+
+    def write_time_id(self, bf, value=0):
+        bf.registers['bf_config'].write(time_id=value)
+
+    def read_bf_control(self, param=''):
         """
         Reads data from bf_control register from all x-eng
+        :param 'antenna' 'beng' 'frequency' 'read_destination' 'stream' 'write_destination'
         :return: dictionary
         """
         bfs = self.get_fpgas()
         data_values = []
         for bf in bfs:
-            data = bf.registers['bf_control'].read()['data']
+            data = bf.registers['bf_control'].read()['data'][param]
             data_values.append(data)
         return data_values
 
-    def bf_write_destination(self):
-        return
+    def write_beng(self, bf, value=0, blindwrite=False):
+        if blindwrite:
+            bf.registers['bf_control'].blindwrite(beng=value)
+        else:
+            bf.registers['bf_control'].write(beng=value)
+
+    def write_antenna(self, bf, value=0, blindwrite=False):
+        if blindwrite:
+            bf.registers['bf_control'].blindwrite(antenna=value)
+        else:
+            bf.registers['bf_control'].write(antenna=value)
+
+    def write_stream(self, bf, value=0):
+        bf.registers['bf_control'].write(stream=value)
+
+    def write_frequency(self, bf, value=0, blindwrite=False):
+        if blindwrite:
+            bf.registers['bf_control'].blindwrite(frequency=value)
+        else:
+            bf.registers['bf_control'].write(frequency=value)
+
+    def write_read_destination(self, bf, value=0):
+        bf.registers['bf_control'].write(read_destination=value)
+
+    def write_write_destination(self, bf, value=0):
+        bf.registers['bf_control'].write(write_destination=value)
+
 
 # -----------------------------------
 #  Interface for standard operation
