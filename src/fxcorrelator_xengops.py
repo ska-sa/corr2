@@ -130,7 +130,7 @@ def xeng_initialise(corr):
                          target_function=(lambda fpga_: fpga_.registers.simulator.write(en=True),))
 
     # set up accumulation length
-    xeng_set_acc_len(corr,vacc_resync=False)
+    xeng_set_acc_len(corr, vacc_resync=False)
 
     # clear general status
     THREADED_FPGA_OP(corr.xhosts, timeout=10,

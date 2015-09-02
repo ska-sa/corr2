@@ -274,8 +274,10 @@ class FxCorrelator(Instrument):
         :return:
         """
         if len(newlist) != len(self.fengine_sources):
-            self.logger.error('Number of supplied source labels does not match number of configured sources.')
-            return False
+            self.logger.error('Number of supplied source labels does '
+                              'not match number of configured sources.')
+            raise ValueError('Number of supplied source labels does '
+                             'not match number of configured sources.')
         metalist = []
         for ctr, source in enumerate(self.fengine_sources):
             # update the source name
