@@ -543,9 +543,11 @@ class FrequencyBeamformer(object):
             antenna_indices = self.map_ant_to_input(beam, antennas=antennas)
         return antenna_indices
 
-    def write_int(self, device_name, data, offset=0, frequencies=[], fft_bins=[], blindwrite=False, beam=False):
+    def write_int(self, device_name, data, offset=0, frequencies=[],
+                  fft_bins=[], blindwrite=False, beam=False):
         """
-        Writes data to all devices on all bfs in all fpgas associated with the frequencies specified
+        Writes data to all devices on all bfs in all fpgas associated with the
+        frequencies specified
         :param device_name:
         :param data:
         :param offset:
@@ -699,7 +701,8 @@ class FrequencyBeamformer(object):
                 values = self.read_bf_control(param=device_name)
             except:
                 raise fbfException(1, 'Error reading from %s' % name,
-                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
+                                   'function %s, line no %s\n' % (
+                                       __name__, inspect.currentframe().f_lineno),
                                    LOGGER)
         return values
 
@@ -728,7 +731,8 @@ class FrequencyBeamformer(object):
             id_control = 7
         else:
             raise fbfException(1, 'Invalid destination: %s' % destination,
-                               'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
+                               'function %s, line no %s\n' % (
+                                   __name__, inspect.currentframe().f_lineno),
                                LOGGER)
         return id_control
 
@@ -751,16 +755,19 @@ class FrequencyBeamformer(object):
         if destination == 'calibrate':
             if antennas == None:
                 raise fbfException(1, 'Need to specify an antenna when reading from calibrate block',
-                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
+                                   'function %s, line no %s\n' % (
+                                       __name__, inspect.currentframe().f_lineno),
                                    LOGGER)
         elif destination == 'filter':
             if antennas != None:
                 raise fbfException(1, 'Can''t specify antenna when reading from filter block',
-                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
+                                   'function %s, line no %s\n' % (
+                                       __name__, inspect.currentframe().f_lineno),
                                    LOGGER)
         else:
             raise fbfException(1, 'Invalid destination: %s'%destination,
-                               'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
+                               'function %s, line no %s\n' % (
+                                   __name__, inspect.currentframe().f_lineno),
                                LOGGER)
         # loop over fpgas and set the registers
         fpga_int = []
@@ -779,8 +786,11 @@ class FrequencyBeamformer(object):
                 if len(ant_n) == 1:
                     self.write_antenna(bf, value=ant_n[0], blindwrite=blindwrite)
                 else:
-                    raise fbfException(1, 'Need to specify a single antenna. Got many. Function %s, line no %s\n'
-                                       % (__name__, inspect.currentframe().f_lineno), LOGGER)
+                    raise fbfException(
+                        1, 'Need to specify a single antenna. Got many. '
+                        'Function %s, line no %s\n' % (
+                            __name__, inspect.currentframe().f_lineno),
+                        LOGGER)
             # loop over b-engs
             beng_int = []
             for beng in self.get_bfs():
@@ -794,19 +804,24 @@ class FrequencyBeamformer(object):
             if beng_int.count(beng_int[0]) == len(beng_int):  # values are the same
                 fpga_int.append(beng_int[0])
             else:
-                raise fbfException(1, 'Problem: value_out on b-engines are not the same. Function %s, line no %s\n'
-                                       % (__name__, inspect.currentframe().f_lineno), LOGGER)
+                raise fbfException(1, 'Problem: value_out on b-engines are not '
+                                   'the same. Function %s, line no %s\n' % (
+                                       __name__, inspect.currentframe().f_lineno),
+                                   LOGGER)
         # check if values are the same
         if fpga_int.count(fpga_int[0]) == len(fpga_int):
             values = fpga_int[0]
         else:
-            raise fbfException(1, 'Problem: value_out on fpgas are not the same. Function %s, line no %s\n'
-                                       % (__name__, inspect.currentframe().f_lineno), LOGGER)
+            raise fbfException(1, 'Problem: value_out on fpgas are not the same. '
+                               'Function %s, line no %s\n' % (
+                                   __name__, inspect.currentframe().f_lineno),
+                               LOGGER)
         # return single integer
         return values
 
     #TODO re-write completely
-    def bf_write_int(self, destination, data, offset=0, beams=[], antennas=None, frequencies=[], fft_bins=[],
+    def bf_write_int(self, destination, data, offset=0, beams=[],
+                     antennas=None, frequencies=[], fft_bins=[],
                      blindwrite=True):
         """
         write to various destinations in the bf block for a particular beam
@@ -822,9 +837,11 @@ class FrequencyBeamformer(object):
         """
         if destination == 'calibrate':
             if antennas == None:
-                raise fbfException(1, 'Need to specify an antenna when writing to calibrate block',
-                                   'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
-                                   LOGGER)
+                raise fbfException(
+                    1, 'Need to specify an antenna when writing to calibrate block',
+                    'function %s, line no %s\n' % (
+                        __name__, inspect.currentframe().f_lineno),
+                    LOGGER)
             if frequencies == [] and len(fft_bins) == 0:
                 raise fbfException(1, 'Need to specify a frequency or fft bin when writing to calibrate block',
                                    'function %s, line no %s\n' % (__name__, inspect.currentframe().f_lineno),
