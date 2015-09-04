@@ -1,7 +1,8 @@
 __author__ = 'paulp'
 
 """
-Test that baseline products are in the correct place.
+Test that baseline products are in the correct place directly
+after the x-engine.
 
 Zero all inputs bar one, then check for non-zero data in
 the set of baseline products.
@@ -20,15 +21,38 @@ import logging
 
 logging.basicConfig(level=eval('logging.INFO'))
 
-rxer = corr_rx.CorrRx()
-time.sleep(0.5)
-rxer.start()
+USE_XENGINE = 0
+NUM_BLS = 40
+ZEROES_ALLOWED = int(4096*0.7)
+CORR_INIT_LOOPS = 1
+CORR_INIT_RETRIES = 5
+DATA_TO_GET = 2
+EXPECTED_TIMESTEP = 8192
+EXPECTED_NACC = 816
 
 
-def stop_rx():
-    print 'Stopping receiver'
-    rxer.stop()
-    rxer.join()
+def get_snap_data(correlator):
+    """
+    Get snap data from the chosen x-engine
+    :return:
+    """
+    sd = correlator.x_hosts[USE_XENGINE].snapshots.snap_xeng0_ss.read()['data']
+    snaplen = len(sd['pol0'])
+    rd = []
+    bls_ctr = 0
+    this_freq = []
+    freq_rx = 0
+    for dctr in range(0, snaplen):
+        dcplx = complex(sd['pol0'][dctr], sd['pol1'][dctr])
+        this_freq.append(dcplx)
+        bls_ctr += 1
+        if bls_ctr == NUM_BLS:
+            bls_ctr = 0
+            rd.append(this_freq)
+            this_freq = []
+            freq_rx += 1
+    print 'got', freq_rx, 'frequencies from a snapshot', snaplen, 'words long'
+    return rd
 
 
 def start_corr():
@@ -64,18 +88,10 @@ def match_inputs_to_baselines(baselines, active_inputs):
 
     return matched_baselines
 
-
 ant_names = []
 for ctr in range(0, 4):
     ant_names.append('ant%i_x' % ctr)
     ant_names.append('ant%i_y' % ctr)
-
-ZEROES_ALLOWED = int(4096*0.7)
-CORR_INIT_LOOPS = 1
-CORR_INIT_RETRIES = 5
-DATA_TO_GET = 2
-EXPECTED_TIMESTEP = 8192
-EXPECTED_NACC = 816
 
 try:
     corr_init_failed = 0
@@ -84,33 +100,31 @@ try:
     while main_loop_ctr < CORR_INIT_LOOPS:
         tic = time.time()
         corr_init_attempts = 0
-        c = None
+        corr_obj = None
         while corr_init_attempts < CORR_INIT_RETRIES:
             try:
-                c = start_corr()
+                corr_obj = start_corr()
                 break
             except:
                 corr_init_failed += 1
                 corr_init_attempts += 1
         if corr_init_attempts >= CORR_INIT_RETRIES:
-            stop_rx()
             print 'corr_init_failed: ', corr_init_failed
             print 'Failed too many times initialising the correlator'
             import IPython
             IPython.embed()
-        baselines = fxcorrelator_xengops.xeng_get_baseline_order(c)
+        baselines = fxcorrelator_xengops.xeng_get_baseline_order(corr_obj)
         active_inputs = []
 
         # set all the inputs to zero
-        fxcorrelator_fengops.feng_eq_set(c, new_eq=0)
+        fxcorrelator_fengops.feng_eq_set(corr_obj, new_eq=0)
 
         for ant in ant_names:
             print 'Setting antenna %s to non-zero quantiser' % ant
-            fxcorrelator_fengops.feng_eq_set(c, source_name=ant, new_eq=300)
+            fxcorrelator_fengops.feng_eq_set(corr_obj, source_name=ant, new_eq=300)
             active_inputs.append(ant)
             expected_baselines = match_inputs_to_baselines(baselines, active_inputs)
             if len(expected_baselines) == 0:
-                stop_rx()
                 print 'corr_init_failed: ', corr_init_failed
                 print baselines
                 print active_inputs
@@ -132,29 +146,16 @@ try:
             # print '\tMatched to baseline %i' % auto_index
             # expected_baselines = [auto_index]
 
-            print '\tWaiting for clean dumps'
-            rxer.get_clean_dump(5, discard=4)
-
             # get some data and check it's in the correct place
             print '\tGetting %i heaps' % DATA_TO_GET
-            cnt = 0
-            lasttime = None
-            while cnt < DATA_TO_GET:
-                ig = rxer.data_queue.get()
-                if lasttime is not None:
-                    timediff = ig['timestamp'] - lasttime
-                    if timediff != (256 * EXPECTED_NACC * EXPECTED_TIMESTEP):
-                        print 'ERROR: timestamp not increasing correctly, diff was %i' % timediff
-                        error_log.append('%.3f ants(%s) timestamp increment wrong - %i' %
-                                         (time.time(), active_inputs, timediff))
-                        got_error = True
-                lasttime = ig['timestamp']
+            data_cnt = 0
+            while data_cnt < DATA_TO_GET:
+                snapdata = get_snap_data(corr_obj)
                 zeroes = ZEROES_ALLOWED
                 got_error = False
-                for fchan in ig['xeng_raw']:
+                for fcnt, fchan in enumerate(snapdata):
                     blscnt = 0
-                    for bls in fchan:
-                        bls_cplx = complex(bls[0], bls[1])
+                    for bls_cplx in fchan:
                         if blscnt in expected_baselines:
                             if bls_cplx == 0:
                                 # allow some zeroes, cos there will be some
@@ -173,10 +174,10 @@ try:
                                 got_error = True
                         blscnt += 1
                 if got_error:
-                    print '\t', cnt, 'ig@%i' % lasttime, 'errors present, check log on completion'
+                    print '\t', data_cnt, 'freq@%i' % fcnt, 'errors present, check log on completion'
                 else:
-                    print '\t', cnt, 'ig@%i' % lasttime, 'okay'
-                cnt += 1
+                    print '\t', data_cnt, 'freq@%i' % fcnt, 'okay'
+                data_cnt += 1
         main_loop_ctr += 1
         runtime_last = time.time() - tic
         runtime_remain = (CORR_INIT_LOOPS - main_loop_ctr) * runtime_last
@@ -184,7 +185,6 @@ try:
               % (runtime_last, runtime_remain)
 except KeyboardInterrupt:
     pass
-stop_rx()
 
 print 'corr_init_failed: ', corr_init_failed
 if len(error_log) > 0:
