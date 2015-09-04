@@ -387,6 +387,10 @@ def xeng_set_acc_time(corr, acc_time_s, vacc_resync=True):
 def xeng_get_acc_time(corr):
     """
     Get the dump time currently being used.
+
+    Note: Will only be correct if accumulation time was set using this correlator
+    object instance since cached values are used for the calculation.
+    I.e., the number of accumulations are _not_ read from the FPGAs.
     :return:
     """
     return (corr.xeng_accumulation_len * corr.accumulation_len * corr.n_chans * 2.0) / corr.sample_rate_hz
