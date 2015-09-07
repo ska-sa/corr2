@@ -213,7 +213,7 @@ class FpgaFHost(DigitiserDataReceiver):
         if eq_bram is None and eq_name is None:
             raise RuntimeError('Cannot have both tuple and name None')
         if eq_name is not None:
-            eq_bram = 'eq%i' % self.eqs[eq_name][1]
+            eq_bram = 'eq%i' % self.eqs[eq_name]['bram_num']
         # eq vals are packed as 32-bit complex (16 real, 16 imag)
         eqvals = self.read(eq_bram, self.n_chans*4)
         eqvals = struct.unpack('>%ih' % (self.n_chans*2), eqvals)
