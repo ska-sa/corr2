@@ -13,6 +13,7 @@ import tornado
 from tornado.ioloop import IOLoop
 from corr2 import sensors, fxcorrelator
 
+
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
@@ -26,6 +27,7 @@ class KatcpLogFormatter(logging.Formatter):
             record.levelname = record.levelname.lower()
         record.msg = record.msg.replace(' ', '\_')
         return super(KatcpLogFormatter, self).format(record)
+
 
 class KatcpLogEmitHandler(logging.StreamHandler):
 
@@ -48,6 +50,7 @@ class KatcpLogEmitHandler(logging.StreamHandler):
             raise
         except:
             self.handleError(record)
+
 
 class Corr2SensorServer(katcp.DeviceServer):
 
@@ -73,6 +76,7 @@ class Corr2SensorServer(katcp.DeviceServer):
         self.instrument = instrument
         self.instrument.initialise(program=False, tvg=False)
         sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
+
 
 @tornado.gen.coroutine
 def on_shutdown(ioloop, server):
