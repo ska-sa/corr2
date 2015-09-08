@@ -11,61 +11,93 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 use_xeng_sim = False
 
 
-def _xeng_vacc_check_errcheck(corr, last_values):
-    """
+def _xeng_vacc_periodic_check(corr, old_data, check_time):
+    corr.logger.debug('Checking VACC operation at %.3f' % time.time())
+    last_data = old_data
 
-    :param corr:
-    :return: True is there are errors, False if not
-    """
-    logstr = '_xeng_vacc_check_errcheck: '
+    def get_data(corr_obj):
+        """
+        Get the relevant data from the X-engine FPGAs
+        """
+        def get_reorder_data(fpga):
+            rv = {}
+            for _ctr in range(0, fpga.x_per_fpga):
+                _reg = fpga.registers['reorderr_timeout%i' % _ctr]
+                rv['etim%i' % _ctr] = _reg.read()['data']['reg']
+            return rv
+        reo_data = THREADED_FPGA_OP(corr_obj.xhosts, timeout=5,
+                                    target_function=get_reorder_data)
+        vacc_data = THREADED_FPGA_FUNC(corr_obj.xhosts, timeout=5,
+                                       target_function='vacc_get_status')
+        return {'reorder': reo_data, 'vacc': vacc_data}
 
-    def get_check_data(fpga):
-        rv = {}
-        for _ctr in range(0, fpga.x_per_fpga):
-            rv['etim%i' % _ctr] = fpga.registers['reorderr_timeout%i' % _ctr].read()['data']['reg']
-        return rv
-    new_data = THREADED_FPGA_OP(corr.xhosts, timeout=5, target_function=get_check_data)
+    def _vacc_data_check(corr_obj, d0, d1):
+        # check errors are not incrementing
+        for host in corr_obj.xhosts:
+            for xeng in range(0, host.x_per_fpga):
+                status0 = d0[host.host][xeng]
+                status1 = d1[host.host][xeng]
+                if ((status1['errors'] > status0['errors']) or
+                        (status0['errors'] != 0)):
+                    corr_obj.logger.error('\tVACC %i on %s has '
+                                          'errors' % (xeng, host.host))
+                    return False
+        # check that the accumulations are ticking over
+        for host in corr_obj.xhosts:
+            for xeng in range(0, host.x_per_fpga):
+                status0 = d0[host.host][xeng]
+                status1 = d1[host.host][xeng]
+                if status1['count'] == status0['count']:
+                    corr_obj.logger.error('\tVACC %i on %s is not '
+                                          'incrementing' % (xeng, host.host))
+                    return False
+        return True
 
-    if last_values is None:
-        corr.logger.debug(logstr + 'no last value')
-        return False, new_data
+    def _reorder_data_check(corr_obj, d0, d1):
+        for host in corr_obj.xhosts:
+            for ctr in range(0, host.x_per_fpga):
+                reg = 'etim%i' % ctr
+                if d0[host.host][reg] != d1[host.host][reg]:
+                    corr_obj.logger.error('\t%s - vacc check reorder '
+                                          'reg %s error' % (host.host, reg))
+                    return False
+        return True
 
-    for fpga in new_data:
-        for ctr in range(0, corr.xhosts[0].x_per_fpga):
-            reg = 'etim%i' % ctr
-            if new_data[fpga][reg] != last_values[fpga][reg]:
-                corr.logger.error(logstr + '%s - %s error' % (fpga, reg))
-                return True, new_data
+    new_data = get_data(corr)
+    # corr.logger.info('new_data: %s' % new_data)
 
-    corr.logger.debug(logstr + 'all okay')
-    return False, new_data
-
-
-def _xeng_vacc_check_cb(corr, last_values, vacc_check_time):
-    """
-    Run the vacc sync if there are errors necessitating it.
-    :param corr:
-    :return:
-    """
-    corr.logger.debug('_xeng_vacc_check_cb: ran @ %.3f' % time.time())
-    result, vals = _xeng_vacc_check_errcheck(corr, last_values)
-    if result:
-        xeng_vacc_sync(corr)
-        _, vals = _xeng_vacc_check_errcheck(corr, last_values)
-    IOLoop.current().call_later(vacc_check_time, _xeng_vacc_check_cb,
-                                [corr, vals, vacc_check_time], {})
+    if last_data is not None:
+        force_sync = False
+        # check the vacc status data first
+        if not _vacc_data_check(corr, last_data['vacc'], new_data['vacc']):
+            force_sync = True
+        # check the reorder data
+        if not force_sync:
+            if not _reorder_data_check(corr, last_data['reorder'], new_data['reorder']):
+                force_sync = True
+        if force_sync:
+            corr.logger.error('\tforcing VACC sync')
+            xeng_vacc_sync(corr)
+    IOLoop.current().call_later(check_time,
+                                _xeng_vacc_periodic_check,
+                                corr, new_data, check_time)
 
 
 def xeng_setup_vacc_check_timer(corr, vacc_check_time=10):
     """
-
+    Set up a periodic check on the vacc operation.
     :param corr: the correlator instance
     :param vacc_check_time: the interval, in seconds, at which to check
     :return:
     """
-    corr.logger.info('xeng_setup_vacc_check_timer: setting up the vacc check timer')
-    IOLoop.current().call_later(vacc_check_time, _xeng_vacc_check_cb,
-                                [corr, None, vacc_check_time], {})
+    corr.logger.info('xeng_setup_vacc_check_timer: setting up the '
+                     'vacc check timer at %i seconds' % vacc_check_time)
+
+    if vacc_check_time < xeng_get_acc_time(corr):
+        raise RuntimeError('A check time smaller than the accumulation'
+                           'time makes no sense.')
+    IOLoop.current().add_callback(_xeng_vacc_periodic_check,
+                                  corr, None, vacc_check_time)
 
 
 def xeng_initialise(corr):
@@ -314,6 +346,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     wait_time = corr.time_from_mcnt(ldmcnt) - time.time() + 0.2
     corr.logger.info('\tWaiting %2.2f seconds for arm to trigger.' % wait_time)
     time.sleep(wait_time)
+
     # check the status to see that the load count increased
     vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=5,
                                      target_function='vacc_get_status')
@@ -341,19 +374,9 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
                      'before checking counters.' % xeng_get_acc_time(corr))
     time.sleep(xeng_get_acc_time(corr)+0.2)
 
-    corr.logger.info('\tChecking for errors & accumulations...')
-    vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=5,
-                                     target_function='vacc_get_status')
-    errors_found = False
-    for host in corr.xhosts:
-        for status in vacc_status[host.host]:
-            if status['errors'] > 0:
-                corr.logger.error('\tVACC errors > 0. Que pasa?')
-                errors_found = True
-            if status['count'] <= 0:
-                corr.logger.error('\tVACC counts <= 0. Que pasa?')
-                errors_found = True
-    if errors_found:
+    # check the vacc status, errors and accumulations
+    vac_okay = xeng_vacc_check_okay_initial(corr)
+    if not vac_okay:
         vacc_error_detail = THREADED_FPGA_FUNC(corr.xhosts,
                                                timeout=5,
                                                target_function='vacc_get_error_detail')
@@ -367,6 +390,29 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
         raise RuntimeError('xeng_vacc_sync: exited on VACC error')
     corr.logger.info('\t...accumulations rolling in without error.')
     return corr.time_from_mcnt(ldmcnt)
+
+
+def xeng_vacc_check_okay_initial(corr):
+    """
+    After an initial setup, is the vacc okay?
+    Are the error counts zero and the counters
+    ticking over?
+    :param corr: The correlator instance.
+    :return: True or False
+    """
+    corr.logger.info('\tChecking for errors & accumulations...')
+    vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=5,
+                                     target_function='vacc_get_status')
+    for host in corr.xhosts:
+        for status in vacc_status[host.host]:
+            if status['errors'] > 0:
+                corr.logger.error('\t\tVACC errors > 0. Que pasa?')
+                return False
+            if status['count'] <= 0:
+                corr.logger.error('\t\tVACC counts <= 0. Que pasa?')
+                return False
+    corr.logger.debug('\t\txeng_vacc_check_status: all okay')
+    return True
 
 
 def xeng_set_acc_time(corr, acc_time_s, vacc_resync=True):

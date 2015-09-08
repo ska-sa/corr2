@@ -194,15 +194,7 @@ class FxCorrelator(Instrument):
         self._initialised = True
 
         # start the vacc check timer
-        # TODO
-        # xengops.xeng_setup_vacc_check_timer(self)
-
-    # def qdr_calibrate_SERIAL(self):
-    #     for hostlist in [self.fhosts, self.xhosts]:
-    #         for host in hostlist:
-    #             print host.host
-    #             for qdr in host.qdrs:
-    #                 qdr.qdr_cal(fail_hard=False, verbosity=2)
+        xengops.xeng_setup_vacc_check_timer(self)
 
     def est_sync_epoch(self):
         """
@@ -240,7 +232,6 @@ class FxCorrelator(Instrument):
         Run a software calibration routine on all the FPGA hosts.
         :return:
         """
-        # cal the QDR specifically
         def _qdr_cal(_fpga):
             _results = {}
             for _qdr in _fpga.qdrs:
@@ -261,7 +252,6 @@ class FxCorrelator(Instrument):
         # for host in self.fhosts:
         #     for qdr in host.qdrs:
         #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
-        #
         # for host in self.xhosts:
         #     for qdr in host.qdrs:
         #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
