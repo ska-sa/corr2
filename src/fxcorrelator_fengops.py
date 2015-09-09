@@ -116,7 +116,7 @@ def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, de
                 [act_delay, act_delta_delay, act_phase_offset, act_delta_phase_offset] = fhost.write_delay(
                                              source_name, delay_s, delta_delay, phase_offset, delta_phase_offset_s, ld_time)
 
-                corr.logger.debug('Delay actually set to %e samples.' % act_delay/self.sample_rate_hz)
+                corr.logger.debug('Delay actually set to %e samples.' % act_delay/corr.sample_rate_hz)
                 corr.logger.debug('Delay rate actually set to %e seconds per second.' % act_delta_delay)
                 corr.logger.debug('Phase offset actually set to %6.3f degrees.' % act_phase_offset)
                 corr.logger.debug('Phase offset change actually set to %e Hz.' % act_delta_phase*feng_clk)

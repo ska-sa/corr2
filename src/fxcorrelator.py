@@ -333,6 +333,7 @@ class FxCorrelator(Instrument):
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
         self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
         self.sample_rate_hz = int(self.configd['FxCorrelator']['sample_rate_hz'])
+        self.adc_demux_factor = int(self.configd['fengine']['adc_demux_factor'])
         self.accumulation_len = int(self.configd['xengine']['accumulation_len'])
         self.xeng_accumulation_len = int(self.configd['xengine']['xeng_accumulation_len'])
         self.n_chans = int(self.configd['fengine']['n_chans'])
