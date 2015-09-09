@@ -88,24 +88,45 @@ def feng_check_rx(corr, max_waittime=30):
     corr.logger.info('\tdone.')
     return all_okay
 
-
-def feng_set_delay(corr, target_name, delay=0, delay_rate=0, fringe_phase=0,
-                   fringe_rate=0, ld_time=-1, ld_check=True, extra_wait_time=0):
+def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, ld_time=-1):
     """
-    :param target_name:
-    :return:
+    Set delay correction values for specified source. This is a blocking call. \n
+    By default, it will wait until load time and verify that things worked as expected. 
+    This check can be disabled by setting ld_check param to False. \n
+    Load time is optional; if not specified, load ASAP.\n
+    :return
     """
-    targetsrc = None
-    for src in corr.fengine_sources:
-        if src.name == target_name:
-            targetsrc = src
-            break
-    if targetsrc is None:
-        raise RuntimeError('Could not find target %s' % target_name)
+    corr.logger.info('Setting delay correction values for source %s' %source_name)
+   
+    feng_clk = corr.sample_rate_hz/corr.adc_demux_factor
 
-    pol_id = targetsrc.source_number % 2
-    targetsrc.fr_delay_set(pol_id, delay, delay_rate, fringe_phase,
-                           fringe_rate, ld_time, ld_check, extra_wait_time)
+    #convert delay in time into delay in samples
+    delay_s = delay * corr.sample_rate_hz                           # delay in clock cycles
+    
+    #convert from cycles per second to cycles per feng fpga clock
+    delta_phase_offset_s = float(delta_phase_offset) / feng_clk
+
+    #TODO convert ld_time from seconds since 70s to mcnt
+    ld_time_s = ld_time
+ 
+    #determine fhost to write to 
+    for fhost in corr.fhosts:
+        if source_name in fhost.delays.keys():
+            try:
+                [act_delay, act_delta_delay, act_phase_offset, act_delta_phase_offset] = fhost.write_delay(
+                                             source_name, delay_s, delta_delay, phase_offset, delta_phase_offset_s, ld_time)
+
+                corr.logger.debug('Delay actually set to %e samples.' % act_delay/self.sample_rate_hz)
+                corr.logger.debug('Delay rate actually set to %e seconds per second.' % act_delta_delay)
+                corr.logger.debug('Phase offset actually set to %6.3f degrees.' % act_phase_offset)
+                corr.logger.debug('Phase offset change actually set to %e Hz.' % act_delta_phase*feng_clk)
+
+            except Exception as e:
+                corr.logger.error('New delay error - %s' % e.message)
+                raise ValueError('New delay error - %s' % e.message)
+            corr.logger.info('done.')
+            return
+    raise ValueError('Unknown source name %s' % source_name)
 
 
 def feng_check_tx(corr):

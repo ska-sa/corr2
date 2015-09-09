@@ -412,14 +412,16 @@ class FxCorrelator(Instrument):
             source_ctr += 1
 
         # assign sources and eqs to fhosts
-        self.logger.info('Assigning DataSources and EQs to f-engines...')
+        self.logger.info('Assigning DataSources, EQs and DelayTrackers to f-engines...')
         source_ctr = 0
         for fhost in self.fhosts:
             self.logger.info('\t%s:' % fhost.host)
             _eq_dict = {}
+            _delay_dict = {}
             for fengnum in range(0, self.f_per_fpga):
                 _source = self.fengine_sources[source_ctr]
                 _eq_dict[_source.name] = {'eq': eq_polys[_source.name], 'bram_num': fengnum}
+                _delay_dict[_source.name] = {'offset': fengnum}
                 assert _source.ip_range == self.fengine_sources[0].ip_range, (
                     'All f-engines should be receiving from %d streams.' % self.ports_per_fengine)
                 # adding a new instance attribute here, be careful
@@ -427,6 +429,7 @@ class FxCorrelator(Instrument):
                 fhost.add_source(_source)
                 self.logger.info('\t\t%s' % _source)
                 source_ctr += 1
+            fhost.delays = _delay_dict
             fhost.eqs = _eq_dict
         if source_ctr != len(self.fhosts) * self.f_per_fpga:
             raise RuntimeError('We have different numbers of sources (%d) and '
