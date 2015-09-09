@@ -42,14 +42,14 @@ class AdcData(object):
             word64_2 = list_w64[wordctr + 2]
             word64_3 = list_w64[wordctr + 3]
             word64_4 = list_w64[wordctr + 4]
-            word80_0 = ( ((word64_1 & 0x000000000000ffff) << 64) |
-                         ((word64_0 & 0xffffffffffffffff) << 0) )
-            word80_1 = ( ((word64_2 & 0x00000000ffffffff) << 48) |
-                         ((word64_1 & 0xffffffffffff0000) >> 16) )
-            word80_2 = ( ((word64_3 & 0x0000ffffffffffff) << 32) |
-                         ((word64_2 & 0xffffffff00000000) >> 32) )
-            word80_3 = ( ((word64_4 & 0xffffffffffffffff) << 16) |
-                         ((word64_3 & 0xffff000000000000) >> 48))
+            word80_0 = (((word64_1 & 0x000000000000ffff) << 64) |
+                        ((word64_0 & 0xffffffffffffffff) << 0))
+            word80_1 = (((word64_2 & 0x00000000ffffffff) << 48) |
+                        ((word64_1 & 0xffffffffffff0000) >> 16))
+            word80_2 = (((word64_3 & 0x0000ffffffffffff) << 32) |
+                        ((word64_2 & 0xffffffff00000000) >> 32))
+            word80_3 = (((word64_4 & 0xffffffffffffffff) << 16) |
+                        ((word64_3 & 0xffff000000000000) >> 48))
             words80.append(word80_0)
             words80.append(word80_1)
             words80.append(word80_2)
