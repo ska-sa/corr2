@@ -112,7 +112,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         try:
-            self.instrument.initialise(program=program, tvg=False)
+            self.instrument.initialise(program=program)
             return 'ok',
         except Exception as e:
             localexc = e
