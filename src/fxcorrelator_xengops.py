@@ -27,8 +27,7 @@ def _xeng_vacc_periodic_check(corr, old_data, check_time):
             return rv
         reo_data = THREADED_FPGA_OP(corr_obj.xhosts, timeout=5,
                                     target_function=get_reorder_data)
-        vacc_data = THREADED_FPGA_FUNC(corr_obj.xhosts, timeout=5,
-                                       target_function='vacc_get_status')
+        vacc_data = xeng_vacc_status(corr)
         return {'reorder': reo_data, 'vacc': vacc_data}
 
     def _vacc_data_check(corr_obj, d0, d1):
@@ -83,7 +82,7 @@ def _xeng_vacc_periodic_check(corr, old_data, check_time):
                                 corr, new_data, check_time)
 
 
-def xeng_setup_vacc_check_timer(corr, vacc_check_time=10):
+def xeng_setup_vacc_check_timer(corr, vacc_check_time=30):
     """
     Set up a periodic check on the vacc operation.
     :param corr: the correlator instance
@@ -221,6 +220,16 @@ def xeng_check_rx(corr, max_waittime=30):
     return all_okay
 
 
+def xeng_vacc_status(corr):
+    """
+    Get a dictionary of the vacc status registers for all
+    x-engines.
+    :return: {}
+    """
+    return THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
+                              target_function='vacc_get_status')
+
+
 def xeng_vacc_sync(corr, vacc_load_time=None):
     """
     Sync the vector accumulators on all the x-engines.
@@ -285,14 +294,15 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
                        target_function=('vacc_set_loadtime', (ldmcnt,),))
 
     # read the current arm and load counts
+    vacc_status = xeng_vacc_status(corr)
+
     def print_vacc_statuses(vstatus):
         corr.logger.info('VACC statii:')
         for _host in corr.xhosts:
             corr.logger.info('\t%s:' % _host.host)
             for _ctr, _status in enumerate(vstatus[_host.host]):
                 corr.logger.info('\t\t%i: %s' % (_ctr, _status))
-    vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
-                                     target_function='vacc_get_status')
+
     for host in corr.xhosts:
         for status in vacc_status[host.host]:
             if ((status['loadcount'] != vacc_status[corr.xhosts[0].host][0]['loadcount']) or
@@ -308,8 +318,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function='vacc_arm')
 
     # did the arm count increase?
-    vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
-                                     target_function='vacc_get_status')
+    vacc_status = xeng_vacc_status(corr)
     for host in corr.xhosts:
         for status in vacc_status[host.host]:
             if ((status['armcount'] != vacc_status[corr.xhosts[0].host][0]['armcount']) or
@@ -333,8 +342,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
             corr.logger.error(errstr)
             print 'lsws:', lsws
             print 'msws:', msws
-            vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
-                                             target_function='vacc_get_status')
+            vacc_status = xeng_vacc_status(corr)
             print_vacc_statuses(vacc_status)
             raise RuntimeError(errstr)
     lsw = lsws[corr.xhosts[0].host]['lsw']
@@ -348,8 +356,7 @@ def xeng_vacc_sync(corr, vacc_load_time=None):
     time.sleep(wait_time)
 
     # check the status to see that the load count increased
-    vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=5,
-                                     target_function='vacc_get_status')
+    vacc_status = xeng_vacc_status(corr)
     for host in corr.xhosts:
         for status in vacc_status[host.host]:
             if ((status['loadcount'] != vacc_status[corr.xhosts[0].host][0]['loadcount']) or
@@ -401,8 +408,7 @@ def xeng_vacc_check_okay_initial(corr):
     :return: True or False
     """
     corr.logger.info('\tChecking for errors & accumulations...')
-    vacc_status = THREADED_FPGA_FUNC(corr.xhosts, timeout=5,
-                                     target_function='vacc_get_status')
+    vacc_status = xeng_vacc_status(corr)
     for host in corr.xhosts:
         for status in vacc_status[host.host]:
             if status['errors'] > 0:
