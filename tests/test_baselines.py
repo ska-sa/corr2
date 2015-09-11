@@ -58,9 +58,9 @@ def match_inputs_to_baselines(baselines, active_inputs):
         if (baseline[0] in active_inputs) and (baseline[1] in active_inputs):
             matched_baselines.append(blsctr)
 
-    print baselines
     print active_inputs
-    print matched_baselines
+    for ctr, bls in enumerate(baselines):
+        print ctr, bls, 'MATCHED' if ctr in matched_baselines else ''
 
     return matched_baselines
 
@@ -145,8 +145,8 @@ try:
                     timediff = ig['timestamp'] - lasttime
                     if timediff != (256 * EXPECTED_NACC * EXPECTED_TIMESTEP):
                         print 'ERROR: timestamp not increasing correctly, diff was %i' % timediff
-                        error_log.append('%.3f ant(%s) timestamp increment wrong - %i' %
-                                         (time.time(), ant, timediff))
+                        error_log.append('%.3f ants(%s) timestamp increment wrong - %i' %
+                                         (time.time(), active_inputs, timediff))
                         got_error = True
                 lasttime = ig['timestamp']
                 zeroes = ZEROES_ALLOWED
@@ -162,14 +162,14 @@ try:
                                     zeroes -= 1
                                 else:
                                     print 'ERROR: expected non-zero data in baseline %i, got zero' % blscnt
-                                    error_log.append('%.3f ant(%s) bls(%i) - expected non-zero, got zero' %
-                                                     (time.time(), ant, blscnt))
+                                    error_log.append('%.3f ants(%s) bls(%i) - expected non-zero, got zero' %
+                                                     (time.time(), active_inputs, blscnt))
                                     got_error = True
                         else:
                             if bls_cplx != 0:
                                 print 'ERROR: expected zero data in baseline %i, got non-zero' % blscnt
-                                error_log.append('%.3f ant(%s) bls(%i) - expected zero, got non-zero' %
-                                                 (time.time(), ant, blscnt))
+                                error_log.append('%.3f ants(%s) bls(%i) - expected zero, got non-zero' %
+                                                 (time.time(), active_inputs, blscnt))
                                 got_error = True
                         blscnt += 1
                 if got_error:

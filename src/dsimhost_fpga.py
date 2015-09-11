@@ -33,10 +33,15 @@ class Source(object):
         self.name = name
 
 class SineSource(Source):
-    def __init__(self, freq_register, scale_register, name):
+    def __init__(self, freq_register, scale_register, name,
+                 repeat_en_register=None,
+                 repeat_len_register=None, repeat_len_field_name=None):
         super(SineSource, self).__init__(freq_register, name)
         self.freq_register = freq_register
         self.scale_register = scale_register
+        self.repeat_len_register = repeat_len_register
+        self.repeat_len_field_name = repeat_len_field_name
+        self.repeat_en_register = repeat_en_register
         self.sample_rate_hz = float(self.parent.config['sample_rate_hz'])
         freq_field = self.freq_register.field_get_by_name('frequency')
         self.nr_freq_steps = 2**(freq_field.width_bits)
@@ -51,12 +56,52 @@ class SineSource(Source):
     def scale(self):
         return self.scale_register.read()['data']['scale']
 
-    def set(self, scale=None, frequency=None):
+    @property
+    def repeat(self):
+        if self.repeat_len_register is None or self.repeat_en_register is None:
+            return None
+        if not self.repeat_en_register.read()['data']['en']:
+            return None
+        return self.repeat_len_register['data'][self.repeat_len_field_name]
+
+    def set(self, scale=None, frequency=None, repeatN=None):
+        """Set source parameters
+
+        Keyword Arguments
+        ----------------
+        scale : float, 0 to 1
+            Scaling factor for source
+        frequency : float in Hz
+            Frequency of source, from 0 to the Nyquist freq
+        repeatN : int
+            Forces output to be periodic every N samples, or disables repeat
+            if set to 0
+
+        """
         if scale is not None:
             self.scale_register.write(scale=scale)
         if frequency is not None:
             freq_steps = int(round(frequency / self.delta_freq))
             self.freq_register.write(frequency=freq_steps)
+        if repeatN is not None:
+            if self.repeat_len_register is None:
+                raise NotImplementedError(
+                    'Required repeat length register not found')
+            if self.repeat_len_field_name is None:
+                raise NotImplementedError(
+                    'Required repeat length field name not specified')
+            if self.repeat_en_register is None:
+                raise NotImplementedError(
+                    'Required repeat enable register not found')
+
+            repeatN = int(repeatN)
+            self.repeat_len_register.write(**{
+                self.repeat_len_field_name: repeatN})
+            if repeatN == 0:
+                self.repeat_en_register.write(en=0)
+            else:
+                self.repeat_en_register.write(en=1)
+
 
 class NoiseSource(Source):
     def __init__(self, scale_register, name):
@@ -341,8 +386,16 @@ class FpgaDsimHost(FpgaHost):
                 scale_reg_postfix = (
                     '_'+sin_name if reg.name.endswith('_'+sin_name) else sin_name)
                 scale_reg = getattr(self.registers, 'scale_cwg' + scale_reg_postfix)
+                repeat_en_reg_name = 'rpt_en_cwg' + scale_reg_postfix
+                repeat_len_reg_name = 'rpt_length_cwg' + scale_reg_postfix
+                repeat_en_reg = getattr(self.registers, repeat_en_reg_name, None)
+                repeat_len_reg = getattr(self.registers, repeat_len_reg_name, None)
+                repeat_len_field_name = 'cwg' + scale_reg_postfix + '_repeat_length'
                 setattr(self.sine_sources, 'sin_'+ sin_name, SineSource(
-                    reg, scale_reg, sin_name))
+                    reg, scale_reg, sin_name,
+                    repeat_len_register=repeat_len_reg,
+                    repeat_en_register=repeat_en_reg,
+                    repeat_len_field_name=repeat_len_field_name))
             elif noise_name is not None:
                 setattr(self.noise_sources, 'noise_' + noise_name,
                         NoiseSource(reg, noise_name))
@@ -353,6 +406,9 @@ class FpgaDsimHost(FpgaHost):
                 setattr(self.pulsar_sources, 'pulsar_'+pulsar_name, PulsarSource(
                     reg, scale_reg, pulsar_name))
             elif output_scale_name is not None:
+                # TEMP hack due to misnamed register
+                if output_scale_name.startswith('arb'):
+                    continue
                 setattr(self.outputs, 'out_' + output_scale_name,
                         Output(output_scale_name, reg, self.registers.control))
 

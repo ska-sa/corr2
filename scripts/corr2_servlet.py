@@ -13,17 +13,20 @@ from corr2 import fxcorrelator
 from corr2 import fxcorrelator_xengops as xengops
 from corr2 import fxcorrelator_fengops as fengops
 
+
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
-            'WARNING': 'warn'
+            'WARNING': 'warn',
+            'warning': 'warn'
         }
         if record.levelname in translate_levels:
-            record.levelname = translate_levels(record.levelname)
+            record.levelname = translate_levels[record.levelname]
         else:
             record.levelname = record.levelname.lower()
         record.msg = record.msg.replace(' ', '\_')
         return super(KatcpLogFormatter, self).format(record)
+
 
 class KatcpLogEmitHandler(logging.StreamHandler):
 
@@ -37,6 +40,8 @@ class KatcpLogEmitHandler(logging.StreamHandler):
         log message to all connected clients.
         """
         try:
+            if record.levelname == 'WARNING':
+                record.levelname = 'WARN'
             inform_msg = self.katcp_server.create_log_inform(record.levelname.lower(),
                                                              record.msg,
                                                              record.filename)
@@ -46,6 +51,7 @@ class KatcpLogEmitHandler(logging.StreamHandler):
             raise
         except:
             self.handleError(record)
+
 
 class Corr2Server(katcp.DeviceServer):
 
@@ -106,7 +112,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         try:
-            self.instrument.initialise(program=program, tvg=False)
+            self.instrument.initialise(program=program)
             return 'ok',
         except Exception as e:
             localexc = e
