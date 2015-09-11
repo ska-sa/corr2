@@ -300,3 +300,25 @@ def feng_subscribe_to_multicast(corr):
                     gbe.multicast_receive(rxaddress, 0)
                     gbe_ctr += 1
     corr.logger.info('done.')
+
+def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, ld_time=-1):
+    """
+    Set delay correction values for specified source. This is a blocking call. \n
+    By default, it will wait until load time and verify that things worked as expected. This check can be disabled by setting ld_check param to False. \n
+    Load time is optional; if not specified, load ASAP.\n
+    :return
+    """
+    corr.logger.info('Setting delay correction values for source %s' %source_name)
+    
+    #determine fhost to write to 
+    for fhost in corr.fhosts:
+        if source_name in fhost.delays.keys():
+            try:
+                fhost.write_delay(source_name, delay, delta_delay, phase_offset, delta_phase_offset, ld_time)
+            except Exception as e:
+                corr.logger.error('New delay error - %s' % e.message)
+                raise ValueError('New delay error - %s' % e.message)
+            corr.logger.info('done.')
+            return
+    raise ValueError('Unknown source name %s' % source_name)
+
