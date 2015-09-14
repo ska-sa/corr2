@@ -309,7 +309,7 @@ class FpgaFHost(DigitiserDataReceiver):
         # figure out the phase offset as a fraction of a cycle
         fr_phase_offset = float(phase_offset)/float(360) 
         # multiply by amount shifted down by on FPGA
-        fr_delta_phase_offset = float(delta_phase_offset)*(2**bitshift_schedule)
+        fr_delta_phase_offset = float(delta_phase_offset) * (2**bitshift_schedule)
 
         fine_delay_shift         = 1/float(2**(fine_delay_bits-1))
         act_fine_delay           = float(int(fine_delay/fine_delay_shift))*fine_delay_shift
@@ -319,17 +319,17 @@ class FpgaFHost(DigitiserDataReceiver):
         phase_offset_shift       = 1/float(2**(phase_offset_bits-1))
         act_phase_offset         = (float(int(fr_phase_offset/phase_offset_shift))*phase_offset_shift)*360
         delta_phase_offset_shift = 1/float(2**(delta_phase_offset_bits-1))
-        act_delta_phase_offset   = (float(int(delta_phase_offset/delta_phase_offset_shift))*delta_phase_offset_shift)/(2**bitshift_schedule)
+        act_delta_phase_offset   = (float(int(fr_delta_phase_offset/delta_phase_offset_shift))*delta_phase_offset_shift)/(2**bitshift_schedule)
 
-        LOGGER.info('Requested delay: %f' %delay)
-        LOGGER.info('Actual coarse delay: %d' %coarse_delay)
-        LOGGER.info('Actual fractional delay: %f' %act_fine_delay)
-        LOGGER.info('Requested delta delay: %d' %delta_fine_delay)
-        LOGGER.info('Actual delta delay: %d' %act_delta_delay)
-        LOGGER.info('Requested phase offset: %d' %phase_offset)
-        LOGGER.info('Actual delta delay: %d' %act_phase_offset)
-        LOGGER.info('Requested delta delay: %d' %delta_phase_offset)
-        LOGGER.info('Actual delta delay: %d' %act_delta_phase_offset)
+        LOGGER.info('Requested delay: %f samples' %delay)
+        LOGGER.info('Actual coarse delay: %d samples' %coarse_delay)
+        LOGGER.info('Actual fractional delay: %f samples' %act_fine_delay)
+        LOGGER.info('Requested delta delay: %e samples per sample' %delta_delay)
+        LOGGER.info('Actual delta delay: %e samples per sample' %act_delta_delay)
+        LOGGER.info('Requested phase offset: %f degrees' %phase_offset)
+        LOGGER.info('Actual phase offset: %f degrees' %act_phase_offset)
+        LOGGER.info('Requested delta phase offset: %e Hz per sample' %delta_phase_offset)
+        LOGGER.info('Actual delta phase offset: %e Hz per sample' %act_delta_phase_offset)
 
         if delay != 0:
             if (act_fine_delay == 0) and (coarse_delay == 0):
@@ -338,8 +338,8 @@ class FpgaFHost(DigitiserDataReceiver):
                 LOGGER.error('Requested coarse delay (%es) is out of range (+-%i samples).' % (coarse_delay, 2**(coarse_delay_bits-1)))
 
         if delta_delay != 0:
-            if fine_delta_delay == 0:
-                LOGGER.info('Requested delay rate too slow for this configuration. Setting delay rate to zero.')
+            if act_delta_delay == 0:
+                LOGGER.info('Requested delay delta too slow for this configuration. Setting delay rate to zero.')
 
         if phase_offset != 0:
             if fr_phase_offset == 0:
@@ -347,7 +347,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         if delta_phase_offset != 0:
             if act_delta_phase_offset == 0:
-                LOGGER.info('Requested phase offset change is too slow for this configuration. Setting phase offset change to zero.')
+                LOGGER.info('Requested phase offset delta is too slow for this configuration. Setting phase offset change to zero.')
 
         #determine offset from source name
         try:
@@ -404,16 +404,14 @@ class FpgaFHost(DigitiserDataReceiver):
 #
         # setup the delays:
         coarse_delay_reg.write(coarse_delay=coarse_delay)
-        LOGGER.debug('Set a coarse delay of %i clocks.' % coarse_delay)
+        LOGGER.info('Set a coarse delay of %i samples.' % coarse_delay)
 
-        fractional_delay_reg.write(initial=fine_delay)
-     	fractional_delay_reg.write(delta=delta_fine_delay)
-     	LOGGER.debug("Wrote 0x%4x to fractional_delay and 0x%4x to delta_delay register" % (fine_delay, delta_fine_delay))
+        fractional_delay_reg.write(initial=fine_delay, delta=delta_fine_delay)
+     	LOGGER.info("Wrote %f to initial and %f to delta in fractional_delay register" % (fine_delay, delta_fine_delay))
 
         # setup the phase offset
-        phase_reg.write(initial=fr_phase_offset)
-        phase_reg.write(delta=fr_delta_phase_offset)
-        LOGGER.debug("Wrote 0x%4x to phase_offset and 0x%4x to delta_phase_offset register."%(fr_phase_offset, fr_delta_phase_offset))
+        phase_reg.write(initial=fr_phase_offset, delta=fr_delta_phase_offset)
+        LOGGER.info("Wrote %f to initial and %f to delta in phase register" %(fr_phase_offset, fr_delta_phase_offset))
 
 # # TODO change from immediate
 #
@@ -450,44 +448,28 @@ class FpgaFHost(DigitiserDataReceiver):
         cd_status = cd_status_reg.read()['data']
         cd_arm_count_after = cd_status['arm_count']
         cd_ld_count_after = cd_status['load_count']
-        LOGGER.info('BEFORE: coarse arm_count(%10i) ld_count(%10i)' % (cd_arm_count_before, cd_ld_count_before, ))
-        LOGGER.info('AFTER:  coarse arm_count(%10i) ld_count(%10i)' % (cd_arm_count_after, cd_ld_count_after, ))
-        LOGGER.info('BEFORE: fractional delay arm_count(%10i) ld_count(%10i)' % (fd_arm_count_before, fd_ld_count_before, ))
-        LOGGER.info('AFTER:  fractional delay arm_count(%10i) ld_count(%10i)' % (fd_arm_count_after, fd_ld_count_after, ))
+        LOGGER.info('BEFORE: coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_before, cd_ld_count_before, ))
+        LOGGER.info('AFTER:  coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_after, cd_ld_count_after, ))
+        LOGGER.info('BEFORE: fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_before, fd_ld_count_before, ))
+        LOGGER.info('AFTER:  fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_after, fd_ld_count_after, ))
 
         # did the system arm?
         if (cd_arm_count_before == cd_arm_count_after):
-            if cd_arm_count_after == 0:
-                LOGGER.error('coarse delay arm count stays zero. Load failed.')
-                raise RuntimeError('coarse delay arm count stays zero. Load failed.')
-            else:
-                LOGGER.error('coarse delay arm count = %i. Load failed.' % (cd_arm_count_after))
-                raise RuntimeError('coarse delay arm count = %i. Load failed.' % (cd_arm_count_after))
+            LOGGER.error('coarse delay arm count does not change. Load failed.' % (cd_arm_count_after))
+            raise RuntimeError('coarse delay arm count does not change. Load failed.' % (cd_arm_count_after))
         
         if (fd_arm_count_before == fd_arm_count_after):
-            if fd_arm_count_after == 0:
-                LOGGER.error('fractional delay arm count stays zero. Load failed.')
-                raise RuntimeError('fractional delay arm count stays zero. Load failed.')
-            else:
-                LOGGER.error('fractional delay arm count = %i. Load failed.' % (fd_arm_count_after))
-                raise RuntimeError('fractional delay arm count = %i. Load failed.' % (fd_arm_count_after))
+            LOGGER.error('fractional delay and phase arm count do not change. Load failed.' % (fd_arm_count_after))
+            raise RuntimeError('fractional delay arm count do not change. Load failed.' % (fd_arm_count_after))
 
         # did the system load?
         if (cd_ld_count_before == cd_ld_count_after):
-            if cd_ld_count_after == 0:
-                LOGGER.error('coarse delay load count stays zero. Load failed.')
-                raise RuntimeError('coarse delay load count stays zero. Load failed.')
-            else:
-                LOGGER.error('coarse delay load count = %i. Load failed.' % (cd_ld_count_after))
-                raise RuntimeError('coarse delay load count = %i. Load failed.' % (cd_ld_count_after))
+            LOGGER.error('coarse delay load count did not change. Load failed.' % (cd_ld_count_after))
+            raise RuntimeError('coarse delay load count did not change. Load failed.' % (cd_ld_count_after))
         
         if (fd_ld_count_before == fd_ld_count_after):
-            if fd_ld_count_after == 0:
-                LOGGER.error('fractional delay load count stays zero. Load failed.')
-                raise RuntimeError('fractional delay load count stays zero. Load failed.')
-            else:
-                LOGGER.error('fractional delay load count = %i. Load failed.' % (fd_ld_count_after))
-                raise RuntimeError('fractional delay load count = %i. Load failed.' % (fd_ld_count_after))
+            LOGGER.error('fractional delay and phase load count did not change. Load failed.' % (fd_ld_count_after))
+            raise RuntimeError('fractional delay load count did not change. Load failed.' % (fd_ld_count_after))
 
         # did the system arm but not load? Check the time
 #        if (cd_ld_count_before >= cd_ld_count_after):
