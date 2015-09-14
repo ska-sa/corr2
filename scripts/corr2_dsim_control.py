@@ -41,24 +41,28 @@ parser.add_argument('--loglevel', dest='log_level', action='store', default='',
 parser.add_argument('--ipython', action='store_true', default=False, help=
                     'Launch an embedded ipython shell once all is said and done')
 parser.add_argument('--sine-source', action='append', default=[], nargs=3 , help=
-                    'Choose which sine to source, sin_0 or sin_1.\
-                    Set Scale and Frequency')
+                    'Choose which sine to source, sin_0 or sin_1. '
+                    'Set Scale and Frequency')
 parser.add_argument('--noise-source', action='append', default=[], nargs=2, help=
-                    'Choose which Noise to source, noise_0 or noise_1.\
-                    Set noise scale.')
+                    'Choose which Noise to source, noise_0 or noise_1. '
+                    'Set noise scale.')
 parser.add_argument('--output-type', action='append', default=[], nargs=2, help=
-                    'Choose which Output to source from, Output_0 or Output_1.\
-                     Output types, choose from signal or test_vectors.')
+                    'Choose which Output to source from, Output_0 or Output_1. '
+                     'Output types, choose from signal or test_vectors.')
 parser.add_argument('--output-scale', action='append', default=[], nargs=2, help=
-                    'Choose which Output to source from, Output 0 or Output 1.\
-                     Output Scale, choose between 0 - 1.')
+                    'Choose which Output to source from, Output 0 or Output 1. '
+                     'Output Scale, choose between 0 - 1.')
 parser.add_argument('--zeros-sine', action='store_true', default=False, help=
                     'Sets all sine sources to 0 scale and 0 Frequency.')
 parser.add_argument('--zeros-noise', action='store_true', default=False, help=
                     'Sets all  noise sources to 0 scale.')
 parser.add_argument('--pulsar-source', action='append', default=[], nargs=3, help=
-                    'Choose which sine to source, pulsar_0 or pulsar_1.\
-                    Set Scale and Frequency')
+                    'Choose which pulsar source, pulsar_0 or pulsar_1. '
+                    ' Set Scale and Frequency')
+parser.add_argument('--repeat-sine', action='append', default=[], nargs=2, help=
+                    'Force a sin source to repeat exactly every N samples. '
+                    'Setting N to 0 disables repeating. '
+                    'Arguments: sin_name, N. E.g --repeat-sin sin_0 4096')
 args = parser.parse_args()
 
 
@@ -126,33 +130,27 @@ if args.pulse:
     print 'Pulsed {} packets per polarisation'.format(args.pulse_packets)
     something_happened = True
 
-if args.ipython:
-    """Embedding ipython for debugging"""
-    import IPython
-    IPython.embed()
-    something_happened = True
-
 if args.sine_source:
-    for sine_source, xscale_s, yfreq_s in args.sine_source:
+    for sine_name, xscale_s, yfreq_s in args.sine_source:
         xscale = float(xscale_s)
         yfreq = float(yfreq_s)
         try:
-            sine_sources = getattr(dhost.sine_sources, 'sin_{}'.format(sine_source))
+            sine_source = getattr(dhost.sine_sources, 'sin_{}'.format(sine_name))
         except AttributeError:
             print "You can only select between sine sources: {}".format([
                 ss.name for ss in dhost.sine_sources])
             sys.exit(1)
         try:
-            sine_sources.set(scale=xscale, frequency=yfreq)
+            sine_source.set(scale=xscale, frequency=yfreq)
         except ValueError:
             print "\nError, verify your inputs for sin_%s" % sine_sources.name
             print "Max Frequency should be {}MHz".format(sine_sources.max_freq/1e6)
             print "Scale should be between 0 and 1"
             sys.exit(1)
         print ""
-        print "sine source:", sine_sources.name
-        print "scale:", sine_sources.scale
-        print "frequency:", sine_sources.frequency
+        print "sine source:", sine_source.name
+        print "scale:", sine_source.scale
+        print "frequency:", sine_source.frequency
     something_happened = True
 
 if args.zeros_sine:
@@ -265,7 +263,30 @@ if args.output_scale:
         print "output selected:", scale_from.name
         print "output scale:",  scale_from.scale_register.read()['data']['scale']
     something_happened = True
-#---------------------------------------------
+
+if args.repeat_sine:
+    something_happened = True
+    for sine_name, repeat in args.repeat_sine:
+        try:
+            sine = getattr(dhost.sine_sources, 'sin_{}'.format(sine_name))
+        except AttributeError:
+            print "You can only select between sine sources: {}".format([
+                ss.name for ss in dhost.sine_sources])
+            sys.exit(1)
+        try:
+            sine.set(repeatN=int(repeat))
+        except NotImplementedError:
+            print ("Source repeat not implemented for source '{sine_name}'."
+                   .format(**locals()))
+            sys.exit(1)
+
+if args.ipython:
+    """Embedding ipython for debugging"""
+    import IPython
+    IPython.embed()
+    something_happened = True
+
+
 if not something_happened:
     parser.print_help()
 #dhost.disconnect()

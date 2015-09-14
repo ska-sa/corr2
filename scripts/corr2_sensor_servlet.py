@@ -13,6 +13,7 @@ import tornado
 from tornado.ioloop import IOLoop
 from corr2 import sensors, fxcorrelator
 
+
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
@@ -26,6 +27,7 @@ class KatcpLogFormatter(logging.Formatter):
             record.levelname = record.levelname.lower()
         record.msg = record.msg.replace(' ', '\_')
         return super(KatcpLogFormatter, self).format(record)
+
 
 class KatcpLogEmitHandler(logging.StreamHandler):
 
@@ -48,6 +50,7 @@ class KatcpLogEmitHandler(logging.StreamHandler):
             raise
         except:
             self.handleError(record)
+
 
 class Corr2SensorServer(katcp.DeviceServer):
 
@@ -74,6 +77,7 @@ class Corr2SensorServer(katcp.DeviceServer):
         self.instrument.initialise(program=False, tvg=False)
         sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
 
+
 @tornado.gen.coroutine
 def on_shutdown(ioloop, server):
     print('Shutting down')
@@ -89,6 +93,8 @@ if __name__ == '__main__':
                         help='log level to set')
     parser.add_argument('--log_format_katcp', dest='lfm', action='store_true', default=False,
                         help='format log messsages for katcp')
+    parser.add_argument('--config', dest='config', type=str, action='store', default='',
+                        help='a corr2 config file')
     args = parser.parse_args()
 
     try:
@@ -111,14 +117,18 @@ if __name__ == '__main__':
         root_logger.addHandler(console_handler)
         use_katcp_logging = False
 
+    if 'CORR2INI' in os.environ.keys() and args.config == '':
+        args.config = os.environ['CORR2INI']
+    if args.config == '':
+        raise RuntimeError('No config file.')
+
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
-    signal.signal(signal.SIGINT, lambda sig, frame: ioloop.add_callback_from_signal(on_shutdown,
-                                                                                        ioloop, sensor_server))
+    signal.signal(signal.SIGINT, lambda sig, frame:
+    ioloop.add_callback_from_signal(on_shutdown, ioloop, sensor_server))
     print 'Sensor Server listening on port %d, ' % args.port
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
-    config_file = os.environ['CORR2INI']
-    instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
+    instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=args.config)
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()

@@ -97,7 +97,7 @@ class FxCorrelator(Instrument):
 
         self._initialised = False
 
-    def initialise(self, program=True, tvg=False, fake_digitiser=False, qdr_cal=True):
+    def initialise(self, program=True, qdr_cal=True, no_vacc_timer=False):
         """
         Set up the correlator using the information in the config file.
         :return:
@@ -131,15 +131,16 @@ class FxCorrelator(Instrument):
                 ftups.append((f, f.boffile))
             fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
         else:
-            # load information from the running boffiles
             self.logger.info('Loading design information')
-            THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.bhosts, timeout=5, target_function='get_system_information')
+            THREADED_FPGA_FUNC(self.fhosts, timeout=5,
+                               target_function='get_system_information')
+            THREADED_FPGA_FUNC(self.xhosts, timeout=5,
+                               target_function='get_system_information')
+            THREADED_FPGA_FUNC(self.bhosts, timeout=5,
+                               target_function='get_system_information')
 
         # remove test hardware from designs
         utils.remove_test_objects(self)
-
         if program:
             # cal the qdr on all boards
             if qdr_cal:
@@ -195,19 +196,12 @@ class FxCorrelator(Instrument):
         fengops.feng_clear_status_all(self)
         xengops.xeng_clear_status_all(self)
 
+        # start the vacc check timer
+        if not no_vacc_timer:
+            xengops.xeng_setup_vacc_check_timer(self)
+
         # set an initialised flag
         self._initialised = True
-
-        # start the vacc check timer
-        # TODO
-        # xengops.xeng_setup_vacc_check_timer(self)
-
-    # def qdr_calibrate_SERIAL(self):
-    #     for hostlist in [self.fhosts, self.xhosts]:
-    #         for host in hostlist:
-    #             print host.host
-    #             for qdr in host.qdrs:
-    #                 qdr.qdr_cal(fail_hard=False, verbosity=2)
 
     def est_sync_epoch(self):
         """
@@ -245,7 +239,6 @@ class FxCorrelator(Instrument):
         Run a software calibration routine on all the FPGA hosts.
         :return:
         """
-        # cal the QDR specifically
         def _qdr_cal(_fpga):
             _results = {}
             for _qdr in _fpga.qdrs:
@@ -266,7 +259,6 @@ class FxCorrelator(Instrument):
         # for host in self.fhosts:
         #     for qdr in host.qdrs:
         #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
-        #
         # for host in self.xhosts:
         #     for qdr in host.qdrs:
         #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
