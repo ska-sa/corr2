@@ -28,11 +28,13 @@ import log
 import utils
 import xhost_fpga
 import fhost_fpga
+import bhost_fpga
 
 from instrument import Instrument
 from data_source import DataSource
 import fxcorrelator_fengops as fengops
 import fxcorrelator_xengops as xengops
+import fxcorrelator_bengops as bengops
 
 use_xeng_sim = False
 
@@ -72,6 +74,7 @@ class FxCorrelator(Instrument):
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []
+        self.bhosts = []
         self.filthosts = None
 
         # attributes
@@ -129,9 +132,12 @@ class FxCorrelator(Instrument):
             fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
         else:
             self.logger.info('Loading design information')
-            # Get register info etc from hosts.
-            THREADED_FPGA_FUNC(self.fhosts + self.xhosts,
-                               timeout=5, target_function='get_system_information')
+            THREADED_FPGA_FUNC(self.fhosts, timeout=5,
+                               target_function='get_system_information')
+            THREADED_FPGA_FUNC(self.xhosts, timeout=5,
+                               target_function='get_system_information')
+            THREADED_FPGA_FUNC(self.bhosts, timeout=5,
+                               target_function='get_system_information')
 
         # remove test hardware from designs
         utils.remove_test_objects(self)
@@ -354,6 +360,12 @@ class FxCorrelator(Instrument):
             fpgahost = xhost_fpga.FpgaXHost.from_config_source(host, self.katcp_port,
                                                                config_source=self.configd['xengine'])
             self.xhosts.append(fpgahost)
+        self.bhosts = []
+        for host in self.configd['xengine']['hosts'].split(','):  # x-eng host b-eng
+            host = host.strip()
+            fpgahost = bhost_fpga.FpgaBHost.from_config_source(host, self.katcp_port,
+                                                               config_source=self.configd['xengine'])
+            self.bhosts.append(fpgahost)
 
         # check that no hosts overlap
         for _fh in self.fhosts:
