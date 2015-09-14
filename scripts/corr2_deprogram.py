@@ -78,11 +78,13 @@ deprogrammed = []
 to_deprogram = []
 already_deprogrammed = []
 for fpga in fpgas:
-    if running[fpga.host]:
-        deprogrammed.append(fpga.host)
-        to_deprogram.append(fpga)
-    else:
-        already_deprogrammed.append(fpga.host)
+    # Excluding AndrewsVdB DSim test roach from the list of deprogrammable devices
+    if fpga.host != 'roach020A01':
+        if running[fpga.host]:
+            deprogrammed.append(fpga.host)
+            to_deprogram.append(fpga)
+        else:
+            already_deprogrammed.append(fpga.host)
 running = fpgautils.threaded_fpga_function(to_deprogram, 10, 'deprogram')
 
 if len(deprogrammed) != 0:
