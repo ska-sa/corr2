@@ -276,15 +276,18 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
-    def write_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, ld_time=None, ld_check=True, extra_wait_time=0):
+    def write_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, load_mcnt=None, load_wait_delay=None):
         """
-        Configures a given antenna to a delay in seconds using both the coarse and the fine delay. Also configures the fringe rotation components. This is a blocking call. \n
-        By default, it will wait until load time and verify that things worked as expected. This check can be disabled by setting ld_check param to False. \n
-        Load time is optional; if not specified, load ASAP.\n
+        Configures a given stream to a delay in samples and phase in degrees\n
+        The sample count at which this happens can be specified (default is immediate if not specified)\n
+        If a load_check_time is specified, function will block until that time before checking.\n
+        By default, it will load immediately and verify that things worked as expected. \n
         \t delay is in samples\n
         \t delta delay is in samples per sample\n
         \t phase offset is in degrees\n
         \t delta phase offset is in cycles per fengine FPGA clock sample\n
+        \t load_mcnt is in samples since epoch
+        \t load_wait_delay is seconds to wait for delay values to load 
         """                   
      
         ###########################################################
@@ -372,36 +375,11 @@ class FpgaFHost(DigitiserDataReceiver):
         cd_status_reg           = self.registers['tl_cd%i_status' %offset]
         cd_control_reg          = self.registers['tl_cd%i_control' %offset]
         cd_control0_reg         = self.registers['tl_cd%i_control0' %offset]
-
-        # read the arm and load counts - they must increment after the delay has been loaded
-        fd_status = fd_status_reg.read()['data']
-        fd_arm_count_before = fd_status['arm_count']
-        fd_ld_count_before = fd_status['load_count']
         
         cd_status = cd_status_reg.read()['data']
         cd_arm_count_before = cd_status['arm_count']
         cd_ld_count_before = cd_status['load_count']
 
-        # get the current mcnt for this feng
-        mcnt_before = self.get_local_time()
-
-        # TODO
-        # figure out the load time
-#        if ld_time == None:
-            # User did not ask for a specific time; load now!
-# #         # figure out the load-time mcnt:
-# #            mcnt_ld = int(mcnt_before + (self.config['mcnt_scale_factor'] * min_ld_time))
-# #            mcnt_ld = mcnt_ld + (self.config['mcnt_scale_factor'] * extra_wait_time)
-#        else:
-        if ld_time != None:
-            if (ld_time < (time.time() + self.min_load_time)):
-                LOGGER.error('Cannot load at a time in the past.')
-                return            
-
-##            mcnt_ld = self.mcnt_from_time(ld_time)
-##            if (mcnt_ld < (mcnt_before + self.config['mcnt_scale_factor']*min_load_time)):
-# ##            log_runtimeerror(self.syslogger, "This works out to a loadtime in the past! Logic error :(")
-#
         # setup the delays:
         coarse_delay_reg.write(coarse_delay=coarse_delay)
         LOGGER.info('Set a coarse delay of %i samples.' % coarse_delay)
@@ -413,41 +391,22 @@ class FpgaFHost(DigitiserDataReceiver):
         phase_reg.write(initial=fr_phase_offset, delta=fr_delta_phase_offset)
         LOGGER.info("Wrote %f to initial and %f to delta in phase register" %(fr_phase_offset, fr_delta_phase_offset))
 
-# # TODO change from immediate
-#
-# #        # set the load time:
-# #        # MSb (load-it! bit) is pos-edge triggered.
-# #        self.ffpgas[ffpga_n].write_int('ld_time_lsw%i' % feng_input, (mcnt_ld&0xffffffff))
-# #        self.ffpgas[ffpga_n].write_int('ld_time_msw%i' % feng_input, (mcnt_ld>>32)&0x7fffffff)
-# #        self.ffpgas[ffpga_n].write_int('ld_time_msw%i' % feng_input, (mcnt_ld>>32)|(1<<31))
-        cd_control0_reg.write(arm='pulse', load_immediate='pulse')
-        fd_control0_reg.write(arm='pulse', load_immediate='pulse')
+        cd_tl_name = 'tl_cd%i'%offset
+        cd_tl_name = 'tl_fd%i'%offset
+        status = self.arm_timed_latches([cd_tl_name, fd_tl_name], mcnt=mcnt, check_time_delay=load_wait_delay)
+        cd_status_before = status['status_before'][cd_tl_name] 
+        cd_status_after = status['status_after'][cd_tl_name] 
+        fd_status_before = status['status_before'][fd_tl_name] 
+        fd_status_after = status['status_after'][fd_tl_name] 
 
-        if ld_check == False:
-            return {
-                'act_delay': act_delay,
-                'act_phase_offset': act_phase_offset,
-                'act_delta_phase_offset': act_delta_phase_offset,
-                'act_delta_delay': act_delta_delay}
+        # read the arm and load counts - they must increment after the delay has been loaded
+        fd_arm_count_before = fd_status_before['arm_count']
+        fd_ld_count_before = fd_status_before['load_count']
 
-# # TODO
-#
-        # check that it loaded correctly
-        # wait until the time has elapsed
-# #        sleep_time = self.time_from_mcnt(mcnt_ld) - self.time_from_mcnt(mcnt_before) + network_latency_adjust
-# #        self.floggers[ffpga_n].debug('waiting %2.3f seconds (now: %i, ldtime: %i)' % (sleep_time, self.time_from_mcnt(mcnt_ld), self.time_from_mcnt(mcnt_before)))
-# #        print 'waiting %2.3f seconds (now: %i, ldtime: %i)' % (sleep_time, self.time_from_mcnt(mcnt_ld), self.time_from_mcnt(mcnt_before))
-# #        sys.stdout.flush()
-# #        time.sleep(sleep_time)
-#
         # get the arm and load counts after the fact
-        fd_status = fd_status_reg.read()['data']
         fd_arm_count_after = fd_status['arm_count']
         fd_ld_count_after = fd_status['load_count']
         
-        cd_status = cd_status_reg.read()['data']
-        cd_arm_count_after = cd_status['arm_count']
-        cd_ld_count_after = cd_status['load_count']
         LOGGER.info('BEFORE: coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_before, cd_ld_count_before, ))
         LOGGER.info('AFTER:  coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_after, cd_ld_count_after, ))
         LOGGER.info('BEFORE: fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_before, fd_ld_count_before, ))
@@ -487,7 +446,48 @@ class FpgaFHost(DigitiserDataReceiver):
             'act_delta_phase_offset': act_delta_phase_offset,
             'act_delta_delay': act_delta_delay}
 
+    def arm_timed_latches(self, names, mcnt=None, check_time_delay=None):
+        """
+        Arms a timed latch.
+        :param name: names of latches to trigger
+        :param mcnt: sample mcnt to trigger at. If None triggers immediately. (default None)
+        :param check_time_delay: time in seconds to wait after arming
+        :return dictionary containing status_before and status_after list
+        """
+        status_before = []
+        status_after = []
+        
+        if mcnt == None:
+            for name in names:        
+                control_reg = self.registers['%s_control' %name]
+                control0_reg = self.registers['%s_control0' %name]
+                
+                status_before.append({name: status_reg.read()['data']})
+                control0_reg.write(arm='pulse', load_immediate='pulse') 
+        else:
+            for name in names:    
+                load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
+                load_time_msw = mcnt/(2**32)
 
+                control_reg = self.registers['%s_control' %name]
+                control0_reg = self.registers['%s_control0' %name]
+                status_reg = self.registers['%s_status' %name]
+
+                status_before.append({name: status_reg.read()['data']})
+                control_reg.write(load_time_lsw=load_time_lsw)
+                control0_reg.write(arm='pulse', load_time_msw=load_time_msw, load_immediate=0)
+        
+        if check_time_delay != None:
+            time.sleep(check_time_delay)
+
+        for name in names:        
+            status_reg = self.registers['%s_status' %name]
+            status_after.append({name: status_reg.read()['data']})
+
+        return {
+            'status_before': status_before, 
+            'status_after': status_after}
+    
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
         Set the FFT shift schedule.
