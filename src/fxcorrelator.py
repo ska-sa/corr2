@@ -334,6 +334,7 @@ class FxCorrelator(Instrument):
         self.xeng_accumulation_len = int(self.configd['xengine']['xeng_accumulation_len'])
         self.n_chans = int(self.configd['fengine']['n_chans'])
         self.n_antennas = int(self.configd['fengine']['n_antennas'])
+        self.min_load_time = float(self.configd['fengine']['min_load_time'])
 
         self.set_stream_destination(self.configd['xengine']['output_destination_ip'],
                                     int(self.configd['xengine']['output_destination_port']))

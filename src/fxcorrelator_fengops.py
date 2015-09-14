@@ -88,12 +88,12 @@ def feng_check_rx(corr, max_waittime=30):
     corr.logger.info('\tdone.')
     return all_okay
 
-def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, ld_time=-1):
+def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, ld_time=None, ld_check=True):
     """
     Set delay correction values for specified source. This is a blocking call. \n
     By default, it will wait until load time and verify that things worked as expected. 
     This check can be disabled by setting ld_check param to False. \n
-    Load time is optional; if not specified, load ASAP.\n
+    Load time is optional; if not specified, load immediately.\n
     :return
     """
     corr.logger.info('Setting delay correction values for source %s' %source_name)
@@ -106,15 +106,22 @@ def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, de
     #convert from cycles per second to cycles per feng fpga clock
     delta_phase_offset_s = float(delta_phase_offset) / feng_clk
 
-    #TODO convert ld_time from seconds since 70s to mcnt
-    ld_time_s = ld_time
- 
+    ld_time_mcnt = None
+    if ld_time != None:
+        ld_time_mcnt = corr.mcnt_from_time(ld_time)
+
+    #calculate time to wait for load
+    load_wait_delay = None
+    if ld_check == True:
+        if ld_time != None:
+            load_wait_delay = ld_time - time.time() + corr.min_load_time
+
     #determine fhost to write to 
     for fhost in corr.fhosts:
         if source_name in fhost.delays.keys():
             try:
                 [act_delay, act_delta_delay, act_phase_offset, act_delta_phase_offset] = fhost.write_delay(
-                                             source_name, delay_s, delta_delay, phase_offset, delta_phase_offset_s, ld_time)
+                                             source_name, delay_s, delta_delay, phase_offset, delta_phase_offset_s, ld_time_mcnt, load_wait_delay)
 
                 corr.logger.debug('Delay actually set to %e samples.' % act_delay/corr.sample_rate_hz)
                 corr.logger.debug('Delay rate actually set to %e seconds per second.' % act_delta_delay)

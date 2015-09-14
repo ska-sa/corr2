@@ -392,25 +392,27 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info("Wrote %f to initial and %f to delta in phase register" %(fr_phase_offset, fr_delta_phase_offset))
 
         cd_tl_name = 'tl_cd%i'%offset
-        cd_tl_name = 'tl_fd%i'%offset
-        status = self.arm_timed_latches([cd_tl_name, fd_tl_name], mcnt=mcnt, check_time_delay=load_wait_delay)
+        fd_tl_name = 'tl_fd%i'%offset
+        status = self.arm_timed_latches([cd_tl_name, fd_tl_name], mcnt=load_mcnt, check_time_delay=load_wait_delay)
         cd_status_before = status['status_before'][cd_tl_name] 
         cd_status_after = status['status_after'][cd_tl_name] 
         fd_status_before = status['status_before'][fd_tl_name] 
         fd_status_after = status['status_after'][fd_tl_name] 
 
         # read the arm and load counts - they must increment after the delay has been loaded
+        cd_arm_count_before = cd_status_before['arm_count']
+        cd_ld_count_before = cd_status_before['load_count']
+        cd_arm_count_after = cd_status_after['arm_count']
+        cd_ld_count_after = cd_status_after['load_count']
         fd_arm_count_before = fd_status_before['arm_count']
         fd_ld_count_before = fd_status_before['load_count']
-
-        # get the arm and load counts after the fact
-        fd_arm_count_after = fd_status['arm_count']
-        fd_ld_count_after = fd_status['load_count']
+        fd_arm_count_after = fd_status_after['arm_count']
+        fd_ld_count_after = fd_status_after['load_count']
         
-        LOGGER.info('BEFORE: coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_before, cd_ld_count_before, ))
-        LOGGER.info('AFTER:  coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_after, cd_ld_count_after, ))
-        LOGGER.info('BEFORE: fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_before, fd_ld_count_before, ))
-        LOGGER.info('AFTER:  fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_after, fd_ld_count_after, ))
+        LOGGER.info('BEFORE: coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_before, cd_ld_count_before))
+        LOGGER.info('AFTER:  coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_after, cd_ld_count_after))
+        LOGGER.info('BEFORE: fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_before, fd_ld_count_before))
+        LOGGER.info('AFTER:  fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_after, fd_ld_count_after))
 
         # did the system arm?
         if (cd_arm_count_before == cd_arm_count_after):
@@ -430,16 +432,6 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('fractional delay and phase load count did not change. Load failed.' % (fd_ld_count_after))
             raise RuntimeError('fractional delay load count did not change. Load failed.' % (fd_ld_count_after))
 
-        # did the system arm but not load? Check the time
-#        if (cd_ld_count_before >= cd_ld_count_after):
-#            mcnt_after = self.get_local_time()
-#            print 'MCNT: before: %10i, target: %10i, after: %10i, after-target(%10i)' % (mcnt_before, mcnt_ld, mcnt_after, mcnt_after - mcnt_ld, )
-#            print 'TIME: before: %10.3f, target: %10.3f, after: %10.3f, after-target(%10.3f)' % (self.time_from_mcnt(mcnt_before), self.time_from_mcnt(mcnt_ld), self.time_from_mcnt(mcnt_after), self.time_from_mcnt(mcnt_after - mcnt_ld), )
-#            if mcnt_after > mcnt_ld:
-# #                log_runtimeerror(self.floggers[ffpga_n], 'We missed loading the registers by about %4.1f ms.' % ((mcnt_after - mcnt_ld)/self.config['mcnt_scale_factor']*1000.0))
-# #            else:
-# #                log_runtimeerror(self.floggers[ffpga_n], 'Ant %s (Feng %i on %s) did not load correctly for an unknown reason.' % (ant_str, feng_input, self.fsrvs[ffpga_n]))
-
         return {
             'act_delay': act_delay,
             'act_phase_offset': act_phase_offset,
@@ -454,26 +446,27 @@ class FpgaFHost(DigitiserDataReceiver):
         :param check_time_delay: time in seconds to wait after arming
         :return dictionary containing status_before and status_after list
         """
-        status_before = []
-        status_after = []
+        status_before = {}
+        status_after = {}
         
-        if mcnt == None:
-            for name in names:        
-                control_reg = self.registers['%s_control' %name]
-                control0_reg = self.registers['%s_control0' %name]
-                
-                status_before.append({name: status_reg.read()['data']})
+        #mcnt_before = self.get_local_time()
+        #LOGGER.info('local time before:%d' %mcnt_before)
+       
+        if mcnt != None:
+            load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
+            load_time_msw = int(mcnt/(2**32))
+            #LOGGER.info('mcnt:%d' %mcnt)
+            #LOGGER.info('mcnt:0x%08x msw:0x%08x lsw:0x%08x' %(mcnt, load_time_msw, load_time_lsw))
+
+        for name in names:        
+            control_reg = self.registers['%s_control' %name]
+            control0_reg = self.registers['%s_control0' %name]
+            status_reg = self.registers['%s_status' %name]
+               
+            status_before[name] = status_reg.read()['data']
+            if mcnt == None:
                 control0_reg.write(arm='pulse', load_immediate='pulse') 
-        else:
-            for name in names:    
-                load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
-                load_time_msw = mcnt/(2**32)
-
-                control_reg = self.registers['%s_control' %name]
-                control0_reg = self.registers['%s_control0' %name]
-                status_reg = self.registers['%s_status' %name]
-
-                status_before.append({name: status_reg.read()['data']})
+            else:
                 control_reg.write(load_time_lsw=load_time_lsw)
                 control0_reg.write(arm='pulse', load_time_msw=load_time_msw, load_immediate=0)
         
@@ -482,7 +475,10 @@ class FpgaFHost(DigitiserDataReceiver):
 
         for name in names:        
             status_reg = self.registers['%s_status' %name]
-            status_after.append({name: status_reg.read()['data']})
+            status_after[name] = status_reg.read()['data']
+        
+        #mcnt_after = self.get_local_time()
+        #LOGGER.info('local time after:%d' %mcnt_after)
 
         return {
             'status_before': status_before, 
