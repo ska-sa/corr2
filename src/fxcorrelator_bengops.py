@@ -1,8 +1,7 @@
 import numpy
 import struct
-
+import socket
 from casperfpga import utils as fpgautils
-from bhost_fpga import FpgaBHost
 import spead64_48 as spead
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
@@ -449,6 +448,7 @@ def bf_write_int(corr, destination, data, beams=[],
     else:
         raise corr.logger.error('Invalid destination')
 
+
 def cf_bw2fft_bins(corr, centre_frequency, bandwidth):
     """
     returns fft bins associated with provided centre_frequency and bandwidth
@@ -547,11 +547,10 @@ def beng_initialise(corr, beams=[], set_cal=True, config_output=True,
     else:
         corr.logger.info('Skipped calibration config of beamformer.')
     if set_weights:
-        antennas = _get_ant_mapping_list(corr, )
-        weights = []
+        weights = dict()
         for beam in beams:
-            weight = get_beam_weights(corr, beam, antennas)
-            weights.extend(weight)
+            weight = get_beam_weights(corr, beam)
+            weights.update(weight)
             # write_int it to value_in
     # if we set up calibration weights, then config has these already so don't
     # read from fpga
@@ -679,34 +678,34 @@ def config_udp_output(corr, beams=[], frequencies=[],
         :param issue_spead:
         :return:
         """
-        fft_bins = self.frequency2fft_bin(frequencies)
+        fft_bins = corr.frequency2fft_bin(frequencies)
         for beam in beams:
             if dest_ip_str == None:
-                rx_udp_ip_str = self.get_beam_param(beam, 'rx_udp_ip_str')
+                rx_udp_ip_str = corr.get_beam_param(beam, 'rx_udp_ip_str')
             else:
                 rx_udp_ip_str = dest_ip_str
-                self.set_beam_param(beam, 'rx_udp_ip_str', dest_ip_str)
-                self.set_beam_param(beam, 'rx_udp_ip', struct.unpack('>L', socket.inet_aton(dest_ip_str))[0])
+                corr.set_beam_param(beam, 'rx_udp_ip_str', dest_ip_str)
+                corr.set_beam_param(beam, 'rx_udp_ip', struct.unpack('>L', socket.inet_aton(dest_ip_str))[0])
             if dest_port == None:
-                rx_udp_port = self.get_beam_param(beam, 'rx_udp_port')
+                rx_udp_port = corr.get_beam_param(beam, 'rx_udp_port')
             else:
                 rx_udp_port = dest_port
-                self.set_beam_param(beam, 'rx_udp_port', dest_port)
-            beam_offset = int(self.get_beam_param(beam, 'location'))
+                corr.set_beam_param(beam, 'rx_udp_port', dest_port)
+            beam_offset = int(corr.get_beam_param(corr, beam, 'location'))
             dest_ip = struct.unpack('>L', socket.inet_aton(rx_udp_ip_str))[0]
             # restart if currently transmitting
-            restart = self.tx_status_get(beam)
+            restart = corr.tx_status_get(beam)
             if restart:
-                self.tx_stop(beam)
+                corr.tx_stop(beam)
             # no dest register
-            self.write_int('dest', fft_bins=fft_bins, data=[dest_ip], offset=(beam_offset*2))
-            self.write_int('dest', fft_bins=fft_bins, data=[int(rx_udp_port)], offset=(beam_offset*2+1))
+            corr.write_int('dest', fft_bins=fft_bins, data=[dest_ip], offset=(beam_offset*2))
+            corr.write_int('dest', fft_bins=fft_bins, data=[int(rx_udp_port)], offset=(beam_offset*2+1))
             # each beam output from each beamformer group can be configured differently
-            LOGGER.info("Beam %s configured to output to %s:%i." % (beam, rx_udp_ip_str, int(rx_udp_port)))
+            corr.logging.info("Beam %s configured to output to %s:%i." % (beam, rx_udp_ip_str, int(rx_udp_port)))
             if issue_spead:
-                self.spead_destination_meta_issue(beam)
+                corr.spead_destination_meta_issue(beam)
             if restart:
-                self.tx_start(beam)
+                corr.tx_start(beam)
 
 
 # TODO might be obsolete
@@ -776,36 +775,45 @@ def get_n_chans(corr, beam):
     return n_chans
 
 
-def get_beam_weights(corr, beam, antennas=[]):
+def get_beam_weights(corr, beams=[]):
     """
     Fetches the weights from the config file and returns
     :param beam:
     :param ant_str:
     :return:
     """
-    input_n = antenna2antenna_indices(corr, beam, antennas=antennas)
+    ant_str = _get_ant_mapping_list(corr)
+    # default format
     weight_default = corr.configd['beamformer']['weight_default']
-    weights = []
+    weights = dict()
     if weight_default == 'int':
-        for num in input_n:
-            weight = int(get_beam_param(corr, beam, 'weight_ant%i' % input_n[num]))
-            weights.append(weight)
+        for beam in beams:
+            input_n = antenna2antenna_indices(corr, beam, antennas=ant_str)
+            beam_idx = beam2index(corr, beam)[0]
+            for num in input_n:
+                weight = int(get_beam_param(corr, beam, 'weight_ant%i' % input_n[num]))
+                weights.update({'beam%i_ant%i' % (beam_idx, input_n[num]): weight})
     else:
         raise corr.logger.error('Your default beamformer weights '
                            'type, %s, is not understood.' % weight_default)
-    if len(weights) != len(input_n):
+    if len(weights) != len(ant_str):
         raise corr.logger.error('Something\'s wrong. I have %i weights '
                            'when I should have %i.'
-                           % (len(weights), len(input_n)))
+                                % (len(weights), len(ant_str)))
     return weights
 
 
 # TODO
-def set_beam_weights(corr, beam):
-    get_beam_weights(corr, beam, antennas=[])
-
-    return None
-
+def set_beam_weights(corr, beam=0, antenna=0):
+    # get weights from config per antenna
+    weights = get_beam_weights(corr, [beam])
+    # set the antenna
+    THREADED_FPGA_FUNC(corr.bhosts, timeout=10,
+                       target_function=('write_antenna', (antenna, False)))
+    THREADED_FPGA_FUNC(corr.bhosts, timeout=10,
+                       target_function=('write_value_in',
+                                        (weights['beam%i_ant%i'
+                                                 % (beam, antenna)], False)))
 
 def cal_set_all(corr, beams=[], antennas=[], init_poly=[],
                 init_coeffs=[], spead_issue=True):
@@ -1263,7 +1271,7 @@ def spead_time_meta_issue(corr, beams=[]):
         corr.logger.info("Issued SPEAD timing metadata for beam %s" % beam)
 
 
-# TODO
+# TODO check this eq_spectrum_get
 def spead_eq_meta_issue(corr, beams=[], antennas=[]):
     """
     Issues a SPEAD heap for the RF gain and EQ settings settings.
@@ -1355,13 +1363,13 @@ def spead_issue_all(corr, beams=[], from_fpga=True):
     :param from_fpga:
     :return:
     """
-    spead_static_meta_issue(corr, beams=beams)
+    spead_static_meta_issue(corr, beams=beams)  # fxcorrelator.spead_issue_meta
     spead_passband_meta_issue(corr, beams=beams)
-    spead_destination_meta_issue(corr, beams=beams)
-    spead_time_meta_issue(corr, beams=beams)
-    spead_eq_meta_issue(corr, beams=beams)
-    spead_cal_meta_issue(corr, beams=beams, from_fpga=from_fpga)
-    spead_labelling_issue(corr, beams=beams)
+    spead_destination_meta_issue(corr, beams=beams)  # fxcorrelator.spead_issue_meta
+    spead_time_meta_issue(corr, beams=beams)  # fxcorrelator.spead_issue_meta
+    spead_eq_meta_issue(corr, beams=beams)  # fxcorrelator.spead_issue_meta
+    spead_cal_meta_issue(corr, beams=beams, from_fpga=from_fpga)  # fxcorrelator.spead_issue_meta
+    spead_labelling_issue(corr, beams=beams)  # fxcorrelator.spead_issue_meta
 
     # def read_int_bf_control(self, device_name):
     #     """
