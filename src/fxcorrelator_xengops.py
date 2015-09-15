@@ -82,7 +82,7 @@ def _xeng_vacc_periodic_check(corr, old_data, check_time):
                                 corr, new_data, check_time)
 
 
-def xeng_setup_vacc_check_timer(corr, vacc_check_time=30):
+def xeng_vacc_start_check_timer(corr, vacc_check_time=30):
     """
     Set up a periodic check on the vacc operation.
     :param corr: the correlator instance
