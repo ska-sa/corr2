@@ -437,21 +437,21 @@ class FpgaFHost(DigitiserDataReceiver):
 
         # did the system arm?
         if (cd_arm_count_before == cd_arm_count_after):
-            LOGGER.error('coarse delay arm count does not change. Load failed.' % (cd_arm_count_after))
-            raise RuntimeError('coarse delay arm count does not change. Load failed.' % (cd_arm_count_after))
+            LOGGER.error('coarse delay arm count does not change. Load failed.')
+            raise RuntimeError('coarse delay arm count does not change. Load failed.')
         
         if (fd_arm_count_before == fd_arm_count_after):
-            LOGGER.error('fractional delay and phase arm count do not change. Load failed.' % (fd_arm_count_after))
-            raise RuntimeError('fractional delay arm count do not change. Load failed.' % (fd_arm_count_after))
+            LOGGER.error('fractional delay and phase arm count do not change. Load failed.')
+            raise RuntimeError('fractional delay arm count do not change. Load failed.')
 
         # did the system load?
         if (cd_ld_count_before == cd_ld_count_after):
-            LOGGER.error('coarse delay load count did not change. Load failed.' % (cd_ld_count_after))
-            raise RuntimeError('coarse delay load count did not change. Load failed.' % (cd_ld_count_after))
+            LOGGER.error('coarse delay load count did not change. Load failed.')
+            raise RuntimeError('coarse delay load count did not change. Load failed.')
         
         if (fd_ld_count_before == fd_ld_count_after):
-            LOGGER.error('fractional delay and phase load count did not change. Load failed.' % (fd_ld_count_after))
-            raise RuntimeError('fractional delay load count did not change. Load failed.' % (fd_ld_count_after))
+            LOGGER.error('fractional delay and phase load count did not change. Load failed.')
+            raise RuntimeError('fractional delay load count did not change. Load failed.')
 
         return {
             'act_delay': act_delay,
