@@ -110,7 +110,7 @@ def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0,
 
     ld_time_mcnt = None
     if ld_time != None:
-        if ld_time > (time.time() + corr.min_load_time):
+        if ld_time < (time.time() + corr.min_load_time):
             corr.logger.error(
                 'Time given is in the past or does not allow for enough time '
                     ' to set values')
