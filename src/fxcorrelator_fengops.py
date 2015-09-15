@@ -4,7 +4,7 @@ from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
 from data_source import DataSource
-import utils
+import utils, time
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -98,11 +98,10 @@ def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, de
     """
     corr.logger.info('Setting delay correction values for source %s' %source_name)
    
-    feng_clk = corr.sample_rate_hz/corr.adc_demux_factor
-
     #convert delay in time into delay in samples
-    delay_s = delay * corr.sample_rate_hz                           # delay in clock cycles
+    delay_s = float(delay) * corr.sample_rate_hz                           # delay in clock cycles
     
+    feng_clk = corr.sample_rate_hz/corr.adc_demux_factor
     #convert from cycles per second to cycles per feng fpga clock
     delta_phase_offset_s = float(delta_phase_offset) / feng_clk
 
@@ -114,25 +113,27 @@ def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, de
     load_wait_delay = None
     if ld_check == True:
         if ld_time != None:
-            load_wait_delay = ld_time - time.time() + corr.min_load_time
+            load_wait_delay = (ld_time - time.time()) + corr.min_load_time
 
     #determine fhost to write to 
     for fhost in corr.fhosts:
         if source_name in fhost.delays.keys():
             try:
-                [act_delay, act_delta_delay, act_phase_offset, act_delta_phase_offset] = fhost.write_delay(
+                actual_values = fhost.write_delay(
                                              source_name, delay_s, delta_delay, phase_offset, delta_phase_offset_s, ld_time_mcnt, load_wait_delay)
 
-                corr.logger.debug('Delay actually set to %e samples.' % act_delay/corr.sample_rate_hz)
-                corr.logger.debug('Delay rate actually set to %e seconds per second.' % act_delta_delay)
-                corr.logger.debug('Phase offset actually set to %6.3f degrees.' % act_phase_offset)
-                corr.logger.debug('Phase offset change actually set to %e Hz.' % act_delta_phase*feng_clk)
+
+                corr.logger.info('Phase offset actually set to %6.3f degrees.' % actual_values['act_phase_offset'])
+                corr.logger.info('Phase offset change actually set to %e Hz.' % (actual_values['act_delta_phase_offset']*feng_clk))
+                corr.logger.info('Delay actually set to %e samples.' % actual_values['act_delay'])
+                corr.logger.info('Delay rate actually set to %e seconds per second.' % actual_values['act_delta_delay'])
 
             except Exception as e:
-                corr.logger.error('New delay error - %s' % e.message)
-                raise ValueError('New delay error - %s' % e.message)
-            corr.logger.info('done.')
-            return
+                 corr.logger.error('New delay error - %s' % e.message)
+                 raise ValueError('New delay error - %s' % e.message)
+        
+        corr.logger.info('done.')
+        return
     raise ValueError('Unknown source name %s' % source_name)
 
 

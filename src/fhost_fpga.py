@@ -384,11 +384,32 @@ class FpgaFHost(DigitiserDataReceiver):
         coarse_delay_reg.write(coarse_delay=coarse_delay)
         LOGGER.info('Set a coarse delay of %i samples.' % coarse_delay)
 
-        fractional_delay_reg.write(initial=fine_delay, delta=delta_fine_delay)
+        try:
+            fractional_delay_reg.write(initial=fine_delay)
+        except ValueError as e:
+            LOGGER.error('Fractional delay range error - %s' % e.message)
+            raise ValueError('Fractional delay range error - %s' % e.message)
+
+        try:
+            fractional_delay_reg.write(delta=delta_fine_delay)
+        except ValueError as e:
+            LOGGER.error('Delay change range error - %s' % e.message)
+            raise ValueError('Delay change range error - %s' % e.message)
+
      	LOGGER.info("Wrote %f to initial and %f to delta in fractional_delay register" % (fine_delay, delta_fine_delay))
 
         # setup the phase offset
-        phase_reg.write(initial=fr_phase_offset, delta=fr_delta_phase_offset)
+        try:
+            phase_reg.write(initial=fr_phase_offset)
+        except ValueError as e:
+            LOGGER.error('Phase offset range error - %s' % e.message)
+            raise ValueError('Phase offset range error - %s' % e.message)
+        try:
+            phase_reg.write(delta=fr_delta_phase_offset)
+        except ValueError as e:
+            LOGGER.error('Phase offset change range error - %s' % e.message)
+            raise ValueError('Phase offset chagne range error - %s' % e.message)
+
         LOGGER.info("Wrote %f to initial and %f to delta in phase register" %(fr_phase_offset, fr_delta_phase_offset))
 
         cd_tl_name = 'tl_cd%i'%offset
@@ -434,9 +455,10 @@ class FpgaFHost(DigitiserDataReceiver):
 
         return {
             'act_delay': act_delay,
+            'act_delta_delay': act_delta_delay,
             'act_phase_offset': act_phase_offset,
-            'act_delta_phase_offset': act_delta_phase_offset,
-            'act_delta_delay': act_delta_delay}
+            'act_delta_phase_offset': act_delta_phase_offset
+            }
 
     def arm_timed_latches(self, names, mcnt=None, check_time_delay=None):
         """
