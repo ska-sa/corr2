@@ -278,16 +278,16 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def write_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, load_mcnt=None, load_wait_delay=None):
         """
-        Configures a given stream to a delay in samples and phase in degrees\n
-        The sample count at which this happens can be specified (default is immediate if not specified)\n
-        If a load_check_time is specified, function will block until that time before checking.\n
-        By default, it will load immediately and verify that things worked as expected. \n
-        \t delay is in samples\n
-        \t delta delay is in samples per sample\n
-        \t phase offset is in degrees\n
-        \t delta phase offset is in cycles per fengine FPGA clock sample\n
-        \t load_mcnt is in samples since epoch
-        \t load_wait_delay is seconds to wait for delay values to load 
+        Configures a given stream to a delay in samples and phase in degrees
+        The sample count at which this happens can be specified (default is immediate if not specified)
+        If a load_check_time is specified, function will block until that time before checking.
+        By default, it will load immediately and verify that things worked as expected. 
+        :param delay is in samples
+        :param delta delay is in samples per sample
+        :param phase offset is in degrees
+        :param delta phase offset is in cycles per fengine FPGA clock sample
+        :param load_mcnt is in samples since epoch
+        :param load_wait_delay is seconds to wait for delay values to load
         """                   
      
         ###########################################################
