@@ -2,11 +2,11 @@ import numpy
 import struct
 
 from casperfpga import utils as fpgautils
-from bhost_fpga import FpgaBHost
 import spead64_48 as spead
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+
 
 def bf_control_lookup(destination):
     """
@@ -399,7 +399,7 @@ def bf_read_int(corr, beam, destination, antennas=None, blindwrite=True):
 
 
 def bf_write_int(corr, destination, data, beams=[],
-                 antennas=None, frequencies=None, blindwrite=True):
+                 antennas=None, blindwrite=True):
     """
     write to various destinations in the bf block for a particular beam
     :param destination: 'calibrate', 'filter'
@@ -413,8 +413,8 @@ def bf_write_int(corr, destination, data, beams=[],
     if destination == 'calibrate':
         if antennas == None:
             raise corr.logger.error('Need to specify an antenna when writing to calibrate block')
-        if frequencies == None:
-            raise corr.logger.error('Need to specify a frequency when writing to calibrate block')
+        # if frequencies == None:
+        #     raise corr.logger.error('Need to specify a frequency when writing to calibrate block')
     if destination == 'requantise':
         if antennas != None:
             raise corr.logger.error('Can''t specify antenna for requantise block')
@@ -433,21 +433,22 @@ def bf_write_int(corr, destination, data, beams=[],
             ant_n = input2ants(corr, beams, antennas=[antennas])
             THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_antenna', (ant_n[0], blindwrite)))
             # convert frequencies to list of fft_bins
-            bandwidth = get_fft_bin_bandwidth(corr)
-            fft_bin = cf_bw2fft_bins(corr, frequencies, bandwidth)[0]
-            THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_frequency', (fft_bin, blindwrite)))
+            # bandwidth = get_fft_bin_bandwidth(corr)
+            # fft_bin = cf_bw2fft_bins(corr, frequencies, bandwidth)[0]
+            # THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_frequency', (fft_bin, blindwrite)))
             THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_value_in', (data, blindwrite)))
         else:
             raise corr.logger.error('Need to specify a single antenna. Got many.')
     elif destination == 'duplicate' or destination == 'filter':
         THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_value_in', (data, blindwrite)))
     elif destination == 'requantise':
-        bandwidth = get_fft_bin_bandwidth(corr)
-        fft_bin = cf_bw2fft_bins(corr, frequencies, bandwidth)[0]
-        THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_frequency', (fft_bin, blindwrite)))
+        # bandwidth = get_fft_bin_bandwidth(corr)
+        # fft_bin = cf_bw2fft_bins(corr, frequencies, bandwidth)[0]
+        # THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_frequency', (fft_bin, blindwrite)))
         THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_value_in', (data, blindwrite)))
     else:
         raise corr.logger.error('Invalid destination')
+
 
 def cf_bw2fft_bins(corr, centre_frequency, bandwidth):
     """
@@ -821,7 +822,7 @@ def weights_default_set(corr, beam, antenna=0):
 
 
 # TODO check with corr
-def weights_get(corr, beam, antenna=0, coeffs=None):
+def weights_get(corr, beams=[], antennas=[], coeffs=None):
     """
     Retrieves the calibration settings currently programmed
     in all b-engines for the given beam and antenna or
@@ -833,17 +834,17 @@ def weights_get(corr, beam, antenna=0, coeffs=None):
     :return:
     """
     if coeffs == None:
-        weights = weights_default_get(corr, beams=[beam],
-                                      antennas=[antenna])
+        weights = weights_default_get(corr, beams=beams,
+                                      antennas=antennas)
     else:
         weights = dict()
-        beam_char = beam2index(corr, beams=beam)[0]
-        beam_idx = beam2index(corr, beam)[0]
-        ant = '%i%c' % (antenna, beam_char)
-        weight = bf_read_int(corr, beam, destination='calibrate',
-                             antennas=ant, blindwrite=True)
-        weights.update({'beam%i_ant%i'
-                        % (beam_idx, antenna): int(weight)})
+        for beam in beams:
+            for ant in antennas:
+                beam_char = beam2index(corr, beams=beam)[0]
+                beam_idx = beam2index(corr, beam)[0]
+                ant_char = '%i%c' % (ant, beam_char)
+                weight = bf_read_int(corr, beam, destination='calibrate', antennas=ant_char, blindwrite=True)
+                weights.update({'beam%i_ant%i' % (beam_idx, ant): int(weight)})
     return weights
 
 
@@ -866,8 +867,7 @@ def weights_set(corr, beam, antenna=0, coeffs=None,
         # set the antenna
         beam_char = beam2index(corr, beams=beam)[0]
         ant = '%i%c' % (antenna, beam_char)
-        bf_write_int(corr, 'calibrate', coeffs, beams=beam,
-                     antennas=ant, frequencies=None, blindwrite=True)
+        bf_write_int(corr, 'calibrate', coeffs[0], beams=beam, antennas=ant)
     else:
         corr.logger.error('Your coefficient %s is not recognised.' % coeffs)
     if spead_issue:
