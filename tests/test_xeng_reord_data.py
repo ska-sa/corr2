@@ -21,9 +21,10 @@ logging.basicConfig(level=eval('logging.INFO'))
 CORR_INIT_LOOPS = 1
 CORR_INIT_RETRIES = 5
 FREQ_TO_CHECK = 128
-SNAP_LEN_BYTES = 8192
 EXPECTED_FREQS = [7, 13, 66, 123]
 SAMPLES_PER_FREQ = 256
+NUM_ANT = 4
+NUM_X_ENGINES = 8
 
 
 def get_snap_data(correlator, xeng_num, byte_offset=0):
@@ -65,7 +66,6 @@ def init_correlator():
         IPython.embed()
     return _corr_obj, failcount
 
-
 ant_names = []
 for ctr in range(0, 4):
     ant_names.append('ant%i_x' % ctr)
@@ -80,33 +80,46 @@ try:
         corr_obj, failcount = init_correlator()
         corr_init_failed += failcount
 
-        for xeng_index in range(0, 8):
+        snap_to_use = corr_obj.xhosts[0].snapshots.snap_quant0_ss
+        snap_len_words = 2**int(snap_to_use.block_info['snap_nsamples'])
+        snap_word_width = int(snap_to_use.block_info['snap_data_width'])
+        snap_len_bytes = snap_len_words * snap_word_width / 8
+        print 'Target snapshot length: %i/%i - %i bytes' % (
+            snap_len_words, snap_word_width, snap_len_bytes)
+
+        freqs_per_snap = snap_len_words / (NUM_ANT * SAMPLES_PER_FREQ)
+        snap_read_required = FREQ_TO_CHECK / freqs_per_snap
+        print '%i frequencies per snapshot, need to read %i times' % (
+            freqs_per_snap, snap_read_required)
+
+        for xeng_index in range(0, NUM_X_ENGINES):
+            print '\n***********************'
             print 'Running for X-engine', xeng_index
+            print '***********************'
 
             # set all the inputs to zero and check all received data is zero
             fxcorrelator_fengops.feng_eq_set(corr_obj, new_eq=0)
             print 'Running for %i freqs:' % FREQ_TO_CHECK,
-            for freq in range(0, FREQ_TO_CHECK):
-                print freq,
+            freq = 0
+            for snap_read in range(0, snap_read_required):
+                print '.',
                 sys.stdout.flush()
-                offset = freq * SNAP_LEN_BYTES
+                offset = snap_read * snap_len_bytes
                 snapdata = get_snap_data(corr_obj, xeng_index, byte_offset=offset)
+                # check that the time does not change within this snapshot dump
                 first_time = snapdata['mcnt27'][0]
                 error = False
-                for ctr in range(0, len(snapdata['r0'])):
-                    if first_time != snapdata['mcnt27'][ctr]:
-                        print 'The time varied INSIDE a window, not right'
+                for ctr in range(0, len(snapdata['mcnt27'])):
+                    if snapdata['mcnt27'][ctr] != first_time:
+                        print 'The time varied INSIDE a snapshot capture, not right'
                         error = True
-                    if snapdata['r0'][ctr] != 0:
-                        print 'p0 data not zero?'
+                    if (snapdata['r0'][ctr] != 0) or (snapdata['r1'][ctr] != 0):
+                        print 'Data that should have neen zero was not'
                         error = True
-                    if snapdata['r1'][ctr] != 0:
-                        print 'p1 data not zero?'
-                        error = True
-                if error:
-                    print '\nError when EQ set to zero.'
-                    IPython.embed()
-                    raise RuntimeError('Error when EQ set to zero.')
+                    if error:
+                        print '\nError when EQ set to zero.'
+                        IPython.embed()
+                        raise RuntimeError('Error when EQ set to zero.')
             print '\nAll inputs zero for zero EQ - okay'
 
             # translate the expected frequencies into ones for this board
@@ -130,38 +143,46 @@ try:
                     print 'Active inputs:', active_inputs
 
                     print 'Running for %i freqs:' % FREQ_TO_CHECK,
-                    for freq in range(0, FREQ_TO_CHECK):
-                        print freq,
-                        sys.stdout.flush()
-                        offset = freq * SNAP_LEN_BYTES
+                    freq = 0
+                    for snap_read in range(0, snap_read_required):
+                        offset = snap_read * snap_len_bytes
                         snapdata = get_snap_data(corr_obj, xeng_index, byte_offset=offset)
-                        inputs_data = []
-                        for ants in range(0, 4):
-                            start_index = ants * SAMPLES_PER_FREQ
-                            inputs_data.append(snapdata['r0'][start_index:start_index + SAMPLES_PER_FREQ])
-                            inputs_data.append(snapdata['r1'][start_index:start_index + SAMPLES_PER_FREQ])
+
+                        # check that the time does not change within this snapshot dump
                         first_time = snapdata['mcnt27'][0]
                         for ctr in range(0, len(snapdata['mcnt27'])):
                             if snapdata['mcnt27'][ctr] != first_time:
-                                print 'The time varied INSIDE a window, not right'
+                                print '- the time varied INSIDE a snapshot capture, not right'
                                 IPython.embed()
-                                raise RuntimeError
-                        error = False
-                        for ctr, input_data in enumerate(inputs_data):
-                            if (ant_names[ctr] in active_inputs) and (freq in EXPECTED_FREQS):
-                                if sum(input_data) == 0:
-                                    print '\nData for input', ctr, '(%s)' % ant_names[ctr], 'freq', freq, \
-                                        'should not be zero - but it is'
-                                    error = True
-                            else:
-                                if sum(input_data) != 0:
-                                    print '\nData for input', ctr, '(%s)' % ant_names[ctr], 'freq', freq, \
-                                        'should be zero - but it is not'
-                                    error = True
-                        if error:
-                            print 'Error when checking non-zero sources.'
-                            IPython.embed()
-                            raise RuntimeError('Error when checking non-zero sources.')
+                                raise RuntimeError('Error when EQ set to zero.')
+
+                        # check the freq data
+                        for _f in range(0, freqs_per_snap):
+                            print freq,
+                            sys.stdout.flush()
+                            freq_at_offset = _f * (NUM_ANT * SAMPLES_PER_FREQ)
+                            inputs_data = []
+                            for ants in range(0, NUM_ANT):
+                                start_index = freq_at_offset + (ants * SAMPLES_PER_FREQ)
+                                inputs_data.append(snapdata['r0'][start_index:start_index + SAMPLES_PER_FREQ])
+                                inputs_data.append(snapdata['r1'][start_index:start_index + SAMPLES_PER_FREQ])
+                            error = False
+                            for ctr, input_data in enumerate(inputs_data):
+                                if (ant_names[ctr] in active_inputs) and (freq in EXPECTED_FREQS):
+                                    if sum(input_data) == 0:
+                                        print '\nData for input', ctr, '(%s)' % ant_names[ctr], 'freq', freq, \
+                                            'should not be zero - but it is'
+                                        error = True
+                                else:
+                                    if sum(input_data) != 0:
+                                        print '\nData for input', ctr, '(%s)' % ant_names[ctr], 'freq', freq, \
+                                            'should be zero - but it is not'
+                                        error = True
+                            if error:
+                                print 'Error when checking non-zero sources.'
+                                IPython.embed()
+                                raise RuntimeError('Error when checking non-zero sources.')
+                            freq += 1
                     print ''
 
         main_loop_ctr += 1
