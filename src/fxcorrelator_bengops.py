@@ -776,217 +776,100 @@ def get_n_chans(corr, beam):
     return n_chans
 
 
-def get_beam_weights(corr, beam, antennas=[]):
+def weights_default_get(corr, beams=[], antennas=[]):
     """
-    Fetches the weights from the config file and returns
-    :param beam:
-    :param ant_str:
-    :return:
+    Fetches the default weights configuration from the config file and returns
+    a list of the weights for a given beam and antenna.
+    :param beams: strings
+    :param antennas:
+    :return: dictionary with beam%i_ant%i keys
     """
-    input_n = antenna2antenna_indices(corr, beam, antennas=antennas)
-    weight_default = corr.configd['beamformer']['weight_default']
-    weights = []
-    if weight_default == 'int':
-        for num in input_n:
-            weight = int(get_beam_param(corr, beam, 'weight_ant%i' % input_n[num]))
-            weights.append(weight)
+    weight_default = corr.configd['beamformer']['bf_weights_default']
+    weights = dict()
+    if weight_default == 'coef':
+        for beam in beams:
+            beam_idx = beam2index(corr, beam)[0]
+            for ant in antennas:
+                weight = get_beam_param(corr, beam, 'weight_ant%i' % ant)
+                weights.update({'beam%i_ant%i' % (beam_idx, ant): int(weight)})
     else:
-        raise corr.logger.error('Your default beamformer weights '
-                           'type, %s, is not understood.' % weight_default)
-    if len(weights) != len(input_n):
-        raise corr.logger.error('Something\'s wrong. I have %i weights '
-                           'when I should have %i.'
-                           % (len(weights), len(input_n)))
+        raise corr.logger.error('Your default beamformer calibration '
+                                'type, %s, is not understood.'
+                                % weight_default)
     return weights
 
 
-# TODO
-def set_beam_weights(corr, beam):
-    get_beam_weights(corr, beam, antennas=[])
-
-    return None
-
-
-def cal_set_all(corr, beams=[], antennas=[], init_poly=[],
-                init_coeffs=[], spead_issue=True):
+# TODO check with corr
+def weights_default_set(corr, beam, antenna=0):
     """
-    Initialise all antennas for all specified beams' calibration factors to given polynomial.
-    If no polynomial or coefficients are given, use defaults from config file.
-    :param beams:
-    :param init_poly:
-    :param init_coeffs:
-    :param spead_issue:
+    Set the default weights configuration from the config file
+    :param beam: for single beam in str form
+    :param ant_str: for single antenna in int form
     :return:
     """
-    # beams = self.beams2beams(beams)
-    # go through all beams specified
-    for beam in beams:
-        # get all antenna input strings
-        ant_strs = ants2ants(corr, beam, antennas=antennas)
-        # go through all antennas for beams
-        for ant_str in ant_strs:
-            cal_spectrum_set(corr, beam=beam, antennas=ant_str, init_coeffs=init_coeffs,
-                             init_poly=init_poly, spead_issue=False)
-        # issue spead packet only once all antennas are done, and don't read the values back (we have just set them)
-        if spead_issue:
-            spead_cal_meta_issue(corr, beam, from_fpga=False)
+    beam_idx = beam2index(corr, beam)[0]
+    weights = weights_default_get(corr, beams=[beam],
+                                  antennas=[antenna])
+    # set the antenna
+    THREADED_FPGA_FUNC(corr.bhosts, timeout=10,
+                       target_function=('write_antenna',
+                                        (antenna, False)))
+    THREADED_FPGA_FUNC(corr.bhosts, timeout=10,
+                       target_function=('write_value_in',
+                                        (weights['beam%i_ant%i'
+                                                 % (beam_idx, antenna)], False)))
 
 
-def cal_default_get(corr, beam, antennas=[]):
+# TODO check with corr
+def weights_get(corr, beam, antenna=0, coeffs=None):
     """
-    Fetches the default calibration configuration from the config file and returns
-    a list of the coefficients for a given beam and antenna.
-    :param beam:
-    :param ant_str:
+    Retrieves the calibration settings currently programmed
+    in all b-engines for the given beam and antenna or
+    retrieves from config file.
+    :param beam: for single beam in str form
+    :param antenna: for single antenna in int form
+    :param coeffs: None for default anything else for
+                   current weights
     :return:
     """
-    n_coeffs = int(corr.configd['fengine']['n_chans'])
-    input_n = map_ant_to_input(beam, antennas)
-    cal_default = corr.configd['equalisation']['eq_default']
-    if cal_default == 'coeffs':
-        calibration = get_beam_param(beam, 'cal_coeffs_input%i'
-                                          % input_n)
-    elif cal_default == 'poly':
-        poly = []
-        for pol in range(len(input_n)):
-            poly.append(int(get_beam_param(beam, 'cal_poly_input%i'
-                                                % input_n[pol])))
-        calibration = numpy.polyval(poly, range(n_coeffs))
-        if corr.configd['beamformer']['bf_cal_type'] == 'complex':
-            calibration = [cal+0*1j for cal in calibration]
+    if coeffs == None:
+        weights = weights_default_get(corr, beams=[beam],
+                                      antennas=[antenna])
     else:
-        raise corr.logger.error('Your default beamformer calibration '
-                           'type, %s, is not understood.' % cal_default)
-    if len(calibration) != n_coeffs:
-        raise corr.logger.error('Something\'s wrong. I have %i calibration '
-                           'coefficients when I should have %i.'
-                           % (len(calibration), n_coeffs))
-    return calibration
+        weights = dict()
+        beam_char = beam2index(corr, beams=beam)[0]
+        beam_idx = beam2index(corr, beam)[0]
+        ant = '%i%c' % (antenna, beam_char)
+        weight = bf_read_int(corr, beam, destination='calibrate',
+                             antennas=ant, blindwrite=True)
+        weights.update({'beam%i_ant%i'
+                        % (beam_idx, antenna): int(weight)})
+    return weights
 
 
-# TODO obsolete?
-def cal_default_set(corr, beam, antennas, init_coeffs=[], init_poly=[]):
-    """
-    store current calibration settings in configuration
-    :param beam:
-    :param ant_str:
-    :param init_coeffs:
-    :param init_poly:
-    :return:
-    """
-    n_coeffs = int(corr.config['fengine']['n_chans'])
-    input_n = map_ant_to_input(beam=beam, antennas=antennas)[0]
-    if len(init_coeffs) == n_coeffs:
-        set_beam_param(beam, 'cal_coeffs_input%i' % input_n, [init_coeffs])
-        set_beam_param(beam, 'cal_default_input%i' % input_n, 'coeffs')
-    elif len(init_poly) > 0:
-        set_beam_param(beam, 'cal_poly_input%i' % input_n, [init_poly])
-        set_beam_param(beam, 'cal_default_input%i' % input_n, 'poly')
-    else:
-        raise corr.logger.error('calibration settings are not sensical')
-
-
-def cal_fpga2floats(corr, data):
-    """
-    Converts vector of values in format as from FPGA to float vector
-    :param data:
-    :return:
-    """
-    values = []
-    bin_pt = int(corr.configd['fengine']['quant_format'].split('.')[1])
-    for datum in data:
-        val_real = (numpy.int16((datum & 0xFFFF0000) >> 16))
-        val_imag = (numpy.int16(datum & 0x0000FFFF))
-        datum_real = numpy.float(val_real)/(2**bin_pt)
-        datum_imag = numpy.float(val_imag)/(2**bin_pt)
-        values.append(complex(datum_real, datum_imag))
-    return values
-
-
-# TODO check
-def cal_spectrum_get(corr, beam, antennas=[], from_fpga=True):
-    """
-    Retrieves the calibration settings currently programmed in all bengines
-    for the given beam and antenna. Returns an array of length n_chans.
-    :param beam:
-    :param ant_str:
-    :param from_fpga:
-    :return:
-    """
-    if from_fpga:
-        # read them directly from fpga
-        fpga_values = bf_read_int(corr, beam=beam, destination='calibrate', antennas=antennas)
-        float_values = cal_fpga2floats(corr, fpga_values)
-        # float_values are not assigned here
-    else:
-        base_values = cal_default_get(corr, beam, antennas)
-        # calculate values that would be written to fpga
-        fpga_values = cal_floats2fpga(corr, base_values)
-        float_values = cal_fpga2floats(corr, fpga_values)
-    return float_values
-
-
-# TODO check
-def cal_floats2fpga(corr, data):
-    """
-    Convert floating point values to vector for writing to FPGA
-    :param data:
-    :return:
-    """
-    values = []
-    bf_cal_type = corr.configd['beamformer']['bf_cal_type']
-    if bf_cal_type == 'scalar':
-        data = numpy.real(data)
-    elif bf_cal_type == 'complex':
-        data = numpy.array(data, dtype=numpy.complex128)
-    else:
-        raise corr.logger.error('Sorry, your beamformer calibration type '
-                                'is not supported. Expecting scalar or '
-                                'complex.')
-    n_bits = int(corr.configd['beamformer']['bf_bits_out'])  # bf_cal_n_bits replaced
-    bin_pt = int(corr.configd['fengine']['quant_format'].split('.')[1])  # not in the config file
-    whole_bits = n_bits-bin_pt
-    top = 2**(whole_bits-1)-1
-    bottom = -2**(whole_bits-1)
-    if max(numpy.real(data)) > top or min(numpy.real(data)) < bottom:
-        corr.logger.info('real calibration values out of range, will saturate')
-    if max(numpy.imag(data)) > top or min(numpy.imag(data)) < bottom:
-        corr.logger.info('imaginary calibration values out of range, will saturate')
-    # convert data
-    for datum in data:
-        datum_real = numpy.real(datum)
-        datum_imag = numpy.imag(datum)
-        # shift up for binary point
-        val_real = numpy.int32(datum_real * (2**bin_pt))
-        val_imag = numpy.int32(datum_imag * (2**bin_pt))
-        # pack real and imaginary values into 32 bit value
-        values.append((val_real << 16) | (val_imag & 0x0000FFFF))
-    return values
-
-
-# TODO smth is missing here
-def cal_spectrum_set(corr, beam, antennas=[], frequencies=[],
-                     init_coeffs=[], init_poly=[], spead_issue=True):
+def weights_set(corr, beam, antenna=0, coeffs=None,
+                spead_issue=True):
     """
     Set given beam and antenna calibration settings
     to given co-efficients.
+    :param corr:
+    :param beam:
+    :param antennas:
+    :param coeffs:
+    :param spead_issue:
+    :return:
     """
-    n_coeffs = corr.config['fengine']['n_chans']
-    if init_coeffs == [] and init_poly == []:
-        coeffs = cal_default_get(corr, beam=beam, antennas=antennas)
-    elif len(init_coeffs) == n_coeffs:
-        coeffs = init_coeffs
-        cal_default_set(corr, beam, antennas, init_coeffs=coeffs)
-    elif len(init_coeffs) > 0:
-        raise corr.logger.error('You specified %i coefficients, but there '
-                           'are %i cal coefficients required for this design.'
-                           % (len(init_coeffs), n_coeffs))
+    if coeffs == None:
+        weights_default_set(corr, beam, antenna=antenna)
+    elif len(coeffs) == 1:  # we set a single value
+        # write final vector to calibrate block
+        # set the antenna
+        beam_char = beam2index(corr, beams=beam)[0]
+        ant = '%i%c' % (antenna, beam_char)
+        bf_write_int(corr, 'calibrate', coeffs, beams=beam,
+                     antennas=ant, frequencies=None, blindwrite=True)
     else:
-        coeffs = numpy.polyval(init_poly, range(n_coeffs))
-        cal_default_set(corr, beam, antennas, init_poly=init_poly)
-    fpga_values = cal_floats2fpga(corr, data=coeffs)
-    # write final vector to calibrate block
-    bf_write_int(corr, 'calibrate', fpga_values, beams=[beam], antennas=antennas,frequencies=frequencies)
+        corr.logger.error('Your coefficient %s is not recognised.' % coeffs)
     if spead_issue:
         spead_cal_meta_issue(corr, beam, from_fpga=False)
 
