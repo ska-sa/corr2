@@ -136,7 +136,7 @@ class FpgaFHost(DigitiserDataReceiver):
         self._config = config
         self.data_sources = []  # a list of DataSources received by this f-engine host
         self.eqs = {}  # a dictionary, indexed on source name, containing tuples of poly and bram name
-        self.delays = {} # dictionary, indexed on source name, containing offset to access delay tracking registers
+        self.delays = {}  # dictionary, indexed on source name, containing offset to access delay tracking registers
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
             self.ports_per_fengine = int(config['ports_per_fengine'])
@@ -155,7 +155,8 @@ class FpgaFHost(DigitiserDataReceiver):
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
+        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+                   connect=True, config=config_source)
 
     def ct_okay(self, sleeptime=1):
         """
@@ -240,11 +241,14 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Write a given complex eq to the given SBRAM.
 
-        Specify either eq_tuple, a combination of sbram_name and value(s), OR eq_name, but not both. If eq_name
-                is specified, the sbram_name and eq value(s) are read from the self.eqs dictionary.
+        Specify either eq_tuple, a combination of sbram_name and value(s),
+        OR eq_name, but not both. If eq_name is specified, the sbram_name
+        and eq value(s) are read from the self.eqs dictionary.
 
-        :param eq_tuple: a tuple of an integer, complex number or list or integers or complex numbers and a sbram name
-        :param eq_name: the name of an eq to use, found in the self.eqs dictionary
+        :param eq_tuple: a tuple of an integer, complex number or list or
+        integers or complex numbers and a sbram name
+        :param eq_name: the name of an eq to use, found in the self.eqs
+        dictionary
         :return:
         """
         if eq_tuple is None and eq_name is None:
@@ -276,12 +280,18 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
-    def write_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, load_mcnt=None, load_wait_delay=None):
+    def write_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
+                    delta_phase_offset=0, load_mcnt=None, load_wait_delay=None):
         """
-        Configures a given stream to a delay in samples and phase in degrees
-        The sample count at which this happens can be specified (default is immediate if not specified)
-        If a load_check_time is specified, function will block until that time before checking.
-        By default, it will load immediately and verify that things worked as expected. 
+        Configures a given stream to a delay in samples and phase in degrees.
+
+        The sample count at which this happens can be specified (default is
+        immediate if not specified).
+        If a load_check_time is specified, function will block until that
+        time before checking.
+        By default, it will load immediately and verify that things worked
+        as expected.
+
         :param delay is in samples
         :param delta delay is in samples per sample
         :param phase offset is in degrees
@@ -294,65 +304,75 @@ class FpgaFHost(DigitiserDataReceiver):
         # Transform values passed to values to be written to FPGA #
         ###########################################################
 
-        #TODO should this be in config file?
-        fine_delay_bits =           16
-        coarse_delay_bits =         15
-        delta_fine_delay_bits =     16
-        phase_offset_bits =         16
-        delta_phase_offset_bits =   16
-        bitshift_schedule =         23 
+        # TODO should this be in config file?
+        fine_delay_bits = 16
+        coarse_delay_bits = 15
+        delta_fine_delay_bits = 16
+        phase_offset_bits = 16
+        delta_phase_offset_bits = 16
+        bitshift_schedule = 23
 
         # delays in terms of ADC clock cycles:
-        coarse_delay = int(delay)                                       # delay in whole clock cycles
-        fine_delay = float(delay)-float(coarse_delay)                   # delay remainder. need a negative slope for positive delay
+        # delay in whole clock cycles
+        coarse_delay = int(delay)
+        # delay remainder - need a negative slope for positive delay
+        fine_delay = float(delay)-float(coarse_delay)
         
         # shift up into integer range as well offset shifted down by on FPGA
-        delta_fine_delay = float(delta_delay) * (2**bitshift_schedule)
+        _bshift_val = (2**bitshift_schedule)
+        delta_fine_delay = float(delta_delay) * _bshift_val
 
         # figure out the phase offset as a fraction of a cycle
         fr_phase_offset = float(phase_offset)/float(360) 
         # multiply by amount shifted down by on FPGA
-        fr_delta_phase_offset = float(delta_phase_offset) * (2**bitshift_schedule)
+        fr_delta_phase_offset = float(delta_phase_offset) * _bshift_val
 
-        fine_delay_shift         = 1/float(2**(fine_delay_bits-1))
-        act_fine_delay           = float(int(fine_delay/fine_delay_shift))*fine_delay_shift
-        act_delay                = float(coarse_delay) + act_fine_delay
-        delta_fine_delay_shift   = 1/float(2**(delta_fine_delay_bits-1))
-        act_delta_delay          = (float(int(delta_fine_delay/delta_fine_delay_shift))*delta_fine_delay_shift)/(2**bitshift_schedule)
-        phase_offset_shift       = 1/float(2**(phase_offset_bits-1))
-        act_phase_offset         = (float(int(fr_phase_offset/phase_offset_shift))*phase_offset_shift)*360
+        fine_delay_shift = 1/float(2**(fine_delay_bits-1))
+        act_fine_delay = float(int(fine_delay/fine_delay_shift))*fine_delay_shift
+        act_delay = float(coarse_delay) + act_fine_delay
+        delta_fine_delay_shift = 1/float(2**(delta_fine_delay_bits-1))
+        act_delta_delay = (float(int(delta_fine_delay/delta_fine_delay_shift)) *
+                           delta_fine_delay_shift) / _bshift_val
+        phase_offset_shift = 1/float(2**(phase_offset_bits-1))
+        act_phase_offset = (float(int(fr_phase_offset/phase_offset_shift)) * phase_offset_shift)*360
         delta_phase_offset_shift = 1/float(2**(delta_phase_offset_bits-1))
-        act_delta_phase_offset   = (float(int(fr_delta_phase_offset/delta_phase_offset_shift))*delta_phase_offset_shift)/(2**bitshift_schedule)
+        act_delta_phase_offset = (float(int(fr_delta_phase_offset/delta_phase_offset_shift)) *
+                                  delta_phase_offset_shift) / _bshift_val
 
-        LOGGER.info('Requested delay: %f samples' %delay)
-        LOGGER.info('Actual coarse delay: %d samples' %coarse_delay)
-        LOGGER.info('Actual fractional delay: %f samples' %act_fine_delay)
-        LOGGER.info('Requested delta delay: %e samples per sample' %delta_delay)
-        LOGGER.info('Actual delta delay: %e samples per sample' %act_delta_delay)
-        LOGGER.info('Requested phase offset: %f degrees' %phase_offset)
-        LOGGER.info('Actual phase offset: %f degrees' %act_phase_offset)
-        LOGGER.info('Requested delta phase offset: %e Hz per sample' %delta_phase_offset)
-        LOGGER.info('Actual delta phase offset: %e Hz per sample' %act_delta_phase_offset)
+        LOGGER.info('Requested delay: %f samples' % delay)
+        LOGGER.info('Actual coarse delay: %i samples' % coarse_delay)
+        LOGGER.info('Actual fractional delay: %f samples' % act_fine_delay)
+        LOGGER.info('Requested delta delay: %e samples per sample' % delta_delay)
+        LOGGER.info('Actual delta delay: %e samples per sample' % act_delta_delay)
+        LOGGER.info('Requested phase offset: %f degrees' % phase_offset)
+        LOGGER.info('Actual phase offset: %f degrees' % act_phase_offset)
+        LOGGER.info('Requested delta phase offset: %e Hz per sample' % delta_phase_offset)
+        LOGGER.info('Actual delta phase offset: %e Hz per sample' % act_delta_phase_offset)
 
         if delay != 0:
             if (act_fine_delay == 0) and (coarse_delay == 0):
-                LOGGER.info('Requested delay is too small for this configuration (our resolution is too low). Setting delay to zero.')
-            elif abs(coarse_delay) > (2**(coarse_delay_bits)):
-                LOGGER.error('Requested coarse delay (%es) is out of range (+-%i samples).' % (coarse_delay, 2**(coarse_delay_bits-1)))
+                LOGGER.info('Requested delay is too small for this configuration (our '
+                            'resolution is too low). Setting delay to zero.')
+            elif abs(coarse_delay) > (2**coarse_delay_bits):
+                LOGGER.error('Requested coarse delay (%es) is out of range (+-%i samples).' %
+                             (coarse_delay, 2**(coarse_delay_bits-1)))
 
         if delta_delay != 0:
             if act_delta_delay == 0:
-                LOGGER.info('Requested delay delta too slow for this configuration. Setting delay rate to zero.')
+                LOGGER.info('Requested delay delta too slow for this configuration.'
+                            'Setting delay rate to zero.')
 
         if phase_offset != 0:
             if fr_phase_offset == 0:
-                LOGGER.info('Requested phase offset is too small for this configuration (we do not have enough resolution). Setting phase offset to zero.')
+                LOGGER.info('Requested phase offset is too small for this configuration '
+                            '(we do not have enough resolution). Setting phase offset to zero.')
 
         if delta_phase_offset != 0:
             if act_delta_phase_offset == 0:
-                LOGGER.info('Requested phase offset delta is too slow for this configuration. Setting phase offset change to zero.')
+                LOGGER.info('Requested phase offset delta is too slow for this configuration. '
+                            'Setting phase offset change to zero.')
 
-        #determine offset from source name
+        # determine offset from source name
         try:
             offset = self.delays[source_name]['offset']
         except KeyError:
@@ -362,23 +382,23 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('Setting delay for offset %d in %s' % (offset, source_name))
 
         # delay coefficient and delta registers
-        coarse_delay_reg        = self.registers['coarse_delay%i' %offset]
-        fractional_delay_reg    = self.registers['fractional_delay%i' %offset]
-        phase_reg               = self.registers['phase%i' %offset]
+        coarse_delay_reg = self.registers['coarse_delay%i' % offset]
+        fractional_delay_reg = self.registers['fractional_delay%i' % offset]
+        phase_reg = self.registers['phase%i' % offset]
 
         # fine delay timed latch
-        fd_status_reg           = self.registers['tl_fd%i_status' %offset]
-        fd_control_reg          = self.registers['tl_fd%i_control' %offset]
-        fd_control0_reg         = self.registers['tl_fd%i_control0' %offset]
+        # fd_status_reg           = self.registers['tl_fd%i_status' % offset]
+        # fd_control_reg          = self.registers['tl_fd%i_control' % offset]
+        # fd_control0_reg         = self.registers['tl_fd%i_control0' % offset]
 
         # coarse delay timed latch
-        cd_status_reg           = self.registers['tl_cd%i_status' %offset]
-        cd_control_reg          = self.registers['tl_cd%i_control' %offset]
-        cd_control0_reg         = self.registers['tl_cd%i_control0' %offset]
+        # cd_status_reg           = self.registers['tl_cd%i_status' % offset]
+        # cd_control_reg          = self.registers['tl_cd%i_control' % offset]
+        # cd_control0_reg         = self.registers['tl_cd%i_control0' % offset]
         
-        cd_status = cd_status_reg.read()['data']
-        cd_arm_count_before = cd_status['arm_count']
-        cd_ld_count_before = cd_status['load_count']
+        # cd_status = cd_status_reg.read()['data']
+        # cd_arm_count_before = cd_status['arm_count']
+        # cd_ld_count_before = cd_status['load_count']
 
         # setup the delays:
         coarse_delay_reg.write(coarse_delay=coarse_delay)
@@ -396,7 +416,8 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('Delay change range error - %s' % e.message)
             raise ValueError('Delay change range error - %s' % e.message)
 
-     	LOGGER.info("Wrote %f to initial and %f to delta in fractional_delay register" % (fine_delay, delta_fine_delay))
+        LOGGER.info("Wrote %f to initial and %f to delta in fractional_delay "
+                    "register" % (fine_delay, delta_fine_delay))
 
         # setup the phase offset
         try:
@@ -410,10 +431,11 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('Phase offset change range error - %s' % e.message)
             raise ValueError('Phase offset chagne range error - %s' % e.message)
 
-        LOGGER.info("Wrote %f to initial and %f to delta in phase register" %(fr_phase_offset, fr_delta_phase_offset))
+        LOGGER.info("Wrote %f to initial and %f to delta in phase register" %
+                    (fr_phase_offset, fr_delta_phase_offset))
 
-        cd_tl_name = 'tl_cd%i'%offset
-        fd_tl_name = 'tl_fd%i'%offset
+        cd_tl_name = 'tl_cd%i' % offset
+        fd_tl_name = 'tl_fd%i' % offset
         status = self.arm_timed_latches([cd_tl_name, fd_tl_name], mcnt=load_mcnt, check_time_delay=load_wait_delay)
         cd_status_before = status['status_before'][cd_tl_name] 
         cd_status_after = status['status_after'][cd_tl_name] 
@@ -430,26 +452,30 @@ class FpgaFHost(DigitiserDataReceiver):
         fd_arm_count_after = fd_status_after['arm_count']
         fd_ld_count_after = fd_status_after['load_count']
         
-        LOGGER.info('BEFORE: coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_before, cd_ld_count_before))
-        LOGGER.info('AFTER:  coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_after, cd_ld_count_after))
-        LOGGER.info('BEFORE: fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_before, fd_ld_count_before))
-        LOGGER.info('AFTER:  fractional delay arm_count(%i) ld_count(%i)' % (fd_arm_count_after, fd_ld_count_after))
+        LOGGER.info('BEFORE: coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_before,
+                                                                   cd_ld_count_before))
+        LOGGER.info('AFTER:  coarse arm_count(%i) ld_count(%i)' % (cd_arm_count_after,
+                                                                   cd_ld_count_after))
+        LOGGER.info('BEFORE: fractional delay arm_count(%i) ld_count(%i)' %
+                    (fd_arm_count_before, fd_ld_count_before))
+        LOGGER.info('AFTER:  fractional delay arm_count(%i) ld_count(%i)' %
+                    (fd_arm_count_after, fd_ld_count_after))
 
         # did the system arm?
-        if (cd_arm_count_before == cd_arm_count_after):
+        if cd_arm_count_before == cd_arm_count_after:
             LOGGER.error('coarse delay arm count does not change. Load failed.')
             raise RuntimeError('coarse delay arm count does not change. Load failed.')
         
-        if (fd_arm_count_before == fd_arm_count_after):
+        if fd_arm_count_before == fd_arm_count_after:
             LOGGER.error('fractional delay and phase arm count do not change. Load failed.')
             raise RuntimeError('fractional delay arm count do not change. Load failed.')
 
         # did the system load?
-        if (cd_ld_count_before == cd_ld_count_after):
+        if cd_ld_count_before == cd_ld_count_after:
             LOGGER.error('coarse delay load count did not change. Load failed.')
             raise RuntimeError('coarse delay load count did not change. Load failed.')
         
-        if (fd_ld_count_before == fd_ld_count_after):
+        if fd_ld_count_before == fd_ld_count_after:
             LOGGER.error('fractional delay and phase load count did not change. Load failed.')
             raise RuntimeError('fractional delay load count did not change. Load failed.')
 
@@ -457,13 +483,13 @@ class FpgaFHost(DigitiserDataReceiver):
             'act_delay': act_delay,
             'act_delta_delay': act_delta_delay,
             'act_phase_offset': act_phase_offset,
-            'act_delta_phase_offset': act_delta_phase_offset
-            }
+            'act_delta_phase_offset': act_delta_phase_offset,
+        }
 
     def arm_timed_latches(self, names, mcnt=None, check_time_delay=None):
         """
         Arms a timed latch.
-        :param name: names of latches to trigger
+        :param names: names of latches to trigger
         :param mcnt: sample mcnt to trigger at. If None triggers immediately. (default None)
         :param check_time_delay: time in seconds to wait after arming
         :return dictionary containing status_before and status_after list
@@ -471,40 +497,42 @@ class FpgaFHost(DigitiserDataReceiver):
         status_before = {}
         status_after = {}
         
-        #mcnt_before = self.get_local_time()
-        #LOGGER.info('local time before:%d' %mcnt_before)
+        # mcnt_before = self.get_local_time()
+        # LOGGER.info('local time before:%d' %mcnt_before)
        
-        if mcnt != None:
+        if mcnt is not None:
             load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
             load_time_msw = int(mcnt/(2**32))
-            #LOGGER.info('mcnt:%d' %mcnt)
-            #LOGGER.info('mcnt:0x%08x msw:0x%08x lsw:0x%08x' %(mcnt, load_time_msw, load_time_lsw))
+            # LOGGER.info('mcnt:%d' %mcnt)
+            # LOGGER.info('mcnt:0x%08x msw:0x%08x lsw:0x%08x' %(mcnt, load_time_msw, load_time_lsw))
 
         for name in names:        
-            control_reg = self.registers['%s_control' %name]
-            control0_reg = self.registers['%s_control0' %name]
-            status_reg = self.registers['%s_status' %name]
+            control_reg = self.registers['%s_control' % name]
+            control0_reg = self.registers['%s_control0' % name]
+            status_reg = self.registers['%s_status' % name]
                
             status_before[name] = status_reg.read()['data']
-            if mcnt == None:
+            if mcnt is None:
                 control0_reg.write(arm='pulse', load_immediate='pulse') 
             else:
                 control_reg.write(load_time_lsw=load_time_lsw)
-                control0_reg.write(arm='pulse', load_time_msw=load_time_msw, load_immediate=0)
+                control0_reg.write(arm='pulse', load_time_msw=load_time_msw,
+                                   load_immediate=0)
         
-        if check_time_delay != None:
+        if check_time_delay is not None:
             time.sleep(check_time_delay)
 
         for name in names:        
             status_reg = self.registers['%s_status' %name]
             status_after[name] = status_reg.read()['data']
         
-        #mcnt_after = self.get_local_time()
-        #LOGGER.info('local time after:%d' %mcnt_after)
+        # mcnt_after = self.get_local_time()
+        # LOGGER.info('local time after:%d' %mcnt_after)
 
         return {
             'status_before': status_before, 
-            'status_after': status_after}
+            'status_after': status_after,
+        }
     
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
