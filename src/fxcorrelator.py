@@ -34,7 +34,6 @@ from instrument import Instrument
 from data_source import DataSource
 import fxcorrelator_fengops as fengops
 import fxcorrelator_xengops as xengops
-import fxcorrelator_bengops as bengops
 
 use_xeng_sim = False
 
@@ -74,7 +73,6 @@ class FxCorrelator(Instrument):
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []
-        self.bhosts = []
         self.filthosts = None
 
         # attributes
@@ -135,8 +133,6 @@ class FxCorrelator(Instrument):
             THREADED_FPGA_FUNC(self.fhosts, timeout=5,
                                target_function='get_system_information')
             THREADED_FPGA_FUNC(self.xhosts, timeout=5,
-                               target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.bhosts, timeout=5,
                                target_function='get_system_information')
 
         # remove test hardware from designs
@@ -346,6 +342,12 @@ class FxCorrelator(Instrument):
         # the f-engines have this many 10Gbe ports per f-engine unit of operation
         self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
 
+        # check if beamformer exists with x-engines
+        if 'bengine' in self.configd.keys():
+            found_beamformer = True
+        else:
+            found_beamformer = False
+
         # set up the hosts and engines based on the configuration in the ini file
         self.fhosts = []
         for host in self.configd['fengine']['hosts'].split(','):
@@ -353,18 +355,19 @@ class FxCorrelator(Instrument):
             fpgahost = fhost_fpga.FpgaFHost.from_config_source(host, self.katcp_port,
                                                                config_source=self.configd['fengine'])
             self.fhosts.append(fpgahost)
+
+        # choose class (b-engine inherits x-engine functionality)
+        if found_beamformer:
+            _targetClass = bhost_fpga.FpgaBHost
+        else:
+            _targetClass = xhost_fpga.FpgaXHost
+
         self.xhosts = []
         for host in self.configd['xengine']['hosts'].split(','):
             host = host.strip()
-            fpgahost = xhost_fpga.FpgaXHost.from_config_source(host, self.katcp_port,
-                                                               config_source=self.configd['xengine'])
+            fpgahost = _targetClass.from_config_source(host, self.katcp_port,
+                                                       config_source=self.configd)
             self.xhosts.append(fpgahost)
-        self.bhosts = []
-        for host in self.configd['xengine']['hosts'].split(','):  # x-eng host b-eng
-            host = host.strip()
-            fpgahost = bhost_fpga.FpgaBHost.from_config_source(host, self.katcp_port,
-                                                               config_source=self.configd['xengine'])
-            self.bhosts.append(fpgahost)
 
         # check that no hosts overlap
         for _fh in self.fhosts:

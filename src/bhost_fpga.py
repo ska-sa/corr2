@@ -15,19 +15,27 @@ Revisions:
 \n"""
 
 import logging
+from xhost_fpga import FpgaXHost
 
 LOGGER = logging.getLogger(__name__)
 
 
-class FpgaBHost(object):
-    def __init__(self, xeng):
-        self.b = xeng
+class FpgaBHost(FpgaXHost):
+    def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
+        FpgaXHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect, config=config)
+        self.config = config
+        if self.config is not None:
+            self.bf_per_fpga = int(self.config['bengine']['bf_be_per_fpga'])
         self.bf_per_fpga = 4
 
-        # self.spead_initialise()
         LOGGER.info('Beamformer created')
 
     # specifying many frequencies is redundant for MK case
+
+    @classmethod
+    def from_config_source(cls, hostname, katcp_port, config_source):
+        boffile = config_source['xengine']['bitstream']
+        return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
 
     def read_bf_config(self):
         """
@@ -35,20 +43,20 @@ class FpgaBHost(object):
         :param 'data_id', 'time_id'
         :return: dictionary
         """
-        return self.b.registers['bf_config'].read()['data']
+        return self.registers['bf_config'].read()['data']
 
     def read_value_out(self):
-        return self.b.registers.bf_value_out.read()['data']['reg']
+        return self.registers.bf_value_out.read()['data']['reg']
 
     def read_value_in(self):
-        return self.b.registers.bf_value_in.read()['data']['reg']
+        return self.registers.bf_value_in.read()['data']['reg']
 
     def write_value_in(self, value):
         """
         :param value:
         :return:
         """
-        self.b.registers.bf_value_in.write(reg=value)
+        self.registers.bf_value_in.write(reg=value)
 
     def read_beng_value_out(self, beng=0):
         """
@@ -66,14 +74,14 @@ class FpgaBHost(object):
                 data = self.read_value_out()
         else:
             raise LOGGER.error('Wrong b-eng index %i on host %s'
-                               % (beng, self.b.host))
+                               % (beng, self.host))
         return data
 
     def write_data_id(self, value=0):
-        self.b.registers['bf_config'].write(data_id=value)
+        self.registers['bf_config'].write(data_id=value)
 
     def write_time_id(self, value=0):
-        self.b.registers['bf_config'].write(time_id=value)
+        self.registers['bf_config'].write(time_id=value)
 
     def read_bf_control(self):
         """
@@ -82,7 +90,7 @@ class FpgaBHost(object):
         'stream' 'write_destination'
         :return: dictionary
         """
-        return self.b.registers['bf_control'].read()['data']
+        return self.registers['bf_control'].read()['data']
 
     def write_beng(self, value=0):
         """
@@ -92,13 +100,13 @@ class FpgaBHost(object):
         """
         n_beng = self.bf_per_fpga
         if value in range(n_beng):
-            self.b.registers['bf_control'].write(beng=value)
+            self.registers['bf_control'].write(beng=value)
         else:
             raise LOGGER.error('Wrong b-eng index %i on host %s'
-                               % (value, self.b.host))
+                               % (value, self.host))
 
     def write_antenna(self, value=0):
-        self.b.registers['bf_control'].write(antenna=value)
+        self.registers['bf_control'].write(antenna=value)
 
     def write_stream(self, value=0):
         """
@@ -106,16 +114,16 @@ class FpgaBHost(object):
         :param value:
         :return:
         """
-        self.b.registers['bf_control'].write(stream=value)
+        self.registers['bf_control'].write(stream=value)
 
     def write_frequency(self, value=0):
-        self.b.registers['bf_control'].write(frequency=value)
+        self.registers['bf_control'].write(frequency=value)
 
     def write_read_destination(self, value=0):
-        self.b.registers['bf_control'].write(read_destination=value)
+        self.registers['bf_control'].write(read_destination=value)
 
     def write_write_destination(self, value=0):
-        self.b.registers['bf_control'].write(write_destination=value)
+        self.registers['bf_control'].write(write_destination=value)
 
     def write_bf_control(self, value={}):
         """
@@ -144,21 +152,21 @@ class FpgaBHost(object):
         :return: dictionary
         """
         try:
-            data = self.b.registers['bf%d_config' % beam].read()['data']
+            data = self.registers['bf%d_config' % beam].read()['data']
             return data
         except AttributeError:
-            LOGGER.error('Beam index %i out of range on host %s' % (beam, self.b.host))
+            LOGGER.error('Beam index %i out of range on host %s' % (beam, self.host))
 
     def write_beam_rst(self, value=0, beam=0):
-        self.b.registers['bf%d_config'
+        self.registers['bf%d_config'
                          % beam].write(rst=value)
 
     def write_beam_id(self, value=0, beam=0):
-        self.b.registers['bf%d_config'
+        self.registers['bf%d_config'
                          % beam].write(beam_id=value)
 
     def write_beam_partitions(self, value=0, beam=0):
-        self.b.registers['bf%d_config'
+        self.registers['bf%d_config'
                          % beam].write(n_partitions=value)
 
     def write_beam_config(self, value={}, beam=0):
@@ -175,16 +183,16 @@ class FpgaBHost(object):
     # might be hardcoded in the future
     def write_beam_offset(self, value=0, beam=0, beng=0):
         if beng == 0:
-            self.b.registers['bf%d_partitions'
+            self.registers['bf%d_partitions'
                              % beam].write(partition0_offset=value)
         elif beng == 1:
-            self.b.registers['bf%d_partitions'
+            self.registers['bf%d_partitions'
                              % beam].write(partition1_offset=value)
         elif beng == 2:
-            self.b.registers['bf%d_partitions'
+            self.registers['bf%d_partitions'
                              % beam].write(partition2_offset=value)
         else:
-            self.b.registers['bf%d_partitions'
+            self.registers['bf%d_partitions'
                              % beam].write(partition3_offset=value)
 
     def read_beam_offset(self, beam=0, beng=0):
@@ -193,7 +201,7 @@ class FpgaBHost(object):
         :param 'rst', 'beam_id' 'n_partitions'
         :return: dictionary
         """
-        return self.b.registers['bf%d_partitions'
+        return self.registers['bf%d_partitions'
                                 % beam].read()['data']['partition%d_offset'
                                                        % beng]
 

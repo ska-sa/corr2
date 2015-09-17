@@ -14,31 +14,29 @@ def bf_control_lookup(destination):
     :param destination:
     :return: id
     """
-    id_control = -1
     if destination == 'duplicate':
-        id_control = 0
+        return 0
     elif destination == 'calibrate':
-        id_control = 1
+        return 1
     elif destination == 'steer':
-        id_control = 2
+        return 2
     elif destination == 'combine':
-        id_control = 3
+        return 3
     elif destination == 'visibility':
-        id_control = 4
+        return 4
     elif destination == 'accumulate':
-        id_control = 5
+        return 5
     elif destination == 'requantise':
-        id_control = 6
+        return 6
     elif destination == 'filter':
-        id_control = 7
+        return 7
     else:
         raise('Invalid destination %s' % destination)
-    return id_control
 
 
 def bf_control_shift(id_control):
     control = 0
-    control = control | (0x00000001 << id_control)
+    control |= (0x00000001 << id_control)
     return control
 
 
@@ -104,7 +102,7 @@ def get_bfs(corr):
     get bf blocks per fpga
     :return: all_bfs
     """
-    all_bfs = range(int(corr.configd['beamformer']['bf_be_per_fpga']))
+    all_bfs = range(int(corr.configd['bengine']['bf_be_per_fpga']))
     return all_bfs
 
 
@@ -115,9 +113,9 @@ def get_beams(corr):
     """
     all_beams = []
     # number of beams per beamformer
-    n_beams = int(corr.configd['beamformer']['bf_n_beams'])
+    n_beams = int(corr.configd['bengine']['bf_n_beams'])
     for beam_index in range(n_beams):
-        all_beams.append(corr.configd['beamformer']['bf_name_beam%i' % beam_index])
+        all_beams.append(corr.configd['bengine']['bf_name_beam%i' % beam_index])
     return all_beams
 
 
@@ -317,7 +315,7 @@ def get_beam_param(corr, beams, param):
     if beam_indices == []:
         raise corr.logging.error('Error locating beams function')
     for beam_index in beam_indices:
-        values.append(corr.configd['beamformer']['bf_%s_beam%d' % (param, beam_index)])
+        values.append(corr.configd['bengine']['bf_%s_beam%d' % (param, beam_index)])
     # for single item
     if len(values) == 1:
         values = values[0]
@@ -341,15 +339,13 @@ def antenna2antenna_indices(corr, beam, antennas=[]):
     return antenna_indices
 
 
-def bf_read_int(corr, beam, destination, antennas=None, blindwrite=True):
+def bf_read_int(corr, beam, destination, antennas=None):
     """
     read from destination in the bf block for a particular beam
     :param beam:
     :param destination: 'calibrate' 'requantise' 'duplicate' 'filter'
     :param antennas:
-    :param frequencies:
-    :param blindwrite:
-    :return: values
+    :return: single value
     """
     if destination == 'calibrate':
         if antennas == None:
@@ -361,18 +357,18 @@ def bf_read_int(corr, beam, destination, antennas=None, blindwrite=True):
     # get beam location
     location = int(beam2location(corr, beams=beam)[0])
     # set beam (stream) based on location
-    THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_stream', (int(location), True)))
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_stream', [int(location)]))
     # set read/write destination
     id_control = bf_control_lookup(destination)
     control = bf_control_shift(id_control)
-    THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_write_destination', (control, True)))
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_write_destination', [control]))
     # set antenna if needed
-    if antennas != None:
+    if antennas != None and len(antennas) == 1:
         # check if ant string is correct
         if ants2ants(corr, beam=beam, antennas=antennas) != []:
             ant_n = input2ants(corr, beam, antennas=[antennas])
             if len(ant_n) == 1:
-                THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_antenna', (ant_n[0], blindwrite)))
+                THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_antenna', [ant_n[0]]))
             else:
                 raise corr.logger.error('Need to specify a single antenna. Got many')
         else:
@@ -381,11 +377,11 @@ def bf_read_int(corr, beam, destination, antennas=None, blindwrite=True):
     beng_data = []
     for beng in get_bfs(corr):
         # set beng
-        THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_beng', (beng, blindwrite)))
+        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_beng', [beng]))
         # triggering write
-        THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_read_destination', (id_control, blindwrite)))
+        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_read_destination', [id_control]))
         # read value out
-        read_bf = THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('read_value_out', ))
+        read_bf = THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('read_value_out', ))
         if read_bf.values().count(read_bf.values()[0]) != len(read_bf.values()):  # values are not the same
             raise corr.logger.error('Problem: value_out on b-engines %i are not the same.' % beng)
         else:
@@ -399,15 +395,13 @@ def bf_read_int(corr, beam, destination, antennas=None, blindwrite=True):
 
 
 def bf_write_int(corr, destination, data, beams=[],
-                 antennas=None, blindwrite=True):
+                 antennas=None):
     """
     write to various destinations in the bf block for a particular beam
     :param destination: 'calibrate', 'filter'
     :param data:
     :param beams:
     :param antennas:
-    :param frequencies:
-    :param blindwrite:
     :return:
     """
     if destination == 'calibrate':
@@ -421,31 +415,31 @@ def bf_write_int(corr, destination, data, beams=[],
     # loop over fpgas and set the registers
     location = int(beam2location(corr, beams=beams)[0])
     # set beam (stream) based on location
-    THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_stream', (int(location), True)))
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_stream', int(location)))
     # set read/write destination
     id_control = bf_control_lookup(destination)
     control = bf_control_shift(id_control)
-    THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_write_destination', (control, True)))
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_write_destination', control))
     # set antenna if needed
     if destination == 'calibrate':
         # check if ant string is correct
         if ants2ants(corr, beam=beams, antennas=antennas) != []:
             ant_n = input2ants(corr, beams, antennas=[antennas])
-            THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_antenna', (ant_n[0], blindwrite)))
+            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_antenna', ant_n[0]))
             # convert frequencies to list of fft_bins
             # bandwidth = get_fft_bin_bandwidth(corr)
             # fft_bin = cf_bw2fft_bins(corr, frequencies, bandwidth)[0]
-            # THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_frequency', (fft_bin, blindwrite)))
-            THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_value_in', (data, blindwrite)))
+            # THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_frequency', (fft_bin))
+            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', data))
         else:
             raise corr.logger.error('Need to specify a single antenna. Got many.')
     elif destination == 'duplicate' or destination == 'filter':
-        THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_value_in', (data, blindwrite)))
+        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', data))
     elif destination == 'requantise':
         # bandwidth = get_fft_bin_bandwidth(corr)
         # fft_bin = cf_bw2fft_bins(corr, frequencies, bandwidth)[0]
-        # THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_frequency', (fft_bin, blindwrite)))
-        THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_value_in', (data, blindwrite)))
+        # THREADED_FPGA_FUNC(corr.hosts, timeout=10, target_function=('write_frequency', (fft_bin))
+        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', data))
     else:
         raise corr.logger.error('Invalid destination')
 
@@ -580,10 +574,10 @@ def tx_start(corr, beams=[]):
     beam_indices = beam2index(corr, beams)
     for index in beam_indices:
         value = {'beam_id': index, 'n_partitions': 0, 'rst': 1}
-        THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_beam_config', (value, index, True)))
-        for beng in range(int(corr.configd['beamformer']['bf_be_per_fpga'])):
-            THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('write_beam_offset', (0, index, beng)))
-        bf_write_int(corr, destination='filter', data=1, beams=beams[index], antennas=None, frequencies=None, blindwrite=True)  # enables output
+        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_beam_config', (value, index, True)))
+        for beng in range(int(corr.configd['bengine']['bf_be_per_fpga'])):
+            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_beam_offset', (0, index, beng)))
+        bf_write_int(corr, destination='filter', data=1, beams=beams[index], antennas=None)  # enables output
         corr.logger.info('Output for beam %i started' % index)
 
 
@@ -599,7 +593,7 @@ def tx_stop(corr, beams=[], spead_stop=True):
     # beams = self.beams2beams(beams)  # check if output of this fn is correct
     for beam in beams:
         # disable all bf outputs
-        THREADED_FPGA_FUNC(corr.bhosts, timeout=10, target_function=('bf_write_int',
+        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('bf_write_int',
                                                                      (corr, 'filter', 0, beam, None, None)))
         corr.logger.info("Beamformer output paused for beam %s" % beam)
         if spead_stop:
@@ -785,7 +779,7 @@ def weights_default_get(corr, beams=[], antennas=[]):
     :param antennas:
     :return: dictionary with beam%i_ant%i keys
     """
-    weight_default = corr.configd['beamformer']['bf_weights_default']
+    weight_default = corr.configd['bengine']['bf_weights_default']
     weights = dict()
     if weight_default == 'coef':
         for beam in beams:
@@ -800,7 +794,6 @@ def weights_default_get(corr, beams=[], antennas=[]):
     return weights
 
 
-# TODO check with corr
 def weights_default_set(corr, beam, antenna=0):
     """
     Set the default weights configuration from the config file
@@ -812,13 +805,12 @@ def weights_default_set(corr, beam, antenna=0):
     weights = weights_default_get(corr, beams=[beam],
                                   antennas=[antenna])
     # set the antenna
-    THREADED_FPGA_FUNC(corr.bhosts, timeout=10,
-                       target_function=('write_antenna',
-                                        (antenna, False)))
-    THREADED_FPGA_FUNC(corr.bhosts, timeout=10,
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
+                       target_function=('write_antenna', [antenna]))
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
                        target_function=('write_value_in',
-                                        (weights['beam%i_ant%i'
-                                                 % (beam_idx, antenna)], False)))
+                                        [weights['beam%i_ant%i'
+                                                 % (beam_idx, antenna)]]))
 
 
 # TODO check with corr
@@ -843,7 +835,7 @@ def weights_get(corr, beams=[], antennas=[], coeffs=None):
                 beam_char = beam2index(corr, beams=beam)[0]
                 beam_idx = beam2index(corr, beam)[0]
                 ant_char = '%i%c' % (ant, beam_char)
-                weight = bf_read_int(corr, beam, destination='calibrate', antennas=ant_char, blindwrite=True)
+                weight = bf_read_int(corr, beam, destination='calibrate', antennas=ant_char)
                 weights.update({'beam%i_ant%i' % (beam_idx, ant): int(weight)})
     return weights
 
@@ -947,86 +939,26 @@ def spead_static_meta_issue(corr, beams=[]):
     # beams = self.beams2beams(beams)
     # spead stuff that does not care about beam
     spead_ig = spead.ItemGroup()
-    spead_ig.add_item(name="adc_clk",
-                      id=0x1007,
-                      description="Clock rate of ADC (samples per second).",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['FxCorrelator']['sample_rate_hz'])
-    spead_ig.add_item(name="n_ants",
-                      id=0x100A,
-                      description="The total number of dual-pol antennas in the system.",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['fengine']['n_antennas'])
     spead_ig.add_item(name="n_bengs",
                       id=0x100F,
                       description="The total number of B engines in the system.",
                       shape=[],
                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['beamformer']['bf_be_per_fpga']*len(get_fpgas(corr)))
-    # 1015/1016 are taken (see time_metadata_issue below)
-    spead_ig.add_item(name="xeng_acc_len",
-                      id=0x101F,
-                      description="Number of spectra accumulated inside X engine. Determines minimum integration "
-                                  "time and user-configurable integration time stepsize. X-engine correlator "
-                                  "internals.",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['xengine']['xeng_accumulation_len'])
-    spead_ig.add_item(name="requant_bits",
-                      id=0x1020,
-                      description="Number of bits after requantisation in the F engines (post FFT and any "
-                                  "phasing stages).",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['fengine']['sample_bits'])
-    spead_ig.add_item(name="feng_pkt_len",
-                      id=0x1021,
-                      description="Payload size of 10GbE packet exchange between F and X engines in 64 bit words. "
-                                  "Usually equal to the number of spectra accumulated inside X engine. F-engine "
-                                  "correlator internals.",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['fengine']['10gbe_pkt_len'])
-    spead_ig.add_item(name="feng_udp_port",
-                      id=0x1023,
-                      description="Destination UDP port for B engine data exchange.",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['fengine']['10gbe_port'])
-    spead_ig.add_item(name="feng_start_ip",
-                      id=0x1025,
-                      description="F engine starting IP address.",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['fengine']['10gbe_start_ip'])
+                      init_val=corr.configd['bengine']['bf_be_per_fpga']*len(get_fpgas(corr)))
     # TODO ADD VERSION INFO!
     spead_ig.add_item(name="b_per_fpga",
                       id=0x1047,
                       description="The number of b-engines per fpga.",
                       shape=[],
                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['beamformer']['bf_be_per_fpga'])
-    spead_ig.add_item(name="adc_bits",
-                      id=0x1045,
-                      description="ADC quantisation (bits).",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['fengine']['sample_bits'])
+                      init_val=corr.configd['bengine']['bf_be_per_fpga'])
     spead_ig.add_item(name="beng_out_bits_per_sample", id=0x1050,
                       description="The number of bits per value in the beng output. Note that this "
                                   "is for a single value, not the combined complex value size.",
                       shape=[],
                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['beamformer']['bf_bits_out'])
-    spead_ig.add_item(name="fft_shift",
-                      id=0x101E,
-                      description="The FFT bitshift pattern. F-engine correlator internals.",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['fengine']['fft_shift'])
-    # timestamp
+                      init_val=corr.configd['bengine']['bf_bits_out'])
+    # timestamp does it stay?
     spead_ig.add_item(name='timestamp',
                       id=0x1600,
                       description='Timestamp of start of this block of data. uint counting multiples '
@@ -1245,49 +1177,3 @@ def spead_issue_all(corr, beams=[], from_fpga=True):
     spead_eq_meta_issue(corr, beams=beams)
     spead_cal_meta_issue(corr, beams=beams, from_fpga=from_fpga)
     spead_labelling_issue(corr, beams=beams)
-
-    # def read_int_bf_control(self, device_name):
-    #     """
-    #     Reads data from all devices on all bfs in all fpgas associated with the frequencies specified
-    #     (config)
-    #     :param device_name: 'antenna' 'beng' 'frequency' 'read_destination' 'stream' 'write_destination'
-    #     :return: values
-    #     """
-    #     values = []
-    #     # get all unique fpgas
-    #     name = '%s_control_%s' % (self.config['beamformer']['bf_register_prefix'], device_name)
-    #         # pretend to read if no FPGA
-    #     if self.simulate == True:
-    #         print 'dummy read from %s:%s offset %i' % name
-    #     else:
-    #         try:
-    #             values = self.read_bf_control(param=device_name)
-    #         except:
-    #             raise LOGGER.error('Error reading from %s' % name,
-    #                                'function %s, line no %s\n' % (
-    #                                    __name__, inspect.currentframe().f_lineno),
-    #                                LOGGER)
-    #     return values
-
-    # def read_int_bf_config(self, device_name):
-    #     """
-    #     Reads data from all devices on all bfs in all fpgas associated with the frequencies specified
-    #     (config)
-    #     :param device_name: 'data_id', 'time_id'
-    #     :return: values
-    #     """
-    #     values = []
-    #     # get all unique fpgas
-    #     name = '%s_config_%s' % (self.config['beamformer']['bf_register_prefix'], device_name)
-    #         # pretend to read if no FPGA
-    #     if self.simulate == True:
-    #         print 'dummy read from %s:%s offset %i' % name
-    #     else:
-    #         try:
-    #             values = self.read_bf_config()
-    #         except:
-    #             raise LOGGER.error('Error reading from %s' % name,
-    #                                'function %s, line no %s\n'
-    #                                % (__name__, inspect.currentframe().f_lineno),
-    #                                LOGGER)
-    #     return values
