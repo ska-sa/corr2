@@ -295,27 +295,6 @@ class FpgaFHost(DigitiserDataReceiver):
         Read the post-quantisation snapshot for a given source
         :return:
         """
-        raise NotImplementedError
-        """
-        source_names = []
-        if source_name is None:
-            for src in self.data_sources:
-                source_names.append(src.name)
-        else:
-            for src in self.data_sources:
-                if src.name == source_name:
-                    source_names.append(source_name)
-                    break
-        if len(source_names) == 0:
-            raise RuntimeError('Could not find source %s on this f-engine host or no sources given' % source_name)
-        targetsrc.host.snapshots.snapquant_ss.arm()
-        targetsrc.host.registers.control.write(snapquant_arm='pulse')
-        sdata = targetsrc.host.snapshots.snapquant_ss.read(arm=False)['data']
-        self.snapshots.snapquant_ss.arm()
-        self.registers.control.write(snapquant_arm='pulse')
-        snapdata = self.snapshots.snapquant_ss.read(arm=False)['data']
-        raise RuntimeError
-        """
         targetsrc = None
         for src in self.fengine_sources:
             if src.name == source_name:
@@ -328,9 +307,7 @@ class FpgaFHost(DigitiserDataReceiver):
             snapshot = targetsrc.host.snapshots.snap_quant0_ss
         else:
             snapshot = targetsrc.host.snapshots.snap_quant1_ss
-
-        snapshot.arm()
-        sdata = snapshot.read(arm=False)['data']
+        sdata = snapshot.read()['data']
         compl = []
         for ctr in range(0, len(sdata['real0'])):
             compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
