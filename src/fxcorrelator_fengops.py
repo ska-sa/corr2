@@ -4,7 +4,8 @@ from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
 from data_source import DataSource
-import utils, time
+import utils
+import time
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -88,66 +89,63 @@ def feng_check_rx(corr, max_waittime=30):
     corr.logger.info('\tdone.')
     return all_okay
 
+
 def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0,
-    delta_phase_offset=0, ld_time=None, ld_check=True):
+                   delta_phase_offset=0, ld_time=None, ld_check=True):
     """
     Set delay correction values for specified source. This is a blocking call.
     By default,
     it will wait until load time and verify that things worked as expected.
     This check can be disabled by setting ld_check param to False.
     Load time is optional; if not specified, load immediately.
-
     :return
     """
-    corr.logger.info('Setting delay correction values for source %s' %source_name)
+    corr.logger.info('Setting delay correction values for source '
+                     '%s' % source_name)
 
-    # Convert delay in time into delay in samples
+    # convert delay in time into delay in samples
     delay_s = float(delay) * corr.sample_rate_hz  # delay in clock cycles
 
     feng_clk = corr.sample_rate_hz/corr.adc_demux_factor
-    # Convert from cycles per second to cycles per feng fpga clock
+    # convert from cycles per second to cycles per feng fpga clock
     delta_phase_offset_s = float(delta_phase_offset) / feng_clk
 
     ld_time_mcnt = None
-    if ld_time != None:
+    if ld_time is not None:
         if ld_time < (time.time() + corr.min_load_time):
             corr.logger.error(
                 'Time given is in the past or does not allow for enough time '
-                    ' to set values')
-            raise RuntimeError('Time given is in the past or '
-                'does not allow for enough time to set values')
-
+                'to set values')
+            raise RuntimeError('Time given is in the past or does not allow '
+                               'for enough time to set values')
         ld_time_mcnt = corr.mcnt_from_time(ld_time)
 
-    # Calculate time to wait for load
+    # calculate time to wait for load
     load_wait_delay = None
-    if ld_check == True:
-        if ld_time != None:
+    if ld_check:
+        if ld_time is not None:
             load_wait_delay = (ld_time - time.time()) + corr.min_load_time
 
-    # Determine fhost to write to
+    # determine fhost to write to
     for fhost in corr.fhosts:
         if source_name in fhost.delays.keys():
             try:
                 actual_values = (
                     fhost.write_delay(source_name, delay_s, delta_delay,
-                        phase_offset, delta_phase_offset_s, ld_time_mcnt,
-                            load_wait_delay))
+                                      phase_offset, delta_phase_offset_s,
+                                      ld_time_mcnt, load_wait_delay))
 
-
-                corr.logger.info('Phase offset actually set to %6.3f degrees.'
-                    % actual_values['act_phase_offset'])
-                corr.logger.info('Phase offset change actually set to %e Hz.'
-                    % (actual_values['act_delta_phase_offset']*feng_clk))
-                corr.logger.info('Delay actually set to %e samples.'
-                    % actual_values['act_delay'])
-                corr.logger.info('Delay rate actually set to %e seconds per '
-                    ' second.' % actual_values['act_delta_delay'])
-
+                corr.logger.info('Phase offset actually set to %6.3f degrees.' %
+                                 actual_values['act_phase_offset'])
+                corr.logger.info('Phase offset change actually set to %e Hz.' %
+                                 (actual_values['act_delta_phase_offset']*feng_clk))
+                corr.logger.info('Delay actually set to %e samples.' %
+                                 actual_values['act_delay'])
+                corr.logger.info('Delay rate actually set to %e seconds per second.' %
+                                 actual_values['act_delta_delay'])
             except Exception as e:
-                 corr.logger.error('New delay error - %s' % e.message)
-                 raise ValueError('New delay error - %s' % e.message)
-
+                corr.logger.error('New delay error - %s' % e.message)
+                raise ValueError('New delay error - %s' % e.message)
         corr.logger.info('done.')
         return
     raise ValueError('Unknown source name %s' % source_name)
@@ -248,10 +246,10 @@ def feng_eq_update_metadata(corr):
         eqlen = len(all_eqs[source.name]['eq'])
         corr.spead_meta_ig.add_item(name='eq_coef_%s' % source.name,
                                     id=0x1400 + source_ctr,
-                                    description='The unitless per-channel digital scaling factors implemented '
-                                                'prior to requantisation, post-FFT, for input %s. '
-                                                'Complex number real,imag 32 bit integers.' %
-                                                source.name,
+                                    description='The unitless per-channel digital scaling '
+                                                'factors implemented prior to requantisation, '
+                                                'post-FFT, for input %s. Complex number '
+                                                'real,imag 32 bit integers.' % source.name,
                                     shape=[eqlen, 2],
                                     fmt=spead.mkfmt(('u', 32)),
                                     init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
