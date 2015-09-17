@@ -95,7 +95,7 @@ class FxCorrelator(Instrument):
 
         self._initialised = False
 
-    def initialise(self, program=True, qdr_cal=True, no_vacc_timer=False):
+    def initialise(self, program=True, qdr_cal=True):
         """
         Set up the correlator using the information in the config file.
         :return:
@@ -191,10 +191,6 @@ class FxCorrelator(Instrument):
         # reset all counters on fhosts and xhosts
         fengops.feng_clear_status_all(self)
         xengops.xeng_clear_status_all(self)
-
-        # start the vacc check timer
-        if not no_vacc_timer:
-            xengops.xeng_setup_vacc_check_timer(self)
 
         # set an initialised flag
         self._initialised = True
