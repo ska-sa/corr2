@@ -55,36 +55,6 @@ def _get_ant_mapping_list(corr):
     return ant_list[0:n_inputs]
 
 
-# from corr.corr_functions.py
-def eq_default_get(corr, antennas=[], beam=[]):
-    """
-    Fetches the default equalisation configuration from the config file and returns
-    a list of the coefficients for a given input.
-    :param ant_str:
-    :return:
-    """
-    n_coeffs = int(corr.configd['fengine']['n_chans'])/int(
-        corr.configd['equalisation']['eq_decimation'])
-    input_n = corr.map_ant_to_input(beam=beam, antennas=antennas)
-    if corr.configd['equalisation']['eq_default'] == 'coeffs':
-        equalisation = corr.configd['equalisation']['eq_coeffs_%s' % input_n]
-    elif corr.configd['equalisation']['eq_default'] == 'poly':
-        poly = []
-        for pol in range(len(input_n)):
-            poly.append(int(corr.configd['equalisation']['eq_poly_%i' % input_n[pol]]))
-        equalisation = numpy.polyval(poly, range(int(corr.configd['fengine']['n_chans'])))[float(
-            corr.configd['equalisation']['eq_decimation'])/2::float(
-            corr.configd['equalisation']['eq_decimation'])]
-        if corr.configd['equalisation']['eq_type'] == 'complex':
-            equalisation = [eq+0*1j for eq in equalisation]
-    else:
-        raise RuntimeError("Your EQ type, %s, is not understood." % corr.configd['equalisation']['eq_type'])
-    if len(equalisation) != n_coeffs:
-        raise RuntimeError("Something's wrong. I have %i eq coefficients when I should have %i." %
-                           (len(equalisation), n_coeffs))
-    return equalisation
-
-
 def get_fpgas(corr):
     """
     Get fpga names that host b-eng (for now x-eng)
@@ -132,7 +102,7 @@ def fft_bin2frequency(corr, fft_bins=[]):
         if type(fft_bins) == int:
             fft_bins = [fft_bins]
         if max(fft_bins) > n_chans or min(fft_bins) < 0:
-            raise corr.logging.error('fft_bins out of range 0 -> %d' % (n_chans-1))
+            raise corr.logger.error('fft_bins out of range 0 -> %d' % (n_chans-1))
         bandwidth = int(corr.configd['fengine']['bandwidth'])
         for fft_bin in fft_bins:
             frequencies.append((float(fft_bin)/n_chans)*bandwidth)
@@ -248,7 +218,7 @@ def beams2beams(corr, beams=[]):
                 all_beams.index(beam)
                 new_beams.append(beam)
             except:
-                raise corr.logging.error('%s not found in our system' % beam)
+                raise corr.logger.error('%s not found in our system' % beam)
     return new_beams
 
 
@@ -313,7 +283,7 @@ def get_beam_param(corr, beams, param):
     beams = beams2beams(corr, beams)
     beam_indices = beam2index(corr, beams)
     if beam_indices == []:
-        raise corr.logging.error('Error locating beams function')
+        raise corr.logger.error('Error locating beams function')
     for beam_index in beam_indices:
         values.append(corr.configd['bengine']['bf_%s_beam%d' % (param, beam_index)])
     # for single item
@@ -407,39 +377,28 @@ def bf_write_int(corr, destination, data, beams=[],
     if destination == 'calibrate':
         if antennas == None:
             raise corr.logger.error('Need to specify an antenna when writing to calibrate block')
-        # if frequencies == None:
-        #     raise corr.logger.error('Need to specify a frequency when writing to calibrate block')
     if destination == 'requantise':
         if antennas != None:
             raise corr.logger.error('Can''t specify antenna for requantise block')
     # loop over fpgas and set the registers
     location = int(beam2location(corr, beams=beams)[0])
     # set beam (stream) based on location
-    THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_stream', int(location)))
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_stream', [int(location)]))
     # set read/write destination
     id_control = bf_control_lookup(destination)
     control = bf_control_shift(id_control)
-    THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_write_destination', control))
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_write_destination', [control]))
     # set antenna if needed
     if destination == 'calibrate':
         # check if ant string is correct
         if ants2ants(corr, beam=beams, antennas=antennas) != []:
             ant_n = input2ants(corr, beams, antennas=[antennas])
-            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_antenna', ant_n[0]))
-            # convert frequencies to list of fft_bins
-            # bandwidth = get_fft_bin_bandwidth(corr)
-            # fft_bin = cf_bw2fft_bins(corr, frequencies, bandwidth)[0]
-            # THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_frequency', (fft_bin))
-            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', data))
+            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_antenna', [ant_n[0]]))
+            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', [data]))
         else:
             raise corr.logger.error('Need to specify a single antenna. Got many.')
-    elif destination == 'duplicate' or destination == 'filter':
-        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', data))
-    elif destination == 'requantise':
-        # bandwidth = get_fft_bin_bandwidth(corr)
-        # fft_bin = cf_bw2fft_bins(corr, frequencies, bandwidth)[0]
-        # THREADED_FPGA_FUNC(corr.hosts, timeout=10, target_function=('write_frequency', (fft_bin))
-        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', data))
+    elif destination == 'duplicate' or destination == 'filter' or destination == 'requantise':
+        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', [data]))
     else:
         raise corr.logger.error('Invalid destination')
 
@@ -485,7 +444,7 @@ def frequency2bf_index(corr, frequencies=[], fft_bins=[], unique=False):
     n_chans = int(corr.configd['fengine']['n_chans'])
     n_chans_per_bf = n_chans/n_bfs
     if max(fft_bins) > n_chans-1 or min(fft_bins) < 0:
-        raise corr.logging.error('FFT bin/s out of range')
+        raise corr.logger.error('FFT bin/s out of range')
     for fft_bin in fft_bins:
         bf_index = fft_bin/n_chans_per_bf
         if unique == False or bf_indices.count(bf_index) == 0:
@@ -512,8 +471,8 @@ def cf_bw2cf_bw(corr, centre_frequency, bandwidth):
 
 
 # TODO
-def beng_initialise(corr, beams=[], set_cal=True, config_output=True,
-               send_spead=True, set_weights=True):
+def beng_initialise(corr, beams=[], config_output=True,
+                    send_spead=True, set_weights=True):
     """
     Initialises the b-engines and checks for errors.
     :param set_cal:
@@ -523,8 +482,8 @@ def beng_initialise(corr, beams=[], set_cal=True, config_output=True,
     """
     # disable all beams that are transmitting
     for beam in beams:
-        if tx_status_get(corr, beam):
-            tx_stop(corr, beam)
+        if bf_tx_status_get(corr, beam):
+            bf_tx_stop(corr, beam)
             corr.logger.info('Stopped beamformer %s' % beam)
     # give control register a known state
     # THREADED_FPGA_FUNC(self.get_fpgas(), timeout=10, target_function=('write_bf_control', None),)
@@ -536,26 +495,12 @@ def beng_initialise(corr, beams=[], set_cal=True, config_output=True,
         config_meta_output(corr, beams, issue_spead=False)
     else:
         corr.logger.info('Skipped output configuration of beamformer.')
-    if set_cal:
-        # THREADED_FPGA_FUNC(self.get_fpgas(), timeout=10, target_function=('cal_set_all', (beams, False)))
-        cal_set_all(corr, beams, spead_issue=False)
-    else:
-        corr.logger.info('Skipped calibration config of beamformer.')
     if set_weights:
-        antennas = _get_ant_mapping_list(corr, )
-        weights = []
-        for beam in beams:
-            weight = get_beam_weights(corr, beam, antennas)
-            weights.extend(weight)
-            # write_int it to value_in
-    # if we set up calibration weights, then config has these already so don't
-    # read from fpga
-    if set_cal:
-        from_fpga = False
+        weights_set(corr, beams, antennas=range(int(corr.configd['fengine']['n_antennas'])), coeffs=None)
     else:
-        from_fpga = True
+        corr.logger.info('Skipped applying weights config of beamformer.')
     if send_spead:
-        spead_issue_all(corr, beams=beams, from_fpga=from_fpga)
+        spead_bf_issue_all(corr, beams=beams)
     else:
         corr.logger.info('Skipped issue of spead meta data.')
     corr.logger.info("Beamformer initialisation complete.")
@@ -581,8 +526,8 @@ def tx_start(corr, beams=[]):
         corr.logger.info('Output for beam %i started' % index)
 
 
-# TODO
-def tx_stop(corr, beams=[], spead_stop=True):
+# TODO does it stop only bf?
+def bf_tx_stop(corr, beams=[], spead_stop=True):
     """
     Stops outputting SPEAD data over 10GbE links for specified beams.
     Sends SPEAD packets indicating end of stream if required
@@ -590,34 +535,25 @@ def tx_stop(corr, beams=[], spead_stop=True):
     :param spead_stop:
     :return:
     """
-    # beams = self.beams2beams(beams)  # check if output of this fn is correct
     for beam in beams:
         # disable all bf outputs
         THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('bf_write_int',
-                                                                     (corr, 'filter', 0, beam, None, None)))
+                                                                     (corr, 'filter', 0, beam, None)))
         corr.logger.info("Beamformer output paused for beam %s" % beam)
         if spead_stop:
-            spead_tx = get_spead_tx(corr, beam)
-            spead_tx.send_halt(corr)
+            corr.spead_tx.send_halt()  # this doesn't stop only bf?
             corr.logger.info("Sent SPEAD end-of-stream notification for beam %s" % beam)
         else:
             corr.logger.info("Did not send SPEAD end-of-stream notification for beam %s" % beam)
 
 
-# TODO
-def tx_status_get(corr, beam):
+def bf_tx_status_get(corr, beam):
     """
     Returns boolean true/false if the beamformer is currently outputting data.
-    Currently only works on systems with 10GbE output.
     :param beam:
-    :return:
+    :return: True/False
     """
-    # if simulating, no beam is enabled
-
     rv = True
-    corr.logger.info('10Ge output is currently %s' % ('enabled' if rv else 'disabled'))
-    # read output status of all beams (8 now)
-
     mask = [bf_read_int(corr, beam=beam, destination='filter', antennas=None)]
     # look to see if any portion in enabled
     if mask.count(1) != 0:
@@ -639,7 +575,6 @@ def config_meta_output(corr, beams=[], dest_ip_str=None,
     :param issue_spead:
     :return:
     """
-    # beams = self.beams2beams(beams)  # check if output of this fn is correct
     for beam in beams:
         if dest_ip_str == None:
             rx_meta_ip_str = get_beam_param(beam, 'rx_meta_ip_str')
@@ -690,9 +625,9 @@ def config_udp_output(corr, beams=[], frequencies=[],
             beam_offset = int(self.get_beam_param(beam, 'location'))
             dest_ip = struct.unpack('>L', socket.inet_aton(rx_udp_ip_str))[0]
             # restart if currently transmitting
-            restart = self.tx_status_get(beam)
+            restart = self.bf_tx_status_get(beam)
             if restart:
-                self.tx_stop(beam)
+                self.bf_tx_stop(beam)
             # no dest register
             self.write_int('dest', fft_bins=fft_bins, data=[dest_ip], offset=(beam_offset*2))
             self.write_int('dest', fft_bins=fft_bins, data=[int(rx_udp_port)], offset=(beam_offset*2+1))
@@ -735,9 +670,9 @@ def set_passband(corr, beams=[], centre_frequency=None,
             corr.logger.info('Bandwidth for beam %s set to %i Hz' % (beam, b_actual))
         if centre_frequency != None or bandwidth != None:
             # restart if currently transmitting
-            restart = tx_status_get(beam)
+            restart = bf_tx_status_get(beam)
             if restart:
-                tx_stop(beam)
+                bf_tx_stop(beam)
             # issue related spead meta data
             if spead_issue:
                 spead_passband_meta_issue(beam)
@@ -813,21 +748,19 @@ def weights_default_set(corr, beam, antenna=0):
                                                  % (beam_idx, antenna)]]))
 
 
-# TODO check with corr
-def weights_get(corr, beams=[], antennas=[], coeffs=None):
+def weights_get(corr, beams=[], antennas=[], default=True):
     """
     Retrieves the calibration settings currently programmed
     in all b-engines for the given beam and antenna or
     retrieves from config file.
     :param beam: for single beam in str form
     :param antenna: for single antenna in int form
-    :param coeffs: None for default anything else for
+    :param default: True for default False for
                    current weights
     :return:
     """
-    if coeffs == None:
-        weights = weights_default_get(corr, beams=beams,
-                                      antennas=antennas)
+    if default == True:
+        weights = weights_default_get(corr, beams=[beams], antennas=antennas)
     else:
         weights = dict()
         for beam in beams:
@@ -863,124 +796,71 @@ def weights_set(corr, beam, antenna=0, coeffs=None,
     else:
         corr.logger.error('Your coefficient %s is not recognised.' % coeffs)
     if spead_issue:
-        spead_cal_meta_issue(corr, beam, from_fpga=False)
+        spead_weights_meta_issue(corr, beam)
 
 
-def spead_initialise(corr):
+def spead_bf_meta_issue(corr, beams=[]):
     """
-    creates spead transmitters that will be used by the beams in our system
-    :return:
-    """
-    spead_tx = dict()
-    # create a spead transmitter for every beam and store in config
-    beams = beams2beams(corr, beams=['i', 'q'])  # hardcoded for now
-    for beam in beams:
-        ip_str = get_beam_param(corr, beam, 'rx_meta_ip_str')
-        port = int(get_beam_param(corr, beam, 'rx_udp_port'))
-        spead_tx['bf_spead_tx_beam%i' % beam2index(corr, beam)[0]] = \
-            spead.Transmitter(spead.TransportUDPtx(ip_str, port))
-        corr.logger.info("Created spead transmitter for beam %s. "
-                         "Destination IP = %s, port = %d"
-                         % (beam, ip_str, int(port)))
-
-
-# TODO check
-def get_spead_tx(corr, beam):
-    """
-    :param beam:
-    :return:
-    """
-    # initialise spead first
-    beam_index = beam2index(corr, beam)[0]
-    spead_tx = corr.spead_tx['bf_spead_tx_beam%i' % beam_index]
-    try:
-        spead_tx = spead_tx['bf_spead_tx_beam%i' % beam_index]
-    except:
-        raise corr.logger.error('Error locating SPEAD transmitter for '
-                           'beam %s' % beam)
-    return spead_tx
-
-
-# TODO check
-def send_spead_heap(corr, beam, ig):
-    """
-    Sends spead item group via transmitter for beam specified
-    :param beam:
-    :param ig:
-    :return:
-    """
-    beam = beams2beams(corr, beam)
-    spead_tx =get_spead_tx(corr, beam)
-    spead_tx.send_heap(ig.get_heap())
-
-
-# TODO check
-def spead_labelling_issue(corr, beams=[]):
-    """
-    Issues the SPEAD metadata packets describing the labelling/location/connections
-    of the system's analogue inputs.
+    Issues the SPEAD metadata packets containing the payload
+    and options descriptors and unpack sequences.
     :param beams:
     :return:
     """
-    # beams = self.beams2beams(beams)
-    spead_ig = spead.ItemGroup()
-    for beam in beams:
-        send_spead_heap(corr, beam, spead_ig)
-        corr.logger.info("Issued SPEAD metadata describing baseline labelling and input mapping for beam %s" % beam)
-
-
-# TODO check
-def spead_static_meta_issue(corr, beams=[]):
-    """
-    Issues the SPEAD metadata packets containing the payload and options descriptors and unpack sequences.
-    :param beams:
-    :return:
-    """
-    # beams = self.beams2beams(beams)
-    # spead stuff that does not care about beam
+    #  check if SPEAD transmitter was created
+    if corr.meta_destination is None:
+            corr.logger.info('SPEAD meta destination is still unset, '
+                             'NOT sending metadata at this time.')
+            return
+    # SPEAD stuff that does not care about beam
     spead_ig = spead.ItemGroup()
     spead_ig.add_item(name="n_bengs",
                       id=0x100F,
                       description="The total number of B engines in the system.",
                       shape=[],
                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=corr.configd['bengine']['bf_be_per_fpga']*len(get_fpgas(corr)))
-    # TODO ADD VERSION INFO!
+                      init_val=corr.configd['bengine']['bf_be_per_fpga']*len(corr.xhosts))
     spead_ig.add_item(name="b_per_fpga",
                       id=0x1047,
                       description="The number of b-engines per fpga.",
                       shape=[],
                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                       init_val=corr.configd['bengine']['bf_be_per_fpga'])
-    spead_ig.add_item(name="beng_out_bits_per_sample", id=0x1050,
+    spead_ig.add_item(name="beng_out_bits_per_sample",
+                      id=0x1050,
                       description="The number of bits per value in the beng output. Note that this "
                                   "is for a single value, not the combined complex value size.",
                       shape=[],
                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                       init_val=corr.configd['bengine']['bf_bits_out'])
-    # timestamp does it stay?
-    spead_ig.add_item(name='timestamp',
-                      id=0x1600,
-                      description='Timestamp of start of this block of data. uint counting multiples '
-                                  'of ADC samples since last sync (sync_time, id=0x1027). Divide this number'
-                                  ' by timestamp_scale (id=0x1046) to get back to seconds since last sync '
-                                  'when this block of data started.',
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=0)
     for beam in beams:
-        send_spead_heap(corr, beam, spead_ig)
+        beam_index = beam2index(corr, beam)[0]
+        # id is 0xB + 12 least sig bits id of each beam
+        beam_data_id = 0xB000 + beam_index
+        spead_ig.add_item(name=beam,
+                          id=beam_data_id,
+                          description="Raw data for bengines in the system. Frequencies are assembled from "
+                                      "lowest frequency to highest frequency. Frequencies come in blocks of "
+                                      "values in time order where the number of samples in a block is given "
+                                      "by xeng_acc_len (id 0x101F). Each value is a complex number -- "
+                                      "two (real and imaginary) signed integers.",
+                          ndarray=numpy.ndarray(shape=(int(corr.configd['fengine']['n_chans']),
+                                                       int(corr.configd['xengine']['xeng_accumulation_len']), 2),
+                                                dtype=numpy.int8))
         corr.logger.info("Issued static SPEAD metadata for beam %s" % beam)
+    corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
 
 
-# TODO check
 def spead_destination_meta_issue(corr, beams=[]):
     """
     Issues a SPEAD packet to notify the receiver of changes to destination
     :param beams:
     :return:
     """
-    # beams = self.beams2beams(beams)
+    #  check if SPEAD transmitter was created
+    if corr.meta_destination is None:
+            corr.logger.info('SPEAD meta destination is still unset, '
+                             'NOT sending metadata at this time.')
+            return
     for beam in beams:
         spead_ig = spead.ItemGroup()
         spead_ig.add_item(name="rx_udp_port",
@@ -996,184 +876,49 @@ def spead_destination_meta_issue(corr, beams=[]):
                           fmt=spead.STR_FMT,
                           init_val=get_beam_param(corr, beam, 'rx_udp_ip_str'))
         corr.logger.info("Issued destination SPEAD metadata for beam %s" % beam)
+        corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
 
 
-# TODO check
-def spead_passband_meta_issue(corr, beams=[]):
+def spead_weights_meta_issue(corr, beams=[]):
     """
-    Issues a SPEAD packet to notify the receiver of changes to passband parameters
-    :param beams:
-    :return:
-    """
-    # beams = self.beams2beams(beams)
-    for beam in beams:
-        spead_ig = spead.ItemGroup()
-        cf, bw = get_passband(corr, beam)
-        spead_ig.add_item(name="center_freq",
-                          id=0x1011,
-                          description="The center frequency of the output data in Hz, 64-bit IEEE "
-                                      "floating-point number.",
-                          shape=[],
-                          fmt=spead.mkfmt(('f', 64)),
-                          init_val=cf)
-        spead_ig.add_item(name="bandwidth",
-                          id=0x1013,
-                          description="The analogue bandwidth of the digitally processed signal in Hz.",
-                          shape=[],
-                          fmt=spead.mkfmt(('f', 64)),
-                          init_val=bw)
-        spead_ig.add_item(name="n_chans",
-                          id=0x1009,
-                          description="The total number of frequency channels present in the output data.",
-                          shape=[],
-                          fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                          init_val=get_n_chans(corr, beam))
-        # data item
-        beam_index = beam2index(corr, beam)[0]
-        # id is 0xB + 12 least sig bits id of each beam
-        beam_data_id = 0xB000 | (beam_index & 0x00000FFF)
-        spead_ig.add_item(name=beam,
-                          id=beam_data_id,
-                          description="Raw data for bengines in the system. Frequencies are assembled from "
-                                      "lowest frequency to highest frequency. Frequencies come in blocks of "
-                                      "values in time order where the number of samples in a block is given "
-                                      "by xeng_acc_len (id 0x101F). Each value is a complex number -- "
-                                      "two (real and imaginary) signed integers.",
-                          ndarray=numpy.ndarray(shape=(get_n_chans(corr, beam),
-                                                       int(corr.configd['xengine']['xeng_accumulation_len']), 2),
-                                                dtype=numpy.int8))
-        send_spead_heap(corr, beam, spead_ig)
-        corr.logger.info("Issued passband SPEAD metadata for beam %s" % beam)
-
-
-# TODO check
-def spead_time_meta_issue(corr, beams=[]):
-    """
-    Issues a SPEAD packet to notify the receiver that we've resync'd the system, acc len has changed etc.
-    :param beams:
-    :return:
-    """
-    # beams = self.beams2beams(beams)
-    spead_ig = spead.ItemGroup()
-    # sync time
-    val = 0  # val = self.config[]['sync_time']
-    spead_ig.add_item(name='sync_time',
-                      id=0x1027,
-                      description="Time at which the system was last synchronised (armed and triggered "
-                                  "by a 1PPS) in seconds since the Unix Epoch.",
-                      shape=[],
-                      fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                      init_val=val)
-    # scale factor for timestamp
-    spead_ig.add_item(name="scale_factor_timestamp",
-                      id=0x1046,
-                      description="Timestamp scaling factor. Divide the SPEAD data packet timestamp "
-                                  "by this number to get back to seconds since last sync.",
-                      shape=[],
-                      fmt=spead.mkfmt(('f', 64)))
-    # init_val=self.config[]['spead_timestamp_scale_factor'])
-    for beam in beams:
-        ig = spead_ig
-        send_spead_heap(corr, beam, ig)
-        corr.logger.info("Issued SPEAD timing metadata for beam %s" % beam)
-
-
-# TODO
-def spead_eq_meta_issue(corr, beams=[], antennas=[]):
-    """
-    Issues a SPEAD heap for the RF gain and EQ settings settings.
-    :param beams:
-    :return:
-    """
-    # beams = self.beams2beams(beams)
-    spead_ig = spead.ItemGroup()
-    # equaliser settings
-    for beam in beams:
-        for in_n in range(len(antennas)):
-            vals = [[numpy.real(coeff), numpy.imag(coeff)] for coeff in eq_spectrum_get(corr, antennas)]
-            spead_ig.add_item(name="eq_coef_%s" % antennas[in_n],
-                              id=0x1400+in_n,
-                              description="The unitless per-channel digital scaling factors implemented "
-                                          "prior to requantisation, post-FFT, for input %s. Complex number "
-                                          "real, imag 32 bit integers." % antennas[in_n],
-                              shape=[corr.configd['fengine']['n_chans'], 2],
-                              fmt=spead.mkfmt(('u', 32)),
-                              init_val=vals)
-            send_spead_heap(corr, beam, spead_ig)
-            corr.logger.info("Issued SPEAD EQ and RF metadata for beam %s" % beam)
-
-
-# TODO don't know if this is still the case
-def eq_spectrum_get(corr, ant_str):
-    """Retrieves the equaliser settings currently programmed
-    in an F engine for the given antenna. Assumes equaliser
-    of 16 bits. Returns an array of length n_chans."""
-    ffpga_n,xfpga_n,fxaui_n,xxaui_n,feng_input = self.get_ant_str_location(ant_str)
-    register_name='eq%i'%(feng_input)
-    n_coeffs = self.config['n_chans']/self.config['eq_decimation']
-
-    if self.config['eq_type'] == 'scalar':
-        bd=self.ffpgas[ffpga_n].read(register_name,n_coeffs*2)
-        coeffs=numpy.array(struct.unpack('>%ih'%n_coeffs,bd))
-        nacexp=(numpy.reshape(coeffs,(n_coeffs,1))*numpy.ones((1, self.config['eq_decimation']))).reshape(self.config['n_chans'])
-        return nacexp
-
-    elif self.config['eq_type'] == 'complex':
-        bd=self.ffpgas[ffpga_n].read(register_name,n_coeffs*4)
-        coeffs=struct.unpack('>%ih'%(n_coeffs*2),bd)
-        na=numpy.array(coeffs,dtype=numpy.float64)
-        nac=na.view(dtype=numpy.complex128)
-        nacexp=(numpy.reshape(nac,(n_coeffs,1))*numpy.ones((1,self.config['eq_decimation']))).reshape(self.config['n_chans'])
-        return nacexp
-
-    else:
-        log_runtimeerror(self.syslogger, "Unable to interpret eq_type from config file. Expecting scalar or complex.")
-
-
-# TODO check
-def spead_cal_meta_issue(corr, beams=[], antennas=[],
-                         frequencies=[], from_fpga=True):
-    """
-    Issues a SPEAD heap for the RF gain, EQ settings and calibration settings.
+    Issues a SPEAD heap for the weights settings.
     :param beams:
     :param from_fpga:
     :return:
     """
-    # beams = self.beams2beams(beams)
+    #  check if SPEAD transmitter was created
+    if corr.meta_destination is None:
+            corr.logger.info('SPEAD meta destination is still unset, '
+                             'NOT sending metadata at this time.')
+            return
     spead_ig = spead.ItemGroup()
-    # override if simulating
     for beam in beams:
         ig = spead_ig
-        # calibration settings
-        for in_n in range(len(ants2ants(corr, beam, antennas))):
-            vals = [[numpy.real(coeff), numpy.imag(coeff)] for coeff in
-                    cal_spectrum_get(corr, beam, antennas, from_fpga)]
-            ig.add_item(name="beamweight_input%s" % antennas[in_n],
+        # weights settings
+        for in_n in range(int(corr.configd['fengine']['n_antennas'])):
+            beam_char = beam2index(corr, beams=beam)[0]
+            val = weights_get(corr, beam, antennas=[in_n], default=False)
+            ig.add_item(name="beam%i_ant%i" % (beam_char, in_n),
                         id=0x2000+in_n,
                         description="The unitless per-channel digital scaling "
                                     "factors implemented prior to "
                                     "combining antenna signals during beamforming "
-                                    "for input %s. Complex number "
-                                    "real,imag 64 bit floats." % antennas[in_n],
-                        shape=[corr.configd['fengine']['n_chans'], 2],
-                        fmt=spead.mkfmt(('f', 64)),
-                        init_val=vals)
-        send_spead_heap(corr, beam, ig)
+                                    "for input beam%i_ant%i. Complex number "
+                                    "real 32 bit floats." % (beam_char, in_n),
+                        shape=[],
+                        fmt=spead.mkfmt(('f', 32)),
+                        init_val=val)
         corr.logger.info("Issued SPEAD EQ metadata for beam %s" % beam)
+        corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
 
 
-# TODO check
-def spead_issue_all(corr, beams=[], from_fpga=True):
+def spead_bf_issue_all(corr, beams=[]):
     """
     Issues all SPEAD metadata.
     :param beams:
     :param from_fpga:
     :return:
     """
-    spead_static_meta_issue(corr, beams=beams)
-    spead_passband_meta_issue(corr, beams=beams)
+    spead_bf_meta_issue(corr, beams=beams)
     spead_destination_meta_issue(corr, beams=beams)
-    spead_time_meta_issue(corr, beams=beams)
-    spead_eq_meta_issue(corr, beams=beams)
-    spead_cal_meta_issue(corr, beams=beams, from_fpga=from_fpga)
-    spead_labelling_issue(corr, beams=beams)
+    spead_weights_meta_issue(corr, beams=beams)

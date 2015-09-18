@@ -594,12 +594,6 @@ class FxCorrelator(Instrument):
         self.spead_meta_ig.add_item(name='input_labelling', id=0x100E,
                                     description='input labels and numbers',
                                     init_val=numpy.array(metalist))
-
-        # spead_ig.add_item(name='n_bengs', id=0x100F,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
-
         self.spead_meta_ig.add_item(name='center_freq', id=0x1011,
                                     description='The on-sky centre-frequency.',
                                     shape=[], fmt=spead.mkfmt(('f', 64)),
@@ -746,12 +740,6 @@ class FxCorrelator(Instrument):
                                                 'back to seconds since last sync.',
                                     shape=[], fmt=spead.mkfmt(('f', 64)),
                                     init_val=self.sample_rate_hz)
-
-        # spead_ig.add_item(name='b_per_fpga', id=0x1047,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
-
         self.spead_meta_ig.add_item(name='xeng_out_bits_per_sample', id=0x1048,
                                     description='The number of bits per value of the xeng '
                                                 'accumulator output. Note this is for a '
@@ -763,12 +751,6 @@ class FxCorrelator(Instrument):
                                     description='Number of F engines per FPGA host.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                                     init_val=self.f_per_fpga)
-
-        # spead_ig.add_item(name='beng_out_bits_per_sample', id=0x1050,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
-
         # spead_ig.add_item(name='rf_gain_MyAntStr ', id=0x1200+inputN,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('f', 64)),
