@@ -25,6 +25,7 @@ if 'CORR2INI' in os.environ.keys() and args.config == '':
     args.config = os.environ['CORR2INI']
 
 c = fxcorrelator.FxCorrelator('rts correlator', config_source=args.config)
+c.standard_log_config()
 c.initialise(program=False)
 c.xeng_vacc_sync()
 

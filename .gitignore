@@ -23,6 +23,7 @@ MANIFEST
 build
 dist
 
-#    PyCharm      #
-###################
+#    PyCharm and other editor droppings     #
+#############################################
 .idea
+.ropeproject

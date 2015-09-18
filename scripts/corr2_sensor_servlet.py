@@ -130,5 +130,6 @@ if __name__ == '__main__':
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
     instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=args.config)
+    instrument.standard_log_config()
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()
