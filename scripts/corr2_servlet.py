@@ -87,7 +87,9 @@ class Corr2Server(katcp.DeviceServer):
         """
         logging.info('got a create request with config file %s' % config_file)
         try:
-            self.instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=config_file)
+            self.instrument = fxcorrelator.FxCorrelator(
+                'RTS correlator', config_source=config_file)
+            self.instrument.standard_log_config()
             logging.info('made correlator okay')
             return 'ok',
         except Exception as e:

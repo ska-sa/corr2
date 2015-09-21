@@ -33,6 +33,7 @@ if 'CORR2INI' in os.environ.keys() and args.config == '':
 
 # make the correlator object and send the metadata
 c = fxcorrelator.FxCorrelator('corr', config_source=args.config)
+c.standard_log_config()
 c.initialise(program=False)
 c.spead_issue_meta()
 
