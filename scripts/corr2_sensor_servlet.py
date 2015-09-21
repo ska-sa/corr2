@@ -74,7 +74,7 @@ class Corr2SensorServer(katcp.DeviceServer):
 
         """
         self.instrument = instrument
-        self.instrument.initialise(program=False, tvg=False)
+        self.instrument.initialise(program=False)
         sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
 
 
