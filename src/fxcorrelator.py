@@ -109,8 +109,8 @@ class FxCorrelator(Instrument):
                 raise e
 
         # connect to the other hosts that make up this correlator
-        THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
-        THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='connect')
+        THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
+                           target_function='connect')
 
         igmp_version = self.configd['FxCorrelator'].get('igmp_version')
         if igmp_version is not None:
@@ -122,17 +122,12 @@ class FxCorrelator(Instrument):
         # if we need to program the FPGAs, do so
         if program:
             self.logger.info('Programming FPGA hosts')
-            ftups = []
-            for f in self.xhosts:
-                ftups.append((f, f.boffile))
-            for f in self.fhosts:
-                ftups.append((f, f.boffile))
-            fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
+            fpgautils.program_fpgas([(host, host.boffile) for host in
+                                     (self.fhosts + self.xhosts)],
+                                    progfile=None, timeout=15)
         else:
             self.logger.info('Loading design information')
-            THREADED_FPGA_FUNC(self.fhosts, timeout=5,
-                               target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.xhosts, timeout=5,
+            THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
                                target_function='get_system_information')
 
         # remove test hardware from designs
@@ -142,7 +137,8 @@ class FxCorrelator(Instrument):
             if qdr_cal:
                 self.qdr_calibrate()
             else:
-                self.logger.info('Skipping QDR cal - are you sure you want to do this?')
+                self.logger.info('Skipping QDR cal - are you sure you '
+                                 'want to do this?')
 
             # init the f engines
             fengops.feng_initialise(self)
@@ -357,7 +353,6 @@ class FxCorrelator(Instrument):
             _targetClass = bhost_fpga.FpgaBHost
         else:
             _targetClass = xhost_fpga.FpgaXHost
-
         self.xhosts = []
         for host in self.configd['xengine']['hosts'].split(','):
             host = host.strip()
