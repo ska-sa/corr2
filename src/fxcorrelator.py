@@ -40,6 +40,7 @@ use_xeng_sim = False
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
+LOGGER = logging.getLogger(__name__)
 
 class FxCorrelator(Instrument):
     """
@@ -47,28 +48,19 @@ class FxCorrelator(Instrument):
     xengines that each produce cross products from a continuous portion of the channels and accumulate the result.
     SPEAD data products are produced.
     """
-    def __init__(self, descriptor, identifier=-1, config_source=None, logger=None, log_level=logging.INFO):
+    def __init__(self, descriptor, identifier=-1, config_source=None,
+                 logger=LOGGER, log_level=logging.INFO):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
         :param identifier: An optional integer identifier.
-        :param config_source: The instrument configuration source. Can be a text file, hostname, whatever.
+        :param config_source: The instrument configuration source. Can be a text
+                              file, hostname, whatever.
         :param logger: Use the module logger by default, unless something else is given.
-        :param logger: The loglevel to use by default, logging.INFO.
         :return: <nothing>
-        """
-        # first thing to do is handle the logging - set the root logging handler - submodules loggers will
-        # automatically use it
-        self.loghandler = log.Corr2LogHandler()
-        logging.root.addHandler(self.loghandler)
-        logging.root.setLevel(log_level)
-        self.logger = logger or logging.getLogger(__name__)
-        self.logger.setLevel(log_level)
-        self.logger.addHandler(self.loghandler)
 
-        # set the SPEAD logger to warning only
-        spead_logger = logging.getLogger('spead')
-        spead_logger.setLevel(logging.WARNING)
+        """
+        self.logger = logger
 
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
@@ -94,6 +86,25 @@ class FxCorrelator(Instrument):
         Instrument.__init__(self, descriptor, identifier, config_source)
 
         self._initialised = False
+
+    def standard_log_config(self, log_level=logging.INFO, silence_spead=True):
+        """Convenience method for setting up logging in scripts etc.
+        :param logger: The loglevel to use by default, logging.INFO.
+        :param silence_spead: Set 'spead' logger to level WARNING if True
+
+        """
+        # Set the root logging handler - submodules loggers will automatically
+        # use it
+        self.loghandler = log.Corr2LogHandler()
+        logging.root.addHandler(self.loghandler)
+        logging.root.setLevel(log_level)
+        self.logger.setLevel(log_level)
+        self.logger.addHandler(self.loghandler)
+
+        if silence_spead:
+            # set the SPEAD logger to warning only
+            spead_logger = logging.getLogger('spead')
+            spead_logger.setLevel(logging.WARNING)
 
     def initialise(self, program=True, qdr_cal=True):
         """

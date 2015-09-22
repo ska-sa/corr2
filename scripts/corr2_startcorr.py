@@ -33,6 +33,7 @@ if 'CORR2INI' in os.environ.keys() and args.config == '':
 c = fxcorrelator.FxCorrelator('rts correlator',
                               config_source=args.config,
                               log_level=eval('logging.%s' % log_level))
+c.standard_log_config()
 try:
     c.initialise(program=not args.noprogram, qdr_cal=not args.no_qdr_cal)
 except Exception as e:
