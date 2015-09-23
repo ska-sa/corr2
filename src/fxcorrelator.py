@@ -34,6 +34,8 @@ from instrument import Instrument
 from data_source import DataSource
 import fxcorrelator_fengops as fengops
 import fxcorrelator_xengops as xengops
+import fxcorrelator_bengops as bengops
+import fxcorrelator_filterops as filterops
 
 use_xeng_sim = False
 
@@ -42,14 +44,14 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 LOGGER = logging.getLogger(__name__)
 
+
 class FxCorrelator(Instrument):
     """
     A generic FxCorrelator composed of fengines that channelise antenna inputs and
     xengines that each produce cross products from a continuous portion of the channels and accumulate the result.
     SPEAD data products are produced.
     """
-    def __init__(self, descriptor, identifier=-1, config_source=None,
-                 logger=LOGGER, log_level=logging.INFO):
+    def __init__(self, descriptor, identifier=-1, config_source=None, logger=LOGGER):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
@@ -66,6 +68,7 @@ class FxCorrelator(Instrument):
         self.fhosts = []
         self.xhosts = []
         self.filthosts = None
+        self.found_beamformer = False
 
         # attributes
         self.katcp_port = None
@@ -113,7 +116,6 @@ class FxCorrelator(Instrument):
         """
         # set up the filter boards if we need to
         if 'filter' in self.configd:
-            import fxcorrelator_filterops as filterops
             try:
                 filterops.filter_initialise(corr=self, program=program)
             except Exception as e:
@@ -156,6 +158,10 @@ class FxCorrelator(Instrument):
 
             # init the x engines
             xengops.xeng_initialise(self)
+
+            # are there beamformers?
+            if self.found_beamformer:
+                bengops.beng_initialise(self)
 
             # for fpga_ in self.fhosts:
             #     fpga_.tap_arp_reload()
@@ -322,7 +328,6 @@ class FxCorrelator(Instrument):
             raise IOError('One or more bitstream files not found.')
 
         # TODO: Load config values from the bitstream meta information - f per fpga, x per fpga, etc
-        self.arp_wait_time = int(self.configd['FxCorrelator']['arp_wait_time'])
         self.sensor_poll_time = int(self.configd['FxCorrelator']['sensor_poll_time'])
         self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
@@ -346,10 +351,9 @@ class FxCorrelator(Instrument):
         self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
 
         # check if beamformer exists with x-engines
+        self.found_beamformer = False
         if 'bengine' in self.configd.keys():
-            found_beamformer = True
-        else:
-            found_beamformer = False
+            self.found_beamformer = True
 
         # set up the hosts and engines based on the configuration in the ini file
         self.fhosts = []
@@ -360,7 +364,7 @@ class FxCorrelator(Instrument):
             self.fhosts.append(fpgahost)
 
         # choose class (b-engine inherits x-engine functionality)
-        if found_beamformer:
+        if self.found_beamformer:
             _targetClass = bhost_fpga.FpgaBHost
         else:
             _targetClass = xhost_fpga.FpgaXHost

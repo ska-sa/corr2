@@ -1,18 +1,9 @@
-# /usr/bin/env python
 """
-Selection of commonly-used beamformer control functions.
+A BHost is an extension of an XHost. It contains memory and registers
+to set up and control one or more beamformers.
 
 Author: Jason Manley, Andrew Martens, Ruby van Rooyen, Monika Obrocka
 """
-"""
-Revisions:
-2012-10-02 JRM Initial
-2013-02-10 AM basic boresight
-2013-02-11 AM basic SPEAD
-2013-02-21 AM flexible bandwidth
-2013-03-01 AM calibration
-2013-03-05 AM SPEAD metadata
-\n"""
 
 import logging
 from xhost_fpga import FpgaXHost
@@ -21,14 +12,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class FpgaBHost(FpgaXHost):
-    def __init__(self, host, katcp_port=7147, boffile=None, connect=True, config=None):
+    def __init__(self, host, katcp_port=7147, boffile=None,
+                 connect=True, config=None):
         # parent constructor
-        FpgaXHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect, config=config)
-        self.config = config
+        FpgaXHost.__init__(self, host, katcp_port=katcp_port,
+                           boffile=boffile, connect=connect, config=config)
         if self.config is not None:
             self.bf_per_fpga = int(self.config['bengine']['bf_be_per_fpga'])
-        self.bf_per_fpga = 4
-
         LOGGER.info('Beamformer created')
 
     # specifying many frequencies is redundant for MK case
@@ -36,11 +26,12 @@ class FpgaBHost(FpgaXHost):
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['xengine']['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
+        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+                   connect=True, config=config_source)
 
     def read_bf_config(self):
         """
-        Reads data from bf_config register from all x-eng
+        Reads data from bf_config register from this bhost
         :param 'data_id', 'time_id'
         :return: dictionary
         """
@@ -159,12 +150,13 @@ class FpgaBHost(FpgaXHost):
         """
         self.registers['bf_control'].write(write_destination=value)
 
-    def write_bf_control(self, value={}):
+    def write_bf_control(self, value=None):
         """
         :param value:
         :return:
         """
-        if value == {} or None:  # set everything to zero
+        # set everything to zero
+        if value is None:
             self.write_beng(value=0)
             self.write_antenna(value=0)
             self.write_stream(value=0)
@@ -196,8 +188,7 @@ class FpgaBHost(FpgaXHost):
         :param beam:
         :return:
         """
-        self.registers['bf%d_config'
-                         % beam].write(rst=value)
+        self.registers['bf%d_config' % beam].write(rst=value)
 
     def write_beam_id(self, value=0, beam=0):
         """
@@ -206,8 +197,7 @@ class FpgaBHost(FpgaXHost):
         :param beam:
         :return:
         """
-        self.registers['bf%d_config'
-                         % beam].write(beam_id=value)
+        self.registers['bf%d_config' % beam].write(beam_id=value)
 
     def write_beam_partitions(self, value=0, beam=0):
         """
@@ -216,8 +206,7 @@ class FpgaBHost(FpgaXHost):
         :param beam:
         :return:
         """
-        self.registers['bf%d_config'
-                         % beam].write(n_partitions=value)
+        self.registers['bf%d_config' % beam].write(n_partitions=value)
 
     def write_beam_port(self, value=0, beam=0):
         """
@@ -226,17 +215,17 @@ class FpgaBHost(FpgaXHost):
         :param beam:
         :return:
         """
-        self.registers['bf%d_config'
-                         % beam].write(port=value)
+        self.registers['bf%d_config' % beam].write(port=value)
 
-    def write_beam_config(self, value={}, beam=0):
+    def write_beam_config(self, value=None, beam=0):
         """
 
         :param value:
         :param beam:
         :return:
         """
-        if value == {} or None:  # set everything to zero
+        # set everything to zero
+        if value is None:
             self.write_beam_rst(value=0, beam=beam)
             self.write_beam_id(value=0, beam=beam)
             self.write_beam_partitions(value=0, beam=beam)
@@ -258,17 +247,15 @@ class FpgaBHost(FpgaXHost):
         :return:
         """
         if beng == 0:
-            self.registers['bf%d_partitions'
-                             % beam].write(partition0_offset=value)
+            self.registers['bf%d_partitions' % beam].write(partition0_offset=value)
         elif beng == 1:
-            self.registers['bf%d_partitions'
-                             % beam].write(partition1_offset=value)
+            self.registers['bf%d_partitions' % beam].write(partition1_offset=value)
         elif beng == 2:
-            self.registers['bf%d_partitions'
-                             % beam].write(partition2_offset=value)
+            self.registers['bf%d_partitions' % beam].write(partition2_offset=value)
+        elif beng == 3:
+            self.registers['bf%d_partitions' % beam].write(partition3_offset=value)
         else:
-            self.registers['bf%d_partitions'
-                             % beam].write(partition3_offset=value)
+            raise RuntimeError('No such beng: %i' % beng)
 
     def read_beam_offset(self, beam=0, beng=0):
         """
@@ -276,9 +263,8 @@ class FpgaBHost(FpgaXHost):
         :param 'rst', 'beam_id' 'n_partitions'
         :return: dictionary
         """
-        return self.registers['bf%d_partitions'
-                                % beam].read()['data']['partition%d_offset'
-                                                       % beng]
+        _regval = self.registers['bf%d_partitions' % beam].read()['data']
+        return _regval['partition%d_offset' % beng]
 
     def read_beam_ip(self, beam=0):
         """
