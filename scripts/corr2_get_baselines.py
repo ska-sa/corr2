@@ -35,6 +35,6 @@ if configfile == '':
 c = corr2.fxcorrelator.FxCorrelator('script_corr', config_source=configfile)
 c.standard_log_config()
 c.initialise(program=False)
-baselines = corr2.fxcorrelator_xengops.xeng_get_baseline_order(c)
+baselines = c.xops.get_baseline_order()
 for ctr, baseline in enumerate(baselines):
     print ctr, ':', baseline
