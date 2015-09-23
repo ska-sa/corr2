@@ -1,13 +1,15 @@
 import numpy
-import struct
 
+from casperfpga import tengbe
 from casperfpga import utils as fpgautils
+
 import spead64_48 as spead
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 
+# TODO calibrate to 'apply_beam_weights'
 def bf_control_lookup(destination):
     """
     Return write/read destination
@@ -89,7 +91,7 @@ def get_beams(corr):
     return all_beams
 
 
-def fft_bin2frequency(corr, fft_bins=[]):
+def fft_bin2frequency(corr, fft_bins):
         """
         returns a list of centre frequencies associated with the fft bins supplied
         :param fft_bins:
@@ -109,7 +111,7 @@ def fft_bin2frequency(corr, fft_bins=[]):
         return frequencies
 
 
-def frequency2fft_bin(corr, frequencies=[]):
+def frequency2fft_bin(corr, frequencies):
     """
     returns fft bin associated with specified frequencies
     :param frequencies:
@@ -117,7 +119,7 @@ def frequency2fft_bin(corr, frequencies=[]):
     """
     fft_bins = []
     n_chans = int(corr.configd['fengine']['n_chans'])
-    if frequencies == None:
+    if frequencies is None:
         fft_bins = []
     elif frequencies == range(n_chans):
         fft_bins = range(n_chans)
@@ -131,7 +133,7 @@ def frequency2fft_bin(corr, frequencies=[]):
     return fft_bins
 
 
-def map_ant_to_input(corr, beam, antennas=[]):
+def map_ant_to_input(corr, beam, antennas):
     """
     maps antenna strings specified to input to beamformer
     gives index of antennas in the list of all_antennas
@@ -147,7 +149,7 @@ def map_ant_to_input(corr, beam, antennas=[]):
     return inputs
 
 
-def ants2ants(corr, beam, antennas=[]):
+def ants2ants(corr, beam, antennas):
     """
     From antenna+polarisation list extract only the str for the beam
     (expands all, None etc into valid antenna strings. Checks for valid antenna strings)
@@ -155,7 +157,7 @@ def ants2ants(corr, beam, antennas=[]):
     :param ant_strs:
     :return: ants
     """
-    if antennas == None:
+    if antennas is None:
         return []
     beam_ants = []
     beam_idx = beam2index(corr, beam)[0]
@@ -165,7 +167,7 @@ def ants2ants(corr, beam, antennas=[]):
     return beam_ants
 
 
-def beam2index(corr, beams=[]):
+def beam2index(corr, beams):
     """
     returns index of beam with specified name
     :param beams: 'i' or 'q' or all
@@ -179,13 +181,13 @@ def beam2index(corr, beams=[]):
     return indices
 
 
-def input2ants(corr, beam, antennas=[]):
+def input2ants(corr, beam, antennas):
     """
     :param beam:
     :param antennas:
     :return:
     """
-    if antennas == None:
+    if antennas is None:
         return []
     beam = beams2beams(corr, beams=beam)[0]
     beam_ants = []
@@ -196,7 +198,7 @@ def input2ants(corr, beam, antennas=[]):
     return beam_ants
 
 
-def beams2beams(corr, beams=[]):
+def beams2beams(corr, beams):
     """
     expands all, None etc into valid beam names.
     Checks for valid beam names
@@ -204,7 +206,7 @@ def beams2beams(corr, beams=[]):
     :return: new_beams
     """
     new_beams = []
-    if beams == None:
+    if beams is None:
         return
     all_beams = get_beams(corr)
     if beams == all_beams:
@@ -257,7 +259,7 @@ def get_fft_bin_bandwidth(corr):
     return fft_bin_bandwidth
 
 
-def beam2location(corr, beams=[]):
+def beam2location(corr, beams):
     """
     returns location of beam with associated name or index
     :param beams:
@@ -282,7 +284,7 @@ def get_beam_param(corr, beams, param):
     values = []
     beams = beams2beams(corr, beams)
     beam_indices = beam2index(corr, beams)
-    if beam_indices == []:
+    if beam_indices is None:
         raise corr.logger.error('Error locating beams function')
     for beam_index in beam_indices:
         values.append(corr.configd['bengine']['bf_%s_beam%d' % (param, beam_index)])
@@ -292,7 +294,7 @@ def get_beam_param(corr, beams, param):
     return values
 
 
-def antenna2antenna_indices(corr, beam, antennas=[]):
+def antenna2antenna_indices(corr, beam, antennas):
     """
     map antenna strings to inputs
     :param beam:
@@ -318,10 +320,10 @@ def bf_read_int(corr, beam, destination, antennas=None):
     :return: single value
     """
     if destination == 'calibrate':
-        if antennas == None:
+        if antennas is None:
             raise corr.logger.error('Need to specify an antenna when writing to calibrate block function')
     if destination == 'requantise':
-        if antennas != None:
+        if antennas is not None:
             raise corr.logger.error('Can''t specify antenna for requantise block function')
     # loop over fpgas and set the registers
     # get beam location
@@ -364,7 +366,7 @@ def bf_read_int(corr, beam, destination, antennas=None):
     return values
 
 
-def bf_write_int(corr, destination, data, beams=[],
+def bf_write_int(corr, destination, data, beams=None,
                  antennas=None):
     """
     write to various destinations in the bf block for a particular beam
@@ -375,10 +377,10 @@ def bf_write_int(corr, destination, data, beams=[],
     :return:
     """
     if destination == 'calibrate':
-        if antennas == None:
+        if antennas is None:
             raise corr.logger.error('Need to specify an antenna when writing to calibrate block')
     if destination == 'requantise':
-        if antennas != None:
+        if antennas is not None:
             raise corr.logger.error('Can''t specify antenna for requantise block')
     # loop over fpgas and set the registers
     location = int(beam2location(corr, beams=beams)[0])
@@ -391,7 +393,7 @@ def bf_write_int(corr, destination, data, beams=[],
     # set antenna if needed
     if destination == 'calibrate':
         # check if ant string is correct
-        if ants2ants(corr, beam=beams, antennas=antennas) != []:
+        if len(ants2ants(corr, beam=beams, antennas=antennas)) == 0:
             ant_n = input2ants(corr, beams, antennas=[antennas])
             THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_antenna', [ant_n[0]]))
             THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_value_in', [data]))
@@ -427,7 +429,7 @@ def cf_bw2fft_bins(corr, centre_frequency, bandwidth):
     return bins
 
 
-def frequency2bf_index(corr, frequencies=[], fft_bins=[], unique=False):
+def frequency2bf_index(corr, frequencies, fft_bins, unique=False):
     """
     returns bf indices associated with the frequencies specified
     :param frequencies:
@@ -470,35 +472,75 @@ def cf_bw2cf_bw(corr, centre_frequency, bandwidth):
     return beam_centre_frequency, beam_bandwidth
 
 
-# TODO
-def beng_initialise(corr, beams=[], config_output=True,
+def beng_initialise(corr, beams, config_output=True,
                     send_spead=True, set_weights=True):
     """
     Initialises the b-engines and checks for errors.
-    :param set_cal:
-    :param config_output:
-    :param send_spead:
-    :return:
+    :param corr: correlator
+    :param beams: strings
+    :param config_output: bool
+    :param send_spead: bool
+    :param set_weights: bool
+    :return: <nothing>
     """
+    n_beng = int(corr.configd['bengine']['bf_be_per_fpga'])
+    beam_offset_idx = range(0, n_beng*len(corr.xhosts), n_beng)
+    beam_idx = beam2index(corr, beams=beams)
+
     # disable all beams that are transmitting
     for beam in beams:
         if bf_tx_status_get(corr, beam):
             bf_tx_stop(corr, beam)
             corr.logger.info('Stopped beamformer %s' % beam)
-    # give control register a known state
-    # THREADED_FPGA_FUNC(self.get_fpgas(), timeout=10, target_function=('write_bf_control', None),)
+
+    # Give control register a known state.
+    # Set bf_control and bf_config to zero for now
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
+                       target_function=('write_bf_control', (None,)),)
+    THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
+                       target_function=('write_bf_config', (None,)),)
+
+    # TODO
+    # Set up default destination ip and port
+    # do we increment?
+    # config_meta_output(corr, beams, dest_ip_str=None,
+    #                    dest_port=None, issue_spead=True)
+    # config_udp_output(corr, beams, frequencies,
+    #                       dest_ip_str=None, dest_port=None, issue_spead=True)
+
+    # Set default beam config and beam IP
+    # n_partitions = 32 (new register)
+    # beam_id ?? (256 possible)
+    for beam in beam_idx:
+        THREADED_FPGA_FUNC(corr.xhosts, timeout=10,
+                           target_function=('write_beam_config',
+                                            ({'rst': 1, 'beam_id': 0,
+                                              'n_partitions': 16}, beam)),)
+
+    # for each beam assign which part of the band is used
+    idx = 0
+    for host in corr.xhosts:  # slow need improvement
+        for beam in beam_idx:
+            host.write_beam_offset(value=beam_offset_idx[idx],
+                                   beam=beam)
+        idx += 1
+
+    if set_weights:  # set defaults, what about the antenna?
+        for beam in beams:
+            weights_set(corr, beam, antenna=0, coeffs=None,
+                        spead_issue=False)
+    else:
+        corr.logger.info('Skipped applying weights config '
+                         'of beamformer.')
+
     # configure spead_meta data transmitter and spead data destination,
-    # don't issue related spead meta-data as will do in spead_issue_all
+    # don't issue related spead meta-data
     # TODO missing registers
     if config_output:
         config_udp_output(corr, beams, issue_spead=False)
         config_meta_output(corr, beams, issue_spead=False)
     else:
         corr.logger.info('Skipped output configuration of beamformer.')
-    if set_weights:
-        weights_set(corr, beams, antennas=range(int(corr.configd['fengine']['n_antennas'])), coeffs=None)
-    else:
-        corr.logger.info('Skipped applying weights config of beamformer.')
     if send_spead:
         spead_bf_issue_all(corr, beams=beams)
     else:
@@ -506,7 +548,7 @@ def beng_initialise(corr, beams=[], config_output=True,
     corr.logger.info("Beamformer initialisation complete.")
 
 
-def tx_start(corr, beams=[]):
+def tx_start(corr, beams):
     """
     Start outputting SPEAD products on all boards.
     Only works for systems with 10GbE output atm.
@@ -527,7 +569,7 @@ def tx_start(corr, beams=[]):
 
 
 # TODO does it stop only bf?
-def bf_tx_stop(corr, beams=[], spead_stop=True):
+def bf_tx_stop(corr, beams, spead_stop=True):
     """
     Stops outputting SPEAD data over 10GbE links for specified beams.
     Sends SPEAD packets indicating end of stream if required
@@ -537,8 +579,7 @@ def bf_tx_stop(corr, beams=[], spead_stop=True):
     """
     for beam in beams:
         # disable all bf outputs
-        THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('bf_write_int',
-                                                                     (corr, 'filter', 0, beam, None)))
+        bf_write_int(corr, 'filter', 0, beams=beam, antennas=None)
         corr.logger.info("Beamformer output paused for beam %s" % beam)
         if spead_stop:
             corr.spead_tx.send_halt()  # this doesn't stop only bf?
@@ -564,11 +605,13 @@ def bf_tx_status_get(corr, beam):
 
 
 # TODO no registers
-def config_meta_output(corr, beams=[], dest_ip_str=None,
+def config_meta_output(corr, beams, dest_ip_str=None,
                        dest_port=None, issue_spead=True):
     """
-    Configures the destination IP and port for SPEAD meta-data outputs. dest_port and
-    dest_ip are optional parameters to override the config file defaults.
+    Configures the destination IP and port for SPEAD
+    meta-data outputs. dest_port and dest_ip are
+    optional parameters to override the config file
+    defaults.
     :param beams:
     :param dest_ip_str:
     :param dest_port:
@@ -576,72 +619,69 @@ def config_meta_output(corr, beams=[], dest_ip_str=None,
     :return:
     """
     for beam in beams:
-        if dest_ip_str == None:
-            rx_meta_ip_str = get_beam_param(beam, 'rx_meta_ip_str')
+        if dest_ip_str is None:
+            rx_meta_ip_str = get_beam_param(corr, beam, 'rx_meta_ip_str')
         else:
             rx_meta_ip_str = dest_ip_str
-            set_beam_param(beam, 'rx_meta_ip_str', dest_ip_str)
-            # set_beam_param(beam, 'rx_meta_ip', struct.unpack('>L', socket.inet_aton(dest_ip_str))[0])
-        if dest_port == None:
-            rx_meta_port = int(get_beam_param(beam, 'rx_udp_port'))
+        if dest_port is None:
+            rx_meta_port = int(get_beam_param(corr, beam, 'rx_udp_port'))
         else:
             rx_meta_port = dest_port
-            set_beam_param(beam, 'rx_udp_port', dest_port)
-
-        # spead_tx['bf_spead_tx_beam%i' % beam2index(beam)[0]] = \
-        #     spead.Transmitter(spead.TransportUDPtx(rx_meta_ip_str, rx_meta_port))
-        corr.logger.info("Destination for SPEAD meta data transmitter for beam %s changed. "
-                    "New destination IP = %s, port = %d" % (beam, rx_meta_ip_str, int(rx_meta_port)))
+        corr.logger.info("Destination for SPEAD meta data transmitter "
+                         "for beam %s changed. New destination "
+                         "IP = %s, port = %d"
+                         % (beam, rx_meta_ip_str, int(rx_meta_port)))
         # reissue all SPEAD meta-data to new receiver
         if issue_spead:
-            spead_issue_all(beam)
+            spead_bf_issue_all(corr, beam)
 
 
 # TODO no destination register
-def config_udp_output(corr, beams=[], frequencies=[],
-                          dest_ip_str=None, dest_port=None, issue_spead=True):
+def config_udp_output(corr, beams, dest_ip_str=None, dest_port=None, issue_spead=True):
         """
-        Configures the destination IP and port for B engine data outputs. dest_port and dest_ip
-        are optional parameters to override the config file defaults.
-        :param beams:
+        Configures the destination IP and port for B
+        engine data outputs. dest_port and dest_ip
+        are optional parameters to override the config
+        file defaults.
+        :param beams: str
         :param dest_ip_str:
         :param dest_port:
-        :param issue_spead:
-        :return:
+        :param issue_spead: bool
+        :return: <nothing>
         """
-        fft_bins = self.frequency2fft_bin(frequencies)
         for beam in beams:
-            if dest_ip_str == None:
-                rx_udp_ip_str = self.get_beam_param(beam, 'rx_udp_ip_str')
+            beam_idx = beam2index(corr, beams=beam)
+            if dest_ip_str is None:
+                rx_udp_ip_str = get_beam_param(corr, beam, 'rx_udp_ip_str')
             else:
                 rx_udp_ip_str = dest_ip_str
-                self.set_beam_param(beam, 'rx_udp_ip_str', dest_ip_str)
-                self.set_beam_param(beam, 'rx_udp_ip', struct.unpack('>L', socket.inet_aton(dest_ip_str))[0])
-            if dest_port == None:
-                rx_udp_port = self.get_beam_param(beam, 'rx_udp_port')
+            if dest_port is None:
+                rx_udp_port = get_beam_param(corr, beam, 'rx_udp_port')
             else:
                 rx_udp_port = dest_port
-                self.set_beam_param(beam, 'rx_udp_port', dest_port)
-            beam_offset = int(self.get_beam_param(beam, 'location'))
-            dest_ip = struct.unpack('>L', socket.inet_aton(rx_udp_ip_str))[0]
+            dest_ip = tengbe.IpAddress.str2ip(corr.configd['bengine']
+                                              ['bf_rx_meta_ip_str_beam%i' % beam_idx[0]])
+
             # restart if currently transmitting
-            restart = self.bf_tx_status_get(beam)
+            restart = bf_tx_status_get(corr, beam)
             if restart:
-                self.bf_tx_stop(beam)
-            # no dest register
-            self.write_int('dest', fft_bins=fft_bins, data=[dest_ip], offset=(beam_offset*2))
-            self.write_int('dest', fft_bins=fft_bins, data=[int(rx_udp_port)], offset=(beam_offset*2+1))
+                bf_tx_stop(corr, beam)
+
+            # write ip/port
+            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_beam_port', (rx_udp_port, beam)),)
+            THREADED_FPGA_FUNC(corr.xhosts, timeout=10, target_function=('write_beam_ip', (dest_ip, beam)),)
+
             # each beam output from each beamformer group can be configured differently
-            LOGGER.info("Beam %s configured to output to %s:%i." % (beam, rx_udp_ip_str, int(rx_udp_port)))
+            corr.logging.info("Beam %s configured to output to %s:%i." % (beam, rx_udp_ip_str, int(rx_udp_port)))
             if issue_spead:
-                self.spead_destination_meta_issue(beam)
+                spead_destination_meta_issue(corr, beam)
             if restart:
-                self.tx_start(beam)
+                tx_start(corr, beam)
 
 
 # TODO might be obsolete
-def set_passband(corr, beams=[], centre_frequency=None,
-                 bandwidth=None, spead_issue=True):
+def set_passband(corr, beams, centre_frequency=None,
+                 bandwidth=None):
     """
     sets the centre frequency and/or bandwidth for the specified beams
     :param beams:
@@ -650,35 +690,30 @@ def set_passband(corr, beams=[], centre_frequency=None,
     :param spead_issue:
     :return:
     """
-    # beams = self.beams2beams(beams)
     for beam in beams:
         # parameter checking
-        if centre_frequency == None:
-            cf = float(get_beam_param(beam, 'centre_frequency'))
+        if centre_frequency is None:
+            cf = float(get_beam_param(corr, beam, 'centre_frequency'))
         else:
             cf = centre_frequency
-        if bandwidth == None:
-            b = float(get_beam_param(beam, 'bandwidth'))
+        if bandwidth is None:
+            b = float(get_beam_param(corr, beam, 'bandwidth'))
         else:
             b = bandwidth
-        cf_actual, b_actual = cf_bw2cf_bw(cf, b)
-        if centre_frequency != None:
-            set_beam_param(beam, 'centre_frequency', cf_actual)
+        cf_actual, b_actual = cf_bw2cf_bw(corr, cf, b)
+        if centre_frequency is not None:
             corr.logger.info('Centre frequency for beam %s set to %i Hz' % (beam, cf_actual))
-        if bandwidth != None:
-            set_beam_param(beam, 'bandwidth', b_actual)
+        if bandwidth is not None:
             corr.logger.info('Bandwidth for beam %s set to %i Hz' % (beam, b_actual))
-        if centre_frequency != None or bandwidth != None:
+        if centre_frequency is not None or bandwidth is not None:
             # restart if currently transmitting
-            restart = bf_tx_status_get(beam)
+            restart = bf_tx_status_get(corr, beam)
             if restart:
-                bf_tx_stop(beam)
+                bf_tx_stop(corr, beam)
             # issue related spead meta data
-            if spead_issue:
-                spead_passband_meta_issue(beam)
             if restart:
                 corr.logger.info('Restarting beam %s with new passband parameters' % beam)
-                tx_start(beam)
+                tx_start(corr, beam)
 
 
 def get_passband(corr, beam):
@@ -706,7 +741,7 @@ def get_n_chans(corr, beam):
     return n_chans
 
 
-def weights_default_get(corr, beams=[], antennas=[]):
+def weights_default_get(corr, beams, antennas):
     """
     Fetches the default weights configuration from the config file and returns
     a list of the weights for a given beam and antenna.
@@ -748,7 +783,7 @@ def weights_default_set(corr, beam, antenna=0):
                                                  % (beam_idx, antenna)]]))
 
 
-def weights_get(corr, beams=[], antennas=[], default=True):
+def weights_get(corr, beams, antennas, default=True):
     """
     Retrieves the calibration settings currently programmed
     in all b-engines for the given beam and antenna or
@@ -759,8 +794,9 @@ def weights_get(corr, beams=[], antennas=[], default=True):
                    current weights
     :return:
     """
-    if default == True:
-        weights = weights_default_get(corr, beams=[beams], antennas=antennas)
+    if default is True:
+        weights = weights_default_get(corr, beams=[beams],
+                                      antennas=antennas)
     else:
         weights = dict()
         for beam in beams:
@@ -768,8 +804,11 @@ def weights_get(corr, beams=[], antennas=[], default=True):
                 beam_char = beam2index(corr, beams=beam)[0]
                 beam_idx = beam2index(corr, beam)[0]
                 ant_char = '%i%c' % (ant, beam_char)
-                weight = bf_read_int(corr, beam, destination='calibrate', antennas=ant_char)
-                weights.update({'beam%i_ant%i' % (beam_idx, ant): int(weight)})
+                weight = bf_read_int(corr, beam,
+                                     destination='calibrate',
+                                     antennas=ant_char)
+                weights.update({'beam%i_ant%i'
+                                % (beam_idx, ant): int(weight)})
     return weights
 
 
@@ -785,7 +824,7 @@ def weights_set(corr, beam, antenna=0, coeffs=None,
     :param spead_issue:
     :return:
     """
-    if coeffs == None:
+    if coeffs is None:
         weights_default_set(corr, beam, antenna=antenna)
     elif len(coeffs) == 1:  # we set a single value
         # write final vector to calibrate block
@@ -799,7 +838,7 @@ def weights_set(corr, beam, antenna=0, coeffs=None,
         spead_weights_meta_issue(corr, beam)
 
 
-def spead_bf_meta_issue(corr, beams=[]):
+def spead_bf_meta_issue(corr, beams):
     """
     Issues the SPEAD metadata packets containing the payload
     and options descriptors and unpack sequences.
@@ -850,7 +889,7 @@ def spead_bf_meta_issue(corr, beams=[]):
     corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
 
 
-def spead_destination_meta_issue(corr, beams=[]):
+def spead_destination_meta_issue(corr, beams):
     """
     Issues a SPEAD packet to notify the receiver of changes to destination
     :param beams:
@@ -879,7 +918,7 @@ def spead_destination_meta_issue(corr, beams=[]):
         corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
 
 
-def spead_weights_meta_issue(corr, beams=[]):
+def spead_weights_meta_issue(corr, beams):
     """
     Issues a SPEAD heap for the weights settings.
     :param beams:
@@ -912,7 +951,7 @@ def spead_weights_meta_issue(corr, beams=[]):
         corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
 
 
-def spead_bf_issue_all(corr, beams=[]):
+def spead_bf_issue_all(corr, beams):
     """
     Issues all SPEAD metadata.
     :param beams:
