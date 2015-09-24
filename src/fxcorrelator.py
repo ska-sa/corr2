@@ -32,9 +32,11 @@ import bhost_fpga
 
 from instrument import Instrument
 from data_source import DataSource
-import fxcorrelator_fengops as fengops
-import fxcorrelator_xengops as xengops
-import fxcorrelator_bengops as bengops
+
+from fxcorrelator_fengops import FEngineOperations
+from fxcorrelator_xengops import XEngineOperations
+# from fxcorrelator_bengops import BEngineOperations
+from fxcorrelator_filterops import FilterOperations
 
 use_xeng_sim = False
 
@@ -43,14 +45,14 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 LOGGER = logging.getLogger(__name__)
 
+
 class FxCorrelator(Instrument):
     """
     A generic FxCorrelator composed of fengines that channelise antenna inputs and
     xengines that each produce cross products from a continuous portion of the channels and accumulate the result.
     SPEAD data products are produced.
     """
-    def __init__(self, descriptor, identifier=-1, config_source=None,
-                 logger=LOGGER, log_level=logging.INFO):
+    def __init__(self, descriptor, identifier=-1, config_source=None, logger=LOGGER):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
@@ -62,12 +64,18 @@ class FxCorrelator(Instrument):
 
         """
         self.logger = logger
+        self.loghandler = None
 
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []
         self.bhosts = []
         self.filthosts = None
+
+        self.fops = None
+        self.xops = None
+        self.bops = None
+        self.filtops = None
 
         # attributes
         self.katcp_port = None
@@ -113,17 +121,22 @@ class FxCorrelator(Instrument):
         Set up the correlator using the information in the config file.
         :return:
         """
+        # set up the F, X, B and filter handlers
+        self.fops = FEngineOperations(self)
+        self.xops = XEngineOperations(self)
+        # self.bops = BEngineOperations(self)
+        self.filtops = FilterOperations(self)
+
         # set up the filter boards if we need to
         if 'filter' in self.configd:
-            import fxcorrelator_filterops as filterops
             try:
-                filterops.filter_initialise(corr=self, program=program)
+                self.filtops.initialise(program=program)
             except Exception as e:
                 raise e
 
         # connect to the other hosts that make up this correlator
-        THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
-        THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='connect')
+        THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
+                           target_function='connect')
 
         igmp_version = self.configd['FxCorrelator'].get('igmp_version')
         if igmp_version is not None:
@@ -143,11 +156,7 @@ class FxCorrelator(Instrument):
             fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
         else:
             self.logger.info('Loading design information')
-            THREADED_FPGA_FUNC(self.fhosts, timeout=5,
-                               target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.xhosts, timeout=5,
-                               target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.bhosts, timeout=5,
+            THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=7,
                                target_function='get_system_information')
 
         # remove test hardware from designs
@@ -157,13 +166,14 @@ class FxCorrelator(Instrument):
             if qdr_cal:
                 self.qdr_calibrate()
             else:
-                self.logger.info('Skipping QDR cal - are you sure you want to do this?')
+                self.logger.info('Skipping QDR cal - are you sure you'
+                                 ' want to do this?')
 
             # init the f engines
-            fengops.feng_initialise(self)
+            self.fops.initialise()
 
             # init the x engines
-            xengops.xeng_initialise(self)
+            self.xops.initialise()
 
             # for fpga_ in self.fhosts:
             #     fpga_.tap_arp_reload()
@@ -171,41 +181,38 @@ class FxCorrelator(Instrument):
             #     fpga_.tap_arp_reload()
 
             # subscribe all the engines to the multicast groups
-            fengops.feng_subscribe_to_multicast(self)
-            xengops.xeng_subscribe_to_multicast(self)
+            self.fops.subscribe_to_multicast()
+            self.xops.subscribe_to_multicast()
 
-            self.logger.info('Forcing an f-engine resync')
-            for f in self.fhosts:
-                f.registers.control.write(sys_rst='pulse')
-            time.sleep(1)
+            # force a reset on the f-engines
+            self.fops.sys_reset(sleeptime=1)
 
             # reset all counters on fhosts and xhosts
-            fengops.feng_clear_status_all(self)
-            xengops.xeng_clear_status_all(self)
+            self.fops.clear_status_all()
+            self.xops.clear_status_all()
 
             # check to see if the f engines are receiving all their data
-            if not fengops.feng_check_rx(self):
+            if not self.fops.check_rx():
                 raise RuntimeError('The f-engines RX have a problem.')
 
             # start f-engine TX
             self.logger.info('Starting f-engine datastream')
-            THREADED_FPGA_OP(self.fhosts, timeout=10,
-                             target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+            self.fops.tx_enable()
 
             # check that the F-engines are transmitting data correctly
-            if not fengops.feng_check_tx(self):
+            if not self.fops.check_tx():
                 raise RuntimeError('The f-engines TX have a problem.')
 
             # check that the X-engines are receiving data
-            if not xengops.xeng_check_rx(self):
+            if not self.xops.check_rx():
                 raise RuntimeError('The x-engines RX have a problem.')
 
             # arm the vaccs on the x-engines
-            xengops.xeng_vacc_sync(self)
+            self.xops.vacc_sync()
 
         # reset all counters on fhosts and xhosts
-        fengops.feng_clear_status_all(self)
-        xengops.xeng_clear_status_all(self)
+        self.fops.clear_status_all()
+        self.xops.clear_status_all()
 
         # set an initialised flag
         self._initialised = True
@@ -571,7 +578,7 @@ class FxCorrelator(Instrument):
         self.spead_meta_ig.add_item(name='n_bls', id=0x1008,
                                     description='Number of baselines in the data product.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                                    init_val=len(xengops.xeng_get_baseline_order(self)))
+                                    init_val=len(self.xops.get_baseline_order()))
 
         self.spead_meta_ig.add_item(name='n_chans', id=0x1009,
                                     description='Number of frequency channels in '
@@ -594,7 +601,7 @@ class FxCorrelator(Instrument):
                                                 'data product.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                                     init_val=numpy.array(
-                                        [baseline for baseline in xengops.xeng_get_baseline_order(self)]))
+                                        [baseline for baseline in self.xops.get_baseline_order()]))
 
         # spead_ig.add_item(name='crosspol_ordering', id=0x100D,
         #                        description='',
@@ -633,7 +640,7 @@ class FxCorrelator(Instrument):
         self.spead_meta_ig.add_item(name='int_time', id=0x1016,
                                     description='The time per integration, in seconds.',
                                     shape=[], fmt=spead.mkfmt(('f', 64)),
-                                    init_val=xengops.xeng_get_acc_time(self))
+                                    init_val=self.xops.get_acc_time())
 
         # spead_ig.add_item(name='coarse_chans', id=0x1017,
         #                        description='',
@@ -788,7 +795,7 @@ class FxCorrelator(Instrument):
         #                        init_val=)
 
         # 0x1400 +++
-        fengops.feng_eq_update_metadata(self)
+        self.fops.eq_update_metadata()
 
         # spead_ig.add_item(name='eq_coef_MyAntStr', id=0x1400+inputN,
         #                        description='',
@@ -812,7 +819,7 @@ class FxCorrelator(Instrument):
                                                 'bits 0 - 31 reserved for internal debugging',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
 
-        ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(xengops.xeng_get_baseline_order(self)), 2)
+        ndarray = numpy.dtype(numpy.int32), (self.n_chans, len(self.xops.get_baseline_order()), 2)
         self.spead_meta_ig.add_item(name='xeng_raw', id=0x1800,
                                     description='Raw data for %i xengines in the system. This item represents a '
                                                 'full spectrum (all frequency channels) assembled from lowest '

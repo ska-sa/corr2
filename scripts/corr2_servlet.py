@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-__author__ = 'paulp'
-
 import logging
 import sys
 import argparse
@@ -10,8 +8,6 @@ import Queue
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 from corr2 import fxcorrelator
-from corr2 import fxcorrelator_xengops as xengops
-from corr2 import fxcorrelator_fengops as fengops
 
 
 class KatcpLogFormatter(logging.Formatter):
@@ -160,7 +156,8 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if stream not in self.instrument.configd['xengine']['output_products']:
-            return 'fail', 'stream %s is not in product list: %s' % (stream, self.instrument.configd['xengine']['output_products'])
+            return 'fail', 'stream %s is not in product list: %s' % \
+                   (stream, self.instrument.configd['xengine']['output_products'])
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
@@ -255,10 +252,10 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', 'no source name given'
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                fengops.feng_eq_set(self.instrument, True, source_name, list(eq_vals))
+                self.instrument.fops.eq_set(True, source_name, list(eq_vals))
             except Exception as e:
                 return 'fail', 'unknown exception: %s' % e.message
-        eqstring = str(fengops.feng_eq_get(self.instrument, source_name)[source_name]['eq'])
+        eqstring = str(self.instrument.fops.eq_get(source_name)[source_name]['eq'])
         eqstring = eqstring.replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace(',', '')
         return 'ok', eqstring
 
@@ -283,10 +280,10 @@ class Corr2Server(katcp.DeviceServer):
         """
         if new_acc_time != -1.0:
             try:
-                xengops.xeng_set_acc_time(self.instrument, new_acc_time)
+                self.instrument.xops.set_acc_time(new_acc_time)
             except:
                 return 'fail', 'could not set accumulation length'
-        return 'ok', xengops.xeng_get_acc_time(self.instrument)
+        return 'ok', self.instrument.xops.get_acc_time()
 
     @request(Str(default=''))
     @return_reply(Str(multiple=True))
@@ -298,7 +295,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         try:
-            snapdata = fengops.feng_get_quant_snap(self.instrument, source_name)
+            snapdata = self.instrument.fops.get_quant_snap(source_name)
         except Exception as e:
             logging.info(e)
             return 'fail', 'failed to read quant snap data for given source %s' % source_name
@@ -350,7 +347,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        xengops.xeng_vacc_sync(self.instrument)
+        self.instrument.xops.vacc_sync()
         return 'ok',
 
     @request(Int(default=-1))
@@ -362,9 +359,9 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if new_shift >= 0:
-            current_shift_value = fengops.feng_set_fft_shift_all(self.instrument, new_shift)
+            current_shift_value = self.instrument.fops.set_fft_shift_all(new_shift)
         else:
-            current_shift_value = fengops.feng_get_fft_shift_all(self.instrument)
+            current_shift_value = self.instrument.fops.get_fft_shift_all()
             current_shift_value = current_shift_value[current_shift_value.keys()[0]]
         return 'ok', current_shift_value
 

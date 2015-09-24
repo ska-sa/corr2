@@ -1,5 +1,3 @@
-__author__ = 'paulp'
-
 import time
 import logging
 import struct
@@ -489,9 +487,9 @@ class FpgaFHost(DigitiserDataReceiver):
 
         if fd_ld_count_before == fd_ld_count_after:
             LOGGER.error('fractional delay and phase load count did not change. '
-                'Load failed.')
+                         'Load failed.')
             raise RuntimeError('fractional delay load count did not change. '
-                'Load failed.')
+                               'Load failed.')
 
         return {
             'act_delay': act_delay,

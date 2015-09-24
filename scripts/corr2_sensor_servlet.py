@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-__author__ = 'paulp'
-
 import logging
 import sys
 import argparse
@@ -16,13 +14,12 @@ from corr2 import sensors, fxcorrelator
 
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
-        translate_levels = {
-            'INFO': 'info',
-            'DEBUG': 'debug',
-            'WARNING': 'warn'
-        }
+        translate_levels = {'INFO': 'info',
+                            'DEBUG': 'debug',
+                            'WARNING': 'warn',
+                            }
         if record.levelname in translate_levels:
-            record.levelname = translate_levels(record.levelname)
+            record.levelname = translate_levels[record.levelname]
         else:
             record.levelname = record.levelname.lower()
         record.msg = record.msg.replace(' ', '\_')

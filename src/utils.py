@@ -2,8 +2,6 @@ __author__ = 'paulp'
 import logging
 import os
 import numpy as np
-
-
 from ConfigParser import SafeConfigParser
 
 from casperfpga.memory import bin2fp
