@@ -84,6 +84,17 @@ class FEngineOperations(object):
         THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
             lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
 
+    def sys_reset(self, sleeptime=0):
+        """
+        Pulse the sys_rst line on all F-engine hosts
+        :return:
+        """
+        self.logger.info('Forcing an f-engine resync')
+        THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
+            lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
+        if sleeptime > 0:
+            time.sleep(sleeptime)
+
     def check_rx(self, max_waittime=30):
         """
         Check that the f-engines are receiving data correctly
@@ -176,6 +187,22 @@ class FEngineOperations(object):
             self.logger.error('\tERROR in F-engine tx data.')
         self.logger.info('\tdone.')
         return all_okay
+
+    def tx_enable(self):
+        """
+        Enable TX on all tengbe cores on all F hosts
+        :return:
+        """
+        THREADED_FPGA_OP(self.hosts, timeout=5,
+                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+
+    def tx_disable(self):
+        """
+        Disable TX on all tengbe cores on all F hosts
+        :return:
+        """
+        THREADED_FPGA_OP(self.hosts, timeout=5,
+                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
 
     def eq_get(self, source_name=None):
         """

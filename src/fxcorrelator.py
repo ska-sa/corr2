@@ -72,6 +72,11 @@ class FxCorrelator(Instrument):
         self.bhosts = []
         self.filthosts = None
 
+        self.fops = None
+        self.xops = None
+        self.bops = None
+        self.filtops = None
+
         # attributes
         self.katcp_port = None
         self.f_per_fpga = None
@@ -130,8 +135,8 @@ class FxCorrelator(Instrument):
                 raise e
 
         # connect to the other hosts that make up this correlator
-        THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
-        THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='connect')
+        THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
+                           target_function='connect')
 
         igmp_version = self.configd['FxCorrelator'].get('igmp_version')
         if igmp_version is not None:
@@ -151,11 +156,7 @@ class FxCorrelator(Instrument):
             fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
         else:
             self.logger.info('Loading design information')
-            THREADED_FPGA_FUNC(self.fhosts, timeout=5,
-                               target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.xhosts, timeout=5,
-                               target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.bhosts, timeout=5,
+            THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=7,
                                target_function='get_system_information')
 
         # remove test hardware from designs
@@ -165,7 +166,8 @@ class FxCorrelator(Instrument):
             if qdr_cal:
                 self.qdr_calibrate()
             else:
-                self.logger.info('Skipping QDR cal - are you sure you want to do this?')
+                self.logger.info('Skipping QDR cal - are you sure you'
+                                 ' want to do this?')
 
             # init the f engines
             self.fops.initialise()
@@ -182,10 +184,8 @@ class FxCorrelator(Instrument):
             self.fops.subscribe_to_multicast()
             self.xops.subscribe_to_multicast()
 
-            self.logger.info('Forcing an f-engine resync')
-            for f in self.fhosts:
-                f.registers.control.write(sys_rst='pulse')
-            time.sleep(1)
+            # force a reset on the f-engines
+            self.fops.sys_reset(sleeptime=1)
 
             # reset all counters on fhosts and xhosts
             self.fops.clear_status_all()
@@ -197,8 +197,7 @@ class FxCorrelator(Instrument):
 
             # start f-engine TX
             self.logger.info('Starting f-engine datastream')
-            THREADED_FPGA_OP(self.fhosts, timeout=10,
-                             target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+            self.fops.tx_enable()
 
             # check that the F-engines are transmitting data correctly
             if not self.fops.check_tx():
