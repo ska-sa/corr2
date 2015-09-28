@@ -169,10 +169,8 @@ class FxCorrelator(Instrument):
                 self.logger.info('Skipping QDR cal - are you sure you'
                                  ' want to do this?')
 
-            # init the f engines
+            # init the engines
             self.fops.initialise()
-
-            # init the x engines
             self.xops.initialise()
 
             # for fpga_ in self.fhosts:
@@ -251,23 +249,29 @@ class FxCorrelator(Instrument):
     def qdr_calibrate(self):
         """
         Run a software calibration routine on all the FPGA hosts.
+        Do it on F- and X-hosts in parallel.
         :return:
         """
         def _qdr_cal(_fpga):
+            _tic = time.time()
             _results = {}
             for _qdr in _fpga.qdrs:
                 _results[_qdr.name] = _qdr.qdr_cal(fail_hard=False)
-            return _results
-        qdr_calfail = False
+            _toc = time.time()
+            return {'results': _results, 'tic': _tic, 'toc': _toc}
         self.logger.info('Calibrating QDR on F- and X-engines, this takes a while.')
-        for hostlist in [self.fhosts, self.xhosts]:
-            results = THREADED_FPGA_OP(hostlist, timeout=30, target_function=(_qdr_cal,))
-            for fpga, result in results.items():
-                self.logger.info('FPGA %s QDR cal results:' % fpga)
-                for qdr, qdrres in result.items():
-                    if not qdrres:
-                        qdr_calfail = True
-                    self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+        qdr_calfail = False
+        results = THREADED_FPGA_OP(self.fhosts + self.xhosts, timeout=30, target_function=(_qdr_cal,))
+        for fpga, result in results.items():
+            self.logger.info('FPGA %s QDR cal results: start(%.3f) end(%.3f) took(%.3f)' %
+                             (fpga, result['tic'], result['toc'], result['toc'] - result['tic']))
+            for qdr, qdrres in result['results'].items():
+                if not qdrres:
+                    qdr_calfail = True
+                    break
+                self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+            if qdr_calfail:
+                break
         if qdr_calfail:
             raise RuntimeError('QDR calibration failure.')
         # for host in self.fhosts:

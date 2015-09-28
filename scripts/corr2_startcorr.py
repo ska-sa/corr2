@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import time
 
 from corr2 import fxcorrelator
 
@@ -34,7 +35,9 @@ c = fxcorrelator.FxCorrelator('rts correlator',
                               config_source=args.config)
 c.standard_log_config(log_level=eval('logging.%s' % log_level))
 try:
+    _tic = time.time()
     c.initialise(program=not args.noprogram, qdr_cal=not args.no_qdr_cal)
+    print 'Intialisation took %.3f seconds.' % (time.time() - _tic)
 except Exception as e:
     print e
 

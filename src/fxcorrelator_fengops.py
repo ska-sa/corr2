@@ -30,15 +30,15 @@ class FEngineOperations(object):
         :return:
         """
         # set eq and shift
-        self.feng_eq_write_all()
-        self.feng_set_fft_shift_all()
+        self.eq_write_all()
+        self.set_fft_shift_all()
 
         # set up the fpga comms
         THREADED_FPGA_OP(self.hosts, timeout=10,
                          target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
         THREADED_FPGA_OP(self.hosts, timeout=10,
                          target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
-        self.feng_clear_status_all()
+        self.clear_status_all()
 
         # where does the f-engine data go?
         self.corr.fengine_output = DataSource.from_mcast_string(
