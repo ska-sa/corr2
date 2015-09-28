@@ -100,7 +100,7 @@ if __name__ == '__main__':
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 
     # set up the logger
-    root_logger = logging.getLogger()
+    root_logger = logging.getLogger('corr2.sensors')
     root_logger.setLevel(log_level)
     if args.lfm or (not sys.stdout.isatty()):
         use_katcp_logging = True
@@ -127,6 +127,5 @@ if __name__ == '__main__':
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
     instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=args.config)
-    instrument.standard_log_config()
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()
