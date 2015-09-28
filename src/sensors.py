@@ -243,7 +243,7 @@ def setup_sensors(instrument, katcp_server):
     # f-engine rx counters
     for _f in instrument.fhosts:
         sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='%s_feng_rx' % _f.host,
-                        description='F-engine %s RX okay - counters incrementing',
+                        description='F-engine RX okay - counters incrementing',
                         default=True)
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
