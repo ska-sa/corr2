@@ -14,8 +14,6 @@ import copy
 import threading
 import Queue
 
-from corr2 import filthost_fpga
-
 parser = argparse.ArgumentParser(description='Display information about a MeerKAT SNB filter host.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(dest='hostname', type=str, action='store',

@@ -50,7 +50,7 @@ class Beam(object):
         return obj
 
 
-class BFOps(object):
+class BEngineOperations(object):
     def __init__(self, corr_obj):
         """
         :param corr_obj: the FxCorrelator object with which we interact
@@ -59,8 +59,8 @@ class BFOps(object):
         self.corr = corr_obj
         self.beams = {}
 
-    def beng_initialise(self, config_output=True,
-                        send_spead=True, set_weights=True):
+    def initialise(self, config_output=True,
+                   send_spead=True, set_weights=True):
         """
         Initialises the b-engines and checks for errors.
 
