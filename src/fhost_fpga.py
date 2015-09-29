@@ -156,13 +156,13 @@ class FpgaFHost(DigitiserDataReceiver):
         return cls(hostname, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
-    def ct_okay(self, sleeptime=1):
+    def ct_okay(self, wait_time=1):
         """
         Is the corner turner working?
         :return: True or False,
         """
         ct_ctrs0 = self.registers.ct_ctrs.read()['data']
-        time.sleep(sleeptime)
+        time.sleep(wait_time)
         ct_ctrs1 = self.registers.ct_ctrs.read()['data']
 
         err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
