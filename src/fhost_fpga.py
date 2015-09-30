@@ -151,6 +151,7 @@ class FpgaFHost(DigitiserDataReceiver):
             self.network_latency_adjust = None
 
         self._pfb_of_counts = {}
+        self._ct_counts = {}
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -165,24 +166,31 @@ class FpgaFHost(DigitiserDataReceiver):
         :return: bool : True if corner tuner is working
 
         """
-        for cnt in range(0, 2):
+        for cnt in range(2):
             if wait_time:
-                ct_ctrs0 = self.registers.ct_ctrs.read()['data']
+                ct_ctrs_err0 = self.registers.ct_ctrs.read()['data'][
+                    'ct_err_cnt{}'.format(cnt)]
+                ct_ctrs_parerr0 = self.registers.ct_ctrs.read()['data'][
+                    'ct_parerr_cnt{}'.format(cnt)]
                 time.sleep(wait_time)
             else:
-                ct_ctrs0 = self._ct_counts.get(cnt, 0)
-            ct_ctrs1 = self.registers.ct_ctrs.read()['data']
+                ct_ctrs_err0 = self._ct_counts.get(cnt, 0)
+                ct_ctrs_parerr0 = self._ct_counts.get(cnt, 0)
 
+            ct_ctrs_err1 = self.registers.ct_ctrs.read()['data'][
+                'ct_err_cnt{}'.format(cnt)]
+            ct_ctrs_parerr1 = self.registers.ct_ctrs.read()['data'][
+                'ct_parerr_cnt{}'.format(cnt)]
 
-        err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
-        err1_diff = ct_ctrs1['ct_err_cnt1'] - ct_ctrs0['ct_err_cnt1']
-        parerr0_diff = ct_ctrs1['ct_parerr_cnt0'] - ct_ctrs0['ct_parerr_cnt0']
-        parerr1_diff = ct_ctrs1['ct_parerr_cnt1'] - ct_ctrs0['ct_parerr_cnt1']
+            if wait_time is not None:
+                self._ct_counts[cnt] = ct_ctrs_err1
 
-        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
-            LOGGER.error('%s: ct_status() - FALSE, CT error.' % self.host)
-            return False
-        LOGGER.info('%s: ct_status() - TRUE.' % self.host)
+            if (ct_ctrs_err0 == ct_ctrs_err1) and (ct_ctrs_parerr0 == ct_ctrs_parerr1):
+                LOGGER.info('{}: ct{}_status() Okay.'.format(self.host, cnt))
+            else:
+                LOGGER.error('{}: ct_status() - FALSE, CT error.'.format(self.host))
+                return False
+        LOGGER.info('{}: Corner Turner Okay.'.format(self.host))
         return True
 
     def host_okay(self):
