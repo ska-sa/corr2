@@ -632,11 +632,36 @@ class FpgaFHost(DigitiserDataReceiver):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
-    def qdr_okay(self):
+    def qdr_okay(self,wait_time=1):
         """
         Checks if parity bits on f-eng are zero
         :return: True/False
         """
+        for cnt in range(2):
+            if wait_time:
+                qdr_parerr0 = self.registers.ct_ctrs.read()['data'][
+                    'ct_parerr_cnt{}'.format(cnt)]
+                time.sleep(wait_time)
+            else:
+                ct_ctrs_err0 = self._ct_counts.get(cnt, 0)
+                ct_ctrs_parerr0 = self._ct_counts.get(cnt, 0)
+
+            ct_ctrs_err1 = self.registers.ct_ctrs.read()['data'][
+                'ct_err_cnt{}'.format(cnt)]
+            ct_ctrs_parerr1 = self.registers.ct_ctrs.read()['data'][
+                'ct_parerr_cnt{}'.format(cnt)]
+
+            if wait_time is not None:
+                self._ct_counts[cnt] = ct_ctrs_err1
+
+            if (ct_ctrs_err0 == ct_ctrs_err1) and (ct_ctrs_parerr0 == ct_ctrs_parerr1):
+                LOGGER.info('{}: ct{}_status() Okay.'.format(self.host, cnt))
+            else:
+                LOGGER.error('{}: ct{}_status() - FALSE, CT error.'.format(self.host, cnt))
+                return False
+        LOGGER.info('%s: QDR Okay.' % self.host)
+        return True
+
         for cnt in range(0, 1):
             err = self.registers.ct_ctrs.read()['data']['ct_parerr_cnt%d' % cnt]
             if err == 0:
