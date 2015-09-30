@@ -152,6 +152,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         self._pfb_of_counts = {}
         self._ct_counts = {}
+        self._qdr_counts = {}
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -162,8 +163,10 @@ class FpgaFHost(DigitiserDataReceiver):
     def ct_okay(self, wait_time=1):
         """
         Checks if the corner turner working.
-        :param: wait_time: Float or None:
-        :return: bool : True if corner tuner is working
+        :param: wait_time : Float or None : If not None, fetch ct counter,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is not cached if wait_time is None.
+        :return: bool : True, if corner tuner is okay
 
         """
         for cnt in range(2):
@@ -635,7 +638,10 @@ class FpgaFHost(DigitiserDataReceiver):
     def qdr_okay(self,wait_time=1):
         """
         Checks if parity bits on f-eng are zero
-        :return: True/False
+        :param: wait_time : Float or None : If not None, fetch qdr counter,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is not cached if wait_time is None.
+        :return: True if QDR is okay
         """
         for cnt in range(2):
             if wait_time:
@@ -643,33 +649,20 @@ class FpgaFHost(DigitiserDataReceiver):
                     'ct_parerr_cnt{}'.format(cnt)]
                 time.sleep(wait_time)
             else:
-                ct_ctrs_err0 = self._ct_counts.get(cnt, 0)
-                ct_ctrs_parerr0 = self._ct_counts.get(cnt, 0)
+                qdr_parerr0 = self._qdr_counts.get(cnt, 0)
 
-            ct_ctrs_err1 = self.registers.ct_ctrs.read()['data'][
-                'ct_err_cnt{}'.format(cnt)]
-            ct_ctrs_parerr1 = self.registers.ct_ctrs.read()['data'][
+            qdr_parerr1 = self.registers.ct_ctrs.read()['data'][
                 'ct_parerr_cnt{}'.format(cnt)]
 
             if wait_time is not None:
-                self._ct_counts[cnt] = ct_ctrs_err1
+                self._ct_counts[cnt] = qdr_parerr1
 
-            if (ct_ctrs_err0 == ct_ctrs_err1) and (ct_ctrs_parerr0 == ct_ctrs_parerr1):
-                LOGGER.info('{}: ct{}_status() Okay.'.format(self.host, cnt))
-            else:
-                LOGGER.error('{}: ct{}_status() - FALSE, CT error.'.format(self.host, cnt))
-                return False
-        LOGGER.info('%s: QDR Okay.' % self.host)
-        return True
-
-        for cnt in range(0, 1):
-            err = self.registers.ct_ctrs.read()['data']['ct_parerr_cnt%d' % cnt]
-            if err == 0:
+            if qdr_parerr0 == qdr_parerr1:
                 LOGGER.info('%s: ct_parerr_cnt%d okay.' % (self.host, cnt))
             else:
                 LOGGER.error('%s: ct_parerr_cnt%d not zero.' % (self.host, cnt))
                 return False
-        LOGGER.info('%s: QDR okay.' % self.host)
+        LOGGER.info('%s: QDR Okay.' % self.host)
         return True
 
 
