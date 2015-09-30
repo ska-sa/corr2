@@ -160,12 +160,19 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def ct_okay(self, wait_time=1):
         """
-        Is the corner turner working?
-        :return: True or False,
+        Checks if the corner turner working.
+        :param: wait_time: Float or None:
+        :return: bool : True if corner tuner is working
+
         """
-        ct_ctrs0 = self.registers.ct_ctrs.read()['data']
-        time.sleep(wait_time)
-        ct_ctrs1 = self.registers.ct_ctrs.read()['data']
+        for cnt in range(0, 2):
+            if wait_time:
+                ct_ctrs0 = self.registers.ct_ctrs.read()['data']
+                time.sleep(wait_time)
+            else:
+                ct_ctrs0 = self._ct_counts.get(cnt, 0)
+            ct_ctrs1 = self.registers.ct_ctrs.read()['data']
+
 
         err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
         err1_diff = ct_ctrs1['ct_err_cnt1'] - ct_ctrs0['ct_err_cnt1']
