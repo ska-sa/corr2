@@ -142,7 +142,7 @@ class FpgaXHost(FpgaHost):
             else:
                 LOGGER.error('%s: xeng %d has reg errors.' % (self.host, xnum))
                 return False
-        LOGGER.info('%s: VACC Okay.' % self.host)
+        LOGGER.info('%s: VACC okay.' % self.host)
         return True
 
     def vacc_get_status(self):
@@ -222,7 +222,7 @@ class FpgaXHost(FpgaHost):
         self.registers.vacc_time_lsw.write(lsw=ldtime_lsw)
         self.registers.vacc_time_msw.write(msw=ldtime_msw)
 
-    def qdr_okay(self,wait_time=1):
+    def qdr_okay(self, wait_time=1):
         """
         Checks if parity bits on f-eng are consistent.
         :param: wait_time : Float or None : If not None, fetch qdr parity bit,

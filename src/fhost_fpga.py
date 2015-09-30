@@ -189,11 +189,11 @@ class FpgaFHost(DigitiserDataReceiver):
                 self._ct_counts[cnt] = ct_ctrs_err1
 
             if (ct_ctrs_err0 == ct_ctrs_err1) and (ct_ctrs_parerr0 == ct_ctrs_parerr1):
-                LOGGER.info('{}: ct{}_status() Okay.'.format(self.host, cnt))
+                LOGGER.info('{}: ct{}_status() okay.'.format(self.host, cnt))
             else:
                 LOGGER.error('{}: ct{}_status() - FALSE, CT error.'.format(self.host, cnt))
                 return False
-        LOGGER.info('{}: Corner Turner Okay.'.format(self.host))
+        LOGGER.info('{}: Corner turner okay.'.format(self.host))
         return True
 
     def host_okay(self):
@@ -662,9 +662,8 @@ class FpgaFHost(DigitiserDataReceiver):
             else:
                 LOGGER.error('%s: ct_parerr_cnt%d not zero.' % (self.host, cnt))
                 return False
-        LOGGER.info('%s: QDR Okay.' % self.host)
+        LOGGER.info('%s: QDR okay.' % self.host)
         return True
-
 
     def check_fft_overflow(self, wait_time=2e-3):
         """
