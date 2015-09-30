@@ -1,6 +1,7 @@
 import logging
 import time
 import tornado.gen
+import corr2
 
 from katcp import Sensor
 from tornado.ioloop import IOLoop
@@ -181,6 +182,7 @@ def _feng_qdr_okay(sensor, executor, f_host):
     IOLoop.current().call_later(10, _feng_qdr_okay, sensor, executor, f_host)
 
 
+@tornado.gen.coroutine
 def _feng_pfb_okay(sensor, executor, f_host):
     """
     f-engine PFB check
@@ -195,6 +197,61 @@ def _feng_pfb_okay(sensor, executor, f_host):
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_feng_pfb_okay ran on {}'.format(f_host))
     IOLoop.current().call_later(10, _feng_pfb_okay, sensor, executor, f_host)
+
+
+@tornado.gen.coroutine
+def _fhost_check_rx(sensor, executor, f_eng_ops):
+    """
+    Check that the f-hosts are receiving data correctly
+    :param sensor:
+    :param executor:
+    :return:
+    """
+    result = False
+    try:
+        result = yield executor.submit(f_eng_ops.check_rx)
+    except Exception:
+        LOGGER.exception('Exception updating fhost rx sensor')
+    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+    LOGGER.debug('_fhost_check_rx ran')
+    IOLoop.current().call_later(10, _fhost_check_rx, sensor, executor, f_eng_ops)
+
+
+@tornado.gen.coroutine
+def _fhost_check_tx(sensor, executor, f_eng_ops):
+    """
+    Check that the f-hosts are sending data correctly
+    :param sensor:
+    :param executor:
+    :param f_host:
+    :return:
+    """
+    result = False
+    try:
+        result = yield executor.submit(f_eng_ops.check_tx)
+    except Exception:
+        LOGGER.exception('Exception updating fhost tx sensor')
+    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+    LOGGER.debug('_fhost_check_tx ran')
+    IOLoop.current().call_later(10, _fhost_check_tx, sensor, executor, f_eng_ops)
+
+@tornado.gen.coroutine
+def _xhost_check_rx(sensor, executor, x_eng_ops):
+    """
+    Check that the x-hosts are receiving data correctly
+    :param sensor:
+    :param executor:
+    :param x_host:
+    :return:
+    """
+    result = False
+    try:
+        result = yield executor.submit(x_eng_ops.check_rx)
+    except Exception:
+        LOGGER.exception('Exception updating xhost rx sensor')
+    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+    LOGGER.debug('_xhost_check_rx ran')
+    IOLoop.current().call_later(10, _xhost_check_rx, sensor, executor, x_eng_ops)
 
 
 def setup_sensors(instrument, katcp_server):
@@ -315,3 +372,29 @@ def setup_sensors(instrument, katcp_server):
         katcp_server.add_sensor(sensor)
         instrument._sensors[sensor.name] = sensor
         ioloop.add_callback(_feng_pfb_okay, sensor, executor, _f)
+
+    # f-engine comms rx
+    fengops = corr2.fxcorrelator_fengops.FEngineOperations(instrument)
+    sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='fhosts_check_rx',
+                    description='F-hosts rx okay',
+                    default=True)
+    katcp_server.add_sensor(sensor)
+    instrument._sensors[sensor.name] = sensor
+    ioloop.add_callback(_fhost_check_rx, sensor, executor, fengops)
+
+    # # f-engine comms tx
+    sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='fhosts_check_tx',
+                    description='F-hosts tx okay',
+                    default=True)
+    katcp_server.add_sensor(sensor)
+    instrument._sensors[sensor.name] = sensor
+    ioloop.add_callback(_fhost_check_tx, sensor, executor, fengops)
+
+    # x-engine comms rx
+    xengops = corr2.fxcorrelator_xengops.XEngineOperations(instrument)
+    sensor = Sensor(sensor_type=Sensor.BOOLEAN, name='xhosts_check_rx',
+                    description='X-hosts rx okay',
+                    default=True)
+    katcp_server.add_sensor(sensor)
+    instrument._sensors[sensor.name] = sensor
+    ioloop.add_callback(_xhost_check_rx, sensor, executor, xengops)
