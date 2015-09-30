@@ -188,7 +188,7 @@ class FpgaFHost(DigitiserDataReceiver):
             if (ct_ctrs_err0 == ct_ctrs_err1) and (ct_ctrs_parerr0 == ct_ctrs_parerr1):
                 LOGGER.info('{}: ct{}_status() Okay.'.format(self.host, cnt))
             else:
-                LOGGER.error('{}: ct_status() - FALSE, CT error.'.format(self.host))
+                LOGGER.error('{}: ct{}_status() - FALSE, CT error.'.format(self.host, cnt))
                 return False
         LOGGER.info('{}: Corner Turner Okay.'.format(self.host))
         return True
