@@ -351,3 +351,19 @@ class FEngineOperations(object):
                         gbe.multicast_receive(rxaddress, 0)
                         gbe_ctr += 1
         self.logger.info('done.')
+
+    def sky_freq_to_chan(self, freq):
+        raise NotImplementedError
+
+    def freq_to_chan(self, freq):
+        """
+        In which fft channel is a frequency found?
+        :param freq: frequency, in Hz, float
+        :return: the fft channel, integer
+        """
+        _band = self.corr.sample_rate_hz / 2.0
+        if (freq > _band) or (freq <= 0):
+            raise RuntimeError('frequency %.3f is not in our band' % freq)
+        _hz_per_chan = _band / self.corr.n_chans
+        _chan_index = numpy.floor(freq / _hz_per_chan)
+        return _chan_index

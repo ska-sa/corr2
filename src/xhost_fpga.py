@@ -212,7 +212,6 @@ class FpgaXHost(FpgaHost):
     def qdr_okay(self):
         """
         Checks if parity bits on x-eng are zero
-        :param wait_time:
         :return: True/False
         """
         for xeng in range(0, self.x_per_fpga):

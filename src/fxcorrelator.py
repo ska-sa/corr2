@@ -379,11 +379,12 @@ class FxCorrelator(Instrument):
             self.found_beamformer = True
 
         # set up the hosts and engines based on the configuration in the ini file
+        _targetClass = fhost_fpga.FpgaFHost
         self.fhosts = []
         for host in self.configd['fengine']['hosts'].split(','):
             host = host.strip()
-            fpgahost = fhost_fpga.FpgaFHost.from_config_source(host, self.katcp_port,
-                                                               config_source=self.configd['fengine'])
+            fpgahost = _targetClass.from_config_source(host, self.katcp_port,
+                                                       config_source=self.configd['fengine'])
             self.fhosts.append(fpgahost)
 
         # choose class (b-engine inherits x-engine functionality)
@@ -402,7 +403,8 @@ class FxCorrelator(Instrument):
         for _fh in self.fhosts:
             for _xh in self.xhosts:
                 if _fh.host == _xh.host:
-                    self.logger.error('Host %s is assigned to both X- and F-engines' % _fh.host)
+                    self.logger.error('Host %s is assigned to '
+                                      'both X- and F-engines' % _fh.host)
                     raise RuntimeError
 
         # what data sources have we been allocated?

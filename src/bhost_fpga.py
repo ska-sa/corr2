@@ -17,10 +17,7 @@ class FpgaBHost(FpgaXHost):
         # parent constructor
         FpgaXHost.__init__(self, host, katcp_port=katcp_port,
                            boffile=boffile, connect=connect, config=config)
-        # if self.config is not None:
-        #     self.bf_per_fpga = int(self.config['bengine']['beng_per_fpga'])
-
-        LOGGER.info('BHost created')
+        LOGGER.info('FpgaBHost created')
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -46,8 +43,11 @@ class FpgaBHost(FpgaXHost):
     def write_value_quantise(self):
         pass
 
-    def write_value_filter(self):
-        pass
+    def write_value_filter(self, value):
+        """
+        Write a value to the filter stage of this bhost's beamformer
+        """
+        self.registers.bf_value_in1.write(filt=value)
 
     # def read_bf_config(self):
     #     """
