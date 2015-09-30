@@ -150,6 +150,8 @@ class FpgaFHost(DigitiserDataReceiver):
             self.min_load_time = None
             self.network_latency_adjust = None
 
+        self._pfb_of_counts = {}
+
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
@@ -630,15 +632,25 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('%s: QDR okay.' % self.host)
         return True
 
+
     def check_fft_overflow(self, wait_time=2e-3):
         """
         Checks if pfb counters on f-eng are not incrementing i.e. fft is not overflowing
-        :return: True/False
+        :param: wait_time : Float or None : If not None, fetch overflow counter,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is not cached if wait_time is None.
+        :return: bool : True if not overflowing
         """
-        for cnt in range(0, 1):
-            overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
-            time.sleep(wait_time)
+        for cnt in range(0, self.num_fengines):
+            if wait_time:
+                overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+                time.sleep(wait_time)
+            else:
+                overflow0 = self._pfb_of_counts.get(cnt, 0)
+
             overflow1 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+            if wait_time is not None:
+                self._pfb_of_counts[cnt] = overflow1
             if overflow0 == overflow1:
                 LOGGER.info('%s: pfb_of%d_cnt okay.' % (self.host, cnt))
             else:
