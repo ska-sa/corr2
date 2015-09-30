@@ -222,7 +222,8 @@ class FpgaFHost(DigitiserDataReceiver):
     def get_source_eq(self, source_name=None):
         """
         Return a dictionary of all the EQ settings for the sources allocated to this fhost
-        :return:
+        :param: source_name:
+        :return: Dict
         """
         if source_name is not None:
             return self.eqs[source_name]
@@ -522,7 +523,8 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Arms a timed latch.
         :param names: names of latches to trigger
-        :param mcnt: sample mcnt to trigger at. If None triggers immediately. (default None)
+        :param mcnt: sample mcnt to trigger at. If None triggers immediately.
+            (default None)
         :param check_time_delay: time in seconds to wait after arming
         :return dictionary containing status_before and status_after list
         """
@@ -569,8 +571,9 @@ class FpgaFHost(DigitiserDataReceiver):
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
         Set the FFT shift schedule.
-        :param shift_schedule: int representing bit mask. '1' represents a shift for that stage. First stage is MSB.
-        Use default if None provided
+        :param shift_schedule: int representing bit mask.
+            '1' represents a shift for that stage. First stage is MSB.
+            Use default if None provided
         :param issue_meta: Should SPEAD meta data be sent after the value is changed?
         :return: <nothing>
         """
@@ -581,7 +584,8 @@ class FpgaFHost(DigitiserDataReceiver):
     def get_fft_shift(self):
         """
         Get the current FFT shift schedule from the FPGA.
-        :return: integer representing the FFT shift schedule for all the FFTs on this engine.
+        :return: integer representing the FFT shift schedule for all the FFTs
+            on this engine.
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 
