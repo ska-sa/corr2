@@ -635,10 +635,10 @@ class FpgaFHost(DigitiserDataReceiver):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
-    def qdr_okay(self,wait_time=1):
+    def qdr_okay(self, wait_time=1):
         """
-        Checks if parity bits on f-eng are zero
-        :param: wait_time : Float or None : If not None, fetch qdr counter,
+        Checks if parity bits on f-eng are consistent.
+        :param: wait_time : Float or None : If not None, fetch qdr parity bit,
             wait this long, and fetch a second value; Else, use last read value
             from cache. Value is not cached if wait_time is None.
         :return: True if QDR is okay
