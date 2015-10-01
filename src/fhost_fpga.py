@@ -667,14 +667,14 @@ class FpgaFHost(DigitiserDataReceiver):
         # ToDo: Should this be hard-coded?
         for cnt in range(2):
             if wait_time:
-                qdr_parerr0 = self.registers.ct_ctrs.read()['data'][
-                    'ct_parerr_cnt{}'.format(cnt)]
+                qdr_parerr0 = (self.registers.ct_ctrs.read()['data']
+                    ['ct_parerr_cnt{}'.format(cnt)])
                 time.sleep(wait_time)
             else:
                 qdr_parerr0 = self._qdr_counts.get(cnt, 0)
 
-            qdr_parerr1 = (self.registers.ct_ctrs.read()['data'][
-                'ct_parerr_cnt{}'.format(cnt)]
+            qdr_parerr1 = (self.registers.ct_ctrs.read()['data']
+                ['ct_parerr_cnt{}'.format(cnt)])
 
             if wait_time is not None:
                 self._ct_counts[cnt] = qdr_parerr1
