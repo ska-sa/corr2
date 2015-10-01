@@ -19,7 +19,8 @@ class FpgaXHost(FpgaHost):
         if self.config is not None:
             self.vacc_len = int(self.config['xeng_accumulation_len'])
             self.x_per_fpga = int(self.config['x_per_fpga'])
-        # TODO - and if there is no config and this was made on a running device? something like set it to -1, if it's accessed when -1 then try and discover it
+        # TODO - and if there is no config and this was made on a running device?
+        # something like set it to -1, if it's accessed when -1 then try and discover it
         self.x_per_fpga = 4
         self._qdr_counts = {}
         self._vacc_counts = {}
@@ -27,7 +28,8 @@ class FpgaXHost(FpgaHost):
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
+        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+                   connect=True, config=config_source)
 
     def clear_status(self):
         """
