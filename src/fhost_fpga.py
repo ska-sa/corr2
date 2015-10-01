@@ -196,10 +196,15 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('{}: Corner Turner Okay.'.format(self.host))
         return True
 
-    def host_okay(self):
+    def host_okay(self, wait_time=1):
         """
         Is this host/LRU okay?
-        :return:
+        Checks if the host/LRU is  working.
+        :param: wait_time : Float or None : If not None, fetch ct counter,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is not cached if wait_time is None.
+        :return: bool : True, if host/LRU is okay
+
         """
         if (not self.check_rx()) or (not self.ct_okay()):
             LOGGER.error('%s: host_okay() - FALSE.' % self.host)

@@ -86,7 +86,7 @@ class FpgaHost(Host, KatcpFpga):
         """
         Check the receive path on this X host
         :param max_waittime: the maximum time to wait for raw 10gbe data
-        :return:
+        :return: Bool: True :if Xhost are receiving data
         """
         start_time = time.time()
         if not self.check_rx_spead(max_waittime=max_waittime):
