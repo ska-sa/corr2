@@ -9,12 +9,14 @@ LOGGER = logging.getLogger(__name__)
 
 class DigitiserDataReceiver(FpgaHost):
     """
-    The RX section of a fengine and filter engine are the same - receive the digitiser data
+    The RX section of a fengine and filter engine are the same
+        - receive the digitiser data
     """
 
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True):
         super(DigitiserDataReceiver, self).__init__(host, katcp_port=katcp_port,
-                                                    boffile=boffile, connect=connect)
+                                                    boffile=boffile,
+                                                    connect=connect)
 
     def _get_rxreg_data(self):
         """
@@ -132,9 +134,14 @@ class FpgaFHost(DigitiserDataReceiver):
                                         boffile=boffile,
                                         connect=connect)
         self._config = config
-        self.data_sources = []  # a list of DataSources received by this f-engine host
-        self.eqs = {}  # a dictionary, indexed on source name, containing tuples of poly and bram name
-        self.delays = {}  # dictionary, indexed on source name, containing offset to access delay tracking registers
+        # A list of DataSources received by this f-engine host
+        self.data_sources = []
+        # A dictionary, indexed on source name,
+        # containing tuples of poly and bram name
+        self.eqs = {}
+        # dictionary, indexed on source name,
+        # containing offset to access delay tracking registers
+        self.delays = {}
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
             self.ports_per_fengine = int(config['ports_per_fengine'])
@@ -171,19 +178,19 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         for cnt in range(2):
             if wait_time:
-                ct_ctrs_err0 = self.registers.ct_ctrs.read()['data'][
-                    'ct_err_cnt{}'.format(cnt)]
-                ct_ctrs_parerr0 = self.registers.ct_ctrs.read()['data'][
-                    'ct_parerr_cnt{}'.format(cnt)]
+                ct_ctrs_err0 = (self.registers.ct_ctrs.read()['data']
+                    ['ct_err_cnt{}'.format(cnt)])
+                ct_ctrs_parerr0 = (self.registers.ct_ctrs.read()['data']
+                    ['ct_parerr_cnt{}'.format(cnt)])
                 time.sleep(wait_time)
             else:
                 ct_ctrs_err0 = self._ct_counts.get(cnt, 0)
                 ct_ctrs_parerr0 = self._ct_counts.get(cnt, 0)
 
-            ct_ctrs_err1 = self.registers.ct_ctrs.read()['data'][
-                'ct_err_cnt{}'.format(cnt)]
-            ct_ctrs_parerr1 = self.registers.ct_ctrs.read()['data'][
-                'ct_parerr_cnt{}'.format(cnt)]
+            ct_ctrs_err1 = (self.registers.ct_ctrs.read()['data']
+                ['ct_err_cnt{}'.format(cnt)])
+            ct_ctrs_parerr1 = (self.registers.ct_ctrs.read()['data']
+                ['ct_parerr_cnt{}'.format(cnt)])
 
             if wait_time is not None:
                 self._ct_counts[cnt] = ct_ctrs_err1
@@ -191,7 +198,8 @@ class FpgaFHost(DigitiserDataReceiver):
             if (ct_ctrs_err0 == ct_ctrs_err1) and (ct_ctrs_parerr0 == ct_ctrs_parerr1):
                 LOGGER.info('{}: ct{}_status() Okay.'.format(self.host, cnt))
             else:
-                LOGGER.error('{}: ct{}_status() - FALSE, CT error.'.format(self.host, cnt))
+                LOGGER.error(
+                    '{}: ct{}_status() - FALSE, CT error.'.format(self.host, cnt))
                 return False
         LOGGER.info('{}: Corner Turner Okay.'.format(self.host))
         return True
@@ -216,7 +224,7 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Add a new data source to this fengine host
         :param data_source: A DataSource object
-        :return:
+        :return: List of data sources.
         """
         # check that it doesn't already exist before adding it
         for source in self.data_sources:
@@ -226,7 +234,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def get_source_eq(self, source_name=None):
         """
-        Return a dictionary of all the EQ settings for the sources allocated to this fhost
+        Return a dictionary of all the EQ settings
+            for the sources allocated to this fhost
         :param: source_name:
         :return: Dict
         """
@@ -379,16 +388,16 @@ class FpgaFHost(DigitiserDataReceiver):
 
         if delay != 0:
             if (act_fine_delay == 0) and (coarse_delay == 0):
-                LOGGER.info('Requested delay is too small for this configuration (our '
-                            'resolution is too low). Setting delay to zero.')
+                LOGGER.info('Requested delay is too small for this configuration'
+                            '(our resolution is too low). Setting delay to zero.')
             elif abs(coarse_delay) > (2**coarse_delay_bits):
                 LOGGER.error('Requested coarse delay (%es) is out of range'
                     '(+-%i samples).' %(coarse_delay, 2**(coarse_delay_bits-1)))
 
         if delta_delay != 0:
             if act_delta_delay == 0:
-                LOGGER.info('Requested delay delta too slow for this configuration.'
-                            'Setting delay rate to zero.')
+                LOGGER.info('Requested delay delta too slow for this '
+                            'configuration. Setting delay rate to zero.')
 
         if phase_offset != 0:
             if fr_phase_offset == 0:
@@ -397,8 +406,9 @@ class FpgaFHost(DigitiserDataReceiver):
 
         if delta_phase_offset != 0:
             if act_delta_phase_offset == 0:
-                LOGGER.info('Requested phase offset delta is too slow for this configuration. '
-                    'Setting phase offset change to zero.')
+                LOGGER.info('Requested phase offset delta is too slow for this'
+                            ' configuration.'
+                                'Setting phase offset change to zero.')
 
         # determine offset from source name
         try:
@@ -579,7 +589,8 @@ class FpgaFHost(DigitiserDataReceiver):
         :param shift_schedule: int representing bit mask.
             '1' represents a shift for that stage. First stage is MSB.
             Use default if None provided
-        :param issue_meta: Should SPEAD meta data be sent after the value is changed?
+        :param issue_meta:
+            Should SPEAD meta data be sent after the value is changed?
         :return: <nothing>
         """
         if shift_schedule is None:
@@ -677,7 +688,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def check_fft_overflow(self, wait_time=2e-3):
         """
-        Checks if pfb counters on f-eng are not incrementing i.e. fft is not overflowing
+        Checks if pfb counters on f-eng are not incrementing
+            i.e. fft is not overflowing
         :param: wait_time : Float or None : If not None, fetch overflow counter,
             wait this long, and fetch a second value; Else, use last read value
             from cache. Value is not cached if wait_time is None.
@@ -685,12 +697,14 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         for cnt in range(0, self.num_fengines):
             if wait_time:
-                overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+                overflow0 = (self.registers.pfb_ctrs.read()['data']
+                    ['pfb_of%d_cnt' % cnt])
                 time.sleep(wait_time)
             else:
                 overflow0 = self._pfb_of_counts.get(cnt, 0)
 
-            overflow1 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+            overflow1 = (self.registers.pfb_ctrs.read()['data']
+                ['pfb_of%d_cnt' % cnt])
             if wait_time is not None:
                 self._pfb_of_counts[cnt] = overflow1
             if overflow0 == overflow1:
