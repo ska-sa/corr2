@@ -142,7 +142,7 @@ class FpgaXHost(FpgaHost):
             else:
                 LOGGER.error('%s: xeng %d has reg errors.' % (self.host, xnum))
                 return False
-        LOGGER.info('%s: VACC Okay.' % self.host)
+        LOGGER.info('%s: VACC okay.' % self.host)
         return True
 
     def vacc_get_status(self):
