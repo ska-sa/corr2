@@ -123,18 +123,20 @@ class FpgaXHost(FpgaHost):
         Checks if all xeng vaccs are okay.
         :param: wait_time : Float or None : If not None, fetch vacc reg bit,
             wait this long, and fetch a second value; Else, use last read value
-            from cache. Value is not cached if wait_time is None.
+            from cache. Value is only cached if wait_time is not None.
         :return: True if vacc is okay.
         """
         for xnum in range(0, self.x_per_fpga):
-            if wait_time:
-                vacc_err0 = self.registers['vaccerr%d' % xnum].read()['data']['reg']
+            if wait_time is not None:
+                vacc_err0 = (self.registers['vaccerr%d' % xnum].read()['data']
+                             ['reg'])
                 time.sleep(wait_time)
             else:
                 vacc_err0 = self._vacc_counts.get(xnum, 0)
 
             vacc_err1 = self.registers['vaccerr%d' % xnum].read()['data']['reg']
-            if wait_time is not None:
+
+            if wait_time is None:
                 self._vacc_counts[xnum] = vacc_err1
 
             if vacc_err0 == vacc_err1:
@@ -227,11 +229,11 @@ class FpgaXHost(FpgaHost):
         Checks if parity bits on f-eng are consistent.
         :param: wait_time : Float or None : If not None, fetch qdr parity bit,
             wait this long, and fetch a second value; Else, use last read value
-            from cache. Value is not cached if wait_time is None.
+            from cache. Value is only cached if wait_time is not None.
         :return: True if QDR is okay
         """
         for xeng in range(0, self.x_per_fpga):
-            if wait_time:
+            if wait_time is not None:
                 qdr_vacc_err0 = self.registers[
                     'vacc_errors%d' % xeng].read()['data']['parity']
                 time.sleep(wait_time)
@@ -241,7 +243,7 @@ class FpgaXHost(FpgaHost):
             qdr_vacc_err1 = self.registers[
                 'vacc_errors%d' % xeng].read()['data']['parity']
 
-            if wait_time is not None:
+            if wait_time is None:
                 self._qdr_counts[xeng] = qdr_vacc_err1
 
             if qdr_vacc_err0 == qdr_vacc_err1:

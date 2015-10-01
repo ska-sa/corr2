@@ -160,6 +160,7 @@ class FpgaFHost(DigitiserDataReceiver):
         self._pfb_of_counts = {}
         self._ct_counts = {}
         self._qdr_counts = {}
+        self.fnums = int(configd['fengine']['f_per_fpga'])
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -172,31 +173,23 @@ class FpgaFHost(DigitiserDataReceiver):
         Checks if the corner turner working.
         :param: wait_time : Float or None : If not None, fetch ct counter,
             wait this long, and fetch a second value; Else, use last read value
-            from cache. Value is not cached if wait_time is None.
+            from cache. Value is only cached if wait_time is None.
         :return: bool : True, if corner tuner is okay
 
         """
-        # ToDo: Should this be hard-coded?
-        for cnt in range(2):
-            if wait_time:
-                ct_ctrs_err0 = (self.registers.ct_ctrs.read()['data']
-                    ['ct_err_cnt{}'.format(cnt)])
-                ct_ctrs_parerr0 = (self.registers.ct_ctrs.read()['data']
-                    ['ct_parerr_cnt{}'.format(cnt)])
+        for cnt in range(self.fnums):
+            if wait_time is not None:
+                ct_ctrs_err0 = self.registers.ct_ctrs.read()['data']
                 time.sleep(wait_time)
             else:
                 ct_ctrs_err0 = self._ct_counts.get(cnt, 0)
-                ct_ctrs_parerr0 = self._ct_counts.get(cnt, 0)
 
-            ct_ctrs_err1 = (self.registers.ct_ctrs.read()['data']
-                ['ct_err_cnt{}'.format(cnt)])
-            ct_ctrs_parerr1 = (self.registers.ct_ctrs.read()['data']
-                ['ct_parerr_cnt{}'.format(cnt)])
+            ct_ctrs_err1 = self.registers.ct_ctrs.read()['data']
 
-            if wait_time is not None:
+            if wait_time is None:
                 self._ct_counts[cnt] = ct_ctrs_err1
 
-            if (ct_ctrs_err0 == ct_ctrs_err1) and (ct_ctrs_parerr0 == ct_ctrs_parerr1):
+            if (ct_ctrs_err0 == ct_ctrs_err1):
                 LOGGER.info('{}: ct{}_status() okay.'.format(self.host, cnt))
             else:
                 LOGGER.error(
@@ -205,15 +198,10 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('{}: Corner turner okay.'.format(self.host))
         return True
 
-    def host_okay(self, wait_time=1):
+    def host_okay(self):
         """
-        Is this host/LRU okay?
         Checks if the host/LRU is  working.
-        :param: wait_time : Float or None : If not None, fetch ct counter,
-            wait this long, and fetch a second value; Else, use last read value
-            from cache. Value is not cached if wait_time is None.
         :return: bool : True, if host/LRU is okay
-
         """
         if (not self.check_rx()) or (not self.ct_okay()):
             LOGGER.error('%s: host_okay() - FALSE.' % self.host)
@@ -408,8 +396,7 @@ class FpgaFHost(DigitiserDataReceiver):
         if delta_phase_offset != 0:
             if act_delta_phase_offset == 0:
                 LOGGER.info('Requested phase offset delta is too slow for this'
-                            ' configuration.'
-                                'Setting phase offset change to zero.')
+                            ' configuration. Setting phase offset change to zero.')
 
         # determine offset from source name
         try:
@@ -661,12 +648,11 @@ class FpgaFHost(DigitiserDataReceiver):
         Checks if parity bits on f-eng are consistent.
         :param: wait_time : Float or None : If not None, fetch qdr parity bit,
             wait this long, and fetch a second value; Else, use last read value
-            from cache. Value is not cached if wait_time is None.
+            from cache. Value is only cached if wait_time is None.
         :return: True if QDR is okay
         """
-        # ToDo: Should this be hard-coded?
-        for cnt in range(2):
-            if wait_time:
+        for cnt in range(self.fnums):
+            if wait_time is not None:
                 qdr_parerr0 = (self.registers.ct_ctrs.read()['data']
                     ['ct_parerr_cnt{}'.format(cnt)])
                 time.sleep(wait_time)
@@ -676,7 +662,7 @@ class FpgaFHost(DigitiserDataReceiver):
             qdr_parerr1 = (self.registers.ct_ctrs.read()['data']
                 ['ct_parerr_cnt{}'.format(cnt)])
 
-            if wait_time is not None:
+            if wait_time is None:
                 self._ct_counts[cnt] = qdr_parerr1
 
             if qdr_parerr0 == qdr_parerr1:
@@ -693,11 +679,11 @@ class FpgaFHost(DigitiserDataReceiver):
             i.e. fft is not overflowing
         :param: wait_time : Float or None : If not None, fetch overflow counter,
             wait this long, and fetch a second value; Else, use last read value
-            from cache. Value is not cached if wait_time is None.
+            from cache. Value is only cached if wait_time is None.
         :return: bool : True if not overflowing
         """
         for cnt in range(0, self.num_fengines):
-            if wait_time:
+            if wait_time is not None:
                 overflow0 = (self.registers.pfb_ctrs.read()['data']
                     ['pfb_of%d_cnt' % cnt])
                 time.sleep(wait_time)
@@ -707,7 +693,7 @@ class FpgaFHost(DigitiserDataReceiver):
             overflow1 = (self.registers.pfb_ctrs.read()['data']
                 ['pfb_of%d_cnt' % cnt])
 
-            if wait_time is not None:
+            if wait_time is None:
                 self._pfb_of_counts[cnt] = overflow1
 
             if overflow0 == overflow1:
