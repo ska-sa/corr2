@@ -17,6 +17,7 @@ class FpgaBHost(FpgaXHost):
         # parent constructor
         FpgaXHost.__init__(self, host, katcp_port=katcp_port,
                            boffile=boffile, connect=connect, config=config)
+        self.beng_per_host = int(self.config['xengine']['x_per_fpga'])
         LOGGER.info('FpgaBHost created')
 
     @classmethod
@@ -25,29 +26,57 @@ class FpgaBHost(FpgaXHost):
         return cls(hostname, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
-    def write_value_duplicate(self):
-        pass
-
-    def write_value_calibrate(self):
-        pass
-
-    def write_value_steer(self):
-        pass
-
-    def write_value_combine(self):
-        pass
-
-    def write_value_visibility(self):
-        pass
-
-    def write_value_quantise(self):
-        pass
-
-    def write_value_filter(self, value):
+    def beam_destination_set(self, beam):
         """
-        Write a value to the filter stage of this bhost's beamformer
+        Set the data destination for this beam.
+        :param beam: a Beam object
+        """
+        self.registers['bf%i_config' % beam.beam_index].write(port=beam.destination_port)
+        self.registers['bf%i_ip' % beam.beam_index].write(ip=int(beam.destination_ip))
+
+    def value_duplicate_set(self):
+        raise NotImplementedError
+
+    def value_calibrate_set(self):
+        raise NotImplementedError
+
+    def value_steer_set(self):
+        raise NotImplementedError
+
+    def value_combine_set(self):
+        raise NotImplementedError
+
+    def value_visibility_set(self):
+        raise NotImplementedError
+
+    def value_quantise_set(self):
+        raise NotImplementedError
+
+    def value_filter_set(self, value, beng_indices=None):
+        """
+        Write a value to the filter stage of this bhost's beamformer.
         """
         self.registers.bf_value_in1.write(filt=value)
+        bindices = self._write_value_bengines(beng_indices, 'filt')
+        LOGGER.info('%s: wrote %.3f to filters on bengines %s' %
+                    (self.host, value, bindices))
+
+    def _write_value_bengines(self, beng_indices=None, stage_ctrl_field=''):
+        """
+        Strobe a value into a stage on a list of bengines by selecting
+        the bengine and then pulsing the enable for that stage.
+        """
+        if beng_indices is None:
+            beng_indices = range(0, self.beng_per_host)
+        if len(beng_indices) == 0:
+            raise RuntimeError('Makes no sense acting on no b-engines?')
+        # enable each of the bengines in turn
+        self.registers.bf_value_ctrl.write(**{stage_ctrl_field: 0})
+        for beng_index in beng_indices:
+            self.registers.bf_control.write(beng=beng_index)
+            self.registers.bf_value_ctrl.write(**{stage_ctrl_field: 'pulse'})
+        return beng_indices
+
 
     # def read_bf_config(self):
     #     """

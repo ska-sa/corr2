@@ -4,8 +4,6 @@ import spead64_48 as spead
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
-from data_source import DataSource
-
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
@@ -45,8 +43,8 @@ class Beam(object):
         obj.center_freq = float(beam_dict['center_freq'])
         obj.bandwidth = float(beam_dict['bandwidth'])
         obj.meta_ip = tengbe.IpAddress(beam_dict['meta_ip'])
-        obj.output_dest = DataSource('output_dest', beam_dict['dest_ip'],
-                                     1, int(beam_dict['dest_port']))
+        obj.destination_ip = tengbe.IpAddress(beam_dict['dest_ip'])
+        obj.destination_port = int(beam_dict['dest_port'])
         obj.source_weights = beam_dict['source_weights'].strip().split(',')
         obj.source_poly = []
         return obj
@@ -74,81 +72,86 @@ class BEngineOperations(object):
         beam_names = []
         for k in self.corr.configd:
             if k.startswith('beam_'):
-                beam_names.append(k.strip())
-        self.corr.logger.debug('Found beams: %s' % beam_names)
+                beam_names.append(k.strip().replace('beam_', ''))
+        self.logger.info('Found beams: %s' % beam_names)
 
         # make the beams
         self.beams = {}
         for b, beam_name in enumerate(beam_names):
-            self.beams[beam_name] = Beam.from_config(beam_name, self.corr.configd)
+            self.beams[beam_name] = Beam.from_config(beam_name,
+                                                     self.corr.configd)
+
+
+        print self.beams
+
+        # Give control register a known state.
+        # Set bf_control and bf_config to zero for now
+        THREADED_FPGA_OP(self.hosts, timeout=5,
+                         target_function=(lambda fpga_: fpga_.registers.bf_control.write_int(0)))
+        THREADED_FPGA_OP(self.hosts, timeout=5,
+                         target_function=(lambda fpga_: fpga_.registers.bf_control.write_int(0)))
 
         # disable all beams that are transmitting
         self.tx_stop()
 
-        if False:
-
-            # Give control register a known state.
-            # Set bf_control and bf_config to zero for now
-            THREADED_FPGA_OP(self.hosts, timeout=5,
-                             target_function=(lambda fpga_: fpga_.registers.bf_control.write_int(0)))
-            THREADED_FPGA_OP(self.hosts, timeout=5,
-                             target_function=(lambda fpga_: fpga_.registers.bf_control.write_int(0)))
+        # set up the beams
+        for beam in self.beams.values():
+            THREADED_FPGA_FUNC(self.hosts, timeout=5, target_function=('beam_destination_set', [beam]))
 
 
 
-            THREADED_FPGA_FUNC(self.hosts, timeout=5,
-                               target_function=('bf_control', (None,)),)
-            THREADED_FPGA_FUNC(self.hosts, timeout=5,
-                               target_function=('write_bf_config', (None,)),)
+        self.logger.info('Beamformer initialised.')
 
-            # TODO
-            # Set up default destination ip and port
-            # do we increment?
-            # config_meta_output(corr, beams, dest_ip_str=None,
-            #                    dest_port=None, issue_spead=True)
-            # config_udp_output(corr, beams, frequencies,
-            #                       dest_ip_str=None, dest_port=None, issue_spead=True)
-
-            # Set default beam config and beam IP
-            # n_partitions = 32 (new register)
-            # beam_id ?? (256 possible)
-            beam_idx = beam2index(corr, beams=beams)
-            for beam in beam_idx:
-                THREADED_FPGA_FUNC(corr.xhosts, timeout=5,
-                                   target_function=('write_beam_config',
-                                                    ({'rst': 1, 'beam_id': 0,
-                                                      'n_partitions': 16}, beam)),)
-
-            # for each beam assign which part of the band is used
-            beam_offset_idx = range(0, corr.bf_beams_per_fpga*len(corr.xhosts),
-                                    corr.bf_beams_per_fpga)
-            idx = 0
-            for host in corr.xhosts:  # slow need improvement
-                for beam in beam_idx:
-                    host.write_beam_offset(value=beam_offset_idx[idx], beam=beam)
-                idx += 1
-
-            if set_weights:  # set defaults, what about the antenna?
-                for beam in beams:
-                    weights_set(corr, beam, antenna=0, coeffs=None,
-                                spead_issue=False)
-            else:
-                corr.logger.info('Skipped applying weights config '
-                                 'of beamformer.')
-
-            # configure spead_meta data transmitter and spead data destination,
-            # don't issue related spead meta-data
-            # TODO missing registers
-            if config_output:
-                config_udp_output(corr, beams, issue_spead=False)
-                config_meta_output(corr, beams, issue_spead=False)
-            else:
-                corr.logger.info('Skipped output configuration of beamformer.')
-            if send_spead:
-                spead_bf_issue_all(corr, beams=beams)
-            else:
-                corr.logger.info('Skipped issue of spead meta data.')
-            corr.logger.info("Beamformer initialisation complete.")
+        # if False:
+        #
+        #     # TODO
+        #     # Set up default destination ip and port
+        #     # do we increment?
+        #     # config_meta_output(corr, beams, dest_ip_str=None,
+        #     #                    dest_port=None, issue_spead=True)
+        #     # config_udp_output(corr, beams, frequencies,
+        #     #                       dest_ip_str=None, dest_port=None, issue_spead=True)
+        #
+        #     # Set default beam config and beam IP
+        #     # n_partitions = 32 (new register)
+        #     # beam_id ?? (256 possible)
+        #     beam_idx = beam2index(corr, beams=beams)
+        #     for beam in beam_idx:
+        #         THREADED_FPGA_FUNC(corr.xhosts, timeout=5,
+        #                            target_function=('write_beam_config',
+        #                                             ({'rst': 1, 'beam_id': 0,
+        #                                               'n_partitions': 16}, beam)),)
+        #
+        #     # for each beam assign which part of the band is used
+        #     beam_offset_idx = range(0, corr.bf_beams_per_fpga*len(corr.xhosts),
+        #                             corr.bf_beams_per_fpga)
+        #     idx = 0
+        #     for host in corr.xhosts:  # slow need improvement
+        #         for beam in beam_idx:
+        #             host.write_beam_offset(value=beam_offset_idx[idx], beam=beam)
+        #         idx += 1
+        #
+        #     if set_weights:  # set defaults, what about the antenna?
+        #         for beam in beams:
+        #             weights_set(corr, beam, antenna=0, coeffs=None,
+        #                         spead_issue=False)
+        #     else:
+        #         corr.logger.info('Skipped applying weights config '
+        #                          'of beamformer.')
+        #
+        #     # configure spead_meta data transmitter and spead data destination,
+        #     # don't issue related spead meta-data
+        #     # TODO missing registers
+        #     if config_output:
+        #         config_udp_output(corr, beams, issue_spead=False)
+        #         config_meta_output(corr, beams, issue_spead=False)
+        #     else:
+        #         corr.logger.info('Skipped output configuration of beamformer.')
+        #     if send_spead:
+        #         spead_bf_issue_all(corr, beams=beams)
+        #     else:
+        #         corr.logger.info('Skipped issue of spead meta data.')
+        #     corr.logger.info("Beamformer initialisation complete.")
 
     def find_beng_index(self, freq=None, sky_freq=None, channel=None):
         """
@@ -181,28 +184,17 @@ class BEngineOperations(object):
         self.logger.info('Stopping beamformers')
 
         # stop the bengines at the filter stage
-        THREADED_FPGA_FUNC(self.hosts, timeout=5, target_function=('write_value_filter', [0], {}))
+        THREADED_FPGA_FUNC(self.hosts, timeout=5,
+                           target_function=('value_filter_set',
+                                            [], {'value': 0, 'beng_indices': None}))
 
         # update spead
+        spead_stop = False
         if spead_stop:
             raise NotImplementedError
             # TODO
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        self.logger.info('Stopped all beam transmission')
 
     # def write_value(self, bf_stage, data, beams=None, antennas=None):
     #     """

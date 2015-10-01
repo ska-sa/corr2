@@ -174,6 +174,8 @@ class FxCorrelator(Instrument):
             if self.found_beamformer:
                 self.bops.initialise(self)
 
+            raise RuntimeError('debugging beamformer')
+
             # for fpga_ in self.fhosts:
             #     fpga_.tap_arp_reload()
             # for fpga_ in self.xhosts:
