@@ -182,6 +182,9 @@ class FxCorrelator(Instrument):
             # subscribe all the engines to the multicast groups
             self.fops.subscribe_to_multicast()
             self.xops.subscribe_to_multicast()
+            post_mess_delay = 5
+            self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
+            time.sleep(post_mess_delay)
 
             # force a reset on the f-engines
             self.fops.sys_reset(sleeptime=1)
