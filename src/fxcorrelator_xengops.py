@@ -153,12 +153,16 @@ class XEngineOperations(object):
         def setup_gbes(f):
             board_id, macs = boards_info[f.host]
             f.registers.board_id.write(reg=board_id)
+            mac_ctr = 1
             for gbe, this_mac in zip(f.tengbes, macs):
+                this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
                 gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
                 self.logger.info('xhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i)' %
                                  (f.host, gbe.name, str(gbe.mac), xeng_port, board_id))
                 # gbe.tap_start(restart=True)
                 gbe.dhcp_start()
+                mac_ctr += 1
+
         THREADED_FPGA_OP(self.hosts, timeout=40, target_function=(setup_gbes,))
     
         # clear gbe status

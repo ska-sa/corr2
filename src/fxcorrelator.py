@@ -157,6 +157,7 @@ class FxCorrelator(Instrument):
                                target_function='get_system_information')
 
         # remove test hardware from designs
+        utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
         if program:
             # cal the qdr on all boards

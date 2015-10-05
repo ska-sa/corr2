@@ -68,7 +68,9 @@ class FEngineOperations(object):
             board_id, macs = boards_info[f.host]
             f.registers.tx_metadata.write(board_id=board_id,
                                           porttx=self.corr.fengine_output.port)
+            mac_ctr = 1
             for gbe, this_mac in zip(f.tengbes, macs):
+                this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
                 gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
                 self.logger.info(
                     'fhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i) tx(%s:%i)' %
@@ -76,6 +78,7 @@ class FEngineOperations(object):
                      self.corr.fengine_output.ip_address, self.corr.fengine_output.port))
                 # gbe.tap_start(restart=True)
                 gbe.dhcp_start()
+                mac_ctr += 1
 
         timeout = len(self.hosts[0].tengbes) * 30 * 1.1
         THREADED_FPGA_OP(self.hosts, timeout=timeout, target_function=(setup_gbes,))

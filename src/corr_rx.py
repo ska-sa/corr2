@@ -16,10 +16,8 @@ class CorrRx(threading.Thread):
     be discarded.
 
     """
-    def __init__(self, port=8888, queue_size=3, log_handler=None,
-                 log_level=logging.INFO, spead_log_level=logging.INFO):
+    def __init__(self, port=8888, queue_size=3):
         self.logger = LOGGER
-        spead.logging.getLogger().setLevel(spead_log_level)
         self.quit_event = threading.Event()
         self.data_queue = Queue.Queue(maxsize=queue_size)
         "Queue for received ItemGroups"
