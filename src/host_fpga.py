@@ -88,25 +88,24 @@ class FpgaHost(Host, KatcpFpga):
         :param max_waittime: the maximum time to wait for raw 10gbe data
         :return:
         """
-        start_time = time.time()
+        if not self.check_rx_raw(max_waittime=_waittime):
+            LOGGER.error('{}: raw RX also failed.'.format(self.host))
+            return False
+        else:
+            LOGGER.info('{}: raw RX passed '.format(self.host))
+
         if not self.check_rx_spead(max_waittime=max_waittime):
             LOGGER.error('{}: SPEAD RX check failed.'.format(self.host))
-            _waittime = max_waittime - (time.time() - start_time)
-            if _waittime < 0:
-                LOGGER.error('{}: check_rx() timed out.'.format(self.host))
-                return False
-            if not self.check_rx_raw(max_waittime=_waittime):
-                LOGGER.error('{}: raw RX also failed.'.format(self.host))
-            else:
-                LOGGER.error('{}: raw RX passed - problem is likely in '
-                             'the SPEAD stage.'.format(self.host))
-            return False
         else:
             LOGGER.info('{}: SPEAD RX passed - checking reorder '
                         'stage.'.format(self.host))
+
         if not self.check_rx_reorder():
             LOGGER.error('{}: reorder RX check failed.'.format(self.host))
             return False
+        else:
+            LOGGER.info('{}: reorder RX passed '.format(self.host))
+
         LOGGER.info('{}: check_rx() - TRUE.'.format(self.host))
         return True
 
