@@ -22,19 +22,10 @@ LOGGER = logging.getLogger(__name__)
 
 class FpgaBHost(FpgaHost):
     def __init__(self, host, katcp_port=7147, boffile=None,
-                 connect=True, config=None,
-                 simulate=False, optimisations=True):
+                 connect=True, config=None):
         FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
         self.config = config
-        # if self.config is not None:
-        #     self.bf_per_fpga = int(self.config['bf_be_per_fpga'])
         self.bf_per_fpga = 4
-        #  optimisations on writes (that currently expose bugs)
-        self.optimisations = optimisations
-        #  simulate operations (and output debug data).
-        # Useful for when there is no hardware
-        self.simulate = simulate
-
 
         # self.spead_initialise()
         LOGGER.info('Beamformer created')
@@ -46,6 +37,14 @@ class FpgaBHost(FpgaHost):
                    connect=True, config=config_source)
 
     # specifying many frequencies is redundant for MK case
+
+    # TODO check when registers are there
+    def read_speadify_status(self, beam=0):
+        return self.registers['bf%i_status' % beam].read()['data']
+
+    # TODO check when registers are there
+    def read_beam_destination(self, beam=0):
+        return self.registers['bf%i_dest' % beam].read()['data']
 
     def read_bf_config(self):
         """
