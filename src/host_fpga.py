@@ -88,7 +88,7 @@ class FpgaHost(Host, KatcpFpga):
         :param max_waittime: the maximum time to wait for raw 10gbe data
         :return:
         """
-        if not self.check_rx_raw(max_waittime=_waittime):
+        if not self.check_rx_raw(max_waittime=max_waittime):
             LOGGER.error('{}: raw RX also failed.'.format(self.host))
             return False
         else:
