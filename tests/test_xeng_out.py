@@ -21,22 +21,23 @@ import logging
 
 logging.basicConfig(level=eval('logging.INFO'))
 
-USE_XENGINE = 0
 NUM_BLS = 40
-ZEROES_ALLOWED = int(4096*0.7)
+ZEROES_ALLOWED = int(128*0.7)
+ZEROES_ALLOWED = 0
 CORR_INIT_LOOPS = 1
 CORR_INIT_RETRIES = 5
-DATA_TO_GET = 2
+DATA_TO_GET = 3
 EXPECTED_TIMESTEP = 8192
 EXPECTED_NACC = 816
+NUM_X_ENGINES = 8
 
 
-def get_snap_data(correlator):
+def get_snap_data(correlator, xeng_num):
     """
     Get snap data from the chosen x-engine
     :return:
     """
-    sd = correlator.xhosts[USE_XENGINE].snapshots.snap_xeng0_ss.read()['data']
+    sd = correlator.xhosts[xeng_num].snapshots.snap_xeng0_ss.read()['data']
     snaplen = len(sd['pol0'])
     rd = []
     bls_ctr = 0
@@ -146,53 +147,59 @@ try:
         corr_init_failed += failcount
 
         baselines = fxcorrelator_xengops.xeng_get_baseline_order(corr_obj)
-        active_inputs = []
 
-        # set all the inputs to zero
-        fxcorrelator_fengops.feng_eq_set(corr_obj, new_eq=0)
+        for xeng_index in range(0, NUM_X_ENGINES):
+            print '\n***********************'
+            print 'Running for X-engine', xeng_index
+            print '***********************'
 
-        # check that they are all zero
-        snapdata = get_snap_data(corr_obj)
-        got_error = False
-        expected_baselines = []
-        zeroes_allowed = ZEROES_ALLOWED
-        for fcnt, fchan in enumerate(snapdata):
-            error = check_freq_data(fchan, fcnt, zeroes_allowed)
-            got_error |= error
-        if got_error:
-            print 'Zero data wasn\'t zero'
-            import IPython
-            IPython.embed()
-            raise RuntimeError('Zero data wasn\'t zero')
+            active_inputs = []
 
-        for ant in ant_names:
-            print 'Setting antenna %s to non-zero quantiser' % ant
-            fxcorrelator_fengops.feng_eq_set(corr_obj, source_name=ant, new_eq=300)
-            active_inputs.append(ant)
-            expected_baselines = match_inputs_to_baselines(baselines, active_inputs)
-            if len(expected_baselines) == 0:
-                print 'corr_init_failed: ', corr_init_failed
-                print baselines
-                print active_inputs
-                print expected_baselines
-                raise RuntimeError('Active inputs not matched in baseline list?!')
-            print 'Active inputs:', active_inputs
-            print 'Matched baseline indices:', expected_baselines
-            # get some data and check it's in the correct place
-            print '\tGetting %i heaps' % DATA_TO_GET
-            data_cnt = 0
-            while data_cnt < DATA_TO_GET:
-                snapdata = get_snap_data(corr_obj)
-                zeroes_allowed = ZEROES_ALLOWED
-                got_error = False
-                for fcnt, fchan in enumerate(snapdata):
-                    error = check_freq_data(fchan, fcnt, zeroes_allowed)
-                    got_error |= error
-                if got_error:
-                    print '\t', data_cnt, 'errors present, check log on completion'
-                else:
-                    print '\t', data_cnt, 'okay'
-                data_cnt += 1
+            # set all the inputs to zero
+            fxcorrelator_fengops.feng_eq_set(corr_obj, new_eq=0)
+
+            # check that they are all zero
+            snapdata = get_snap_data(corr_obj, xeng_index)
+            got_error = False
+            expected_baselines = []
+            for fcnt, fchan in enumerate(snapdata):
+                error = check_freq_data(fchan, fcnt, 0)
+                got_error |= error
+            if got_error:
+                print 'Zero data wasn\'t zero'
+                import IPython
+                IPython.embed()
+                raise RuntimeError('Zero data wasn\'t zero')
+
+            #ant_names = ['ant0_x', 'ant3_x']
+            for ant in ant_names:
+                print 'Setting antenna %s to non-zero quantiser' % ant
+                fxcorrelator_fengops.feng_eq_set(corr_obj, source_name=ant, new_eq=300)
+                active_inputs.append(ant)
+                expected_baselines = match_inputs_to_baselines(baselines, active_inputs)
+                if len(expected_baselines) == 0:
+                    print 'corr_init_failed: ', corr_init_failed
+                    print baselines
+                    print active_inputs
+                    print expected_baselines
+                    raise RuntimeError('Active inputs not matched in baseline list?!')
+                print 'Active inputs:', active_inputs
+                print 'Matched baseline indices:', expected_baselines
+                # get some data and check it's in the correct place
+                print '\tGetting %i heaps' % DATA_TO_GET
+                data_cnt = 0
+                while data_cnt < DATA_TO_GET:
+                    snapdata = get_snap_data(corr_obj, xeng_index)
+                    zeroes_allowed = ZEROES_ALLOWED
+                    got_error = False
+                    for fcnt, fchan in enumerate(snapdata):
+                        error = check_freq_data(fchan, fcnt, zeroes_allowed)
+                        got_error |= error
+                    if got_error:
+                        print '\t heap', data_cnt, 'errors present, check log on completion'
+                    else:
+                        print '\t heap', data_cnt, 'okay'
+                    data_cnt += 1
         main_loop_ctr += 1
         runtime_last = time.time() - tic
         runtime_remain = (CORR_INIT_LOOPS - main_loop_ctr) * runtime_last

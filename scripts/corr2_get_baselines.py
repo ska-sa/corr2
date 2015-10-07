@@ -33,6 +33,7 @@ if configfile == '':
     raise RuntimeError('No good carrying on without a config file')
 
 c = corr2.fxcorrelator.FxCorrelator('script_corr', config_source=configfile)
+c.standard_log_config()
 c.initialise(program=False)
 baselines = corr2.fxcorrelator_xengops.xeng_get_baseline_order(c)
 for ctr, baseline in enumerate(baselines):

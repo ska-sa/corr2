@@ -35,11 +35,14 @@ from data_source import DataSource
 import fxcorrelator_fengops as fengops
 import fxcorrelator_xengops as xengops
 import fxcorrelator_bengops as bengops
+import fxcorrelator_filterops as filterops
 
 use_xeng_sim = False
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+
+LOGGER = logging.getLogger(__name__)
 
 
 class FxCorrelator(Instrument):
@@ -48,34 +51,24 @@ class FxCorrelator(Instrument):
     xengines that each produce cross products from a continuous portion of the channels and accumulate the result.
     SPEAD data products are produced.
     """
-    def __init__(self, descriptor, identifier=-1, config_source=None, logger=None, log_level=logging.INFO):
+    def __init__(self, descriptor, identifier=-1, config_source=None, logger=LOGGER):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
         :param identifier: An optional integer identifier.
-        :param config_source: The instrument configuration source. Can be a text file, hostname, whatever.
+        :param config_source: The instrument configuration source. Can be a text
+                              file, hostname, whatever.
         :param logger: Use the module logger by default, unless something else is given.
-        :param logger: The loglevel to use by default, logging.INFO.
         :return: <nothing>
-        """
-        # first thing to do is handle the logging - set the root logging handler - submodules loggers will
-        # automatically use it
-        self.loghandler = log.Corr2LogHandler()
-        logging.root.addHandler(self.loghandler)
-        logging.root.setLevel(log_level)
-        self.logger = logger or logging.getLogger(__name__)
-        self.logger.setLevel(log_level)
-        self.logger.addHandler(self.loghandler)
 
-        # set the SPEAD logger to warning only
-        spead_logger = logging.getLogger('spead')
-        spead_logger.setLevel(logging.WARNING)
+        """
+        self.logger = logger
 
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []
-        self.bhosts = []
         self.filthosts = None
+        self.found_beamformer = False
 
         # attributes
         self.katcp_port = None
@@ -97,22 +90,40 @@ class FxCorrelator(Instrument):
 
         self._initialised = False
 
-    def initialise(self, program=True, qdr_cal=True, no_vacc_timer=False):
+    def standard_log_config(self, log_level=logging.INFO, silence_spead=True):
+        """Convenience method for setting up logging in scripts etc.
+        :param logger: The loglevel to use by default, logging.INFO.
+        :param silence_spead: Set 'spead' logger to level WARNING if True
+
+        """
+        # Set the root logging handler - submodules loggers will automatically
+        # use it
+        self.loghandler = log.Corr2LogHandler()
+        logging.root.addHandler(self.loghandler)
+        logging.root.setLevel(log_level)
+        self.logger.setLevel(log_level)
+        self.logger.addHandler(self.loghandler)
+
+        if silence_spead:
+            # set the SPEAD logger to warning only
+            spead_logger = logging.getLogger('spead')
+            spead_logger.setLevel(logging.WARNING)
+
+    def initialise(self, program=True, qdr_cal=True):
         """
         Set up the correlator using the information in the config file.
         :return:
         """
         # set up the filter boards if we need to
         if 'filter' in self.configd:
-            import fxcorrelator_filterops as filterops
             try:
                 filterops.filter_initialise(corr=self, program=program)
             except Exception as e:
                 raise e
 
         # connect to the other hosts that make up this correlator
-        THREADED_FPGA_FUNC(self.fhosts, timeout=5, target_function='connect')
-        THREADED_FPGA_FUNC(self.xhosts, timeout=5, target_function='connect')
+        THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
+                           target_function='connect')
 
         igmp_version = self.configd['FxCorrelator'].get('igmp_version')
         if igmp_version is not None:
@@ -124,19 +135,12 @@ class FxCorrelator(Instrument):
         # if we need to program the FPGAs, do so
         if program:
             self.logger.info('Programming FPGA hosts')
-            ftups = []
-            for f in self.xhosts:
-                ftups.append((f, f.boffile))
-            for f in self.fhosts:
-                ftups.append((f, f.boffile))
-            fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
+            fpgautils.program_fpgas([(host, host.boffile) for host in
+                                     (self.fhosts + self.xhosts)],
+                                    progfile=None, timeout=15)
         else:
             self.logger.info('Loading design information')
-            THREADED_FPGA_FUNC(self.fhosts, timeout=5,
-                               target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.xhosts, timeout=5,
-                               target_function='get_system_information')
-            THREADED_FPGA_FUNC(self.bhosts, timeout=5,
+            THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
                                target_function='get_system_information')
 
         # remove test hardware from designs
@@ -146,13 +150,18 @@ class FxCorrelator(Instrument):
             if qdr_cal:
                 self.qdr_calibrate()
             else:
-                self.logger.info('Skipping QDR cal - are you sure you want to do this?')
+                self.logger.info('Skipping QDR cal - are you sure you '
+                                 'want to do this?')
 
             # init the f engines
             fengops.feng_initialise(self)
 
             # init the x engines
             xengops.xeng_initialise(self)
+
+            # are there beamformers?
+            if self.found_beamformer:
+                bengops.beng_initialise(self)
 
             # for fpga_ in self.fhosts:
             #     fpga_.tap_arp_reload()
@@ -195,10 +204,6 @@ class FxCorrelator(Instrument):
         # reset all counters on fhosts and xhosts
         fengops.feng_clear_status_all(self)
         xengops.xeng_clear_status_all(self)
-
-        # start the vacc check timer
-        if not no_vacc_timer:
-            xengops.xeng_setup_vacc_check_timer(self)
 
         # set an initialised flag
         self._initialised = True
@@ -323,7 +328,6 @@ class FxCorrelator(Instrument):
             raise IOError('One or more bitstream files not found.')
 
         # TODO: Load config values from the bitstream meta information - f per fpga, x per fpga, etc
-        self.arp_wait_time = int(self.configd['FxCorrelator']['arp_wait_time'])
         self.sensor_poll_time = int(self.configd['FxCorrelator']['sensor_poll_time'])
         self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
         self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
@@ -348,6 +352,11 @@ class FxCorrelator(Instrument):
         # the f-engines have this many 10Gbe ports per f-engine unit of operation
         self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
 
+        # check if beamformer exists with x-engines
+        self.found_beamformer = False
+        if 'bengine' in self.configd.keys():
+            self.found_beamformer = True
+
         # set up the hosts and engines based on the configuration in the ini file
         self.fhosts = []
         for host in self.configd['fengine']['hosts'].split(','):
@@ -355,18 +364,18 @@ class FxCorrelator(Instrument):
             fpgahost = fhost_fpga.FpgaFHost.from_config_source(host, self.katcp_port,
                                                                config_source=self.configd['fengine'])
             self.fhosts.append(fpgahost)
+
+        # choose class (b-engine inherits x-engine functionality)
+        if self.found_beamformer:
+            _targetClass = bhost_fpga.FpgaBHost
+        else:
+            _targetClass = xhost_fpga.FpgaXHost
         self.xhosts = []
         for host in self.configd['xengine']['hosts'].split(','):
             host = host.strip()
-            fpgahost = xhost_fpga.FpgaXHost.from_config_source(host, self.katcp_port,
-                                                               config_source=self.configd['xengine'])
+            fpgahost = _targetClass.from_config_source(host, self.katcp_port,
+                                                       config_source=self.configd)
             self.xhosts.append(fpgahost)
-        self.bhosts = []
-        for host in self.configd['xengine']['hosts'].split(','):  # x-eng host b-eng
-            host = host.strip()
-            fpgahost = bhost_fpga.FpgaBHost.from_config_source(host, self.katcp_port,
-                                                               config_source=self.configd['xengine'])
-            self.bhosts.append(fpgahost)
 
         # check that no hosts overlap
         for _fh in self.fhosts:
@@ -600,12 +609,6 @@ class FxCorrelator(Instrument):
         self.spead_meta_ig.add_item(name='input_labelling', id=0x100E,
                                     description='input labels and numbers',
                                     init_val=numpy.array(metalist))
-
-        # spead_ig.add_item(name='n_bengs', id=0x100F,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
-
         self.spead_meta_ig.add_item(name='center_freq', id=0x1011,
                                     description='The on-sky centre-frequency.',
                                     shape=[], fmt=spead.mkfmt(('f', 64)),
@@ -752,12 +755,6 @@ class FxCorrelator(Instrument):
                                                 'back to seconds since last sync.',
                                     shape=[], fmt=spead.mkfmt(('f', 64)),
                                     init_val=self.sample_rate_hz)
-
-        # spead_ig.add_item(name='b_per_fpga', id=0x1047,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
-
         self.spead_meta_ig.add_item(name='xeng_out_bits_per_sample', id=0x1048,
                                     description='The number of bits per value of the xeng '
                                                 'accumulator output. Note this is for a '
@@ -769,12 +766,6 @@ class FxCorrelator(Instrument):
                                     description='Number of F engines per FPGA host.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                                     init_val=self.f_per_fpga)
-
-        # spead_ig.add_item(name='beng_out_bits_per_sample', id=0x1050,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
-
         # spead_ig.add_item(name='rf_gain_MyAntStr ', id=0x1200+inputN,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('f', 64)),
