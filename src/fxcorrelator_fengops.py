@@ -90,10 +90,10 @@ def feng_check_rx(corr, max_waittime=30):
 
 def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, ld_time=None, ld_check=True):
     """
-    Set delay correction values for specified source. This is a blocking call. \n
+    Set delay correction values for specified source. This is a blocking call.
     By default, it will wait until load time and verify that things worked as expected. 
-    This check can be disabled by setting ld_check param to False. \n
-    Load time is optional; if not specified, load immediately.\n
+    This check can be disabled by setting ld_check param to False.
+    Load time is optional; if not specified, load immediately.
     :return
     """
     corr.logger.info('Setting delay correction values for source %s' %source_name)
