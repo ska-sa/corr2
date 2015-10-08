@@ -217,7 +217,7 @@ class FEngineOperations(object):
                         actual_values['act_delta_delay'])
                 except Exception as e:
                     self.logger.error('New delay error - %s' % e.message)
-                    raise ValueError('New delay error - %s' % e.message)
+                    raise #ValueError('New delay error - %s' % e.message)
                 self.logger.info('done.')
                 return actual_values
         raise ValueError('Unknown source name %s' % source_name)
