@@ -38,9 +38,10 @@ class KatcpLogEmitHandler(logging.StreamHandler):
         try:
             if record.levelname == 'WARNING':
                 record.levelname = 'WARN'
-            inform_msg = self.katcp_server.create_log_inform(record.levelname.lower(),
-                                                             record.msg,
-                                                             record.filename)
+            inform_msg = self.katcp_server.create_log_inform(
+                record.levelname.lower(),
+                record.msg,
+                record.filename)
             self.katcp_server.mass_inform(inform_msg)
             self.flush()
         except (KeyboardInterrupt, SystemExit):
@@ -147,9 +148,11 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.set_synch_time(synch_time)
             except RuntimeError:
-                return 'fail', 'request digitiser_synch_epoch did not succeed, check the log'
+                return 'fail', 'request digitiser_synch_epoch did not ' \
+                               'succeed, check the log'
             except Exception:
-                return 'fail', 'request digitiser_synch_epoch failed for an unknown reason, check the log'
+                return 'fail', 'request digitiser_synch_epoch failed for an ' \
+                               'unknown reason, check the log'
         return 'ok', self.instrument.get_synch_time()
 
     @request(Str(), Str())
@@ -162,7 +165,8 @@ class Corr2Server(katcp.DeviceServer):
         """
         if stream not in self.instrument.configd['xengine']['output_products']:
             return 'fail', 'stream %s is not in product list: %s' % \
-                   (stream, self.instrument.configd['xengine']['output_products'])
+                   (stream,
+                    self.instrument.configd['xengine']['output_products'])
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
@@ -177,16 +181,27 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
+        config_products = self.instrument.configd['xengine']['output_products']
         if product_name == '':
-            product_list = self.instrument.configd['xengine']['output_products']
+            product_list = config_products
             product_string = str(product_list).replace('[', '').replace(']', '')
         else:
             product_string = product_name
-            if product_name not in self.instrument.configd['xengine']['output_products']:
+            if product_name not in config_products:
                 return 'fail', 'requested product name not found'
-        sock.inform(product_string, '%s:%d' % (self.instrument.xeng_tx_destination[0],
-                                               self.instrument.xeng_tx_destination[1]))
+        sock.inform(product_string, '%s:%d' % (
+            self.instrument.xeng_tx_destination[0],
+            self.instrument.xeng_tx_destination[1]))
         return 'ok',
+
+    def _check_product_name(self, product_name):
+        """
+        Does a given product name exist in the instrument config?
+        :param product_name:
+        :return:
+        """
+        config_products = self.instrument.configd['xengine']['output_products']
+        return product_name in config_products
 
     @request(Str(default=''))
     @return_reply()
@@ -195,7 +210,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        if product_name not in self.instrument.configd['xengine']['output_products']:
+        if not self._check_product_name(product_name):
             return 'fail', 'requested product name not found'
         self.instrument.tx_start()
         return 'ok',
@@ -207,7 +222,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        if product_name not in self.instrument.configd['xengine']['output_products']:
+        if not self._check_product_name(product_name):
             return 'fail', 'requested product name not found'
         self.instrument.tx_stop()
         return 'ok',
@@ -220,7 +235,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        if product_name not in self.instrument.configd['xengine']['output_products']:
+        if not self._check_product_name(product_name):
             return 'fail', 'requested product name not found'
         self.instrument.spead_issue_meta()
         return 'ok',
@@ -260,18 +275,29 @@ class Corr2Server(katcp.DeviceServer):
                 self.instrument.fops.eq_set(True, source_name, list(eq_vals))
             except Exception as e:
                 return 'fail', 'unknown exception: %s' % e.message
-        eqstring = str(self.instrument.fops.eq_get(source_name)[source_name]['eq'])
-        eqstring = eqstring.replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace(',', '')
+        _src = self.instrument.fops.eq_get(source_name)
+        eqstring = str(_src[source_name]['eq'])
+        eqstring = eqstring.replace('(', '').replace(')', '').replace('[', '')
+        eqstring = eqstring.replace(']', '').replace(',', '')
         return 'ok', eqstring
 
     @request()
     @return_reply()
-    def request_delays(self, sock):
+    def request_delays(self, sock, loadtime, *delay_strings):
         """
 
         :param sock:
+        :param loadtime: the load time, in seconds
+        :param sock: the coefficient set, as a list of strings, described in
+        ICD.
         :return:
         """
+        try:
+            actual = self.instrument.fops.delays_process(
+                loadtime, delay_strings)
+            return 'ok', actual
+        except Exception as e:
+            return 'fail', 'could not set delays - %s' % e.message
         return 'ok',
 
     @request(Float(default=-1.0))
@@ -280,7 +306,8 @@ class Corr2Server(katcp.DeviceServer):
         """
         Set & get the accumulation time
         :param sock:
-        :param new_acc_time: if this is -1.0, the current acc len will be returned, but nothing set
+        :param new_acc_time: if this is -1.0, the current acc len will be
+        returned, but nothing set
         :return:
         """
         if new_acc_time != -1.0:
@@ -294,7 +321,8 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply(Str(multiple=True))
     def request_quantiser_snapshot(self, sock, source_name):
         """
-        Get a list of values representing the quantised spectrum for the given source
+        Get a list of values representing the quantised spectrum for
+        the given source
         :param sock:
         :param source_name: the source to query
         :return:
@@ -303,11 +331,14 @@ class Corr2Server(katcp.DeviceServer):
             snapdata = self.instrument.fops.get_quant_snap(source_name)
         except Exception as e:
             logging.info(e)
-            return 'fail', 'failed to read quant snap data for given source %s' % source_name
+            return 'fail', 'failed to read quant snap data for ' \
+                           'given source %s' % source_name
         quant_string = ''
         for complex_word in snapdata:
             quant_string += ' %s' % str(complex_word)
-        quant_string = quant_string.replace('(', '').replace(')', '').replace('[', '').replace(']', '').replace(',', '')
+        quant_string = quant_string.replace('(', '').replace(')', '')
+        quant_string = quant_string.replace('[', '').replace(']', '')
+        quant_string = quant_string.replace(',', '')
         return 'ok', quant_string
 
     @request()
@@ -364,10 +395,12 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if new_shift >= 0:
-            current_shift_value = self.instrument.fops.set_fft_shift_all(new_shift)
+            current_shift_value = self.instrument.fops.set_fft_shift_all(
+                new_shift)
         else:
             current_shift_value = self.instrument.fops.get_fft_shift_all()
-            current_shift_value = current_shift_value[current_shift_value.keys()[0]]
+            current_shift_value = current_shift_value[
+                current_shift_value.keys()[0]]
         return 'ok', current_shift_value
 
     @request()
@@ -412,14 +445,18 @@ class Corr2Server(katcp.DeviceServer):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Start a corr2 instrument server.',
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-p', '--port', dest='port', action='store', default=1235, type=int,
-                        help='bind to this port to receive KATCP messages')
-    parser.add_argument('--log_level', dest='loglevel', action='store', default='INFO',
-                        help='log level to set')
-    parser.add_argument('--log_format_katcp', dest='lfm', action='store_true', default=False,
-                        help='format log messsages for katcp')
+    parser = argparse.ArgumentParser(
+        description='Start a corr2 instrument server.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        '-p', '--port', dest='port', action='store', default=1235, type=int,
+        help='bind to this port to receive KATCP messages')
+    parser.add_argument(
+        '--log_level', dest='loglevel', action='store', default='INFO',
+        help='log level to set')
+    parser.add_argument(
+        '--log_format_katcp', dest='lfm', action='store_true', default=False,
+        help='format log messsages for katcp')
     # parser.add_argument('-c', '--config', dest='configfile', action='store',
     #                     default='', type=str,
     #                     help='config file location')

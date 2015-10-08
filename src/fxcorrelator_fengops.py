@@ -115,18 +115,62 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return all_okay
 
-    def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
-                       delta_phase_offset=0, ld_time=None, ld_check=True):
+    def delays_process(self, loadtime, delays):
         """
-        Set delay correction values for specified source. This is a blocking call.
-        By default,
-        it will wait until load time and verify that things worked as expected.
+
+        :param loadtime:
+        :param delays:
+        :return:
+        """
+        if loadtime <= time.time():
+            raise ValueError('Loadtime %.3f is in the past?' % loadtime)
+        dlist = delays.split(' ')
+        ant_delay = []
+        for delay in dlist:
+            bits = delay.strip().split(':')
+            if len(bits) != 2:
+                raise ValueError('%s is not a valid delay setting' % delay)
+            delay = bits[0]
+            delay = delay.split(',')
+            delay = (float(delay[0]), float(delay[1]))
+            fringe = bits[1]
+            fringe = fringe.split(',')
+            fringe = (float(fringe[0]), float(fringe[1]))
+            ant_delay.append((delay, fringe))
+
+        labels = []
+        for src in self.corr.fengine_sources:
+            labels.append(src.name)
+        if len(ant_delay) != len(labels):
+            raise ValueError(
+                'Too few values provided: expected(%i) got(%i)' %
+                (len(labels), len(ant_delay)))
+
+        rv = ''
+        for ctr in range(0, len(labels)):
+            res = self.set_delay(labels[ctr],
+                                 ant_delay[ctr][0][0], ant_delay[ctr][0][1],
+                                 ant_delay[ctr][1][0], ant_delay[ctr][1][1],
+                                 loadtime, True)
+            res_str = '%.3f,%.3f:%.3f,%.3f' % \
+                      (res['act_delay'], res['act_delta_delay'],
+                       res['act_phase_offset'], res['act_delta_phase_offset'])
+            rv = '%s %s' % (rv, res_str)
+        return rv
+
+    def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
+                  delta_phase_offset=0, ld_time=None, ld_check=True):
+        """
+        Set delay correction values for specified source.
+        This is a blocking call.
+        By default, it will wait until load time and verify that things
+        worked as expected.
         This check can be disabled by setting ld_check param to False.
         Load time is optional; if not specified, load immediately.
         :return
         """
-        self.logger.info('Setting delay correction values for source '
-                         '%s' % source_name)
+        self.logger.info('Setting delay correction values for '
+                         'source %s' % source_name)
 
         # convert delay in time into delay in samples
         delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
@@ -138,41 +182,45 @@ class FEngineOperations(object):
         ld_time_mcnt = None
         if ld_time is not None:
             if ld_time < (time.time() + self.corr.min_load_time):
-                self.logger.error(
-                    'Time given is in the past or does not allow for enough time '
-                    'to set values')
-                raise RuntimeError('Time given is in the past or does not allow '
-                                   'for enough time to set values')
+                self.logger.error('Time given is in the past or does not allow '
+                                  'for enough time to set values')
+                raise RuntimeError('Time given is in the past or does not '
+                                   'allow for enough time to set values')
             ld_time_mcnt = self.corr.mcnt_from_time(ld_time)
 
         # calculate time to wait for load
         load_wait_delay = None
         if ld_check:
             if ld_time is not None:
-                load_wait_delay = (ld_time - time.time()) + self.corr.min_load_time
+                load_wait_delay = ld_time - time.time() + \
+                                  self.corr.min_load_time
 
         # determine fhost to write to
         for fhost in self.hosts:
-            if source_name in fhost.delays.keys():
+            if source_name in fhost.delays:
                 try:
-                    actual_values = (
-                        fhost.write_delay(source_name, delay_s, delta_delay,
-                                          phase_offset, delta_phase_offset_s,
-                                          ld_time_mcnt, load_wait_delay))
-
-                    self.logger.info('Phase offset actually set to %6.3f degrees.' %
-                                          actual_values['act_phase_offset'])
-                    self.logger.info('Phase offset change actually set to %e Hz.' %
-                                          (actual_values['act_delta_phase_offset']*feng_clk))
-                    self.logger.info('Delay actually set to %e samples.' %
-                                          actual_values['act_delay'])
-                    self.logger.info('Delay rate actually set to %e seconds per second.' %
-                                          actual_values['act_delta_delay'])
+                    actual_values = fhost.write_delay(
+                        source_name,
+                        delay_s, delta_delay,
+                        phase_offset, delta_phase_offset_s,
+                        ld_time_mcnt, load_wait_delay)
+                    self.logger.info(
+                        'Phase offset actually set to %6.3f degrees.' %
+                        actual_values['act_phase_offset'])
+                    self.logger.info(
+                        'Phase offset change actually set to %e Hz.' %
+                        (actual_values['act_delta_phase_offset']*feng_clk))
+                    self.logger.info(
+                        'Delay actually set to %e samples.' %
+                        actual_values['act_delay'])
+                    self.logger.info(
+                        'Delay rate actually set to %e seconds per second.' %
+                        actual_values['act_delta_delay'])
                 except Exception as e:
                     self.logger.error('New delay error - %s' % e.message)
                     raise ValueError('New delay error - %s' % e.message)
-            self.logger.info('done.')
-            return
+                self.logger.info('done.')
+                return actual_values
         raise ValueError('Unknown source name %s' % source_name)
 
     def check_tx(self):
@@ -196,16 +244,18 @@ class FEngineOperations(object):
         Enable TX on all tengbe cores on all F hosts
         :return:
         """
-        THREADED_FPGA_OP(self.hosts, timeout=5,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+        THREADED_FPGA_OP(
+            self.hosts, 5,
+            (lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
 
     def tx_disable(self):
         """
         Disable TX on all tengbe cores on all F hosts
         :return:
         """
-        THREADED_FPGA_OP(self.hosts, timeout=5,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+        THREADED_FPGA_OP(
+            self.hosts, 5,
+            (lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
 
     def eq_get(self, source_name=None):
         """
@@ -215,7 +265,7 @@ class FEngineOperations(object):
         eq_table = {}
         for fhost in self.hosts:
             eq_table.update(fhost.eqs)
-            if source_name is not None and source_name in eq_table.keys():
+            if source_name is not None and source_name in eq_table:
                 return {source_name: eq_table[source_name]}
         return eq_table
 
@@ -233,25 +283,28 @@ class FEngineOperations(object):
         if source_name is None:
             self.logger.info('Setting EQ on all sources to new given EQ.')
             for fhost in self.hosts:
-                for src_nm in fhost.eqs.keys():
+                for src_nm in fhost.eqs:
                     self.eq_set(write=False, source_name=src_nm, new_eq=new_eq)
             if write:
                 self.eq_write_all()
         else:
             for fhost in self.hosts:
-                if source_name in fhost.eqs.keys():
+                if source_name in fhost.eqs:
                     old_eq = fhost.eqs[source_name]['eq'][:]
                     try:
                         neweq = utils.process_new_eq(new_eq)
                         fhost.eqs[source_name]['eq'] = neweq
-                        self.logger.info('Updated EQ value for source %s: %s...' %
-                                         (source_name, neweq[0:min(10, len(neweq))]))
+                        self.logger.info(
+                            'Updated EQ value for source %s: %s...' % (
+                                source_name, neweq[0:min(10, len(neweq))]))
                         if write:
                             fhost.write_eq(eq_name=source_name)
                     except Exception as e:
                         fhost.eqs[source_name]['eq'] = old_eq[:]
-                        self.logger.error('New EQ error - REVERTED to old value! - %s' % e.message)
-                        raise ValueError('New EQ error - REVERTED to old value! - %s' % e.message)
+                        self.logger.error('New EQ error - REVERTED to '
+                                          'old value! - %s' % e.message)
+                        raise ValueError('New EQ error - REVERTED to '
+                                         'old value! - %s' % e.message)
                     return
             raise ValueError('Unknown source name %s' % source_name)
 
@@ -265,8 +318,9 @@ class FEngineOperations(object):
             self.logger.info('Updating some EQ values before writing.')
             for src, new_eq in new_eq_dict:
                 self.eq_set(write=False, source_name=src, new_eq=new_eq)
-        self.logger.info('Writing EQ on all fhosts based on stored per-source EQ values...')
-        THREADED_FPGA_FUNC(self.hosts, timeout=10, target_function='write_eq_all')
+        self.logger.info('Writing EQ on all fhosts based on stored '
+                         'per-source EQ values...')
+        THREADED_FPGA_FUNC(self.hosts, 10, 'write_eq_all')
         if self.corr.spead_meta_ig is not None:
             self.eq_update_metadata()
             self.corr.spead_tx.send_heap(self.corr.spead_meta_ig.get_heap())
@@ -280,16 +334,16 @@ class FEngineOperations(object):
         all_eqs = self.eq_get()
         for source_ctr, source in enumerate(self.corr.fengine_sources):
             eqlen = len(all_eqs[source.name]['eq'])
-            self.corr.spead_meta_ig.add_item(name='eq_coef_%s' % source.name,
-                                             id=0x1400 + source_ctr,
-                                             description='The unitless per-channel digital scaling '
-                                                         'factors implemented prior to requantisation, '
-                                                         'post-FFT, for input %s. Complex number '
-                                                         'real,imag 32 bit integers.' % source.name,
-                                             shape=[eqlen, 2],
-                                             fmt=spead.mkfmt(('u', 32)),
-                                             init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
-                                                       for eq_coeff in all_eqs[source.name]['eq']])
+            self.corr.spead_meta_ig.add_item(
+                name='eq_coef_%s' % source.name, id=0x1400 + source_ctr,
+                description='The unitless per-channel digital scaling '
+                            'factors implemented prior to requantisation, '
+                            'post-FFT, for input %s. Complex number '
+                            'real,imag 32 bit integers.' % source.name,
+                shape=[eqlen, 2],
+                fmt=spead.mkfmt(('u', 32)),
+                init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for
+                          eq_coeff in all_eqs[source.name]['eq']])
 
     def set_fft_shift_all(self, shift_value=None):
         """
@@ -301,12 +355,13 @@ class FEngineOperations(object):
             shift_value = int(self.corr.configd['fengine']['fft_shift'])
         if shift_value < 0:
             raise RuntimeError('Shift value cannot be less than zero')
-        self.logger.info('Setting FFT shift to %i on all f-engine boards...' % shift_value)
-        THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                           target_function=('set_fft_shift', (shift_value,),))
+        self.logger.info('Setting FFT shift to %i on all f-engine '
+                         'boards...' % shift_value)
+        THREADED_FPGA_FUNC(self.hosts, 10, ('set_fft_shift', (shift_value,),))
         self.logger.info('done.')
         if self.corr.spead_meta_ig is not None:
-            self.corr.spead_meta_ig['fft_shift'] = int(self.corr.configd['fengine']['fft_shift'])
+            _fftshift = self.corr.configd['fengine']['fft_shift']
+            self.corr.spead_meta_ig['fft_shift'] = int(_fftshift)
             self.corr.spead_tx.send_heap(self.corr.spead_meta_ig.get_heap())
         return shift_value
 
@@ -316,14 +371,14 @@ class FEngineOperations(object):
         :return:
         """
         # get the fft shift values
-        return THREADED_FPGA_FUNC(self.hosts, timeout=10, target_function='get_fft_shift')
+        return THREADED_FPGA_FUNC(self.hosts, 10, 'get_fft_shift')
 
     def clear_status_all(self):
         """
         Clear the various status registers and counters on all the fengines
         :return:
         """
-        THREADED_FPGA_FUNC(self.hosts, timeout=10, target_function='clear_status')
+        THREADED_FPGA_FUNC(self.hosts, 10, 'clear_status')
 
     def subscribe_to_multicast(self):
         """
@@ -336,12 +391,15 @@ class FEngineOperations(object):
             gbe_ctr = 0
             for source in fhost.data_sources:
                 if not source.is_multicast():
-                    self.logger.info('\t\tsource address %s is not multicast?' % source.ip_address)
+                    self.logger.info('\t\tsource address %s is not '
+                                     'multicast?' % source.ip_address)
                 else:
                     rxaddr = str(source.ip_address)
                     rxaddr_bits = rxaddr.split('.')
                     rxaddr_base = int(rxaddr_bits[3])
-                    rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
+                    rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0],
+                                                   rxaddr_bits[1],
+                                                   rxaddr_bits[2])
                     if (len(fhost.tengbes) / self.corr.f_per_fpga) != source.ip_range:
                         raise RuntimeError(
                             '10Gbe ports (%d) do not match sources IPs (%d)' %
@@ -350,7 +408,8 @@ class FEngineOperations(object):
                         gbename = fhost.tengbes.names()[gbe_ctr]
                         gbe = fhost.tengbes[gbename]
                         rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-                        self.logger.info('\t\t%s subscribing to address %s' % (gbe.name, rxaddress))
+                        self.logger.info('\t\t%s subscribing to '
+                                         'address %s' % (gbe.name, rxaddress))
                         gbe.multicast_receive(rxaddress, 0)
                         gbe_ctr += 1
         self.logger.info('done.')
