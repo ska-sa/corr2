@@ -124,7 +124,7 @@ def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, de
         if source_name in fhost.delays.keys():
             try:
                 actual_values = fhost.write_delay(
-                                             source_name, delay_s, delta_delay, phase_offset, delta_phase_offset_s, ld_time_mcnt, load_wait_delay)
+                                             source_name, delay_s, delta_delay, phase_offset, delta_phase_offset_s, ld_time_mcnt, load_wait_delay, ld_check)
 
 
                 corr.logger.info('Phase offset actually set to %6.3f degrees.' % actual_values['act_phase_offset'])

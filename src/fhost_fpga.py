@@ -276,7 +276,7 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
-    def write_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, load_mcnt=None, load_wait_delay=None):
+    def write_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0, delta_phase_offset=0, load_mcnt=None, load_wait_delay=None, load_check=True):
         """
         Configures a given stream to a delay in samples and phase in degrees
         The sample count at which this happens can be specified (default is immediate if not specified)
@@ -287,7 +287,8 @@ class FpgaFHost(DigitiserDataReceiver):
         :param phase offset is in degrees
         :param delta phase offset is in cycles per fengine FPGA clock sample
         :param load_mcnt is in samples since epoch
-        :param load_wait_delay is seconds to wait for delay values to load
+        :param load_wait_delay is seconds to wait for delay values to load (default None, i.e immediate)
+        :param load_check is whether to perform checks that value loaded (default True)
         """                   
      
         ###########################################################
@@ -295,7 +296,7 @@ class FpgaFHost(DigitiserDataReceiver):
         ###########################################################
 
         #TODO should this be in config file?
-        fine_delay_bits =           16
+        fine_delay_bits =           15
         coarse_delay_bits =         13
         delta_fine_delay_bits =     16
         phase_offset_bits =         16
@@ -445,13 +446,14 @@ class FpgaFHost(DigitiserDataReceiver):
             raise RuntimeError('fractional delay arm count do not change. Load failed.')
 
         # did the system load?
-        if (cd_ld_count_before == cd_ld_count_after):
-            LOGGER.error('coarse delay load count did not change. Load failed.')
-            raise RuntimeError('coarse delay load count did not change. Load failed.')
-        
-        if (fd_ld_count_before == fd_ld_count_after):
-            LOGGER.error('fractional delay and phase load count did not change. Load failed.')
-            raise RuntimeError('fractional delay load count did not change. Load failed.')
+        if ld_check == True:
+            if (cd_ld_count_before == cd_ld_count_after):
+                LOGGER.error('coarse delay load count did not change. Load failed.')
+                raise RuntimeError('coarse delay load count did not change. Load failed.')
+                
+            if (fd_ld_count_before == fd_ld_count_after):
+                LOGGER.error('fractional delay and phase load count did not change. Load failed.')
+                raise RuntimeError('fractional delay load count did not change. Load failed.')
 
         return {
             'act_delay': act_delay,
