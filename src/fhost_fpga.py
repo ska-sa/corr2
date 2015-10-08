@@ -296,7 +296,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         #TODO should this be in config file?
         fine_delay_bits =           16
-        coarse_delay_bits =         15
+        coarse_delay_bits =         13
         delta_fine_delay_bits =     16
         phase_offset_bits =         16
         delta_phase_offset_bits =   16
