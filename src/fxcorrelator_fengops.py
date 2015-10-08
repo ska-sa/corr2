@@ -103,7 +103,7 @@ def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, de
     
     feng_clk = corr.sample_rate_hz/corr.adc_demux_factor
     #convert from cycles per second to cycles per feng fpga clock
-    delta_phase_offset_s = float(delta_phase_offset) / feng_clk
+    delta_phase_offset_s = float(delta_phase_offset) / float(feng_clk)
 
     ld_time_mcnt = None
     if ld_time != None:
@@ -134,7 +134,7 @@ def feng_set_delay(corr, source_name, delay=0, delta_delay=0, phase_offset=0, de
 
             except Exception as e:
                  corr.logger.error('New delay error - %s' % e.message)
-                 raise ValueError('New delay error - %s' % e.message)
+                 raise # ValueError('New delay error - %s' % e.message)
         
         corr.logger.info('done.')
         return
