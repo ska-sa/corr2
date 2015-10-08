@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-__author__ = 'paulp'
-
 import logging
 import sys
 import argparse
@@ -16,13 +14,12 @@ from corr2 import sensors, fxcorrelator
 
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
-        translate_levels = {
-            'INFO': 'info',
-            'DEBUG': 'debug',
-            'WARNING': 'warn'
-        }
+        translate_levels = {'INFO': 'info',
+                            'DEBUG': 'debug',
+                            'WARNING': 'warn',
+                            }
         if record.levelname in translate_levels:
-            record.levelname = translate_levels(record.levelname)
+            record.levelname = translate_levels[record.levelname]
         else:
             record.levelname = record.levelname.lower()
         record.msg = record.msg.replace(' ', '\_')
@@ -74,7 +71,7 @@ class Corr2SensorServer(katcp.DeviceServer):
 
         """
         self.instrument = instrument
-        self.instrument.initialise(program=False, tvg=False)
+        self.instrument.initialise(program=False)
         sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
 
 
@@ -103,8 +100,8 @@ if __name__ == '__main__':
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 
     # set up the logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
+    corr2_sensors_logger = logging.getLogger('corr2.sensors')
+    corr2_sensors_logger.setLevel(log_level)
     if args.lfm or (not sys.stdout.isatty()):
         use_katcp_logging = True
     else:
@@ -114,7 +111,7 @@ if __name__ == '__main__':
                                       '%(filename)s:%(lineno)s - '
                                       '%(levelname)s - %(message)s')
         console_handler.setFormatter(formatter)
-        root_logger.addHandler(console_handler)
+        corr2_sensors_logger.addHandler(console_handler)
         use_katcp_logging = False
 
     if 'CORR2INI' in os.environ.keys() and args.config == '':
@@ -130,6 +127,5 @@ if __name__ == '__main__':
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
     instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=args.config)
-    instrument.standard_log_config()
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()

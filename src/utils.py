@@ -1,10 +1,9 @@
-__author__ = 'paulp'
 import logging
 import os
 import numpy as np
-
-
 from ConfigParser import SafeConfigParser
+import Queue
+import threading
 
 from casperfpga.memory import bin2fp
 
@@ -240,6 +239,21 @@ class UnpackDengPacketCapture(object):
         return sorted_time_keys, data
 
 
+def disable_test_gbes(corr_instance):
+    """
+    Disable the 10Gbe fabric by default on test GBE devices.
+    :param corr_instance: the correlator object in use
+    :return:
+    """
+    for hosts in (corr_instance.xhosts + corr_instance.fhosts):
+        for gbe in hosts.tengbes:
+            if gbe.name.startswith('test_'):
+                corr_instance.logger.info(
+                    '%s: disabled fabric on '
+                    '%s' % (hosts.host, gbe.name))
+                gbe.fabric_disable()
+
+
 def remove_test_objects(corr_instance):
     """
     Any hardware device whose name starts with test_ must be removed from the
@@ -258,4 +272,44 @@ def remove_test_objects(corr_instance):
                             attr_container.remove_attribute(attr_name)
                             _changes_made = True
     if _changes_made:
-        LOGGER.info('One or more test_ devices were removed. Just so you know.')
+        corr_instance.logger.info(
+            'One or more test_ devices were removed. Just so you know.')
+
+
+def thread_funcs(timeout, *funcs):
+    """
+    Run any given functions in seperate threads, return
+    the results in a dictionary keyed on function id
+    :param timeout:
+    :param funcs:
+    :return:
+    """
+    def jobfunc(_func, resultq):
+        rv = _func[0](*_func[1], **_func[2])
+        resultq.put_nowait((_func[0], rv))
+    num_funcs = len(funcs)
+    if num_funcs == 0:
+        return
+    thread_list = []
+    result_queue = Queue.Queue(maxsize=num_funcs)
+    for func in funcs:
+        thread = threading.Thread(target=jobfunc, args=(func, result_queue))
+        thread.daemon = True
+        thread.start()
+        thread_list.append(thread)
+    for thread_ in thread_list:
+        thread_.join(timeout)
+        if thread_.isAlive():
+            break
+    returnval = {}
+    while True:
+        try:
+            result = result_queue.get_nowait()
+            returnval[result[0]] = result[1]
+        except Queue.Empty:
+            break
+    if len(returnval) != num_funcs:
+        print returnval
+        raise RuntimeError('Given %d FPGAs, only got %d results, must '
+                           'have timed out.' % (num_funcs, len(returnval)))
+    return returnval

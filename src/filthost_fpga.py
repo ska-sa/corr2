@@ -1,5 +1,3 @@
-__author__ = 'paulp'
-
 import logging
 
 from fhost_fpga import DigitiserDataReceiver
