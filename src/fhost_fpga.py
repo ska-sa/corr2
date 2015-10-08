@@ -1,6 +1,7 @@
 import time
 import logging
 import struct
+import numpy    
 
 from host_fpga import FpgaHost
 
@@ -289,7 +290,6 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
-     
     @staticmethod
     def convert_delay_values(hostname, source_name,
                              delay=0, delta_delay=0,
@@ -317,7 +317,7 @@ class FpgaFHost(DigitiserDataReceiver):
         delta_fine_delay = float(delta_delay) * _bshift_val
 
         # figure out the phase offset as a fraction of a cycle
-        fr_phase_offset = float(phase_offset)/float(360)
+        fr_phase_offset = float(phase_offset)/float(numpy.pi)
         # multiply by amount shifted down by on FPGA
         fr_delta_phase_offset = float(delta_phase_offset) * _bshift_val
 
@@ -330,7 +330,7 @@ class FpgaFHost(DigitiserDataReceiver):
                            delta_fine_delay_shift) / _bshift_val
         phase_offset_shift = 1/float(2**(phase_offset_bits-1))
         act_phase_offset = (float(int(fr_phase_offset/phase_offset_shift)) *
-                            phase_offset_shift) * 360
+                            phase_offset_shift) * numpy.pi
         delta_phase_offset_shift = 1/float(2**(delta_phase_offset_bits-1))
         act_delta_phase_offset = (float(int(
             fr_delta_phase_offset/delta_phase_offset_shift)) *
@@ -346,9 +346,9 @@ class FpgaFHost(DigitiserDataReceiver):
                     (hostname, source_name, delta_delay))
         LOGGER.info('%s:%s: actual delta delay: %e samples per sample' %
                     (hostname, source_name, act_delta_delay))
-        LOGGER.info('%s:%s: requested phase offset: %f degrees' %
+        LOGGER.info('%s:%s: requested phase offset: %f radians' %
                     (hostname, source_name, phase_offset))
-        LOGGER.info('%s:%s: actual phase offset: %f degrees' %
+        LOGGER.info('%s:%s: actual phase offset: %f radians' %
                     (hostname, source_name, act_phase_offset))
         LOGGER.info('%s:%s: requested delta phase offset: %e Hz per sample' %
                     (hostname, source_name, delta_phase_offset))
@@ -414,7 +414,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         :param delay is in samples
         :param delta delay is in samples per sample
-        :param phase offset is in degrees
+        :param phase offset is in radians
         :param delta phase offset is in cycles per fengine FPGA clock sample
         :param load_mcnt is in samples since epoch
         :param load_wait_delay is seconds to wait for delay values to load
