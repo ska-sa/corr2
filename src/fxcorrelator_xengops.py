@@ -23,6 +23,9 @@ class XEngineOperations(object):
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
         # do config things
+        self.xengines_per_xhost = int(self.corr.configd['xengine']['x_per_fpga'])
+        self.channels_per_xhost = self.corr.n_chans / len(self.hosts)
+        self.channels_per_xengine = self.channels_per_xhost / self.xengines_per_xhost
 
     def _vacc_periodic_check(self, old_data, check_time):
         self.logger.debug('Checking VACC operation at %.3f' % time.time())

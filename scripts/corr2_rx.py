@@ -206,6 +206,7 @@ class CorrRx(threading.Thread):
                     if ig['xeng_raw'] is not None:
                         # print np.shape(ig['xeng_raw'])
                         baseline_data = []
+                        baseline_phase = []
                         for baseline in range(0, 40):
                             # print 'baseline %i:' % baseline, ig['xeng_raw'][:, baseline]
                             FREQ_TO_PLOT = 0
@@ -214,18 +215,22 @@ class CorrRx(threading.Thread):
                             if baseline in plot_baselines:
                                 bdata = ig['xeng_raw'][:, baseline]
                                 powerdata = []
-                                for complex_tuple in bdata:
+                                phasedata = []
+                                for ctr in range(plot_startchan, plot_endchan):
+                                    complex_tuple = bdata[ctr]
                                     pwr = np.sqrt(complex_tuple[0]**2 + complex_tuple[1]**2)
                                     powerdata.append(pwr)
-                                baseline_data.append((baseline, powerdata[plot_startchan:plot_endchan]))
+                                    cplx = complex(complex_tuple[0], complex_tuple[1])
+                                    phase = np.angle(cplx)
+                                    # phase = np.unwrap(phase)
+                                    phasedata.append(phase)
+                                baseline_data.append((baseline, powerdata[:]))
+                                baseline_phase.append((baseline, phasedata[:]))
                                 # break
                         if not got_data_event.is_set():
-                            plotqueue.put(baseline_data)
+                            plotqueue.put((baseline_data, baseline_phase))
                             got_data_event.set()
             # /if plotbaseline is not None:
-
-#            if len(items) > 0
-                
 
             # should we quit?
             if self.quit_event.is_set():
@@ -360,7 +365,10 @@ if len(plot_baselines) > 0:
     def plot():
         if got_data_event.is_set():
             try:
-                powerdata = plotqueue.get_nowait()
+                powerdata, phasedata = plotqueue.get_nowait()
+                pyplot.subplot(2, 1, 1)
+                pyplot.cla()
+                pyplot.subplot(2, 1, 2)
                 pyplot.cla()
                 ymax = -1
                 ymin = 2**32
@@ -368,11 +376,18 @@ if len(plot_baselines) > 0:
                     baseline = plot[0]
                     plotdata = plot[1]
                     if args.log:
+                        pyplot.subplot(2, 1, 1)
                         pyplot.semilogy(plotdata, label='%i' % baseline)
+                        pyplot.subplot(2, 1, 2)
+                        pyplot.semilogy(phasedata[pltctr][1], label='phase_%i' % baseline)
                     else:
+                        pyplot.subplot(2, 1, 1)
                         pyplot.plot(plotdata, label='%i' % baseline)
+                        pyplot.subplot(2, 1, 2)
+                        pyplot.plot(phasedata[pltctr][1], label='phase_%i' % baseline)
                     ymax = max(ymax, max(plotdata))
                     ymin = min(ymin, min(plotdata))
+                pyplot.subplot(2, 1, 1)
                 pyplot.ylim([ymin*0.99, ymax*1.01])
                 pyplot.legend(loc='upper left')
                 pyplot.draw()
