@@ -174,9 +174,13 @@ class FEngineOperations(object):
         # convert delay in time into delay in samples
         delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
 
-        feng_clk = self.corr.sample_rate_hz / self.corr.adc_demux_factor
-        # convert from cycles per second to cycles per feng fpga clock
-        delta_phase_offset_s = float(delta_phase_offset) / feng_clk
+#        feng_clk = self.corr.sample_rate_hz / self.corr.adc_demux_factor
+
+        #convert to fractions of a sample
+        phase_offset_s = float(phase_offset)/(float(numpy.pi))
+
+        # convert from radians per second to fractions of sample per sample
+        delta_phase_offset_s = float(delta_phase_offset)/(float(numpy.pi)) / (self.corr.sample_rate_hz)
 
         ld_time_mcnt = None
         if ld_time is not None:
@@ -201,14 +205,14 @@ class FEngineOperations(object):
                     actual_values = fhost.write_delay(
                         source_name,
                         delay_s, delta_delay,
-                        phase_offset, delta_phase_offset_s,
+                        phase_offset_s, delta_phase_offset_s,
                         ld_time_mcnt, load_wait_delay, ld_check)
                     self.logger.info(
-                        'Phase offset actually set to %6.3f degrees.' %
-                        actual_values['act_phase_offset'])
+                        'Phase offset actually set to %6.3f radians.' %
+                        (actual_values['act_phase_offset']*(2*numpy.pi)))
                     self.logger.info(
-                        'Phase offset change actually set to %e Hz.' %
-                        (actual_values['act_delta_phase_offset']*feng_clk))
+                        'Phase offset change actually set to %e radians per second.' %
+                        (actual_values['act_delta_phase_offset']*(2*numpy.pi)/self.corr.sample_rate_hz))
                     self.logger.info(
                         'Delay actually set to %e samples.' %
                         actual_values['act_delay'])

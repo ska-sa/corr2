@@ -1,7 +1,6 @@
 import time
 import logging
 import struct
-import numpy    
 
 from host_fpga import FpgaHost
 
@@ -317,7 +316,7 @@ class FpgaFHost(DigitiserDataReceiver):
         delta_fine_delay = float(delta_delay) * _bshift_val
 
         # figure out the phase offset as a fraction of a cycle
-        fr_phase_offset = float(phase_offset)/float(numpy.pi)
+        fr_phase_offset = phase_offset
         # multiply by amount shifted down by on FPGA
         fr_delta_phase_offset = float(delta_phase_offset) * _bshift_val
 
@@ -330,7 +329,7 @@ class FpgaFHost(DigitiserDataReceiver):
                            delta_fine_delay_shift) / _bshift_val
         phase_offset_shift = 1/float(2**(phase_offset_bits-1))
         act_phase_offset = (float(int(fr_phase_offset/phase_offset_shift)) *
-                            phase_offset_shift) * numpy.pi
+                            phase_offset_shift)
         delta_phase_offset_shift = 1/float(2**(delta_phase_offset_bits-1))
         act_delta_phase_offset = (float(int(
             fr_delta_phase_offset/delta_phase_offset_shift)) *
@@ -414,8 +413,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
         :param delay is in samples
         :param delta delay is in samples per sample
-        :param phase offset is in radians
-        :param delta phase offset is in cycles per fengine FPGA clock sample
+        :param phase offset is in fractions of a sample
+        :param delta phase offset is in samples per sample
         :param load_mcnt is in samples since epoch
         :param load_wait_delay is seconds to wait for delay values to load
         :param load_check whether to check if load happened
