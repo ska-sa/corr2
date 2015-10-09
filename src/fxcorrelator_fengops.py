@@ -180,7 +180,7 @@ class FEngineOperations(object):
         phase_offset_s = float(phase_offset)/(float(numpy.pi))
 
         # convert from radians per second to fractions of sample per sample
-        delta_phase_offset_s = float(delta_phase_offset)/(2*float(numpy.pi)) / (self.corr.sample_rate_hz)
+        delta_phase_offset_s = float(delta_phase_offset)/(float(numpy.pi)/2) / (self.corr.sample_rate_hz)
 
         ld_time_mcnt = None
         if ld_time is not None:
