@@ -86,7 +86,7 @@ class FpgaHost(Host, KatcpFpga):
         """
         Check the receive path on this X host
         :param max_waittime: the maximum time to wait for raw 10gbe data
-        :return:
+        :return: Bool: True :if Xhost are receiving data
         """
         start_time = time.time()
         if not self.check_rx_spead(max_waittime=max_waittime):
@@ -158,15 +158,15 @@ class FpgaHost(Host, KatcpFpga):
         start_time = time.time()
         ctrs0 = self.read_spead_counters()
         if len(ctrs0) != len(self.tengbes):
-            errstr = '{}: has {} 10gbe cores, but read_spead_counters ' \
+            errstr = ('{}: has {} 10gbe cores, but read_spead_counters '
                      'returned {} results'.format(self.host, len(self.tengbes),
-                                                  len(ctrs0))
+                                                  len(ctrs0)))
             LOGGER.error(errstr)
             raise RuntimeError(errstr)
         spead_errors = [True] * len(ctrs0)
         ctrs1 = None
-        while (time.time() < start_time + max_waittime) and \
-                (spead_errors.count(True) > 0):
+        while ((time.time() < start_time + max_waittime) and
+                (spead_errors.count(True) > 0)):
             time.sleep(0.1)
             ctrs1 = self.read_spead_counters()
             for _core_ctr in range(0, len(spead_errors)):
@@ -178,9 +178,7 @@ class FpgaHost(Host, KatcpFpga):
             LOGGER.error('%s: not receiving good SPEAD data '
                          'over a %i second period. Errors on '
                          'interfaces: %s.\n\t%s -> %s' % (self.host,
-                                                          max_waittime,
-                                                          spead_errors,
-                                                          ctrs0, ctrs1, ))
+                            max_waittime, spead_errors, ctrs0, ctrs1, ))
             return False
         else:
             LOGGER.info('%s: receiving good SPEAD data.' % self.host)

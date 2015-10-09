@@ -9,12 +9,14 @@ LOGGER = logging.getLogger(__name__)
 
 class DigitiserDataReceiver(FpgaHost):
     """
-    The RX section of a fengine and filter engine are the same - receive the digitiser data
+    The RX section of a fengine and filter engine are the same
+        - receive the digitiser data
     """
 
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True):
         super(DigitiserDataReceiver, self).__init__(host, katcp_port=katcp_port,
-                                                    boffile=boffile, connect=connect)
+                                                    boffile=boffile,
+                                                    connect=connect)
 
     def _get_rxreg_data(self):
         """
@@ -142,9 +144,14 @@ class FpgaFHost(DigitiserDataReceiver):
         self.delays = {}
 
         self._config = config
-        self.data_sources = []  # a list of DataSources received by this f-engine host
-        self.eqs = {}  # a dictionary, indexed on source name, containing tuples of poly and bram name
-        self.delays = {}  # dictionary, indexed on source name, containing offset to access delay tracking registers
+        # A list of DataSources received by this f-engine host
+        self.data_sources = []
+        # A dictionary, indexed on source name,
+        # containing tuples of poly and bram name
+        self.eqs = {}
+        # dictionary, indexed on source name,
+        # containing offset to access delay tracking registers
+        self.delays = {}
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
             self.ports_per_fengine = int(config['ports_per_fengine'])
@@ -160,36 +167,51 @@ class FpgaFHost(DigitiserDataReceiver):
             self.min_load_time = None
             self.network_latency_adjust = None
 
+        self._pfb_of_counts = {}
+        self._ct_counts = {}
+        self._qdr_counts = {}
+        self.fnums = int(configd['fengine']['f_per_fpga'])
+
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
         return cls(hostname, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
-    def ct_okay(self, sleeptime=1):
+    def ct_okay(self, wait_time=1):
         """
-        Is the corner turner working?
-        :return: True or False,
+        Checks if the corner turner working.
+        :param: wait_time : Float or None : If not None, fetch ct counter,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is only cached if wait_time is None.
+        :return: bool : True, if corner tuner is okay
+
         """
-        ct_ctrs0 = self.registers.ct_ctrs.read()['data']
-        time.sleep(sleeptime)
-        ct_ctrs1 = self.registers.ct_ctrs.read()['data']
+        for cnt in range(self.fnums):
+            if wait_time is not None:
+                ct_ctrs_err0 = self.registers.ct_ctrs.read()['data']
+                time.sleep(wait_time)
+            else:
+                ct_ctrs_err0 = self._ct_counts.get(cnt, 0)
 
-        err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
-        err1_diff = ct_ctrs1['ct_err_cnt1'] - ct_ctrs0['ct_err_cnt1']
-        parerr0_diff = ct_ctrs1['ct_parerr_cnt0'] - ct_ctrs0['ct_parerr_cnt0']
-        parerr1_diff = ct_ctrs1['ct_parerr_cnt1'] - ct_ctrs0['ct_parerr_cnt1']
+            ct_ctrs_err1 = self.registers.ct_ctrs.read()['data']
 
-        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
-            LOGGER.error('%s: ct_status() - FALSE, CT error.' % self.host)
-            return False
-        LOGGER.info('%s: ct_status() - TRUE.' % self.host)
+            if wait_time is None:
+                self._ct_counts[cnt] = ct_ctrs_err1
+
+            if (ct_ctrs_err0 == ct_ctrs_err1):
+                LOGGER.info('{}: ct{}_status() okay.'.format(self.host, cnt))
+            else:
+                LOGGER.error(
+                    '{}: ct{}_status() - FALSE, CT error.'.format(self.host, cnt))
+                return False
+        LOGGER.info('{}: Corner turner okay.'.format(self.host))
         return True
 
     def host_okay(self):
         """
-        Is this host/LRU okay?
-        :return:
+        Checks if the host/LRU is  working.
+        :return: bool : True, if host/LRU is okay
         """
         if (not self.check_rx()) or (not self.ct_okay()):
             LOGGER.error('%s: host_okay() - FALSE.' % self.host)
@@ -201,7 +223,7 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Add a new data source to this fengine host
         :param data_source: A DataSource object
-        :return:
+        :return: List of data sources.
         """
         # check that it doesn't already exist before adding it
         for source in self.data_sources:
@@ -211,8 +233,10 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def get_source_eq(self, source_name=None):
         """
-        Return a dictionary of all the EQ settings for the sources allocated to this fhost
-        :return:
+        Return a dictionary of all the EQ settings
+            for the sources allocated to this fhost
+        :param: source_name:
+        :return: Dict
         """
         if source_name is not None:
             return self.eqs[source_name]
@@ -356,6 +380,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         if delay != 0:
             if (act_fine_delay == 0) and (coarse_delay == 0):
+
                 LOGGER.info('%s:%s: requested delay is too small for this '
                             'configuration (our resolution is too low). '
                             'Setting delay to zero.' %
@@ -368,6 +393,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         if delta_delay != 0:
             if act_delta_delay == 0:
+
                 LOGGER.info('%s:%s: requested delay delta too slow for this '
                             'configuration. Setting delay rate to zero.' %
                             (hostname, source_name))
@@ -381,6 +407,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         if delta_phase_offset != 0:
             if act_delta_phase_offset == 0:
+
                 LOGGER.info('%s:%s: requested phase offset delta is too slow '
                             'for this configuration. Setting phase offset '
                             'change to zero.' %
@@ -619,9 +646,11 @@ class FpgaFHost(DigitiserDataReceiver):
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
         Set the FFT shift schedule.
-        :param shift_schedule: int representing bit mask. '1' represents a shift for that stage. First stage is MSB.
-        Use default if None provided
-        :param issue_meta: Should SPEAD meta data be sent after the value is changed?
+        :param shift_schedule: int representing bit mask.
+            '1' represents a shift for that stage. First stage is MSB.
+            Use default if None provided
+        :param issue_meta:
+            Should SPEAD meta data be sent after the value is changed?
         :return: <nothing>
         """
         if shift_schedule is None:
@@ -631,7 +660,8 @@ class FpgaFHost(DigitiserDataReceiver):
     def get_fft_shift(self):
         """
         Get the current FFT shift schedule from the FPGA.
-        :return: integer representing the FFT shift schedule for all the FFTs on this engine.
+        :return: integer representing the FFT shift schedule for all the FFTs
+            on this engine.
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 
@@ -685,14 +715,29 @@ class FpgaFHost(DigitiserDataReceiver):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
-    def qdr_okay(self):
+    def qdr_okay(self, wait_time=1):
         """
-        Checks if parity bits on f-eng are zero
-        :return: True/False
+        Checks if parity bits on f-eng are consistent.
+        :param: wait_time : Float or None : If not None, fetch qdr parity bit,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is only cached if wait_time is None.
+        :return: True if QDR is okay
         """
-        for cnt in range(0, 1):
-            err = self.registers.ct_ctrs.read()['data']['ct_parerr_cnt%d' % cnt]
-            if err == 0:
+        for cnt in range(self.fnums):
+            if wait_time is not None:
+                qdr_parerr0 = (self.registers.ct_ctrs.read()['data']
+                    ['ct_parerr_cnt{}'.format(cnt)])
+                time.sleep(wait_time)
+            else:
+                qdr_parerr0 = self._qdr_counts.get(cnt, 0)
+
+            qdr_parerr1 = (self.registers.ct_ctrs.read()['data']
+                ['ct_parerr_cnt{}'.format(cnt)])
+
+            if wait_time is None:
+                self._ct_counts[cnt] = qdr_parerr1
+
+            if qdr_parerr0 == qdr_parerr1:
                 LOGGER.info('%s: ct_parerr_cnt%d okay.' % (self.host, cnt))
             else:
                 LOGGER.error('%s: ct_parerr_cnt%d not zero.' % (self.host, cnt))
@@ -702,13 +747,27 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def check_fft_overflow(self, wait_time=2e-3):
         """
-        Checks if pfb counters on f-eng are not incrementing i.e. fft is not overflowing
-        :return: True/False
+        Checks if pfb counters on f-eng are not incrementing
+            i.e. fft is not overflowing
+        :param: wait_time : Float or None : If not None, fetch overflow counter,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is only cached if wait_time is None.
+        :return: bool : True if not overflowing
         """
-        for cnt in range(0, 1):
-            overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
-            time.sleep(wait_time)
-            overflow1 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+        for cnt in range(0, self.num_fengines):
+            if wait_time is not None:
+                overflow0 = (self.registers.pfb_ctrs.read()['data']
+                    ['pfb_of%d_cnt' % cnt])
+                time.sleep(wait_time)
+            else:
+                overflow0 = self._pfb_of_counts.get(cnt, 0)
+
+            overflow1 = (self.registers.pfb_ctrs.read()['data']
+                ['pfb_of%d_cnt' % cnt])
+
+            if wait_time is None:
+                self._pfb_of_counts[cnt] = overflow1
+
             if overflow0 == overflow1:
                 LOGGER.info('%s: pfb_of%d_cnt okay.' % (self.host, cnt))
             else:

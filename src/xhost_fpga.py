@@ -19,13 +19,17 @@ class FpgaXHost(FpgaHost):
         if self.config is not None:
             self.vacc_len = int(self.config['xeng_accumulation_len'])
             self.x_per_fpga = int(self.config['x_per_fpga'])
-        # TODO - and if there is no config and this was made on a running device? something like set it to -1, if it's accessed when -1 then try and discover it
+        # TODO - and if there is no config and this was made on a running device?
+        # something like set it to -1, if it's accessed when -1 then try and discover it
         self.x_per_fpga = 4
+        self._qdr_counts = {}
+        self._vacc_counts = {}
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
+        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+                   connect=True, config=config_source)
 
     def clear_status(self):
         """
@@ -116,19 +120,34 @@ class FpgaXHost(FpgaHost):
                 rvs.append(accspersec(xnum))
             return rvs
 
-    def vacc_okay(self, xnum=-1):
+    def vacc_okay(self, wait_time=1):
         """
-        Are the vaccs, or one vacc, okay?
-        :param xnum: a specific xengine's vacc
-        :return: True or False
+        Checks if all xeng vaccs are okay.
+        :param: wait_time : Float or None : If not None, fetch vacc reg bit,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is only cached if wait_time is not None.
+        :return: True if vacc is okay.
         """
-        if xnum > -1:
-            return self.registers['vaccerr%d' % xnum].read()['data']['reg'] == 0
-        else:
-            for xnum in range(0, self.x_per_fpga):
-                if self.registers['vaccerr%d' % xnum].read()['data']['reg'] > 0:
-                    return False
-            return True
+        for xnum in range(0, self.x_per_fpga):
+            if wait_time is not None:
+                vacc_err0 = (self.registers['vaccerr%d' % xnum].read()['data']
+                             ['reg'])
+                time.sleep(wait_time)
+            else:
+                vacc_err0 = self._vacc_counts.get(xnum, 0)
+
+            vacc_err1 = self.registers['vaccerr%d' % xnum].read()['data']['reg']
+
+            if wait_time is None:
+                self._vacc_counts[xnum] = vacc_err1
+
+            if vacc_err0 == vacc_err1:
+                LOGGER.info('%s: xeng %d okay.' % (self.host, xnum))
+            else:
+                LOGGER.error('%s: xeng %d has reg errors.' % (self.host, xnum))
+                return False
+        LOGGER.info('%s: VACC okay.' % self.host)
+        return True
 
     def vacc_get_status(self):
         """
@@ -207,15 +226,29 @@ class FpgaXHost(FpgaHost):
         self.registers.vacc_time_lsw.write(lsw=ldtime_lsw)
         self.registers.vacc_time_msw.write(msw=ldtime_msw)
 
-    def qdr_okay(self):
+    def qdr_okay(self, wait_time=1):
         """
-        Checks if parity bits on x-eng are zero
-        :param wait_time:
-        :return: True/False
+        Checks if parity bits on f-eng are consistent.
+        :param: wait_time : Float or None : If not None, fetch qdr parity bit,
+            wait this long, and fetch a second value; Else, use last read value
+            from cache. Value is only cached if wait_time is not None.
+        :return: True if QDR is okay
         """
         for xeng in range(0, self.x_per_fpga):
-            err = self.registers['vacc_errors%d' % xeng].read()['data']['parity']
-            if err == 0:
+            if wait_time is not None:
+                qdr_vacc_err0 = self.registers[
+                    'vacc_errors%d' % xeng].read()['data']['parity']
+                time.sleep(wait_time)
+            else:
+                qdr_vacc_err0 = self._qdr_counts.get(xeng, 0)
+
+            qdr_vacc_err1 = self.registers[
+                'vacc_errors%d' % xeng].read()['data']['parity']
+
+            if wait_time is None:
+                self._qdr_counts[xeng] = qdr_vacc_err1
+
+            if qdr_vacc_err0 == qdr_vacc_err1:
                 LOGGER.info('%s: xeng %d okay.' % (self.host, xeng))
             else:
                 LOGGER.error('%s: xeng %d has parity errors.' % (self.host, xeng))
