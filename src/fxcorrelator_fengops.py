@@ -198,33 +198,35 @@ class FEngineOperations(object):
                 load_wait_delay = ld_time - time.time() + \
                                   self.corr.min_load_time
 
-        # determine fhost to write to
-        for fhost in self.hosts:
-            if source_name in fhost.delays:
-                try:
-                    actual_values = fhost.write_delay(
-                        source_name,
-                        delay_s, delta_delay,
-                        phase_offset_s, delta_phase_offset_s,
-                        ld_time_mcnt, load_wait_delay, ld_check)
-                    self.logger.info(
-                        'Phase offset actually set to %6.3f radians.' %
-                        (actual_values['act_phase_offset']*(2*numpy.pi)))
-                    self.logger.info(
-                        'Phase offset change actually set to %e radians per second.' %
-                        (actual_values['act_delta_phase_offset']*(2*numpy.pi)/self.corr.sample_rate_hz))
-                    self.logger.info(
-                        'Delay actually set to %e samples.' %
-                        actual_values['act_delay'])
-                    self.logger.info(
-                        'Delay rate actually set to %e seconds per second.' %
-                        actual_values['act_delta_delay'])
-                except Exception as e:
-                    self.logger.error('New delay error - %s' % e.message)
-                    raise #ValueError('New delay error - %s' % e.message)
-                self.logger.info('done.')
-                return actual_values
-        raise ValueError('Unknown source name %s' % source_name)
+        try:
+            # determine fhost to write to
+            for fhost in self.hosts:
+                if source_name in fhost.delays:
+                    try:
+                        actual_values = fhost.write_delay(
+                            source_name,
+                            delay_s, delta_delay,
+                            phase_offset_s, delta_phase_offset_s,
+                            ld_time_mcnt, load_wait_delay, ld_check)
+                        self.logger.info(
+                            'Phase offset actually set to %6.3f radians.' %
+                            (actual_values['act_phase_offset']*(2*numpy.pi)))
+                        self.logger.info(
+                            'Phase offset change actually set to %e radians per second.' %
+                            (actual_values['act_delta_phase_offset']*(2*numpy.pi)/self.corr.sample_rate_hz))
+                        self.logger.info(
+                            'Delay actually set to %e samples.' %
+                            actual_values['act_delay'])
+                        self.logger.info(
+                            'Delay rate actually set to %e seconds per second.' %
+                            actual_values['act_delta_delay'])
+                    except Exception as e:
+                        self.logger.error('New delay error - %s' % e.message)
+                        raise #ValueError('New delay error - %s' % e.message)
+                    self.logger.info('done.')
+                    return actual_values
+        except Exception :
+            raise ValueError('Unknown source name %s' % source_name)
 
     def check_tx(self):
         """
