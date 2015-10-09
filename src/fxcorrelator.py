@@ -160,6 +160,7 @@ class FxCorrelator(Instrument):
                                target_function='get_system_information')
 
         # remove test hardware from designs
+        utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
         if program:
             # cal the qdr on all boards
@@ -181,6 +182,9 @@ class FxCorrelator(Instrument):
             # subscribe all the engines to the multicast groups
             self.fops.subscribe_to_multicast()
             self.xops.subscribe_to_multicast()
+            post_mess_delay = 5
+            self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
+            time.sleep(post_mess_delay)
 
             # force a reset on the f-engines
             self.fops.sys_reset(sleeptime=1)

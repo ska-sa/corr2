@@ -239,6 +239,21 @@ class UnpackDengPacketCapture(object):
         return sorted_time_keys, data
 
 
+def disable_test_gbes(corr_instance):
+    """
+    Disable the 10Gbe fabric by default on test GBE devices.
+    :param corr_instance: the correlator object in use
+    :return:
+    """
+    for hosts in (corr_instance.xhosts + corr_instance.fhosts):
+        for gbe in hosts.tengbes:
+            if gbe.name.startswith('test_'):
+                corr_instance.logger.info(
+                    '%s: disabled fabric on '
+                    '%s' % (hosts.host, gbe.name))
+                gbe.fabric_disable()
+
+
 def remove_test_objects(corr_instance):
     """
     Any hardware device whose name starts with test_ must be removed from the
@@ -257,7 +272,8 @@ def remove_test_objects(corr_instance):
                             attr_container.remove_attribute(attr_name)
                             _changes_made = True
     if _changes_made:
-        LOGGER.info('One or more test_ devices were removed. Just so you know.')
+        corr_instance.logger.info(
+            'One or more test_ devices were removed. Just so you know.')
 
 
 def thread_funcs(timeout, *funcs):
