@@ -163,6 +163,10 @@ class FxCorrelator(Instrument):
         # remove test hardware from designs
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
+
+        if self.found_beamformer:
+            self.bops.configure()
+
         if program:
             # cal the qdr on all boards
             if qdr_cal:
@@ -176,10 +180,15 @@ class FxCorrelator(Instrument):
             self.xops.initialise()
 
             # are there beamformers?
-            # if self.found_beamformer:
-            #     self.bops.initialise(self)
+            if self.found_beamformer:
+                self.bops.initialise(self)
 
-            # raise RuntimeError('debugging beamformer')
+                # we're using only one beng per host, so only enable
+                # those partitions so we can try to get a heap
+                self.bops.partitions_deactivate()
+                self.bops.partitions_activate([0])
+
+                # raise RuntimeError('debugging beamformer')
 
             # for fpga_ in self.fhosts:
             #     fpga_.tap_arp_reload()
@@ -190,7 +199,8 @@ class FxCorrelator(Instrument):
             self.fops.subscribe_to_multicast()
             self.xops.subscribe_to_multicast()
             post_mess_delay = 5
-            self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
+            self.logger.info('post mess-with-the-switch delay of %is' %
+                             post_mess_delay)
             time.sleep(post_mess_delay)
 
             # force a reset on the f-engines

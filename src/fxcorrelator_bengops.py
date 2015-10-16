@@ -1,26 +1,15 @@
 import numpy
 import logging
 import spead64_48 as spead
+import struct
+import socket
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
-BFSTAGE_DUPLICATE = 0
-BFSTAGE_CALIBRATE = 1
-BFSTAGE_STEER = 2
-BFSTAGE_COMBINE = 3
-BFSTAGE_VISIBILITY = 4
-BFSTAGE_ACCUMULATE = 5
-BFSTAGE_REQUANTISE = 6
-BFSTAGE_FILTER = 7
-
 LOGGER = logging.getLogger(__name__)
-
-
-def bf_control_shift(id_control):
-    return 0x1 << id_control
 
 
 class Beam(object):
@@ -31,23 +20,161 @@ class Beam(object):
         :param beam_index - the numerical beam index on the bhosts
         :return:
         """
-        self.beam_name = beam_name
-        self.beam_index = beam_index
-        LOGGER.info('Beam %i:%s created' % (self.beam_index, self.beam_name))
+        self.name = beam_name
+        self.index = beam_index
+        self.hosts = None
+
+        self.total_num_partitions = None
+        self.partitions_total = None
+        self.partitions_per_host = None
+        self.partitions = None
+        self.partitions_active = None
+        self.partitions_by_host = None
+
+        self.center_freq = None
+        self.bandwidth = None
+
+        self.source_weights = None
+        self.source_poly = None
+
+        self.meta_destination = None
+        self.data_destination = None
+
+        LOGGER.info('Beam %i:%s created okay' % (
+            self.index, self.name))
 
     @classmethod
-    def from_config(cls, beam_name, config):
+    def from_config(cls, beam_name, bhosts, config):
         # look for the section matching the name
         beam_dict = config['beam_%s' % beam_name]
-        obj = cls(beam_name, int(beam_dict['index']))
+        obj = cls(beam_name, int(beam_dict['stream_index']))
+        obj.hosts = bhosts
+
+        obj.partitions_per_host = int(config['xengine']['x_per_fpga'])
+        obj.partitions_total = obj.partitions_per_host * len(obj.hosts)
+        obj.partitions = range(0, obj.partitions_total)
+        obj.partitions_active = obj.partitions[:]
+        obj.partitions_by_host = [
+            obj.partitions[b:b+obj.partitions_per_host]
+            for b in range(0, obj.partitions_total, obj.partitions_per_host)
+        ]
+
         obj.center_freq = float(beam_dict['center_freq'])
         obj.bandwidth = float(beam_dict['bandwidth'])
-        obj.meta_ip = tengbe.IpAddress(beam_dict['meta_ip'])
-        obj.destination_ip = tengbe.IpAddress(beam_dict['dest_ip'])
-        obj.destination_port = int(beam_dict['dest_port'])
-        obj.source_weights = beam_dict['source_weights'].strip().split(',')
+
+        obj.set_meta_destination(beam_dict['meta_ip'], beam_dict['meta_port'])
+        obj.set_data_destination(beam_dict['data_ip'], beam_dict['data_port'])
+
+        weight_str = beam_dict['source_weights'].strip().split(',')
+        obj.source_weights = []
+        for weight in weight_str:
+            obj.source_weights.append(float(weight.strip()))
         obj.source_poly = []
         return obj
+
+    def __str__(self):
+        return 'Beam %i:%s destination(%s) meta_dest(%s)' % (
+            self.index, self.name, self.data_destination, self.meta_destination)
+
+    def partitions_deactivate(self, partitions=None):
+        """
+        Deactive one or more partitions
+        :param partitions: a list of partitions to deactivate
+        :return:
+        """
+        if partitions is None:
+            partitions = self.partitions_active[:]
+        if not partitions:
+            return
+        for val in partitions:
+            try:
+                _ind = self.partitions_active.index(val)
+                self.partitions_active.pop(_ind)
+            except ValueError:
+                raise ValueError('Beam %i:%s partition %i not found' % (
+                    self.index, self.name, val))
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_partitions_control', [self], {}))
+
+    def partitions_activate(self, partitions=None):
+        """
+        Activate one or more partitions.
+        :param partitions: a list of partitions to activate
+        :return:
+        """
+        if partitions is None:
+            partitions = self.partitions[:]
+        if not partitions:
+            return
+        for val in partitions:
+            try:
+                self.partitions.index(val)
+                self.partitions_active.append(val)
+            except ValueError:
+                raise ValueError('Beam %i:%s partition %i not found' % (
+                    self.index, self.name, val))
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_partitions_control', [self], {}))
+
+    def initialise(self):
+        """
+        Set up the beam for first operation.
+        :return:
+        """
+        # set the total number of partitions and the beam index
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_config_set', [self], {}))
+
+        # set the partitions for this beam
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_partitions_set', [self], {}))
+
+        # set the beam destination registers
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_destination_set', [self], {}))
+
+        # set the weights for this beam
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set', [self], {}))
+
+        LOGGER.info('Beam %i:%s: initialised okay' % (
+            self.index, self.name))
+
+    def set_meta_destination(self, txip=None, txport=None):
+        """
+        Set destination for meta info output of beamformer.
+        :param txip: dotted-decimal string, int or IPAddress
+        :param txport: An integer or string port number.
+        :return: <nothing>
+        """
+        if txip is None:
+            txip = self.meta_destination['ip']
+        if txport is None:
+            txport = self.meta_destination['port']
+        else:
+            txport = int(txport)
+        if txport is None or txip is None:
+            LOGGER.error('Cannot set part of meta destination to None '
+                         '- %s:%d' % (txip, txport))
+            raise RuntimeError('Cannot set part of meta destination to None '
+                               '- %s:%d' % (txip, txport))
+        self.meta_destination = {'ip': tengbe.IpAddress(txip), 'port': txport}
+        LOGGER.info('Setting meta destination to %s:%d' % (txip, txport))
+
+    def set_data_destination(self, txip=None, txport=None):
+        """
+        Set destination for data output of beamformer.
+        :param txip: dotted-decimal string, int or IPAddress
+        :param txport: An integer or string port number.
+        :return: <nothing>
+        """
+        if txip is None:
+            txip = self.data_destination['ip']
+        if txport is None:
+            txport = self.data_destination['port']
+        else:
+            txport = int(txport)
+        if txport is None or txip is None:
+            LOGGER.error('Cannot set part of data destination to None '
+                         '- %s:%d' % (txip, txport))
+            raise RuntimeError('Cannot set part of data destination to None '
+                               '- %s:%d' % (txip, txport))
+        self.data_destination = {'ip': tengbe.IpAddress(txip), 'port': txport}
+        LOGGER.info('Setting data destination to %s:%d' % (txip, txport))
 
 
 class BEngineOperations(object):
@@ -60,14 +187,18 @@ class BEngineOperations(object):
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
         self.beams = {}
+        self.spead_tx = None
+        self.spead_meta_ig = None
+        self.beng_per_host = None
 
-    def initialise(self, config_output=True,
-                   send_spead=True, set_weights=True):
+    def configure(self):
         """
-        Initialises the b-engines and checks for errors.
-
+        Configure the beams from the config source.
         :return:
         """
+        if self.beams:
+            raise RuntimeError('Beamformer ops already configured.')
+
         # get beam names from config
         beam_names = []
         for k in self.corr.configd:
@@ -77,124 +208,271 @@ class BEngineOperations(object):
 
         # make the beams
         self.beams = {}
-        for b, beam_name in enumerate(beam_names):
-            self.beams[beam_name] = Beam.from_config(beam_name,
-                                                     self.corr.configd)
+        for beam_idx, beam_name in enumerate(beam_names):
+            newbeam = Beam.from_config(beam_name, self.hosts,
+                                       self.corr.configd)
+            self.beams[newbeam.name] = newbeam
 
+        self.beng_per_host = int(self.corr.configd['xengine']['x_per_fpga'])
 
-        print self.beams
+    def initialise(self, config_output=True,
+                   send_spead=True, set_weights=True):
+        """
+        Initialises the b-engines and checks for errors.
 
+        :return:
+        """
+        if not self.beams:
+            raise RuntimeError('Called beamformer initialise without beams? '
+                               'Have you run configure?')
         # Give control register a known state.
         # Set bf_control and bf_config to zero for now
         THREADED_FPGA_OP(self.hosts, timeout=5,
-                         target_function=(lambda fpga_: fpga_.registers.bf_control.write_int(0)))
+                         target_function=(
+                             lambda fpga_:
+                             fpga_.registers.bf_control.write_int(0), [], {}))
         THREADED_FPGA_OP(self.hosts, timeout=5,
-                         target_function=(lambda fpga_: fpga_.registers.bf_control.write_int(0)))
-
-        # disable all beams that are transmitting
-        self.tx_stop()
-
+                         target_function=(
+                             lambda fpga_:
+                             fpga_.registers.bf_config.write_int(0), [], {}))
         # set up the beams
         for beam in self.beams.values():
-            THREADED_FPGA_FUNC(self.hosts, timeout=5, target_function=('beam_destination_set', [beam]))
-
-
-
+            beam.initialise()
+        # disable all beams
+        self.partitions_deactivate()
+        # done
         self.logger.info('Beamformer initialised.')
 
-        # if False:
-        #
-        #     # TODO
-        #     # Set up default destination ip and port
-        #     # do we increment?
-        #     # config_meta_output(corr, beams, dest_ip_str=None,
-        #     #                    dest_port=None, issue_spead=True)
-        #     # config_udp_output(corr, beams, frequencies,
-        #     #                       dest_ip_str=None, dest_port=None, issue_spead=True)
-        #
-        #     # Set default beam config and beam IP
-        #     # n_partitions = 32 (new register)
-        #     # beam_id ?? (256 possible)
-        #     beam_idx = beam2index(corr, beams=beams)
-        #     for beam in beam_idx:
-        #         THREADED_FPGA_FUNC(corr.xhosts, timeout=5,
-        #                            target_function=('write_beam_config',
-        #                                             ({'rst': 1, 'beam_id': 0,
-        #                                               'n_partitions': 16}, beam)),)
-        #
-        #     # for each beam assign which part of the band is used
-        #     beam_offset_idx = range(0, corr.bf_beams_per_fpga*len(corr.xhosts),
-        #                             corr.bf_beams_per_fpga)
-        #     idx = 0
-        #     for host in corr.xhosts:  # slow need improvement
-        #         for beam in beam_idx:
-        #             host.write_beam_offset(value=beam_offset_idx[idx], beam=beam)
-        #         idx += 1
-        #
-        #     if set_weights:  # set defaults, what about the antenna?
-        #         for beam in beams:
-        #             weights_set(corr, beam, antenna=0, coeffs=None,
-        #                         spead_issue=False)
-        #     else:
-        #         corr.logger.info('Skipped applying weights config '
-        #                          'of beamformer.')
-        #
-        #     # configure spead_meta data transmitter and spead data destination,
-        #     # don't issue related spead meta-data
-        #     # TODO missing registers
-        #     if config_output:
-        #         config_udp_output(corr, beams, issue_spead=False)
-        #         config_meta_output(corr, beams, issue_spead=False)
-        #     else:
-        #         corr.logger.info('Skipped output configuration of beamformer.')
-        #     if send_spead:
-        #         spead_bf_issue_all(corr, beams=beams)
-        #     else:
-        #         corr.logger.info('Skipped issue of spead meta data.')
-        #     corr.logger.info("Beamformer initialisation complete.")
+    def partitions_activate(self, partitions_to_activate):
+        """
+        Deactivate all partitions for all beams
+        """
+        for beam in self.beams.values():
+            beam.partitions_activate(partitions_to_activate)
 
-    def find_beng_index(self, freq=None, sky_freq=None, channel=None):
+    def partitions_deactivate(self):
         """
-        Given a frequency (sky or bb) or channel number, work out where that can be found
-        :param freq - the baseband frequency to search
-        :param freq - the sky frequency to search
-        :param channel - the channel to search
-        :return: tuple - (bhost index in self.hosts, bengine index total, bengine index within host)
+        Deactivate all partitions for all beams
         """
-        if (freq is None) and (sky_freq is None) and (channel is None):
-            raise RuntimeError('Must provide something for which to search.')
-        if channel is None:
-            if freq is not None:
-                channel = self.corr.fops.freq_to_chan(freq)
-            else:
-                channel = self.corr.fops.sky_freq_to_chan(freq)
-        _host_index = numpy.floor(channel / self.corr.xops.channels_per_xhost)
-        _beng_index_absolute = numpy.floor(channel / self.corr.xops.channels_per_xengine)
-        _beng_index = _beng_index_absolute % self.corr.xops.xengines_per_xhost
-        return _host_index, _beng_index_absolute, _beng_index
+        for beam in self.beams.values():
+            beam.partitions_deactivate()
 
-    def tx_stop(self, beams=None, spead_stop=True):
+    def _create_spead_tx_ig(self):
         """
-        Stops outputting SPEAD data over 10GbE links for specified beams.
-        Sends SPEAD packets indicating end of stream if required
-        :param beams: ['i', 'q']
-        :param spead_stop: boolean
+        Create the SPEAD metadata transmitter
         :return:
         """
-        self.logger.info('Stopping beamformers')
+        del self.spead_tx, self.spead_meta_ig
+        for beam in self.beams.values():
+            stx = spead.Transmitter(
+                spead.TransportUDPtx(beam.meta_destination['ip'],
+                                     beam.meta_destination['port']))
+            # update the multicast socket option to use a TTL of 2,
+            # in order to traverse the L3 network on site.
+            ttl_bin = struct.pack('@i', 2)
+            stx.t._udp_out.setsockopt(socket.IPPROTO_IP,
+                                      socket.IP_MULTICAST_TTL, ttl_bin)
+            # make the item group we're going to use
+            sig = spead.ItemGroup()
+            self.spead_tx[beam.name] = stx
+            self.spead_meta_ig[beam.name] = sig
 
-        # stop the bengines at the filter stage
-        THREADED_FPGA_FUNC(self.hosts, timeout=5,
-                           target_function=('value_filter_set',
-                                            [], {'value': 0, 'beng_indices': None}))
+    def spead_meta_issue(self, beams=None):
+        """
+        Issues the SPEAD metadata packets containing the payload
+        and options descriptors and unpack sequences.
+        :param beams: a list of beam names, all beams if None
+        :return:
+        """
+        if (not self.spead_tx) or (not self.spead_meta_ig):
+            self._create_spead_tx_ig()
 
-        # update spead
-        spead_stop = False
-        if spead_stop:
-            raise NotImplementedError
-            # TODO
+        if not beams:
+            beams = self.beams.keys()
 
-        self.logger.info('Stopped all beam transmission')
+        for beam_name in beams:
+            beam = self.beams[beam_name]
+            spead_ig = self.spead_meta_ig[beam_name]
+            spead_tx = self.spead_tx[beam_name]
+
+            spead_ig.add_item(
+                name='n_bengs', id=0x100F,
+                description='The total number of B engines in the system.',
+                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                init_val=self.beng_per_host*len(self.hosts))
+
+            spead_ig.add_item(
+                name='b_per_fpga', id=0x1047,
+                description='The number of b-engines per fpga.',
+                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                init_val=self.beng_per_host)
+
+            spead_ig.add_item(
+                name='beng_out_bits_per_sample', id=0x1050,
+                description='The number of bits per value in the beng output. '
+                            'Note that this is for a single value, not the '
+                            'combined complex value size.',
+                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                init_val=-1)
+
+            # id is 0xB + 12 least sig bits id of each beam
+            beam_data_id = 0xB000 + beam.index
+
+            n_chans = int(self.corr.configd['fengine']['n_chans'])
+            xeng_acc_len = int(
+                self.corr.configd['xengine']['xeng_accumulation_len'])
+
+            spead_ig.add_item(
+                name=beam, id=beam_data_id,
+                description='Raw data for bengines in the system. Frequencies '
+                            'are assembled from lowest frequency to highest '
+                            'frequency. Frequencies come in blocks of values '
+                            'in time order where the number of samples in a '
+                            'block is given by xeng_acc_len (id 0x101F). Each '
+                            'value is a complex number -- two (real and '
+                            'imaginary) signed integers.',
+                ndarray=numpy.ndarray(shape=(n_chans, xeng_acc_len, 2),
+                                      dtype=numpy.int8))
+            LOGGER.info('Issued static SPEAD metadata for beam %s' % beam.name)
+            spead_tx.send_heap(spead_ig.get_heap())
+
+    def spead_destination_meta_issue(self, beams=None):
+        """
+        Issues a SPEAD packet to notify the receiver of changes to destination
+        :param beams: list of beam names, all beams if None
+        :return:
+        """
+        if (not self.spead_tx) or (not self.spead_meta_ig):
+            self._create_spead_tx_ig()
+
+        if not beams:
+            beams = self.beams.keys()
+
+        for beam_name in beams:
+            beam = self.beams[beam_name]
+            spead_ig = self.spead_meta_ig[beam_name]
+            spead_tx = self.spead_tx[beam_name]
+
+            spead_ig.add_item(
+                name='rx_udp_port', id=0x1022,
+                description='Destination UDP port for B engine output.',
+                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+                init_val=beam.meta_destination['port'])
+
+            spead_ig.add_item(
+                name='rx_udp_ip_str', id=0x1024,
+                description='Destination IP address for B engine output UDP '
+                            'packets.',
+                shape=[-1], fmt=spead.STR_FMT,
+                init_val=str(beam.meta_destination['ip']))
+
+            LOGGER.info('Issued destination SPEAD metadata for '
+                        'beam %s' % beam.name)
+            spead_tx.send_heap(spead_ig.get_heap())
+
+    def spead_weights_meta_issue(self, beams=None):
+        """
+        Issues a SPEAD heap for the weights settings.
+        :param beams: list of beam names, all beams if None
+        :return:
+        """
+        if (not self.spead_tx) or (not self.spead_meta_ig):
+            self._create_spead_tx_ig()
+
+        if not beams:
+            beams = self.beams.keys()
+
+        for beam_name in beams:
+            beam = self.beams[beam_name]
+            spead_ig = self.spead_meta_ig[beam_name]
+            spead_tx = self.spead_tx[beam_name]
+
+            # weights settings
+            for wctr, wght in enumerate(beam.source_weights):
+                spead_ig.add_item(
+                    name='beam%i_ant%i' % (beam.index, wctr), id=0x2000+wctr,
+                    description='The unitless per-channel digital scaling '
+                                'factors implemented prior to combining '
+                                'antenna signals during beamforming for input '
+                                'beam%i_ant%i. Complex number real 32 bit '
+                                'floats.' % (beam.index, wctr),
+                    shape=[], fmt=spead.mkfmt(('f', 32)),
+                    init_val=wght)
+
+            LOGGER.info('Issued SPEAD EQ metadata for beam %s' % beam.name)
+            spead_tx.send_heap(spead_ig.get_heap())
+
+    def spead_bf_issue_all(self, beams=None):
+        """
+        Issues all SPEAD metadata for given beams.
+        :param beams: list of beam names, all beams if None
+        :return:
+        """
+        if (not self.spead_tx) or (not self.spead_meta_ig):
+            self._create_spead_tx_ig()
+
+        if not beams:
+            beams = self.beams.keys()
+
+        self.spead_meta_issue(beams)
+        self.spead_destination_meta_issue(beams)
+        self.spead_weights_meta_issue(beams)
+
+    # BFSTAGE_DUPLICATE = 0
+    # BFSTAGE_CALIBRATE = 1
+    # BFSTAGE_STEER = 2
+    # BFSTAGE_COMBINE = 3
+    # BFSTAGE_VISIBILITY = 4
+    # BFSTAGE_ACCUMULATE = 5
+    # BFSTAGE_REQUANTISE = 6
+    # BFSTAGE_FILTER = 7
+    #
+    # def bf_control_shift(id_control):
+    #     return 0x1 << id_control
+    #
+    # def find_beng_index(self, freq=None, sky_freq=None, channel=None):
+    #     """
+    #     Given a frequency (sky or bb) or channel number, work out where
+    #     that can be found
+    #     :param freq - the baseband frequency to search
+    #     :param freq - the sky frequency to search
+    #     :param channel - the channel to search
+    #     :return: tuple - (bhost index in self.hosts, bengine index total, bengine index within host)
+    #     """
+    #     if (freq is None) and (sky_freq is None) and (channel is None):
+    #         raise RuntimeError('Must provide something for which to search.')
+    #     if channel is None:
+    #         if freq is not None:
+    #             channel = self.corr.fops.freq_to_chan(freq)
+    #         else:
+    #             channel = self.corr.fops.sky_freq_to_chan(freq)
+    #     _host_index = numpy.floor(channel / self.corr.xops.channels_per_xhost)
+    #     _beng_index_absolute = numpy.floor(channel / self.corr.xops.channels_per_xengine)
+    #     _beng_index = _beng_index_absolute % self.corr.xops.xengines_per_xhost
+    #     return _host_index, _beng_index_absolute, _beng_index
+
+    # def tx_stop(self, beams=None, spead_stop=True):
+    #     """
+    #     Stops outputting SPEAD data over 10GbE links for specified beams.
+    #     Sends SPEAD packets indicating end of stream if required
+    #     :param beams: ['i', 'q']
+    #     :param spead_stop: boolean
+    #     :return:
+    #     """
+    #     self.logger.info('Stopping beamformers')
+    #
+    #     # stop the bengines at the filter stage
+    #     THREADED_FPGA_FUNC(self.hosts, timeout=5,
+    #                        target_function=('value_filter_set',
+    #                                         [], {'value': 0, 'beng_indices': None}))
+    #
+    #     # update spead
+    #     spead_stop = False
+    #     if spead_stop:
+    #         raise NotImplementedError
+    #         # TODO
+    #
+    #     self.logger.info('Stopped all beam transmission')
 
     # def write_value(self, bf_stage, data, beams=None, antennas=None):
     #     """
@@ -443,8 +721,8 @@ class BEngineOperations(object):
     #     """
     #     Read beam parameter (same for all antennas)
     #     :param beams: string
-    #     :param param: location, name, centre_frequency, bandwidth, rx_meta_ip_str,
-    #                   rx_udp_ip_str, rx_udp_port
+    #     :param param: location, name, centre_frequency, bandwidth,
+    #                   rx_meta_ip_str, rx_udp_ip_str, rx_udp_port
     #     :return: values
     #     """
     #     beams = beams2beams(corr, beams)
@@ -887,131 +1165,6 @@ class BEngineOperations(object):
     #         corr.logger.error('Your coefficient %s is not recognised.' % coeffs)
     #     if spead_issue:
     #         spead_weights_meta_issue(corr, beam)
-    #
-    #
-    # def spead_bf_meta_issue(corr, beams):
-    #     """
-    #     Issues the SPEAD metadata packets containing the payload
-    #     and options descriptors and unpack sequences.
-    #     :param beams:
-    #     :return:
-    #     """
-    #     #  check if SPEAD transmitter was created
-    #     if corr.meta_destination is None:
-    #             corr.logger.info('SPEAD meta destination is still unset, '
-    #                              'NOT sending metadata at this time.')
-    #             return
-    #     # SPEAD stuff that does not care about beam
-    #     spead_ig = spead.ItemGroup()
-    #     spead_ig.add_item(name="n_bengs",
-    #                       id=0x100F,
-    #                       description="The total number of B engines in the system.",
-    #                       shape=[],
-    #                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-    #                       init_val=corr.bf_beams_per_fpga*len(corr.xhosts))
-    #     spead_ig.add_item(name="b_per_fpga",
-    #                       id=0x1047,
-    #                       description="The number of b-engines per fpga.",
-    #                       shape=[],
-    #                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-    #                       init_val=corr.bf_beams_per_fpga)
-    #     spead_ig.add_item(name="beng_out_bits_per_sample",
-    #                       id=0x1050,
-    #                       description="The number of bits per value in the beng output. Note that this "
-    #                                   "is for a single value, not the combined complex value size.",
-    #                       shape=[],
-    #                       fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-    #                       init_val=corr.configd['bengine']['bf_bits_out'])
-    #     for beam in beams:
-    #         beam_index = beam2index(corr, beam)[0]
-    #         # id is 0xB + 12 least sig bits id of each beam
-    #         beam_data_id = 0xB000 + beam_index
-    #         spead_ig.add_item(name=beam,
-    #                           id=beam_data_id,
-    #                           description="Raw data for bengines in the system. Frequencies are assembled from "
-    #                                       "lowest frequency to highest frequency. Frequencies come in blocks of "
-    #                                       "values in time order where the number of samples in a block is given "
-    #                                       "by xeng_acc_len (id 0x101F). Each value is a complex number -- "
-    #                                       "two (real and imaginary) signed integers.",
-    #                           ndarray=numpy.ndarray(shape=(int(corr.configd['fengine']['n_chans']),
-    #                                                        int(corr.configd['xengine']['xeng_accumulation_len']), 2),
-    #                                                 dtype=numpy.int8))
-    #         corr.logger.info("Issued static SPEAD metadata for beam %s" % beam)
-    #     corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
-    #
-    #
-    # def spead_destination_meta_issue(corr, beams):
-    #     """
-    #     Issues a SPEAD packet to notify the receiver of changes to destination
-    #     :param beams:
-    #     :return:
-    #     """
-    #     #  check if SPEAD transmitter was created
-    #     if corr.meta_destination is None:
-    #             corr.logger.info('SPEAD meta destination is still unset, '
-    #                              'NOT sending metadata at this time.')
-    #             return
-    #     for beam in beams:
-    #         spead_ig = spead.ItemGroup()
-    #         spead_ig.add_item(name="rx_udp_port",
-    #                           id=0x1022,
-    #                           description="Destination UDP port for B engine output.",
-    #                           shape=[],
-    #                           fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-    #                           init_val=get_beam_param(corr, beam, 'rx_udp_port'))
-    #         spead_ig.add_item(name="rx_udp_ip_str",
-    #                           id=0x1024,
-    #                           description="Destination IP address for B engine output UDP packets.",
-    #                           shape=[-1],
-    #                           fmt=spead.STR_FMT,
-    #                           init_val=get_beam_param(corr, beam, 'rx_udp_ip_str'))
-    #         corr.logger.info("Issued destination SPEAD metadata for beam %s" % beam)
-    #         corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
-    #
-    #
-    # def spead_weights_meta_issue(corr, beams):
-    #     """
-    #     Issues a SPEAD heap for the weights settings.
-    #     :param beams:
-    #     :param from_fpga:
-    #     :return:
-    #     """
-    #     #  check if SPEAD transmitter was created
-    #     if corr.meta_destination is None:
-    #             corr.logger.info('SPEAD meta destination is still unset, '
-    #                              'NOT sending metadata at this time.')
-    #             return
-    #     spead_ig = spead.ItemGroup()
-    #     for beam in beams:
-    #         ig = spead_ig
-    #         # weights settings
-    #         for in_n in range(int(corr.configd['fengine']['n_antennas'])):
-    #             beam_char = beam2index(corr, beams=beam)[0]
-    #             val = weights_get(corr, beam, antennas=[in_n], default=False)
-    #             ig.add_item(name="beam%i_ant%i" % (beam_char, in_n),
-    #                         id=0x2000+in_n,
-    #                         description="The unitless per-channel digital scaling "
-    #                                     "factors implemented prior to "
-    #                                     "combining antenna signals during beamforming "
-    #                                     "for input beam%i_ant%i. Complex number "
-    #                                     "real 32 bit floats." % (beam_char, in_n),
-    #                         shape=[],
-    #                         fmt=spead.mkfmt(('f', 32)),
-    #                         init_val=val)
-    #         corr.logger.info("Issued SPEAD EQ metadata for beam %s" % beam)
-    #         corr.spead_tx.send_heap(corr.spead_meta_ig.get_heap())
-    #
-    #
-    # def spead_bf_issue_all(corr, beams):
-    #     """
-    #     Issues all SPEAD metadata.
-    #     :param beams:
-    #     :param from_fpga:
-    #     :return:
-    #     """
-    #     spead_bf_meta_issue(corr, beams=beams)
-    #     spead_destination_meta_issue(corr, beams=beams)
-    #     spead_weights_meta_issue(corr, beams=beams)
     #
     # # def spead_issue_meta(self):
     # #         """
