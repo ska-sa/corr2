@@ -13,7 +13,8 @@ import matplotlib.pyplot as plt
 
 sample_rate = 1712*(10**6)
 shift_bits = 23
-sleep_time = 4
+sleep_time = 2
+offset = 1
 
 #delay
 coarse_delay_val = 0 
@@ -21,14 +22,14 @@ fractional_delay_val = 0
 
 #delta delay
 delta_delay_val_samples = 0  # the final delay value to reach in the sleep time allocated
-delta_delay_val = delta_delay_val_samples / (sleep_time * sample_rate)
+delta_delay_val = float(delta_delay_val_samples) / (sleep_time * sample_rate)
 delta_delay_val_shifted = delta_delay_val * (2 ** shift_bits)
 
 #phase
-phase_val = 0
+phase_val = 0.5
 
 #delta phase
-delta_phase_val_samples = 2
+delta_phase_val_samples = 0
 delta_phase_val = float(delta_phase_val_samples) / (float(sleep_time) * sample_rate)
 delta_phase_val_shifted = delta_phase_val * (2 ** shift_bits)
 
@@ -37,7 +38,7 @@ c.initialise(qdr_cal=False,program=False)
 f = c.fhosts[0]
 
 # set up tvg
-f.registers.impulse1.write(amplitude=0.5, offset=1)
+f.registers.impulse1.write(amplitude=0.5, offset=offset)
 f.registers.control.write(tvg_adc=1)
 
 # capture data before setting up delays
@@ -56,7 +57,6 @@ f.registers.tl_fd1_control0.write(arm='pulse', load_immediate='pulse')
 x_1 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
 
 # sleep 
-#time.sleep(sleep_time)
 time.sleep(sleep_time)
 
 # capture data after

@@ -14,20 +14,20 @@ import matplotlib.pyplot as plt
 ant_name = 'ant0_y'
 sample_rate = 1712*(10**6)
 shift_bits = 23
-sleep_time = 4
+sleep_time = 2
 
 #delay
 delay_val = 0
 
 #delta delay
-delta_delay_val_samples = 0.5 
+delta_delay_val_samples = 0
 delta_delay_val = float(delta_delay_val_samples) / (float(sleep_time) * sample_rate)
 
 #phase
 phase_val = 0 
 
 #delta phase
-delta_phase_val_samples = 0
+delta_phase_val_samples = 1
 delta_phase_val = float(delta_phase_val_samples) / (float(sleep_time) * sample_rate)
 
 c = corr2.fxcorrelator.FxCorrelator('rts wbc', config_source=os.environ['CORR2INI'])
