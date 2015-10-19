@@ -174,13 +174,11 @@ class FEngineOperations(object):
         # convert delay in time into delay in samples
         delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
 
-#        feng_clk = self.corr.sample_rate_hz / self.corr.adc_demux_factor
-
         #convert to fractions of a sample
-        phase_offset_s = float(phase_offset)/(float(numpy.pi))
+        phase_offset_s = float(phase_offset)/float(numpy.pi)
 
         # convert from radians per second to fractions of sample per sample
-        delta_phase_offset_s = float(delta_phase_offset)/(float(numpy.pi)/2) / (self.corr.sample_rate_hz)
+        delta_phase_offset_s = float(delta_phase_offset)/float(numpy.pi) / (self.corr.sample_rate_hz)
 
         ld_time_mcnt = None
         if ld_time is not None:
