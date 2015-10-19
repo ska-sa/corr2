@@ -219,6 +219,14 @@ class FxCorrelator(Instrument):
         # set an initialised flag
         self._initialised = True
 
+
+    def initialised(self):
+        """
+        Has initialise successfully passed?
+        :return:
+        """
+        return self._initialised
+
     def est_sync_epoch(self):
         """
         Estimates the synchronisation epoch based on current F-engine timestamp, and the system time.
