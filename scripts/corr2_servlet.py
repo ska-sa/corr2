@@ -254,8 +254,12 @@ class Corr2Server(katcp.DeviceServer):
         if len(newlist) > 0:
             try:
                 self.instrument.set_labels(newlist)
-            except:
-                return 'fail', 'provided input labels were not correct'
+            except ValueError as ve:
+                return 'fail', 'provided input labels were not ' \
+                               'correct: %s' % ve.message
+            else:
+                return 'fail', 'provided input labels were not correct: ' \
+                               'unknown exception, please check logs'
         return 'ok', self.instrument.get_labels()
 
     @request(Str(default=''), Str(default='', multiple=True))
