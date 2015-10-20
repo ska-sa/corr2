@@ -563,28 +563,29 @@ class FxCorrelator(Instrument):
                                 'devices NOT written! Have they been created?')
         self.xeng_tx_destination = (tengbe.IpAddress.ip2str(txip), txport)
 
-    def set_meta_destination(self, txip_str=None, txport=None):
+    def set_meta_destination(self, txip=None, txport=None):
         """
         Set destination for meta info output of fxcorrelator.
-        :param txip_str: A dotted-decimal string representation of the
-        IP address. e.g. '1.2.3.4'
+        :param txip: A dotted-decimal string, int or IpAddress representation of
+        the IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.
         :return: <nothing>
         """
-        if txip_str is None:
-            txip_str = self.meta_destination[0]
+        if txip is None:
+            txip = self.meta_destination['ip']
         if txport is None:
-            txport = self.meta_destination[1]
+            txport = self.meta_destination['port']
         else:
             txport = int(txport)
-        if txport is None or txip_str is None:
+        if txport is None or txip is None:
             self.logger.error('Cannot set part of meta destination to None '
-                              '- %s:%d' % (txip_str, txport))
+                              '- %s:%d' % (txip, txport))
             raise RuntimeError('Cannot set part of meta destination to None '
-                               '- %s:%d' % (txip_str, txport))
-        self.meta_destination = (txip_str, txport)
+                               '- %s:%d' % (txip, txport))
+        self.meta_destination = {'ip': tengbe.IpAddress(txip),
+                                 'port': txport}
         self.logger.info('Setting meta destination to %s:%d' %
-                         (txip_str, txport))
+                         (txip, txport))
 
     def tx_start(self, issue_spead=True):
         """
@@ -629,7 +630,8 @@ class FxCorrelator(Instrument):
         # make a new SPEAD transmitter
         del self.spead_tx, self.spead_meta_ig
         self.spead_tx = spead.Transmitter(
-            spead.TransportUDPtx(*self.meta_destination))
+            spead.TransportUDPtx(str(self.meta_destination['ip']),
+                                 self.meta_destination['port']))
         # update the multicast socket option to use a TTL of 2,
         # in order to traverse the L3 network on site.
         ttl_bin = struct.pack('@i', 2)
@@ -992,5 +994,5 @@ class FxCorrelator(Instrument):
 
         self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
         self.logger.info('Issued SPEAD data descriptor to %s:%i.' % (
-            self.meta_destination[0], self.meta_destination[1]))
+            self.meta_destination['ip'], self.meta_destination['port']))
 # end

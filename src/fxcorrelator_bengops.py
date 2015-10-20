@@ -263,9 +263,11 @@ class BEngineOperations(object):
         :return:
         """
         del self.spead_tx, self.spead_meta_ig
+        self.spead_tx = {}
+        self.spead_meta_ig = {}
         for beam in self.beams.values():
             stx = spead.Transmitter(
-                spead.TransportUDPtx(beam.meta_destination['ip'],
+                spead.TransportUDPtx(str(beam.meta_destination['ip']),
                                      beam.meta_destination['port']))
             # update the multicast socket option to use a TTL of 2,
             # in order to traverse the L3 network on site.
@@ -277,7 +279,7 @@ class BEngineOperations(object):
             self.spead_tx[beam.name] = stx
             self.spead_meta_ig[beam.name] = sig
 
-    def spead_meta_issue(self, beams=None):
+    def spead_meta_issue(self, beams=None, send_now=True):
         """
         Issues the SPEAD metadata packets containing the payload
         and options descriptors and unpack sequences.
@@ -292,7 +294,10 @@ class BEngineOperations(object):
 
         for beam_name in beams:
             beam = self.beams[beam_name]
-            spead_ig = self.spead_meta_ig[beam_name]
+            if send_now:
+                spead_ig = spead.ItemGroup()
+            else:
+                spead_ig = self.spead_meta_ig[beam_name]
             spead_tx = self.spead_tx[beam_name]
 
             spead_ig.add_item(
@@ -323,7 +328,7 @@ class BEngineOperations(object):
                 self.corr.configd['xengine']['xeng_accumulation_len'])
 
             spead_ig.add_item(
-                name=beam, id=beam_data_id,
+                name=beam_name, id=beam_data_id,
                 description='Raw data for bengines in the system. Frequencies '
                             'are assembled from lowest frequency to highest '
                             'frequency. Frequencies come in blocks of values '
@@ -333,10 +338,12 @@ class BEngineOperations(object):
                             'imaginary) signed integers.',
                 ndarray=numpy.ndarray(shape=(n_chans, xeng_acc_len, 2),
                                       dtype=numpy.int8))
-            LOGGER.info('Issued static SPEAD metadata for beam %s' % beam.name)
-            spead_tx.send_heap(spead_ig.get_heap())
 
-    def spead_destination_meta_issue(self, beams=None):
+            if send_now:
+                LOGGER.info('Issued static SPEAD metadata for beam %s' % beam.name)
+                spead_tx.send_heap(spead_ig.get_heap())
+
+    def spead_destination_meta_issue(self, beams=None, send_now=True):
         """
         Issues a SPEAD packet to notify the receiver of changes to destination
         :param beams: list of beam names, all beams if None
@@ -350,7 +357,10 @@ class BEngineOperations(object):
 
         for beam_name in beams:
             beam = self.beams[beam_name]
-            spead_ig = self.spead_meta_ig[beam_name]
+            if send_now:
+                spead_ig = spead.ItemGroup()
+            else:
+                spead_ig = self.spead_meta_ig[beam_name]
             spead_tx = self.spead_tx[beam_name]
 
             spead_ig.add_item(
@@ -366,11 +376,12 @@ class BEngineOperations(object):
                 shape=[-1], fmt=spead.STR_FMT,
                 init_val=str(beam.meta_destination['ip']))
 
-            LOGGER.info('Issued destination SPEAD metadata for '
-                        'beam %s' % beam.name)
-            spead_tx.send_heap(spead_ig.get_heap())
+            if send_now:
+                LOGGER.info('Issued destination SPEAD metadata for '
+                            'beam %s' % beam.name)
+                spead_tx.send_heap(spead_ig.get_heap())
 
-    def spead_weights_meta_issue(self, beams=None):
+    def spead_weights_meta_issue(self, beams=None, send_now=True):
         """
         Issues a SPEAD heap for the weights settings.
         :param beams: list of beam names, all beams if None
@@ -384,7 +395,10 @@ class BEngineOperations(object):
 
         for beam_name in beams:
             beam = self.beams[beam_name]
-            spead_ig = self.spead_meta_ig[beam_name]
+            if send_now:
+                spead_ig = spead.ItemGroup()
+            else:
+                spead_ig = self.spead_meta_ig[beam_name]
             spead_tx = self.spead_tx[beam_name]
 
             # weights settings
@@ -399,8 +413,9 @@ class BEngineOperations(object):
                     shape=[], fmt=spead.mkfmt(('f', 32)),
                     init_val=wght)
 
-            LOGGER.info('Issued SPEAD EQ metadata for beam %s' % beam.name)
-            spead_tx.send_heap(spead_ig.get_heap())
+            if send_now:
+                LOGGER.info('Issued SPEAD EQ metadata for beam %s' % beam.name)
+                spead_tx.send_heap(spead_ig.get_heap())
 
     def spead_bf_issue_all(self, beams=None):
         """
@@ -414,9 +429,16 @@ class BEngineOperations(object):
         if not beams:
             beams = self.beams.keys()
 
-        self.spead_meta_issue(beams)
-        self.spead_destination_meta_issue(beams)
-        self.spead_weights_meta_issue(beams)
+        self.spead_meta_issue(beams, False)
+        self.spead_destination_meta_issue(beams, False)
+        self.spead_weights_meta_issue(beams, False)
+
+        for beam_name in beams:
+            beam = self.beams[beam_name]
+            spead_ig = self.spead_meta_ig[beam_name]
+            spead_tx = self.spead_tx[beam_name]
+            LOGGER.info('Issued all SPEAD metadata for beam %s' % beam.name)
+            spead_tx.send_heap(spead_ig.get_heap())
 
     # BFSTAGE_DUPLICATE = 0
     # BFSTAGE_CALIBRATE = 1
