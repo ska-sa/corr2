@@ -26,8 +26,11 @@ import logging
 
 
 class CorrRx(threading.Thread):
-    def __init__(self, port=7148, log_handler=None,
-                 log_level=logging.INFO, spead_log_level=logging.INFO, **kwargs):
+    def __init__(self, port=7148,
+                 log_handler=None,
+                 log_level=logging.INFO,
+                 spead_log_level=logging.INFO,
+                 **kwargs):
         # if log_handler == None:
         #     log_handler = log_handlers.DebugLogHandler(100)
         # self.log_handler = log_handler
@@ -42,13 +45,18 @@ class CorrRx(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
-        #print 'starting target with kwargs ',self._kwargs
+        print 'starting target with kwargs ', self._kwargs
         self._target(**self._kwargs)
 
-    def rx_cont(self, data_port=7148, acc_scale=True, filename=None, items=None, **kwargs):
+    def rx_cont(self, data_port=7148, acc_scale=True, filename=None,
+                items=None, **kwargs):
         logger = self.logger
+
+        data_port = 8889
+
         logger.info('Data reception on port %i.' % data_port)
-        rx = spead.TransportUDPrx(data_port, pkt_count=1024, buffer_size=51200000)
+        rx = spead.TransportUDPrx(data_port, pkt_count=1024,
+                                  buffer_size=51200000)
 
         # group = '239.2.0.100'
         # addrinfo = socket.getaddrinfo(group, None)[0]
@@ -71,7 +79,8 @@ class CorrRx(threading.Thread):
         dump_size = 0
         datasets = {}
         datasets_index = {}
-        # we need these bits of meta data before being able to assemble and transmit signal display data
+        # we need these bits of meta data before being able to assemble and
+        # transmit signal display data
         meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
                          'center_freq', 'bls_ordering', 'n_accs']
         meta = {}
@@ -84,9 +93,9 @@ class CorrRx(threading.Thread):
                     if name in items:
                         item = ig.get_item(name)
                         if item.has_changed():
-                            #decode flags
+                            # decode flags
                             if name == 'flags_xeng_raw':
-                                #application level debug flags
+                                # application level debug flags
                                 corrupt_flag = np.uint32((ig[name] / np.uint64(2**33))) & np.uint32(1);
                                 logger.info('(%s) corrupt => %s'%(time.ctime(), 'true' if corrupt_flag == 1 else 'false'))
                                 over_range_flag = np.uint32((ig[name] / np.uint64(2**32))) & np.uint32(1);
@@ -94,9 +103,9 @@ class CorrRx(threading.Thread):
                                 noise_diode_flag = np.uint32((ig[name] / np.uint64(2**31))) & np.uint32(1);
                                 logger.info('(%s) noise diode => %s'%(time.ctime(), 'true' if noise_diode_flag == 1 else 'false'))
                                 
-                                #debug flags not exposed externally
+                                # debug flags not exposed externally
                                 
-                                #digitiser flags
+                                # digitiser flags
                                 noise_diode0_flag = np.uint32((ig[name] / np.uint64(2**1))) & np.uint32(1);
                                 logger.info('(%s) polarisation 0 noise diode => %s'%(time.ctime(), 'true' if noise_diode0_flag == 1 else 'false'))
                                 noise_diode1_flag = np.uint32((ig[name] / np.uint64(2**0))) & np.uint32(1);
@@ -106,7 +115,7 @@ class CorrRx(threading.Thread):
                                 adc_or1_flag = np.uint32((ig[name] / np.uint64(2**2))) & np.uint32(1);
                                 logger.info('(%s) polarisation 1 adc over-range => %s'%(time.ctime(), 'true' if adc_or1_flag == 1 else 'false'))
                                 
-                                #f-engine flags
+                                # f-engine flags
                                 f_spead_error_flag = np.uint32((ig[name] / np.uint64(2**8))) & np.uint32(1);
                                 logger.info('(%s) f-engine spead reception error => %s'%(time.ctime(), 'true' if f_spead_error_flag == 1 else 'false'))
                                 f_fifo_of_flag = np.uint32((ig[name] / np.uint64(2**9))) & np.uint32(1);
@@ -128,11 +137,11 @@ class CorrRx(threading.Thread):
                                 f_qdr0_flag = np.uint32((ig[name] / np.uint64(2**17))) & np.uint32(1);
                                 logger.info('(%s) f-engine QDR SRAM 0 parity error => %s'%(time.ctime(), 'true' if f_qdr0_flag == 1 else 'false'))
                                 
-                                #x-engine flags
+                                # x-engine flags
                                 x_spead_error_flag = np.uint32((ig[name] / np.uint64(2**24))) & np.uint32(1);
                                 logger.info('(%s) x-engine spead reception error => %s'%(time.ctime(), 'true' if x_spead_error_flag == 1 else 'false'))
 
-                            #convert timestamp
+                            # convert timestamp
                             elif name == 'timestamp':
                                 sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
                                 logger.info('(%s) timestamp => %s'%(time.ctime(), time.ctime(sd_timestamp)))
@@ -145,16 +154,15 @@ class CorrRx(threading.Thread):
                     logger.debug('\tkey name %s' % name)
                     item = ig.get_item(name)
                     if (not item.has_changed()) and (name in datasets.keys()):
-                        # the item is not marked as changed, and we have a record for it, skip ahead
+                        # the item is not marked as changed, and we have a
+                        # record for it, skip ahead
                         continue
                     if name in meta_required:
                         meta[name] = ig[name]
                         meta_required.pop(meta_required.index(name))
                         if len(meta_required) == 0:
-                            logger.info('Got all required metadata. Expecting data frame shape of %i %i %i' %
-                                        (meta['n_chans'], meta['n_bls'], 2))
-                            meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
-                                             'center_freq', 'bls_ordering', 'n_accs']
+                            logger.info('Got all required metadata. Expecting data frame shape of %i %i %i' % (meta['n_chans'], meta['n_bls'], 2))
+                            meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs', 'center_freq', 'bls_ordering', 'n_accs']
 
                     # check to see if we have encountered this type before
                     if name not in datasets.keys():
@@ -206,6 +214,7 @@ class CorrRx(threading.Thread):
                     if ig['xeng_raw'] is not None:
                         # print np.shape(ig['xeng_raw'])
                         baseline_data = []
+                        baseline_phase = []
                         for baseline in range(0, 40):
                             # print 'baseline %i:' % baseline, ig['xeng_raw'][:, baseline]
                             FREQ_TO_PLOT = 0
@@ -214,18 +223,22 @@ class CorrRx(threading.Thread):
                             if baseline in plot_baselines:
                                 bdata = ig['xeng_raw'][:, baseline]
                                 powerdata = []
-                                for complex_tuple in bdata:
+                                phasedata = []
+                                for ctr in range(plot_startchan, plot_endchan):
+                                    complex_tuple = bdata[ctr]
                                     pwr = np.sqrt(complex_tuple[0]**2 + complex_tuple[1]**2)
                                     powerdata.append(pwr)
-                                baseline_data.append((baseline, powerdata[plot_startchan:plot_endchan]))
+                                    cplx = complex(complex_tuple[0], complex_tuple[1])
+                                    phase = np.angle(cplx)
+                                    # phase = np.unwrap(phase)
+                                    phasedata.append(phase)
+                                baseline_data.append((baseline, powerdata[:]))
+                                baseline_phase.append((baseline, phasedata[:]))
                                 # break
                         if not got_data_event.is_set():
-                            plotqueue.put(baseline_data)
+                            plotqueue.put((baseline_data, baseline_phase))
                             got_data_event.set()
             # /if plotbaseline is not None:
-
-#            if len(items) > 0
-                
 
             # should we quit?
             if self.quit_event.is_set():
@@ -281,13 +294,22 @@ if __name__ == '__main__':
                         help='log level to use in spead receiver, default INFO, options INFO, DEBUG, ERROR')
     args = parser.parse_args()
 
-    if args.items is not None:
+    if 'CORR2INI' in os.environ.keys() and args.config == '':
+        args.config = os.environ['CORR2INI']
+
+    # load the rx port and sd info from the config file
+    config = utils.parse_ini_file(args.config)
+    data_port = int(config['xengine']['output_destination_port'])
+    n_chans = int(config['fengine']['n_chans'])
+    print 'Loaded instrument info from config file:\n\t%s' % args.config
+
+    if args.items:
         items = args.items
-        print '\tTracking:'
+        print 'Tracking:'
         for item in items:
-            print '\t  * %s' %item
+            print '\t  * %s' % item
     else:
-        print '\tNot tracking any items'
+        print 'Not tracking any items.'
 
     if args.log_level != '':
         import logging
@@ -309,14 +331,6 @@ if __name__ == '__main__':
         acc_scale = False
     else:
         acc_scale = True
-
-    if 'CORR2INI' in os.environ.keys() and args.config == '':
-        args.config = os.environ['CORR2INI']
-
-    # load the rx port and sd info from the config file
-    config = utils.parse_ini_file(args.config)
-    data_port = int(config['xengine']['output_destination_port'])
-    n_chans = int(config['fengine']['n_chans'])
 
     if args.writefile:
         filename = str(time.time()) + '.corr2.h5'
@@ -353,14 +367,16 @@ if len(plot_baselines) > 0:
     plotqueue = Queue.Queue()
     got_data_event = threading.Event()
 
-
     if args.ion:
         pyplot.ion()
 
     def plot():
         if got_data_event.is_set():
             try:
-                powerdata = plotqueue.get_nowait()
+                powerdata, phasedata = plotqueue.get_nowait()
+                pyplot.subplot(2, 1, 1)
+                pyplot.cla()
+                pyplot.subplot(2, 1, 2)
                 pyplot.cla()
                 ymax = -1
                 ymin = 2**32
@@ -368,11 +384,18 @@ if len(plot_baselines) > 0:
                     baseline = plot[0]
                     plotdata = plot[1]
                     if args.log:
+                        pyplot.subplot(2, 1, 1)
                         pyplot.semilogy(plotdata, label='%i' % baseline)
+                        pyplot.subplot(2, 1, 2)
+                        pyplot.semilogy(phasedata[pltctr][1], label='phase_%i' % baseline)
                     else:
+                        pyplot.subplot(2, 1, 1)
                         pyplot.plot(plotdata, label='%i' % baseline)
+                        pyplot.subplot(2, 1, 2)
+                        pyplot.plot(phasedata[pltctr][1], label='phase_%i' % baseline)
                     ymax = max(ymax, max(plotdata))
                     ymin = min(ymin, min(plotdata))
+                pyplot.subplot(2, 1, 1)
                 pyplot.ylim([ymin*0.99, ymax*1.01])
                 pyplot.legend(loc='upper left')
                 pyplot.draw()

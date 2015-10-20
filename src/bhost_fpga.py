@@ -1,249 +1,399 @@
-# /usr/bin/env python
 """
-Selection of commonly-used beamformer control functions.
+A BHost is an extension of an XHost. It contains memory and registers
+to set up and control one or more beamformers.
 
 Author: Jason Manley, Andrew Martens, Ruby van Rooyen, Monika Obrocka
 """
-"""
-Revisions:
-2012-10-02 JRM Initial
-2013-02-10 AM basic boresight
-2013-02-11 AM basic SPEAD
-2013-02-21 AM flexible bandwidth
-2013-03-01 AM calibration
-2013-03-05 AM SPEAD metadata
-\n"""
 
-import inspect
 import logging
-from host_fpga import FpgaHost
+from xhost_fpga import FpgaXHost
 
 LOGGER = logging.getLogger(__name__)
 
-class FpgaBHost(FpgaHost):
-    def __init__(self, host, katcp_port=7147, boffile=None,
-                 connect=True, config=None,
-                 simulate=False, optimisations=True):
-        FpgaHost.__init__(self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
-        self.config = config
-        # if self.config is not None:
-        #     self.bf_per_fpga = int(self.config['bf_be_per_fpga'])
-        self.bf_per_fpga = 4
-        #  optimisations on writes (that currently expose bugs)
-        self.optimisations = optimisations
-        #  simulate operations (and output debug data).
-        # Useful for when there is no hardware
-        self.simulate = simulate
 
-
-        # self.spead_initialise()
-        LOGGER.info('Beamformer created')
+class FpgaBHost(FpgaXHost):
+    def __init__(self, host, index, katcp_port=7147, boffile=None,
+                 connect=True, config=None):
+        # parent constructor
+        FpgaXHost.__init__(self, host, index, katcp_port=katcp_port,
+                           boffile=boffile, connect=connect, config=config)
+        self.beng_per_host = int(self.config['xengine']['x_per_fpga'])
+        LOGGER.info('FpgaBHost %i:%s created' % (
+            self.index, self.host))
 
     @classmethod
-    def from_config_source(cls, hostname, katcp_port, config_source):
-        boffile = config_source['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+    def from_config_source(cls, hostname, index, katcp_port, config_source):
+        boffile = config_source['xengine']['bitstream']
+        return cls(hostname, index, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
-    # specifying many frequencies is redundant for MK case
-
-    def read_bf_config(self):
+    def beam_destination_set(self, beam):
         """
-        Reads data from bf_config register from all x-eng
-        :param 'data_id', 'time_id'
-        :return: dictionary
+        Set the data destination for this beam.
+        :param beam: a Beam object
+        :return
         """
-        return self.registers['bf_config'].read()['data']
+        self.registers['bf%i_config' % beam.index].write(
+            port=beam.data_destination['port'])
+        self.registers['bf%i_ip' % beam.index].write(
+            ip=int(beam.data_destination['ip']))
+        LOGGER.info('%s:%i: Beam %i:%s destination set to %s:%i' % (
+            self.host, self.index, beam.index, beam.name,
+            beam.data_destination['ip'], beam.data_destination['port']))
 
-    def read_value_out(self):
-        return self.registers.bf_value_out.read()['data']['reg']
-
-    def read_value_in(self):
-        return self.registers.bf_value_in.read()['data']['reg']
-
-    def write_value_in(self, value, blindwrite=False):
+    def beam_config_set(self, beam):
         """
-        :param value:
-        :return:
+        :param beam: a Beam object
+        :return
         """
-        if blindwrite:
-            self.registers.bf_value_in.blindwrite(reg=value)
-        else:
-            self.registers.bf_value_in.write(reg=value)
+        beam_reg = self.registers['bf%i_config' % beam.index]
+        beam_reg.write(beam_id=beam.index,
+                       n_partitions=beam.partitions_total)
+        LOGGER.info('%s:%i: Beam %i:%s config register set' % (
+            self.host, self.index, beam.index, beam.name))
 
-    def read_beng_value_out(self, beng=0):
+    def beam_partitions_set(self, beam):
         """
-        Read value_out register from all b-engines
-        :return:
+        :param beam: a Beam object
+        :return
         """
-        n_beng = self.bf_per_fpga
-        # check if beng is in the range
-        if beng in range(n_beng):
-            # check if requested beng is already set
-            if beng == self.read_bf_control()['beng']:
-                data = self.read_value_out()
-            else:
-                self.write_beng(value=beng, blindwrite=True)
-                data = self.read_value_out()
-        else:
-            raise LOGGER.error('Wrong b-eng index %i on host %s'
-                               % (beng, self.host))
-        return data
+        # partitions offsets must be worked out
+        partition_start = self.index * self.beng_per_host
+        beam_reg = self.registers['bf%i_partitions' % beam.index]
+        beam_reg.write(partition0_offset=partition_start,
+                       partition1_offset=partition_start+1,
+                       partition2_offset=partition_start+2,
+                       partition3_offset=partition_start+3)
+        LOGGER.info('%s:%i: Beam %i:%s partitions set to %i:%i' % (
+            self.host, self.index, beam.index, beam.name,
+            partition_start, partition_start+self.beng_per_host-1))
 
-    def write_data_id(self, value=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf_config'].blindwrite(data_id=value)
-        else:
-            self.registers['bf_config'].write(data_id=value)
-
-    def write_time_id(self, value=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf_config'].blindwrite(time_id=value)
-        else:
-            self.registers['bf_config'].write(time_id=value)
-
-    def read_bf_control(self):
+    def beam_weights_set(self, beam):
         """
-        Reads data from bf_control register from all x-eng
-        'antenna' 'beng' 'frequency' 'read_destination'
-        'stream' 'write_destination'
-        :return: dictionary
+        Set the beam weights for the given beam.
         """
-        return self.registers['bf_control'].read()['data']
+        for ant_ctr, ant_weight in enumerate(beam.source_weights):
+            self.registers.bf_value_in0.write(bw=ant_weight)
+            for beng_ctr in range(0, self.beng_per_host):
+                self.registers.bf_control.write(stream=beam.index,
+                                                beng=beng_ctr,
+                                                antenna=ant_ctr)
+                self.registers.bf_value_ctrl.write(bw='pulse')
+        LOGGER.info('%s:%i: Beam %i:%s set antenna(%i) stream(%i) weights(%s)'
+                    % (self.host, self.index, beam.index, beam.name,
+                       self.index, beam.index, beam.source_weights))
 
-    def write_beng(self, value=0, blindwrite=False):
+    def beam_partitions_control(self, beam):
         """
-        Write b-eng index
-        :param value:
-        :param blindwrite:
-        :return:
+        Set the active partitions for a beam on this host.
         """
-        n_beng = self.bf_per_fpga
-        if value in range(n_beng):
-            if blindwrite:
-                self.registers['bf_control'].blindwrite(beng=value)
-            else:
-                self.registers['bf_control'].write(beng=value)
-        else:
-            raise LOGGER.error('Wrong b-eng index %i on host %s'
-                               % (value, self.host))
+        host_parts = beam.partitions_by_host[self.index]
+        actv_parts = beam.partitions_active
+        parts_to_set = set(host_parts).intersection(actv_parts)
+        parts_to_clr = set(host_parts).difference(parts_to_set)
+        LOGGER.info('%s:%i: Beam %i:%s beam_active(%s) host(%s) toset(%s) '
+                    'toclr(%s)' %
+                    (self.host, self.index, beam.index, beam.name,
+                     list(actv_parts), list(host_parts), list(parts_to_set),
+                     list(parts_to_clr)))
+        if len(parts_to_set) > 0:
+            self.registers.bf_value_in1.write(filt=1)
+            for part in parts_to_set:
+                beng_for_part = host_parts.index(part)
+                self.registers.bf_control.write(stream=beam.index,
+                                                beng=beng_for_part)
+                self.registers.bf_value_ctrl.write(filt='pulse')
+        if len(parts_to_clr) > 0:
+            self.registers.bf_value_in1.write(filt=0)
+            for part in parts_to_clr:
+                beng_for_part = host_parts.index(part)
+                self.registers.bf_control.write(stream=beam.index,
+                                                beng=beng_for_part)
+                self.registers.bf_value_ctrl.write(filt='pulse')
 
-    def write_antenna(self, value=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf_control'].blindwrite(antenna=value)
-        else:
-            self.registers['bf_control'].write(antenna=value)
+    # def value_duplicate_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_calibrate_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_steer_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_combine_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_visibility_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_quantise_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_filter_set(self, value, beng_indices=None):
+    #     """
+    #     Write a value to the filter stage of this bhost's beamformer.
+    #     """
+    #     self.registers.bf_value_in1.write(filt=value)
+    #     bindices = self._write_value_bengines(beng_indices, 'filt')
+    #     LOGGER.info('%s: wrote %.3f to filters on bengines %s' %
+    #                 (self.host, value, bindices))
+    #
+    # def _write_value_bengines(self, beng_indices=None, stage_ctrl_field=''):
+    #     """
+    #     Strobe a value into a stage on a list of bengines by selecting
+    #     the bengine and then pulsing the enable for that stage.
+    #     """
+    #     if beng_indices is None:
+    #         beng_indices = range(0, self.beng_per_host)
+    #     if len(beng_indices) == 0:
+    #         raise RuntimeError('Makes no sense acting on no b-engines?')
+    #     # enable each of the bengines in turn
+    #     self.registers.bf_value_ctrl.write(**{stage_ctrl_field: 0})
+    #     for beng_index in beng_indices:
+    #         self.registers.bf_control.write(beng=beng_index)
+    #         self.registers.bf_value_ctrl.write(**{stage_ctrl_field: 'pulse'})
+    #     return beng_indices
 
-    def write_stream(self, value=0, blindwrite=False):
-        """
-        Write which beam we are using (0 or 1 now)
-        :param value:
-        :param blindwrite:
-        :return:
-        """
-        if blindwrite:
-            self.registers['bf_control'].blindwrite(stream=value)
-        else:
-            self.registers['bf_control'].write(stream=value)
+    # def read_bf_config(self):
+    #     """
+    #     Reads data from bf_config register from this bhost
+    #     :param 'data_id', 'time_id'
+    #     :return: dictionary
+    #     """
+    #     return self.registers.bf_config.read()['data']
+    #
+    # def read_value_out(self):
+    #     """
+    #
+    #     :return:
+    #     """
+    #     return self.registers.bf_value_out.read()['data']['reg']
+    #
+    # def read_value_in(self):
+    #     """
+    #
+    #     :return:
+    #     """
+    #     return self.registers.bf_value_in.read()['data']['reg']
 
-    def write_frequency(self, value=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf_control'].blindwrite(frequency=value)
-        else:
-            self.registers['bf_control'].write(frequency=value)
+    # def write_value_in(self, value):
+    #     """
+    #
+    #     :param value: pass a float
+    #     :return:
+    #     """
+    #     self.registers.bf_value_in.write(reg=value)
 
-    def write_read_destination(self, value=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf_control'].blindwrite(read_destination=value)
-        else:
-            self.registers['bf_control'].write(read_destination=value)
+    # def read_beng_value_out(self, beng):
+    #     """
+    #     Read value_out register from all b-engines
+    #     :return:
+    #     """
+    #     n_beng = self.bf_per_fpga
+    #     # check if beng is in the range
+    #     if beng in range(n_beng):
+    #         # check if requested beng is already set
+    #         if beng == self.read_bf_control()['beng']:
+    #             data = self.read_value_out()
+    #         else:
+    #             self.write_beng(value=beng)
+    #             data = self.read_value_out()
+    #     else:
+    #         raise LOGGER.error('Wrong b-eng index %i on host %s'
+    #                            % (beng, self.host))
+    #     return data
+    #
+    # def write_data_id(self, value):
+    #     """
+    #
+    #     :param value:
+    #     :return:
+    #     """
+    #     self.registers.bf_config.write(data_id=value)
+    #
+    # def write_time_id(self, value):
+    #     """
+    #
+    #     :param value:
+    #     :return:
+    #     """
+    #     self.registers.bf_config.write(time_id=value)
+    #
+    # def write_bf_config(self, value):
+    #     """
+    #     :param value: dictionary ex. {'data_id': 0, 'time_id': 1}
+    #     :return:
+    #     """
+    #     if value is None:  # set everything to zero
+    #         self.write_data_id(value=0)
+    #         self.write_time_id(value=0)
+    #     else:
+    #         self.write_data_id(value=value['data_id'])
+    #         self.write_time_id(value=value['time_id'])
+    #
+    # def read_bf_control(self):
+    #     """
+    #     Reads data from bf_control register from all x-eng
+    #     'antenna' 'beng' 'read_destination'
+    #     'stream' 'write_destination'
+    #     :return: dictionary
+    #     """
+    #     return self.registers.bf_control.read()['data']
+    #
+    # def write_beng(self, value):
+    #     """
+    #     Write b-eng index
+    #     :param value:
+    #     :return:
+    #     """
+    #     n_beng = self.bf_per_fpga
+    #     if value in range(n_beng):
+    #         self.registers.bf_control.write(beng=value)
+    #     else:
+    #         raise LOGGER.error('Wrong b-eng index %i on host %s'
+    #                            % (value, self.host))
+    #
+    # def write_bf_control(self, value=None):
+    #     """
+    #     :param value: dictionary ex. {'antenna': 0, 'beng': 1, 'frequency': 2,
+    #     'read_destination': 3, 'stream': 1, 'write_destination': 2}
+    #     :return:
+    #     """
+    #     if value is None:
+    #         value = {'antenna': 0, 'beng': 0, 'frequency': 0,
+    #                  'read_destination': 0, 'stream': 0,
+    #                  'write_destination': 0}
+    #     self.registers['bf_control'].write(**value)
+    #
+    # def read_beam_config(self, beam):
+    #     """
+    #     Reads data from bf_config register from all x-eng
+    #     :param int
+    #     :return: dictionary 'rst', 'beam_id' 'n_partitions' 'port'
+    #     """
+    #     try:
+    #         data = self.registers['bf%d_config' % beam].read()['data']
+    #         return data
+    #     except AttributeError:
+    #         LOGGER.error('Beam index %i out of range on host %s' % (beam, self.host))
+    #
+    # def write_beam_rst(self, value, beam):
+    #     """
+    #
+    #     :param value:
+    #     :param beam:
+    #     :return: <nothing>
+    #     """
+    #     self.registers['bf%d_config' % beam].write(rst=value)
+    #
+    # def write_beam_id(self, value, beam):
+    #     """
+    #
+    #     :param value:
+    #     :param beam:
+    #     :return: <nothing>
+    #     """
+    #     self.registers['bf%d_config' % beam].write(beam_id=value)
+    #
+    # def write_beam_n_partitions(self, value, beam):
+    #     """
+    #
+    #     :param value:
+    #     :param beam:
+    #     :return: <nothing>
+    #     """
+    #     self.registers['bf%d_config' % beam].write(n_partitions=value)
+    #
+    # # TODO no register
+    # def write_beam_port(self, value, beam):
+    #     """
+    #
+    #     :param value:
+    #     :param beam:
+    #     :return: <nothing>
+    #     """
+    #     self.registers['bf%d_config' % beam].write(port=value)
+    #
+    # def write_beam_config(self, value=None, beam=0):
+    #     """
+    #
+    #     :param value: dictionary ex. {'rst': 0, 'beam_id': 1, 'n_partitions': 2}
+    #     :param beam: int
+    #     :return: <nothing>
+    #     """
+    #     # set everything to zero
+    #     if value is None:
+    #         self.write_beam_rst(value=0, beam=beam)
+    #         self.write_beam_id(value=0, beam=beam)
+    #         self.write_beam_n_partitions(value=0, beam=beam)
+    #         # self.write_beam_port(value=0, beam=beam)  # bitstream not ready
+    #     else:
+    #         self.write_beam_rst(value=value['rst'], beam=beam)
+    #         self.write_beam_id(value=value['beam_id'], beam=beam)
+    #         self.write_beam_n_partitions(value=value['n_partitions'],
+    #                                    beam=beam)
+    #         # self.write_beam_port(value=value, beam=beam)  # bitstream not ready
 
-    def write_write_destination(self, value=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf_control'].blindwrite(write_destination=value)
-        else:
-            self.registers['bf_control'].write(write_destination=value)
+    # def write_beam_offset(self, value, beam):
+    #     """
+    #     Increments partition offset for each b-engine per roach
+    #     :param value: start value (0,4,8,12,16,etc)
+    #     :param beam:
+    #     :return:
+    #     """
+    #     self.registers['bf%i_partitions' % beam].write(partition0_offset=value+0,
+    #                                                    partition1_offset=value+1,
+    #                                                    partition2_offset=value+2,
+    #                                                    partition3_offset=value+3)
 
-    def write_bf_control(self, value={}, blindwrite=False):
-        """
-
-        :param value:
-        :param blindwrite:
-        :return:
-        """
-        if value == {} or None:  # set everything to zero
-            self.write_beng(value=0, blindwrite=blindwrite)
-            self.write_antenna(value=0, blindwrite=blindwrite)
-            self.write_stream(value=0, blindwrite=blindwrite)
-            self.write_frequency(value=0, blindwrite=blindwrite)
-            self.write_read_destination(value=0, blindwrite=blindwrite)
-            self.write_write_destination(value=0, blindwrite=blindwrite)
-        else:
-            self.write_beng(value=value['beng'], blindwrite=blindwrite)
-            self.write_antenna(value=value['antenna'], blindwrite=blindwrite)
-            self.write_stream(value=value['stream'], blindwrite=blindwrite)
-            self.write_frequency(value=value['frequency'], blindwrite=blindwrite)
-            self.write_read_destination(value=value['read_destination'], blindwrite=blindwrite)
-            self.write_write_destination(value=value['write_destination'], blindwrite=blindwrite)
-
-    def read_beam_config(self, beam=0):
-        """
-        Reads data from bf_config register from all x-eng
-        :param 'rst', 'beam_id' 'n_partitions'
-        :return: dictionary
-        """
-        try:
-            data = self.registers['bf%d_config' % beam].read()['data']
-            return data
-        except AttributeError:
-            LOGGER.error('Beam index %i out of range on host %s' % (beam, self.host))
-
-    def write_beam_rst(self, value=0, beam=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf%d_config' % beam].blindwrite(rst=value)
-        else:
-            self.registers['bf%d_config' % beam].write(rst=value)
-
-    def write_beam_id(self, value=0, beam=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf%d_config' % beam].blindwrite(beam_id=value)
-        else:
-            self.registers['bf%d_config' % beam].write(beam_id=value)
-
-    def write_beam_partitions(self, value=0, beam=0, blindwrite=False):
-        if blindwrite:
-            self.registers['bf%d_config' % beam].blindwrite(n_partitions=value)
-        else:
-            self.registers['bf%d_config' % beam].write(n_partitions=value)
-
-    def write_beam_config(self, value={}, beam=0, blindwrite=True):
-        if value == {} or None:  # set everything to zero
-            self.write_beam_rst( value=0, beam=beam, blindwrite=blindwrite)
-            self.write_beam_id(value=0, beam=beam, blindwrite=blindwrite)
-            self.write_beam_partitions(value=0, beam=beam, blindwrite=blindwrite)
-        else:
-            self.write_beam_rst(value=value['rst'], beam=beam, blindwrite=blindwrite)
-            self.write_beam_id(value=value['beam_id'], beam=beam, blindwrite=blindwrite)
-            self.write_beam_partitions(value=value['n_partitions'], beam=beam, blindwrite=blindwrite)
-
-    # might be hardcoded in the future
-    def write_beam_offset(self, value=0, beam=0, beng=0):
-        if beng == 0:
-            self.registers['bf%d_partitions' % beam].blindwrite(partition0_offset=value)
-        elif beng == 1:
-            self.registers['bf%d_partitions' % beam].blindwrite(partition1_offset=value)
-        elif beng == 2:
-            self.registers['bf%d_partitions' % beam].blindwrite(partition2_offset=value)
-        else:
-            self.registers['bf%d_partitions' % beam].blindwrite(partition3_offset=value)
-
-    def read_beam_offset(self, beam=0, beng=0):
-        """
-        Reads data from bf_config register from all x-eng
-        :param 'rst', 'beam_id' 'n_partitions'
-        :return: dictionary
-        """
-        return self.registers['bf%d_partitions'
-                              % beam].read()['data']['partition%d_offset'
-                                                     % beng]
-
+    # def read_beam_offsets(self, beam):
+    #     """
+    #
+    #     :param beam:
+    #     :return:
+    #     """
+    #     return self.registers['bf%d_partitions' % beam].read()['data']
+    #
+    # def read_beam_ip(self, beam):
+    #     """
+    #
+    #     :param beam:
+    #     :return:
+    #     """
+    #     try:
+    #         return self.registers['bf%d_ip' % beam].read()['data']['ip']
+    #     except AttributeError:
+    #         LOGGER.error('Beam index %i out of range on host %s' % (beam, self.host))
+    #
+    # def write_beam_ip(self, value, beam):
+    #     """
+    #
+    #     :param value: ip 32-bit unsigned integer
+    #     :param beam:
+    #     :return:
+    #     """
+    #     try:
+    #         return self.registers['bf%d_ip' % beam].write(ip=value)
+    #     except AttributeError:
+    #         LOGGER.error('Beam index %i out of range on host %s' % (beam, self.host))
+    #
+    # def read_beam_eof_counts(self, beam):
+    #     """
+    #
+    #     :param beam:
+    #     :return:
+    #     """
+    #     try:
+    #         return self.registers['bf%d_out_count' % beam].read()['data']
+    #     except AttributeError:
+    #         LOGGER.error('Beam index %i out of range on host %s' % (beam, self.host))
+    #
+    # def read_beam_of_counts(self, beam):
+    #     """
+    #     :param beam:
+    #     :return:
+    #     """
+    #     try:
+    #         return self.registers['bf%d_ot_count' % beam].read()['data']
+    #     except AttributeError:
+    #         LOGGER.error('Beam index %i out of range on host %s' % (beam, self.host))
