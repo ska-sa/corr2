@@ -26,10 +26,10 @@ delta_delay_val = float(delta_delay_val_samples) / (sleep_time * sample_rate)
 delta_delay_val_shifted = delta_delay_val * (2 ** shift_bits)
 
 #phase
-phase_val = 0.5
+phase_val = 0
 
 #delta phase
-delta_phase_val_samples = 0
+delta_phase_val_samples = 0.5
 delta_phase_val = float(delta_phase_val_samples) / (float(sleep_time) * sample_rate)
 delta_phase_val_shifted = delta_phase_val * (2 ** shift_bits)
 

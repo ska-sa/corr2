@@ -15,9 +15,10 @@ ant_name = 'ant0_y'
 sample_rate = 1712*(10**6)
 shift_bits = 23
 sleep_time = 2
+offset = 1
 
 #delay
-#delay_val_seconds = float(1) / float(sample_rate)
+#delay_val_seconds = float(1.5) / float(sample_rate)
 delay_val_seconds = 0
 
 #delta delay
@@ -25,26 +26,26 @@ delay_val_seconds = 0
 delta_delay_val_seconds_per_second = 0
 
 #phase
-phase_val_radians = 0.5 * numpy.pi
-#phase_val_radians = 0
+#phase_val_radians = 0.5*numpy.pi
+phase_val_radians = 0
 
 #delta phase
-#delta_phase_val_radians_per_second = (numpy.pi) / sleep_time
-delta_phase_val_radians_per_second = 0
+delta_phase_val_radians_per_second = (numpy.pi/2) / sleep_time
+#delta_phase_val_radians_per_second = 0
 
 c = corr2.fxcorrelator.FxCorrelator('rts wbc', config_source=os.environ['CORR2INI'])
 c.initialise(qdr_cal=False,program=False)
 f = c.fhosts[0]
 
 # set up tvg
-f.registers.impulse1.write(amplitude=0.5, offset=1)
+f.registers.impulse1.write(amplitude=0.5, offset=offset)
 f.registers.control.write(tvg_adc=1)
 
 # capture data before setting up delays
 x_0 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
 
 # set delay
-c.fops.set_delay(ant_name, delay_val_seconds, delta_delay_val_seconds_per_second, phase_val_radians, delta_phase_val_radians_per_second, time.time()+1)
+c.fops.set_delay(ant_name, delay=delay_val_seconds, delta_delay=delta_delay_val_seconds_per_second, phase_offset=phase_val_radians, delta_phase_offset=delta_phase_val_radians_per_second)
 
 # capture data just after setting up delaysa
 x_1 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']

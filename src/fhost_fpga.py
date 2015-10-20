@@ -204,14 +204,14 @@ class FpgaFHost(DigitiserDataReceiver):
         :return:
         """
         # check that it doesn't already exist before adding it
-        for source in self.data_sources:
-            assert source.source_number != data_source.source_number
-            assert source.name != data_source.name
+        for src in self.data_sources:
+            assert src.name != data_source.name
         self.data_sources.append(data_source)
 
     def get_source_eq(self, source_name=None):
         """
-        Return a dictionary of all the EQ settings for the sources allocated to this fhost
+        Return a dictionary of all the EQ settings for the sources allocated
+        to this fhost
         :return:
         """
         if source_name is not None:
