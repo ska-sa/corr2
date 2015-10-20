@@ -174,6 +174,9 @@ class FEngineOperations(object):
         # convert delay in time into delay in samples
         delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
 
+        #wrap large phase values
+        phase_offset_wrapped = phase_offset
+
         #convert to fractions of a sample
         phase_offset_s = float(phase_offset)/float(numpy.pi)
 
@@ -220,11 +223,11 @@ class FEngineOperations(object):
 
         self.logger.info(
             'Phase offset actually set to %6.3f radians.' %
-            (actual_values['act_phase_offset']*(2*numpy.pi)))
+            (actual_values['act_phase_offset']*(numpy.pi)))
         self.logger.info(
             'Phase offset change actually set to %e radians per second.' %
                 (actual_values['act_delta_phase_offset']*(
-                    2*numpy.pi)/self.corr.sample_rate_hz))
+                    numpy.pi)*self.corr.sample_rate_hz))
         self.logger.info(
             'Delay actually set to %e samples.' %
             actual_values['act_delay'])
