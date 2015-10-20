@@ -140,7 +140,7 @@ class FEngineOperations(object):
 
         labels = []
         for src in self.corr.fengine_sources:
-            labels.append(src.name)
+            labels.append(src['source'].name)
         if len(ant_delay) != len(labels):
             raise ValueError(
                 'Too few values provided: expected(%i) got(%i)' %
@@ -342,18 +342,20 @@ class FEngineOperations(object):
         :return:
         """
         all_eqs = self.eq_get()
-        for source_ctr, source in enumerate(self.corr.fengine_sources):
-            eqlen = len(all_eqs[source.name]['eq'])
+        for source in self.corr.fengine_sources:
+            _srcname = source['source'].name
+            _srcnum = source['source_num']
+            eqlen = len(all_eqs[_srcname]['eq'])
             self.corr.spead_meta_ig.add_item(
-                name='eq_coef_%s' % source.name, id=0x1400 + source_ctr,
+                name='eq_coef_%s' % _srcname, id=0x1400 + _srcnum,
                 description='The unitless per-channel digital scaling '
                             'factors implemented prior to requantisation, '
                             'post-FFT, for input %s. Complex number '
-                            'real,imag 32 bit integers.' % source.name,
+                            'real,imag 32 bit integers.' % _srcname,
                 shape=[eqlen, 2],
                 fmt=spead.mkfmt(('u', 32)),
                 init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for
-                          eq_coeff in all_eqs[source.name]['eq']])
+                          eq_coeff in all_eqs[_srcname]['eq']])
 
     def set_fft_shift_all(self, shift_value=None):
         """

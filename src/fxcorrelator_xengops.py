@@ -194,8 +194,8 @@ class XEngineOperations(object):
 
     def subscribe_to_multicast(self):
         """
-        Subscribe the x-engines to the f-engine output multicast groups - each one subscribes to
-        only one group, with data meant only for it.
+        Subscribe the x-engines to the f-engine output multicast groups -
+        each one subscribes to only one group, with data meant only for it.
         :return:
         """
         if self.corr.fengine_output.is_multicast():
@@ -203,7 +203,9 @@ class XEngineOperations(object):
             source_address = str(self.corr.fengine_output.ip_address)
             source_bits = source_address.split('.')
             source_base = int(source_bits[3])
-            source_prefix = '%s.%s.%s.' % (source_bits[0], source_bits[1], source_bits[2])
+            source_prefix = '%s.%s.%s.' % (source_bits[0],
+                                           source_bits[1],
+                                           source_bits[2])
             source_ctr = 0
             for host_ctr, host in enumerate(self.hosts):
                 for gbe in host.tengbes:
@@ -498,7 +500,7 @@ class XEngineOperations(object):
         baseline_order = order1 + order2
         source_names = []
         for source in self.corr.fengine_sources:
-            source_names.append(source.name)
+            source_names.append(source['source'].name)
         rv = []
         for baseline in baseline_order:
             rv.append((source_names[baseline[0] * 2],       source_names[baseline[1] * 2]))

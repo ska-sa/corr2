@@ -48,18 +48,20 @@ LOGGER = logging.getLogger(__name__)
 
 class FxCorrelator(Instrument):
     """
-    A generic FxCorrelator composed of fengines that channelise antenna inputs and
-    xengines that each produce cross products from a continuous portion of the channels and accumulate the result.
-    SPEAD data products are produced.
+    A generic FxCorrelator composed of fengines that channelise antenna inputs
+    and xengines that each produce cross products from a continuous portion of
+    the channels and accumulate the result. SPEAD data products are produced.
     """
-    def __init__(self, descriptor, identifier=-1, config_source=None, logger=LOGGER):
+    def __init__(self, descriptor, identifier=-1, config_source=None,
+                 logger=LOGGER):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
         :param identifier: An optional integer identifier.
         :param config_source: The instrument configuration source. Can be a text
                               file, hostname, whatever.
-        :param logger: Use the module logger by default, unless something else is given.
+        :param logger: Use the module logger by default, unless something else
+        is given.
         :return: <nothing>
 
         """
@@ -140,7 +142,8 @@ class FxCorrelator(Instrument):
 
         igmp_version = self.configd['FxCorrelator'].get('igmp_version')
         if igmp_version is not None:
-            self.logger.info('Setting FPGA hosts IGMP version to %s', igmp_version)
+            self.logger.info('Setting FPGA hosts IGMP version to '
+                             '%s' % igmp_version)
             THREADED_FPGA_FUNC(
                 self.fhosts + self.xhosts, timeout=5, target_function=(
                     'set_igmp_version', (igmp_version, ), {}))
@@ -182,8 +185,10 @@ class FxCorrelator(Instrument):
             # subscribe all the engines to the multicast groups
             self.fops.subscribe_to_multicast()
             self.xops.subscribe_to_multicast()
+
             post_mess_delay = 5
-            self.logger.info('post mess-with-the-switch delay of %is' % post_mess_delay)
+            self.logger.info('post mess-with-the-switch delay of '
+                             '%is' % post_mess_delay)
             time.sleep(post_mess_delay)
 
             # force a reset on the f-engines
@@ -221,14 +226,17 @@ class FxCorrelator(Instrument):
 
     def est_sync_epoch(self):
         """
-        Estimates the synchronisation epoch based on current F-engine timestamp, and the system time.
+        Estimates the synchronisation epoch based on current F-engine timestamp,
+        and the system time.
         """
         self.logger.warn("Estimating synchronisation epoch...")
         # get current time from an f-engine
         mcnt_before = self.fhosts[0].get_local_time()
-        self.synchronisation_epoch = time.time()-mcnt_before/float(self.sample_rate_hz)
+        self.synchronisation_epoch = (time.time() - mcnt_before /
+                                      float(self.sample_rate_hz))
         self.logger.info('Current f engine timetamp: %i' % mcnt_before)
-        assert mcnt_before & 0xfff == 0, 'Bottom 12 bits of timestamp from f-engine are not zero?!'
+        assert mcnt_before & 0xfff == 0, 'Bottom 12 bits of timestamp from ' \
+                                         'f-engine are not zero?!'
 
     def time_from_mcnt(self, mcnt):
         """
@@ -237,7 +245,8 @@ class FxCorrelator(Instrument):
         """
         if self.synchronisation_epoch < 0:
             self.est_sync_epoch()
-        return self.synchronisation_epoch + (float(mcnt) / float(self.sample_rate_hz))
+        return (self.synchronisation_epoch + (float(mcnt) /
+                                              float(self.sample_rate_hz)))
 
     def mcnt_from_time(self, time_seconds):
         """
@@ -247,8 +256,10 @@ class FxCorrelator(Instrument):
         if self.synchronisation_epoch < 0:
             self.est_sync_epoch()
         time_diff_from_synch_epoch = time_seconds - self.synchronisation_epoch
-        time_diff_in_samples = int(time_diff_from_synch_epoch * self.sample_rate_hz)
-        return time_diff_in_samples % (2**int(self.configd['FxCorrelator']['timestamp_bits']))
+        time_diff_in_samples = int(time_diff_from_synch_epoch *
+                                   self.sample_rate_hz)
+        _tmp = 2**int(self.configd['FxCorrelator']['timestamp_bits'])
+        return time_diff_in_samples % _tmp
 
     def qdr_calibrate(self):
         """
@@ -263,27 +274,33 @@ class FxCorrelator(Instrument):
                 _results[_qdr.name] = _qdr.qdr_cal(fail_hard=False)
             _toc = time.time()
             return {'results': _results, 'tic': _tic, 'toc': _toc}
-        self.logger.info('Calibrating QDR on F- and X-engines, this takes a while.')
+        self.logger.info('Calibrating QDR on F- and X-engines, this takes a '
+                         'while.')
         qdr_calfail = False
-        results = THREADED_FPGA_OP(self.fhosts + self.xhosts, timeout=30, target_function=(_qdr_cal,))
+        results = THREADED_FPGA_OP(self.fhosts + self.xhosts, timeout=30,
+                                   target_function=(_qdr_cal,))
         for fpga, result in results.items():
-            self.logger.info('FPGA %s QDR cal results: start(%.3f) end(%.3f) took(%.3f)' %
-                             (fpga, result['tic'], result['toc'], result['toc'] - result['tic']))
+            self.logger.info('FPGA %s QDR cal results: start(%.3f) end(%.3f) '
+                             'took(%.3f)' % (fpga, result['tic'], result['toc'],
+                                             result['toc'] - result['tic']))
             for qdr, qdrres in result['results'].items():
                 if not qdrres:
                     qdr_calfail = True
                     break
-                self.logger.info('\t%s: cal okay: %s' % (qdr, 'True' if qdrres else 'False'))
+                self.logger.info('\t%s: cal okay: '
+                                 '%s' % (qdr, 'True' if qdrres else 'False'))
             if qdr_calfail:
                 break
         if qdr_calfail:
             raise RuntimeError('QDR calibration failure.')
         # for host in self.fhosts:
         #     for qdr in host.qdrs:
-        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
+        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111,
+        # -1)
         # for host in self.xhosts:
         #     for qdr in host.qdrs:
-        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
+        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111,
+        # -1)
 
     def set_labels(self, newlist):
         """
@@ -292,28 +309,30 @@ class FxCorrelator(Instrument):
         :return:
         """
         if len(newlist) != len(self.fengine_sources):
-            self.logger.error('Number of supplied source labels does '
-                              'not match number of configured sources.')
-            raise ValueError('Number of supplied source labels does '
-                             'not match number of configured sources.')
-        metalist = []
+            errstr = 'Number of supplied source labels (%i) does not match ' \
+                     'number of configured sources (%i).' % \
+                     (len(newlist), len(self.fengine_sources))
+            self.logger.error(errstr)
+            raise ValueError(errstr)
         for ctr, source in enumerate(self.fengine_sources):
+            _source = source['source']
             # update the source name
-            old_name = source.name
-            source.name = newlist[ctr]
+            old_name = _source.name
+            _source.name = newlist[ctr]
             # update the eq associated with that name
             found_eq = False
             for fhost in self.fhosts:
                 if old_name in fhost.eqs.keys():
-                    fhost.eqs[source.name] = fhost.eqs.pop(old_name)
+                    fhost.eqs[_source.name] = fhost.eqs.pop(old_name)
                     found_eq = True
                     break
             if not found_eq:
-                raise ValueError('Could not find the old EQ value, %s, to update to new name, %s.' %
-                                 (old_name, source.name))
-            metalist.append((source.name, ctr))
+                raise ValueError('Could not find the old EQ value, %s, to '
+                                 'update to new name, %s.' % (old_name,
+                                                              _source.name))
         if self.spead_meta_ig is not None:
-            self.spead_meta_ig['input_labelling'] = numpy.array(metalist)
+            metalist = numpy.array(self._spead_meta_get_labelling())
+            self.spead_meta_ig['input_labelling'] = metalist
             self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
 
     def get_labels(self):
@@ -322,89 +341,99 @@ class FxCorrelator(Instrument):
         :return:
         """
         source_names = ''
-        for source in self.fengine_sources:
-            source_names += source.name + ' '
+        for fsrc in self.fengine_sources:
+            source_names += fsrc['source'].name + ' '
         source_names = source_names.strip()
         return source_names
 
     def _read_config(self):
         """
         Read the instrument configuration from self.config_source.
-        :return: True if the instrument read a config successfully, raise an error if not?
+        :return: True if the instrument read a config successfully, raise
+        an error if not?
         """
         Instrument._read_config(self)
+        _d = self.configd
 
         # check that the bitstream names are present
         try:
-            open(self.configd['fengine']['bitstream'], 'r').close()
-            open(self.configd['xengine']['bitstream'], 'r').close()
+            open(_d['fengine']['bitstream'], 'r').close()
+            open(_d['xengine']['bitstream'], 'r').close()
         except IOError:
-            self.logger.error('xengine bitstream: %s' % self.configd['xengine']['bitstream'])
-            self.logger.error('fengine bitstream: %s' % self.configd['fengine']['bitstream'])
+            self.logger.error('xengine bitstream: '
+                              '%s' % _d['xengine']['bitstream'])
+            self.logger.error('fengine bitstream: '
+                              '%s' % _d['fengine']['bitstream'])
             self.logger.error('One or more bitstream files not found.')
             raise IOError('One or more bitstream files not found.')
 
-        # TODO: Load config values from the bitstream meta information - f per fpga, x per fpga, etc
-        self.arp_wait_time = int(self.configd['FxCorrelator']['arp_wait_time'])
-        self.sensor_poll_time = int(self.configd['FxCorrelator']['sensor_poll_time'])
-        self.katcp_port = int(self.configd['FxCorrelator']['katcp_port'])
-        self.f_per_fpga = int(self.configd['fengine']['f_per_fpga'])
-        self.x_per_fpga = int(self.configd['xengine']['x_per_fpga'])
-        self.sample_rate_hz = int(self.configd['FxCorrelator']['sample_rate_hz'])
-        self.adc_demux_factor = int(self.configd['fengine']['adc_demux_factor'])
-        self.accumulation_len = int(self.configd['xengine']['accumulation_len'])
-        self.xeng_accumulation_len = int(self.configd['xengine']['xeng_accumulation_len'])
-        self.n_chans = int(self.configd['fengine']['n_chans'])
-        self.n_antennas = int(self.configd['fengine']['n_antennas'])
-        self.min_load_time = float(self.configd['fengine']['min_load_time'])
+        # TODO: Load config values from the bitstream meta information -
+        # f per fpga, x per fpga, etc
+        self.arp_wait_time = int(_d['FxCorrelator']['arp_wait_time'])
+        self.sensor_poll_time = int(_d['FxCorrelator']['sensor_poll_time'])
+        self.katcp_port = int(_d['FxCorrelator']['katcp_port'])
+        self.f_per_fpga = int(_d['fengine']['f_per_fpga'])
+        self.x_per_fpga = int(_d['xengine']['x_per_fpga'])
+        self.sample_rate_hz = int(_d['FxCorrelator']['sample_rate_hz'])
+        self.adc_demux_factor = int(_d['fengine']['adc_demux_factor'])
+        self.accumulation_len = int(_d['xengine']['accumulation_len'])
+        self.xeng_accumulation_len = int(_d['xengine']['xeng_accumulation_len'])
+        self.n_chans = int(_d['fengine']['n_chans'])
+        self.n_antennas = int(_d['fengine']['n_antennas'])
+        self.min_load_time = float(_d['fengine']['min_load_time'])
 
-        self.set_stream_destination(self.configd['xengine']['output_destination_ip'],
-                                    int(self.configd['xengine']['output_destination_port']))
-        self.set_meta_destination(self.configd['xengine']['output_destination_ip'],
-                                  int(self.configd['xengine']['output_destination_port']))
+        self.set_stream_destination(
+            _d['xengine']['output_destination_ip'],
+            int(_d['xengine']['output_destination_port']))
+        self.set_meta_destination(_d['xengine']['output_destination_ip'],
+                                  int(_d['xengine']['output_destination_port']))
 
         # get this from the running x-engines?
-        self.xeng_clk = int(self.configd['xengine']['x_fpga_clock'])
-        self.xeng_outbits = int(self.configd['xengine']['xeng_outbits'])
+        self.xeng_clk = int(_d['xengine']['x_fpga_clock'])
+        self.xeng_outbits = int(_d['xengine']['xeng_outbits'])
 
-        # the f-engines have this many 10Gbe ports per f-engine unit of operation
-        self.ports_per_fengine = int(self.configd['fengine']['ports_per_fengine'])
+        # the f-engines have this many 10Gbe ports per f-engine
+        # unit of operation
+        self.ports_per_fengine = int(_d['fengine']['ports_per_fengine'])
 
-        # set up the hosts and engines based on the configuration in the ini file
+        # set up the hosts and engines based on the configuration in
+        # the ini file
         self.fhosts = []
-        for host in self.configd['fengine']['hosts'].split(','):
+        for host in _d['fengine']['hosts'].split(','):
             host = host.strip()
-            fpgahost = fhost_fpga.FpgaFHost.from_config_source(host, self.katcp_port,
-                                                               config_source=self.configd['fengine'])
+            fpgahost = fhost_fpga.FpgaFHost.from_config_source(
+                host, self.katcp_port, config_source=_d['fengine'])
             self.fhosts.append(fpgahost)
         self.xhosts = []
-        for host in self.configd['xengine']['hosts'].split(','):
+        for host in _d['xengine']['hosts'].split(','):
             host = host.strip()
-            fpgahost = xhost_fpga.FpgaXHost.from_config_source(host, self.katcp_port,
-                                                               config_source=self.configd['xengine'])
+            fpgahost = xhost_fpga.FpgaXHost.from_config_source(
+                host, self.katcp_port, config_source=_d['xengine'])
             self.xhosts.append(fpgahost)
         self.bhosts = []
-        for host in self.configd['xengine']['hosts'].split(','):  # x-eng host b-eng
+        # x-eng host b-eng
+        for host in _d['xengine']['hosts'].split(','):
             host = host.strip()
-            fpgahost = bhost_fpga.FpgaBHost.from_config_source(host, self.katcp_port,
-                                                               config_source=self.configd['xengine'])
+            fpgahost = bhost_fpga.FpgaBHost.from_config_source(
+                host, self.katcp_port, config_source=_d['xengine'])
             self.bhosts.append(fpgahost)
 
         # check that no hosts overlap
         for _fh in self.fhosts:
             for _xh in self.xhosts:
                 if _fh.host == _xh.host:
-                    self.logger.error('Host %s is assigned to both X- and F-engines' % _fh.host)
+                    self.logger.error('Host %s is assigned to both X- and '
+                                      'F-engines' % _fh.host)
                     raise RuntimeError
 
         # what data sources have we been allocated?
         self._handle_sources()
 
         # turn the product names into a list
-        prodlist = self.configd['xengine']['output_products'].replace('[', '').replace(']', '').split(',')
-        self.configd['xengine']['output_products'] = []
+        prodlist = _d['xengine']['output_products'].replace('[', '').replace(']', '').split(',')
+        _d['xengine']['output_products'] = []
         for prod in prodlist:
-            self.configd['xengine']['output_products'].append(prod.strip(''))
+            _d['xengine']['output_products'].append(prod.strip(''))
 
     def _handle_sources(self):
         """
@@ -412,9 +441,9 @@ class FxCorrelator(Instrument):
         :return:
         """
         assert len(self.fhosts) > 0
-
-        source_names = self.configd['fengine']['source_names'].strip().split(',')
-        source_mcast = self.configd['fengine']['source_mcast_ips'].strip().split(',')
+        _feng_cfg = self.configd['fengine']
+        source_names = _feng_cfg['source_names'].strip().split(',')
+        source_mcast = _feng_cfg['source_mcast_ips'].strip().split(',')
         assert len(source_mcast) == len(source_names), (
             'Source names (%d) must be paired with multicast source '
             'addresses (%d)' % (len(source_names), len(source_mcast)))
@@ -422,36 +451,40 @@ class FxCorrelator(Instrument):
         # match eq polys to source names
         eq_polys = {}
         for src_name in source_names:
-            eq_polys[src_name] = utils.process_new_eq(self.configd['fengine']['eq_poly_%s' % src_name])
+            eq_polys[src_name] = utils.process_new_eq(
+                _feng_cfg['eq_poly_%s' % src_name])
 
         # assemble the sources given into a list
-        self.fengine_sources = []
-        source_ctr = 0
-        for counter, address in enumerate(source_mcast):
+        _fengine_sources = []
+        for source_ctr, address in enumerate(source_mcast):
             new_source = DataSource.from_mcast_string(address)
-            new_source.name = source_names[counter]
-            # adding a new instance attribute here, be careful
-            new_source.source_number = source_ctr
+            new_source.name = source_names[source_ctr]
             assert new_source.ip_range == self.ports_per_fengine, (
-                'F-engines should be receiving from %d streams.' % self.ports_per_fengine)
-            self.fengine_sources.append(new_source)
-            source_ctr += 1
+                'F-engines should be receiving from %d streams.' %
+                self.ports_per_fengine)
+            _fengine_sources.append(new_source)
 
         # assign sources and eqs to fhosts
-        self.logger.info('Assigning DataSources, EQs and DelayTrackers to f-engines...')
+        self.logger.info('Assigning DataSources, EQs and DelayTrackers to '
+                         'f-engines...')
         source_ctr = 0
+        self.fengine_sources = []
         for fhost in self.fhosts:
             self.logger.info('\t%s:' % fhost.host)
             _eq_dict = {}
             _delay_dict = {}
             for fengnum in range(0, self.f_per_fpga):
-                _source = self.fengine_sources[source_ctr]
-                _eq_dict[_source.name] = {'eq': eq_polys[_source.name], 'bram_num': fengnum}
+                _source = _fengine_sources[source_ctr]
+                _eq_dict[_source.name] = {'eq': eq_polys[_source.name],
+                                          'bram_num': fengnum}
                 _delay_dict[_source.name] = {'offset': fengnum}
-                assert _source.ip_range == self.fengine_sources[0].ip_range, (
-                    'All f-engines should be receiving from %d streams.' % self.ports_per_fengine)
-                # adding a new instance attribute here, be careful
-                _source.host = fhost
+                assert _source.ip_range == _fengine_sources[0].ip_range, (
+                    'All f-engines should be receiving from %d streams.' %
+                    self.ports_per_fengine)
+                self.fengine_sources.append({'source': _source,
+                                             'source_num': source_ctr,
+                                             'host': fhost,
+                                             'numonhost': fengnum})
                 fhost.add_source(_source)
                 self.logger.info('\t\t%s' % _source)
                 source_ctr += 1
@@ -545,22 +578,36 @@ class FxCorrelator(Instrument):
         """
         self.logger.info('Stopping X transmission')
 
-        THREADED_FPGA_OP(self.xhosts, timeout=10,
-                         target_function=(
-                             lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+        THREADED_FPGA_OP(
+            self.xhosts, timeout=10, target_function=(
+                lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
         if stop_f:
             self.logger.info('Stopping F transmission')
-            THREADED_FPGA_OP(self.fhosts, timeout=10,
-                             target_function=(
-                                 lambda fpga_: fpga_.registers.control.write(comms_en=False),))
+            THREADED_FPGA_OP(
+                self.fhosts, timeout=10, target_function=(
+                    lambda fpga_:
+                    fpga_.registers.control.write(comms_en=False),))
+
+    def _spead_meta_get_labelling(self):
+        """
+        Get a list of the source labelling for SPEAD metadata
+        :return:
+        """
+        metalist = []
+        for fsrc in self.fengine_sources:
+            metalist.append((fsrc['source'].name, fsrc['source_num'],
+                             fsrc['host'].host, fsrc['numonhost']))
+        return metalist
 
     def spead_issue_meta(self):
         """
-        All FxCorrelators issued SPEAD in the same way, with tweakings that are implemented by the child class.
+        All FxCorrelators issued SPEAD in the same way, with tweakings that are
+        implemented by the child class.
         :return: <nothing>
         """
         if self.meta_destination is None:
-            logging.info('SPEAD meta destination is still unset, NOT sending metadata at this time.')
+            logging.info('SPEAD meta destination is still unset, NOT sending '
+                         'metadata at this time.')
             return
         # make a new SPEAD transmitter
         del self.spead_tx, self.spead_meta_ig
@@ -616,12 +663,10 @@ class FxCorrelator(Instrument):
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
-        metalist = []
-        for ctr, source in enumerate(self.fengine_sources):
-            metalist.append((source.name, ctr))
+        metalist = numpy.array(self._spead_meta_get_labelling())
         self.spead_meta_ig.add_item(name='input_labelling', id=0x100E,
                                     description='input labels and numbers',
-                                    init_val=numpy.array(metalist))
+                                    init_val=metalist)
 
         # spead_ig.add_item(name='n_bengs', id=0x100F,
         #                        description='',
