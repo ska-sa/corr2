@@ -277,8 +277,8 @@ class FxCorrelator(Instrument):
         time_diff_from_synch_epoch = time_seconds - self.synchronisation_epoch
         time_diff_in_samples = int(time_diff_from_synch_epoch *
                                    self.sample_rate_hz)
-        return time_diff_in_samples % \
-               (2**int(self.configd['FxCorrelator']['timestamp_bits']))
+        _tmp = 2**int(self.configd['FxCorrelator']['timestamp_bits'])
+        return time_diff_in_samples % _tmp
 
     def qdr_calibrate(self):
         """
@@ -314,10 +314,12 @@ class FxCorrelator(Instrument):
             raise RuntimeError('QDR calibration failure.')
         # for host in self.fhosts:
         #     for qdr in host.qdrs:
-        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
+        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111,
+        # -1)
         # for host in self.xhosts:
         #     for qdr in host.qdrs:
-        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111, -1)
+        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111,
+        # -1)
 
     def set_labels(self, newlist):
         """
@@ -326,29 +328,30 @@ class FxCorrelator(Instrument):
         :return:
         """
         if len(newlist) != len(self.fengine_sources):
-            self.logger.error('Number of supplied source labels does '
-                              'not match number of configured sources.')
-            raise ValueError('Number of supplied source labels does '
-                             'not match number of configured sources.')
-        metalist = []
+            errstr = 'Number of supplied source labels (%i) does not match ' \
+                     'number of configured sources (%i).' % \
+                     (len(newlist), len(self.fengine_sources))
+            self.logger.error(errstr)
+            raise ValueError(errstr)
         for ctr, source in enumerate(self.fengine_sources):
+            _source = source['source']
             # update the source name
-            old_name = source.name
-            source.name = newlist[ctr]
+            old_name = _source.name
+            _source.name = newlist[ctr]
             # update the eq associated with that name
             found_eq = False
             for fhost in self.fhosts:
                 if old_name in fhost.eqs.keys():
-                    fhost.eqs[source.name] = fhost.eqs.pop(old_name)
+                    fhost.eqs[_source.name] = fhost.eqs.pop(old_name)
                     found_eq = True
                     break
             if not found_eq:
-                raise ValueError(
-                    'Could not find the old EQ value, %s, to update to new '
-                    'name, %s.' % (old_name, source.name))
-            metalist.append((source.name, ctr))
+                raise ValueError('Could not find the old EQ value, %s, to '
+                                 'update to new name, %s.' % (old_name,
+                                                              _source.name))
         if self.spead_meta_ig is not None:
-            self.spead_meta_ig['input_labelling'] = numpy.array(metalist)
+            metalist = numpy.array(self._spead_meta_get_labelling())
+            self.spead_meta_ig['input_labelling'] = metalist
             self.spead_tx.send_heap(self.spead_meta_ig.get_heap())
 
     def get_labels(self):
@@ -357,22 +360,24 @@ class FxCorrelator(Instrument):
         :return:
         """
         source_names = ''
-        for source in self.fengine_sources:
-            source_names += source.name + ' '
+        for fsrc in self.fengine_sources:
+            source_names += fsrc['source'].name + ' '
         source_names = source_names.strip()
         return source_names
 
     def _read_config(self):
         """
         Read the instrument configuration from self.config_source.
-        :return: True if the instrument read a config successfully, raise an error if not?
+        :return: True if the instrument read a config successfully, raise
+        an error if not?
         """
         Instrument._read_config(self)
+        _d = self.configd
 
         # check that the bitstream names are present
         try:
-            open(self.configd['fengine']['bitstream'], 'r').close()
-            open(self.configd['xengine']['bitstream'], 'r').close()
+            open(_d['fengine']['bitstream'], 'r').close()
+            open(_d['xengine']['bitstream'], 'r').close()
         except IOError:
             self.logger.error('xengine bitstream: %s' %
                               self.configd['xengine']['bitstream'])
@@ -460,10 +465,9 @@ class FxCorrelator(Instrument):
         :return:
         """
         assert len(self.fhosts) > 0
-
-        _fcfg = self.configd['fengine']
-        source_names = _fcfg['source_names'].strip().split(',')
-        source_mcast = _fcfg['source_mcast_ips'].strip().split(',')
+        _feng_cfg = self.configd['fengine']
+        source_names = _feng_cfg['source_names'].strip().split(',')
+        source_mcast = _feng_cfg['source_mcast_ips'].strip().split(',')
         assert len(source_mcast) == len(source_names), (
             'Source names (%d) must be paired with multicast source '
             'addresses (%d)' % (len(source_names), len(source_mcast)))
@@ -472,40 +476,39 @@ class FxCorrelator(Instrument):
         eq_polys = {}
         for src_name in source_names:
             eq_polys[src_name] = utils.process_new_eq(
-                _fcfg['eq_poly_%s' % src_name])
+                _feng_cfg['eq_poly_%s' % src_name])
 
         # assemble the sources given into a list
-        self.fengine_sources = []
-        source_ctr = 0
-        for counter, address in enumerate(source_mcast):
+        _fengine_sources = []
+        for source_ctr, address in enumerate(source_mcast):
             new_source = DataSource.from_mcast_string(address)
-            new_source.name = source_names[counter]
-            # adding a new instance attribute here, be careful
-            new_source.source_number = source_ctr
+            new_source.name = source_names[source_ctr]
             assert new_source.ip_range == self.ports_per_fengine, (
                 'F-engines should be receiving from %d streams.' %
                 self.ports_per_fengine)
-            self.fengine_sources.append(new_source)
-            source_ctr += 1
+            _fengine_sources.append(new_source)
 
         # assign sources and eqs to fhosts
         self.logger.info('Assigning DataSources, EQs and DelayTrackers to '
                          'f-engines...')
         source_ctr = 0
+        self.fengine_sources = []
         for fhost in self.fhosts:
             self.logger.info('\t%s:' % fhost.host)
             _eq_dict = {}
             _delay_dict = {}
             for fengnum in range(0, self.f_per_fpga):
-                _source = self.fengine_sources[source_ctr]
+                _source = _fengine_sources[source_ctr]
                 _eq_dict[_source.name] = {'eq': eq_polys[_source.name],
                                           'bram_num': fengnum}
                 _delay_dict[_source.name] = {'offset': fengnum}
-                assert _source.ip_range == self.fengine_sources[0].ip_range, (
-                    'All f-engines should be receiving from %d '
-                    'streams.' % self.ports_per_fengine)
-                # adding a new instance attribute here, be careful
-                _source.host = fhost
+                assert _source.ip_range == _fengine_sources[0].ip_range, (
+                    'All f-engines should be receiving from %d streams.' %
+                    self.ports_per_fengine)
+                self.fengine_sources.append({'source': _source,
+                                             'source_num': source_ctr,
+                                             'host': fhost,
+                                             'numonhost': fengnum})
                 fhost.add_source(_source)
                 self.logger.info('\t\t%s' % _source)
                 source_ctr += 1
@@ -606,21 +609,30 @@ class FxCorrelator(Instrument):
         self.logger.info('Stopping X transmission')
 
         THREADED_FPGA_OP(
-            self.xhosts, timeout=10,
-            target_function=(
+            self.xhosts, timeout=10, target_function=(
                 lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
         if stop_f:
             self.logger.info('Stopping F transmission')
             THREADED_FPGA_OP(
-                self.fhosts, timeout=10,
-                target_function=(
-                    lambda fpga_: fpga_.registers.control.write(
-                        comms_en=False),))
+                self.fhosts, timeout=10, target_function=(
+                    lambda fpga_:
+                    fpga_.registers.control.write(comms_en=False),))
+
+    def _spead_meta_get_labelling(self):
+        """
+        Get a list of the source labelling for SPEAD metadata
+        :return:
+        """
+        metalist = []
+        for fsrc in self.fengine_sources:
+            metalist.append((fsrc['source'].name, fsrc['source_num'],
+                             fsrc['host'].host, fsrc['numonhost']))
+        return metalist
 
     def spead_issue_meta(self):
         """
-        All FxCorrelators issued SPEAD in the same way, with tweakings that
-        are implemented by the child class.
+        All FxCorrelators issued SPEAD in the same way, with tweakings that are
+        implemented by the child class.
         :return: <nothing>
         """
         if self.meta_destination is None:
@@ -688,9 +700,10 @@ class FxCorrelator(Instrument):
         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
         #                        init_val=)
 
-        metalist = []
-        for ctr, source in enumerate(self.fengine_sources):
-            metalist.append((source.name, ctr))
+        metalist = numpy.array(self._spead_meta_get_labelling())
+        self.spead_meta_ig.add_item(name='input_labelling', id=0x100E,
+                                    description='input labels and numbers',
+                                    init_val=metalist)
 
         self.spead_meta_ig.add_item(
             name='input_labelling', id=0x100E,
