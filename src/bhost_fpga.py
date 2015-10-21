@@ -24,7 +24,7 @@ class FpgaBHost(FpgaXHost):
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
-        boffile = config_source['xengine']['bitstream']
+        boffile = config_source['bitstream']
         return cls(hostname, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
