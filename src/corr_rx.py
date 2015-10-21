@@ -16,10 +16,8 @@ class CorrRx(threading.Thread):
     be discarded.
 
     """
-    def __init__(self, port=8888, queue_size=3, log_handler=None,
-                 log_level=logging.INFO, spead_log_level=logging.INFO):
+    def __init__(self, port=8888, queue_size=3):
         self.logger = LOGGER
-        spead.logging.getLogger().setLevel(spead_log_level)
         self.quit_event = threading.Event()
         self.data_queue = Queue.Queue(maxsize=queue_size)
         "Queue for received ItemGroups"
@@ -107,7 +105,7 @@ class CorrRx(threading.Thread):
         single item-group as a parameter.
         """
 
-    def get_clean_dump(self, dump_timeout=None):
+    def get_clean_dump(self, dump_timeout=None, discard=2):
         """Discard any queued dumps, discard one more, then return the next dump"""
         # discard any existing queued dumps -- they may be from another test
         try:
@@ -117,8 +115,8 @@ class CorrRx(threading.Thread):
             pass
 
         # discard next dump too, in case
-        LOGGER.info('Discarding first dump:')
-        self.data_queue.get(timeout=dump_timeout)
+        LOGGER.info('Discarding {discard} initial dump(s):'.format(discard=discard))
+        for i in range(discard):
+            self.data_queue.get(timeout=dump_timeout)
         LOGGER.info('Waiting for a clean dump:')
         return self.data_queue.get(timeout=dump_timeout)
-

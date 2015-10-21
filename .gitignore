@@ -22,3 +22,8 @@ Thumbs.db
 MANIFEST
 build
 dist
+
+#    PyCharm and other editor droppings     #
+#############################################
+.idea
+.ropeproject

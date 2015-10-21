@@ -93,6 +93,10 @@ master_list = []
 fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10, get_fpga_data)
 for cnt, fpga_ in enumerate(fpgas):
     gbedata = fpga_data[fpga_.host]['gbe']
+    for core in gbedata.keys():
+        if core.startswith('test'):
+            del(gbedata[core])
+
     gbe0 = gbedata.keys()[0]
     core0_regs = [key.replace(gbe0, 'gbe') for key in gbedata[gbe0].keys()]
     if cnt == 0:

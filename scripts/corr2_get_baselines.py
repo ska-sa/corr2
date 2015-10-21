@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description='Print out the list of baselines fo
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--config', dest='config', type=str, action='store', default='',
                     help='the config file to parse, $CORR2INI will be used if this is not specified')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
@@ -33,6 +33,8 @@ if configfile == '':
     raise RuntimeError('No good carrying on without a config file')
 
 c = corr2.fxcorrelator.FxCorrelator('script_corr', config_source=configfile)
+c.standard_log_config()
 c.initialise(program=False)
-for ctr, baseline in enumerate(c.xeng_get_baseline_order()):
+baselines = c.xops.get_baseline_order()
+for ctr, baseline in enumerate(baselines):
     print ctr, ':', baseline

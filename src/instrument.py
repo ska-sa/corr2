@@ -57,7 +57,8 @@ class Instrument(object):
             # file?
             self._read_config_file()
             return
-        except (IOError, ValueError):
+        except (IOError, ValueError) as excep:
+            LOGGER.error(excep.message)
             try:
                 # server?
                 self._read_config_server()
