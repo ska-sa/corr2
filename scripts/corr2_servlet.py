@@ -285,8 +285,8 @@ class Corr2Server(katcp.DeviceServer):
         eqstring = eqstring.replace(']', '').replace(',', '')
         return 'ok', eqstring
 
-    @request()
-    @return_reply()
+    @request(Float(), Str(default='', multiple=True))
+    @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):
         """
 
@@ -302,7 +302,6 @@ class Corr2Server(katcp.DeviceServer):
             return 'ok', actual
         except Exception as e:
             return 'fail', 'could not set delays - %s' % e.message
-        return 'ok',
 
     @request(Float(default=-1.0))
     @return_reply(Float())

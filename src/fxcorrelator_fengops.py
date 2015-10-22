@@ -123,7 +123,8 @@ class FEngineOperations(object):
         """
         if loadtime <= time.time():
             raise ValueError('Loadtime %.3f is in the past?' % loadtime)
-        dlist = delays.split(' ')
+        # This was causing an error
+        dlist = delays#.split(' ')
         ant_delay = []
         for delay in dlist:
             bits = delay.strip().split(':')
