@@ -3,11 +3,18 @@
 import logging
 import sys
 import argparse
-import Queue
-
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
+
 from corr2 import fxcorrelator
+
+USE_TORNADO = False
+if USE_TORNADO:
+    import tornado
+    import signal
+    from tornado import gen
+else:
+    import Queue
 
 
 class KatcpLogFormatter(logging.Formatter):
@@ -60,6 +67,9 @@ class Corr2Server(katcp.DeviceServer):
 
     def __init__(self, *args, **kwargs):
         super(Corr2Server, self).__init__(*args, **kwargs)
+        if USE_TORNADO:
+            self.set_concurrency_options(thread_safe=False,
+                                         handler_thread=False)
         self.instrument = None
 
     @request()
@@ -102,9 +112,9 @@ class Corr2Server(katcp.DeviceServer):
         """
         pass
 
-    @request(Bool(default=True))
+    @request(Bool(default=True), Bool(default=True))
     @return_reply()
-    def request_initialise(self, sock, program):
+    def request_initialise(self, sock, program, monitor_vacc):
         """
         Initialise self.instrument
         :param sock:
@@ -112,6 +122,8 @@ class Corr2Server(katcp.DeviceServer):
         """
         try:
             self.instrument.initialise(program=program)
+            if monitor_vacc:
+                self.instrument.xops.vacc_start_check_timer()
             return 'ok',
         except Exception as e:
             localexc = e
@@ -447,6 +459,13 @@ class Corr2Server(katcp.DeviceServer):
         print 'pong', astring, anint
         return 'ok',
 
+if USE_TORNADO:
+    @gen.coroutine
+    def on_shutdown(ioloop, server):
+        print('Shutting down')
+        yield server.stop()
+        ioloop.stop()
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -486,33 +505,45 @@ if __name__ == '__main__':
         root_logger.addHandler(console_handler)
         use_katcp_logging = False
 
-    print 'Server listening on port %d, ' % args.port,
-    queue = Queue.Queue()
-    server = Corr2Server('127.0.0.1', args.port)
-    if use_katcp_logging:
-        katcp_emit_handler = KatcpLogEmitHandler(server, stream=sys.stdout)
-        katcp_emit_handler.setLevel(log_level)
-        root_logger.addHandler(katcp_emit_handler)
-    server.set_restart_queue(queue)
-    server.start()
-    print 'started. Running somewhere in the ether... exit however you see fit.'
-
-    try:
-        while True:
-            try:
-                device = queue.get(timeout=0.5)
-            except Queue.Empty:
-                device = None
-            if device is not None:
-                print 'Stopping...'
-                device.stop()
-                device.join()
-                print 'Restarting...'
-                device.start()
-                print 'Started.'
-    except KeyboardInterrupt:
-        print 'Shutting down...'
-        server.stop()
-        server.join()
+    if USE_TORNADO:
+        ioloop = tornado.ioloop.IOLoop.current()
+        server = Corr2Server('127.0.0.1', args.port)
+        signal.signal(
+            signal.SIGINT,
+            lambda sig, frame: ioloop.add_callback_from_signal(
+                on_shutdown, ioloop, server))
+        print 'Server listening on port %d, ' % args.port
+        server.set_ioloop(ioloop)
+        ioloop.add_callback(server.start)
+        ioloop.start()
+    else:
+        print 'Server listening on port %d, ' % args.port,
+        queue = Queue.Queue()
+        server = Corr2Server('127.0.0.1', args.port)
+        if use_katcp_logging:
+            katcp_emit_handler = KatcpLogEmitHandler(server, stream=sys.stdout)
+            katcp_emit_handler.setLevel(log_level)
+            root_logger.addHandler(katcp_emit_handler)
+        server.set_restart_queue(queue)
+        server.start()
+        print 'started. Running somewhere in the ether... exit however ' \
+              'you see fit.'
+        try:
+            while True:
+                try:
+                    device = queue.get(timeout=0.5)
+                except Queue.Empty:
+                    device = None
+                if device is not None:
+                    print 'Stopping...'
+                    device.stop()
+                    device.join()
+                    print 'Restarting...'
+                    device.start()
+                    print 'Started.'
+        except KeyboardInterrupt:
+            print 'Shutting down...'
+            server.stop()
+            server.join()
 
 # end
