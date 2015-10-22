@@ -25,6 +25,7 @@ class XEngineOperations(object):
         # do config things
 
     def _vacc_periodic_check(self, old_data, check_time):
+
         self.logger.debug('Checking VACC operation at %.3f' % time.time())
         last_data = old_data
     
@@ -85,7 +86,8 @@ class XEngineOperations(object):
                 force_sync = True
             # check the reorder data
             if not force_sync:
-                if not _reorder_data_check(last_data['reorder'], new_data['reorder']):
+                if not _reorder_data_check(last_data['reorder'],
+                                           new_data['reorder']):
                     force_sync = True
             if force_sync:
                 self.logger.error('\tforcing VACC sync')
@@ -101,9 +103,10 @@ class XEngineOperations(object):
         :param vacc_check_time: the interval, in seconds, at which to check
         :return:
         """
+        if not IOLoop.current()._running:
+            raise RuntimeError('IOLoop not running, this will not work')
         self.logger.info('xeng_setup_vacc_check_timer: setting up the '
                          'vacc check timer at %i seconds' % vacc_check_time)
-    
         if vacc_check_time < self.get_acc_time():
             raise RuntimeError('A check time smaller than the accumulation'
                                'time makes no sense.')

@@ -151,7 +151,7 @@ class FEngineOperations(object):
             res = self.set_delay(labels[ctr],
                                  ant_delay[ctr][0][0], ant_delay[ctr][0][1],
                                  ant_delay[ctr][1][0], ant_delay[ctr][1][1],
-                                 loadtime, True)
+                                 loadtime, False)
             res_str = '%.3f,%.3f:%.3f,%.3f' % \
                       (res['act_delay'], res['act_delta_delay'],
                        res['act_phase_offset'], res['act_delta_phase_offset'])
@@ -183,14 +183,17 @@ class FEngineOperations(object):
 
         # convert from radians per second to fractions of sample per sample
         delta_phase_offset_s = float(delta_phase_offset)/float(numpy.pi) / (self.corr.sample_rate_hz)
-
-        ld_time_mcnt = None
+         
         if ld_time is not None:
+            # check that load time is not too soon or in the past
             if ld_time < (time.time() + self.corr.min_load_time):
                 self.logger.error('Time given is in the past or does not allow '
                                   'for enough time to set values')
                 raise RuntimeError('Time given is in the past or does not '
                                    'allow for enough time to set values')
+        
+        ld_time_mcnt = None
+        if ld_time is not None:
             ld_time_mcnt = self.corr.mcnt_from_time(ld_time)
 
         # calculate time to wait for load
