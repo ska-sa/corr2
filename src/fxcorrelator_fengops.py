@@ -150,7 +150,7 @@ class FEngineOperations(object):
             res = self.set_delay(labels[ctr],
                                  ant_delay[ctr][0][0], ant_delay[ctr][0][1],
                                  ant_delay[ctr][1][0], ant_delay[ctr][1][1],
-                                 loadtime, True)
+                                 loadtime, False)
             res_str = '%.3f,%.3f:%.3f,%.3f' % \
                       (res['act_delay'], res['act_delta_delay'],
                        res['act_phase_offset'], res['act_delta_phase_offset'])
