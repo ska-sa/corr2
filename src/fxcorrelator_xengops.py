@@ -25,6 +25,7 @@ class XEngineOperations(object):
         # do config things
 
     def _vacc_periodic_check(self, old_data, check_time):
+
         self.logger.debug('Checking VACC operation at %.3f' % time.time())
         last_data = old_data
     
@@ -85,7 +86,8 @@ class XEngineOperations(object):
                 force_sync = True
             # check the reorder data
             if not force_sync:
-                if not _reorder_data_check(last_data['reorder'], new_data['reorder']):
+                if not _reorder_data_check(last_data['reorder'],
+                                           new_data['reorder']):
                     force_sync = True
             if force_sync:
                 self.logger.error('\tforcing VACC sync')
@@ -101,9 +103,10 @@ class XEngineOperations(object):
         :param vacc_check_time: the interval, in seconds, at which to check
         :return:
         """
+        if not IOLoop.current()._running:
+            raise RuntimeError('IOLoop not running, this will not work')
         self.logger.info('xeng_setup_vacc_check_timer: setting up the '
                          'vacc check timer at %i seconds' % vacc_check_time)
-    
         if vacc_check_time < self.get_acc_time():
             raise RuntimeError('A check time smaller than the accumulation'
                                'time makes no sense.')
@@ -194,8 +197,8 @@ class XEngineOperations(object):
 
     def subscribe_to_multicast(self):
         """
-        Subscribe the x-engines to the f-engine output multicast groups - each one subscribes to
-        only one group, with data meant only for it.
+        Subscribe the x-engines to the f-engine output multicast groups -
+        each one subscribes to only one group, with data meant only for it.
         :return:
         """
         if self.corr.fengine_output.is_multicast():
@@ -203,7 +206,9 @@ class XEngineOperations(object):
             source_address = str(self.corr.fengine_output.ip_address)
             source_bits = source_address.split('.')
             source_base = int(source_bits[3])
-            source_prefix = '%s.%s.%s.' % (source_bits[0], source_bits[1], source_bits[2])
+            source_prefix = '%s.%s.%s.' % (source_bits[0],
+                                           source_bits[1],
+                                           source_bits[2])
             source_ctr = 0
             for host_ctr, host in enumerate(self.hosts):
                 for gbe in host.tengbes:
@@ -498,7 +503,7 @@ class XEngineOperations(object):
         baseline_order = order1 + order2
         source_names = []
         for source in self.corr.fengine_sources:
-            source_names.append(source.name)
+            source_names.append(source['source'].name)
         rv = []
         for baseline in baseline_order:
             rv.append((source_names[baseline[0] * 2],       source_names[baseline[1] * 2]))
