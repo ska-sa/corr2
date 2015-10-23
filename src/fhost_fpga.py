@@ -330,8 +330,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
         delta_delay_shifted = float(delta_delay) * _bshift_val
         
-        LOGGER.debug('%s:%s: setting delay for offset %d' %
-                     (self.host, source_name, offset))
+        LOGGER.debug('%s: setting delay for offset %d' %
+                     (self.host, offset))
 
         # delay registers
         coarse_delay_reg = self.registers['coarse_delay%i' % offset]
@@ -339,28 +339,28 @@ class FpgaFHost(DigitiserDataReceiver):
 
         # setup the delays:
         coarse_delay_reg.write(coarse_delay=coarse_delay)
-        LOGGER.info('%s:%s: set a coarse delay of %i samples.' %
-                    (self.host, source_name, coarse_delay))
+        LOGGER.info('%s: set a coarse delay of %i samples.' %
+                    (self.host, coarse_delay))
 
         try:
             fractional_delay_reg.write(initial=fractional_delay)
         except ValueError as e:
-            LOGGER.error('%s:%s: fractional delay range error - %s' %
-                         (self.host, source_name, e.message))
-            raise ValueError('%s:%s: fractional delay range error - %s' %
-                             (self.host, source_name, e.message))
+            LOGGER.error('%s: fractional delay range error - %s' %
+                         (self.host, e.message))
+            raise ValueError('%s: fractional delay range error - %s' %
+                             (self.host, e.message))
 
         try:
             fractional_delay_reg.write(delta=delta_delay_shifted)
         except ValueError as e:
-            LOGGER.error('%s:%s: delay change range error - %s' %
-                         (self.host, source_name, e.message))
-            raise ValueError('%s:%s: delay change range error - %s' %
-                             (self.host, source_name, e.message))
+            LOGGER.error('%s: delay change range error - %s' %
+                         (self.host, e.message))
+            raise ValueError('%s: delay change range error - %s' %
+                             (self.host, e.message))
 
-        LOGGER.info('%s:%s: wrote %f to initial and %f to delta in '
+        LOGGER.info('%s: wrote %f to initial and %f to delta in '
                     'fractional_delay register' %
-                    (self.host, source_name,
+                    (self.host, 
                      fractional_delay, delta_delay_shifted))
 
         ################
@@ -376,21 +376,21 @@ class FpgaFHost(DigitiserDataReceiver):
         try:
             phase_reg.write(initial=phase_offset)
         except ValueError as e:
-            LOGGER.error('%s:%s: phase offset range error - %s' %
-                         (self.host, source_name, e.message))
-            raise ValueError('%s:%s: phase offset range error - %s' %
-                             (self.host, source_name, e.message))
+            LOGGER.error('%s: phase offset range error - %s' %
+                         (self.host, e.message))
+            raise ValueError('%s: phase offset range error - %s' %
+                             (self.host, e.message))
         try:
             phase_reg.write(delta=delta_phase_offset_shifted)
         except ValueError as e:
-            LOGGER.error('%s:%s: phase offset change range error - %s' %
-                         (self.host, source_name, e.message))
-            raise ValueError('%s:%s: phase offset chagne range error - %s' %
-                             (self.host, source_name, e.message))
+            LOGGER.error('%s: phase offset change range error - %s' %
+                         (self.host, e.message))
+            raise ValueError('%s: phase offset chagne range error - %s' %
+                             (self.host, e.message))
 
-        LOGGER.info('%s:%s: wrote %f to initial and %f to delta in phase '
+        LOGGER.info('%s: wrote %f to initial and %f to delta in phase '
                     'register' %
-                    (self.host, source_name,
+                    (self.host, 
                      phase_offset, delta_phase_offset_shifted))
 
         cd_tl_name = 'tl_cd%i' % offset
@@ -418,55 +418,55 @@ class FpgaFHost(DigitiserDataReceiver):
         
         # was the system already armed?
         if cd_armed_before == True:
-            LOGGER.error('%s:%s: coarse delay timed latch was already armed. '
-                         'Previous load failed'% (self.host, source_name))
-            raise RuntimeError('%s:%s: coarse delay timed latch was already armed. '
-                               'Previous load failed' % (self.host, source_name))
+            LOGGER.error('%s: coarse delay timed latch was already armed. '
+                         'Previous load failed'% (self.host))
+            raise RuntimeError('%s: coarse delay timed latch was already armed. '
+                               'Previous load failed' % (self.host))
 
         if fd_armed_before == True:
-            LOGGER.error('%s:%s: phase correction timed latch was already armed. '
-                         'Previous load failed'% (self.host, source_name))
-            raise RuntimeError('%s:%s: phase correction timed latch was already armed. '
-                               ' Previous load failed' % (self.host, source_name))
+            LOGGER.error('%s: phase correction timed latch was already armed. '
+                         'Previous load failed'% (self.host))
+            raise RuntimeError('%s: phase correction timed latch was already armed. '
+                               ' Previous load failed' % (self.host))
 
         # did the system arm?
         if cd_arm_count_before == cd_arm_count_after:
-            LOGGER.error('%s:%s: coarse delay arm count did not change.'
-                         % (self.host, source_name))
-            LOGGER.error('%s:%s: BEFORE: coarse arm_count(%i) ld_count(%i)' %
-                        (self.host, source_name,
+            LOGGER.error('%s: coarse delay arm count did not change.'
+                         % (self.host))
+            LOGGER.error('%s: BEFORE: coarse arm_count(%i) ld_count(%i)' %
+                        (self.host, 
                         cd_arm_count_before, cd_ld_count_before))
-            LOGGER.error('%s:%s: AFTER:  coarse arm_count(%i) ld_count(%i)' %
-                        (self.host, source_name,
+            LOGGER.error('%s: AFTER:  coarse arm_count(%i) ld_count(%i)' %
+                        (self.host, 
                         cd_arm_count_after, cd_ld_count_after))
-            raise RuntimeError('%s:%s: coarse delay arm count did not change.'
-                               % (self.host, source_name))
+            raise RuntimeError('%s: coarse delay arm count did not change.'
+                               % (self.host))
 
         if fd_arm_count_before == fd_arm_count_after:
-            LOGGER.error('%s:%s: phase correction arm count did not '
-                         'change.' % (self.host, source_name))
-            LOGGER.error('%s:%s: BEFORE: phase correction arm_count(%i) ld_count(%i)'
-                        % (self.host, source_name,
+            LOGGER.error('%s: phase correction arm count did not '
+                         'change.' % (self.host))
+            LOGGER.error('%s: BEFORE: phase correction arm_count(%i) ld_count(%i)'
+                        % (self.host, 
                        fd_arm_count_before, fd_ld_count_before))
-            LOGGER.error('%s:%s: AFTER: phase correction arm_count(%i) ld_count(%i)'
-                        % (self.host, source_name,
+            LOGGER.error('%s: AFTER: phase correction arm_count(%i) ld_count(%i)'
+                        % (self.host, 
                        fd_arm_count_after, fd_ld_count_after))
-            raise RuntimeError('%s:%s: phase correction arm count did not '
-                               'change' % (self.host, source_name))
+            raise RuntimeError('%s: phase correction arm count did not '
+                               'change' % (self.host))
 
         # did the system load?
         if load_check == True:
             if cd_ld_count_before == cd_ld_count_after:
-                LOGGER.error('%s:%s: coarse delay load count did not change. '
-                             'Load failed.' % (self.host, source_name))
-                raise RuntimeError('%s:%s: coarse delay load count did not change. '
-                                   'Load failed.' % (self.host, source_name))
+                LOGGER.error('%s: coarse delay load count did not change. '
+                             'Load failed.' % (self.host))
+                raise RuntimeError('%s: coarse delay load count did not change. '
+                                   'Load failed.' % (self.host))
 
             if fd_ld_count_before == fd_ld_count_after:
-                LOGGER.error('%s:%s: phase correction load count did not '
-                             'change. Load failed.' % (self.host, source_name))
-                raise RuntimeError('%s:%s: phase correction load count did not '
-                                   'change. Load failed.' % (self.host, source_name))
+                LOGGER.error('%s: phase correction load count did not '
+                             'change. Load failed.' % (self.host))
+                raise RuntimeError('%s: phase correction load count did not '
+                                   'change. Load failed.' % (self.host))
 
         #read values back to see what actual values were loaded
 

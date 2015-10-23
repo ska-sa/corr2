@@ -207,8 +207,8 @@ class FEngineOperations(object):
         write_hosts = []
         for src in self.corr.fengine_sources:
             if source_name in src['source'].name:
-                offset = src.numonhost
-                write_hosts.append(src.host)
+                offset = src['numonhost']
+                write_hosts.append(src['host'])
         if len(write_hosts) == 0:
             raise ValueError('Unknown source name %s' % source_name)
         elif len(write_hosts) > 1:
