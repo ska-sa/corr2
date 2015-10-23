@@ -274,8 +274,7 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'provided input labels were not ' \
                                'correct: Unhandled exception'
         else:
-            return 'fail', 'provided input labels were not correct: ' \
-                               'No labels provided. Ignoring.'
+            return 'ok', self.instrument.get_labels()
 
     @request(Str(default=''), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
