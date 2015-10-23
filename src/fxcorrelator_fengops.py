@@ -205,9 +205,10 @@ class FEngineOperations(object):
 
         # determine fhost to write to
         write_hosts = []
-        for fhost in self.hosts:
-            if source_name in fhost.delays:
-                write_hosts.append(fhost)
+        for src in self.corr.fengine_sources:
+            if source_name in src['source'].name:
+                offset = src.numonhost
+                write_hosts.append(src.host)
         if len(write_hosts) == 0:
             raise ValueError('Unknown source name %s' % source_name)
         elif len(write_hosts) > 1:
@@ -217,7 +218,7 @@ class FEngineOperations(object):
         fhost = write_hosts[0]
         try:
             actual_values = fhost.write_delay(
-                source_name,
+                offset,
                 delay_s, delta_delay,
                 phase_offset_s, delta_phase_offset_s,
                 ld_time_mcnt, load_wait_delay, ld_check)
