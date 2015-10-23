@@ -10,7 +10,6 @@ import time
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
-
 class FEngineOperations(object):
 
     def __init__(self, corr_obj):
@@ -124,7 +123,8 @@ class FEngineOperations(object):
         """
         if loadtime <= time.time():
             raise ValueError('Loadtime %.3f is in the past?' % loadtime)
-        dlist = delays.split(' ')
+        # This was causing an error
+        dlist = delays#.split(' ')
         ant_delay = []
         for delay in dlist:
             bits = delay.strip().split(':')
@@ -151,7 +151,7 @@ class FEngineOperations(object):
             res = self.set_delay(labels[ctr],
                                  ant_delay[ctr][0][0], ant_delay[ctr][0][1],
                                  ant_delay[ctr][1][0], ant_delay[ctr][1][1],
-                                 loadtime, True)
+                                 loadtime, False)
             res_str = '%.3f,%.3f:%.3f,%.3f' % \
                       (res['act_delay'], res['act_delta_delay'],
                        res['act_phase_offset'], res['act_delta_phase_offset'])
@@ -175,17 +175,25 @@ class FEngineOperations(object):
         # convert delay in time into delay in samples
         delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
 
-        feng_clk = self.corr.sample_rate_hz / self.corr.adc_demux_factor
-        # convert from cycles per second to cycles per feng fpga clock
-        delta_phase_offset_s = float(delta_phase_offset) / feng_clk
+        #wrap large phase values
+        phase_offset_wrapped = phase_offset
 
-        ld_time_mcnt = None
+        #convert to fractions of a sample
+        phase_offset_s = float(phase_offset)/float(numpy.pi)
+
+        # convert from radians per second to fractions of sample per sample
+        delta_phase_offset_s = float(delta_phase_offset)/float(numpy.pi) / (self.corr.sample_rate_hz)
+         
         if ld_time is not None:
+            # check that load time is not too soon or in the past
             if ld_time < (time.time() + self.corr.min_load_time):
                 self.logger.error('Time given is in the past or does not allow '
                                   'for enough time to set values')
                 raise RuntimeError('Time given is in the past or does not '
                                    'allow for enough time to set values')
+        
+        ld_time_mcnt = None
+        if ld_time is not None:
             ld_time_mcnt = self.corr.mcnt_from_time(ld_time)
 
         # calculate time to wait for load
@@ -219,11 +227,11 @@ class FEngineOperations(object):
 
         self.logger.info(
             'Phase offset actually set to %6.3f radians.' %
-            (actual_values['act_phase_offset']*(2*numpy.pi)))
+            (actual_values['act_phase_offset']*(numpy.pi)))
         self.logger.info(
             'Phase offset change actually set to %e radians per second.' %
                 (actual_values['act_delta_phase_offset']*(
-                    2*numpy.pi)/self.corr.sample_rate_hz))
+                    numpy.pi)*self.corr.sample_rate_hz))
         self.logger.info(
             'Delay actually set to %e samples.' %
             actual_values['act_delay'])

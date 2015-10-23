@@ -32,7 +32,6 @@ import bhost_fpga
 
 from instrument import Instrument
 from data_source import DataSource
-
 from fxcorrelator_fengops import FEngineOperations
 from fxcorrelator_xengops import XEngineOperations
 # from fxcorrelator_bengops import BEngineOperations
@@ -71,8 +70,8 @@ class FxCorrelator(Instrument):
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []
-        self.bhosts = []
         self.filthosts = None
+        self.found_beamformer = False
 
         self.fops = None
         self.xops = None
@@ -151,12 +150,9 @@ class FxCorrelator(Instrument):
         # if we need to program the FPGAs, do so
         if program:
             self.logger.info('Programming FPGA hosts')
-            ftups = []
-            for f in self.xhosts:
-                ftups.append((f, f.boffile))
-            for f in self.fhosts:
-                ftups.append((f, f.boffile))
-            fpgautils.program_fpgas(ftups, progfile=None, timeout=15)
+            fpgautils.program_fpgas([(host, host.boffile) for host in
+                                     (self.fhosts + self.xhosts)],
+                                    progfile=None, timeout=15)
         else:
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=7,
@@ -176,6 +172,10 @@ class FxCorrelator(Instrument):
             # init the engines
             self.fops.initialise()
             self.xops.initialise()
+
+            # are there beamformers?
+            if self.found_beamformer:
+                bengops.beng_initialise(self)
 
             # for fpga_ in self.fhosts:
             #     fpga_.tap_arp_reload()
@@ -223,6 +223,14 @@ class FxCorrelator(Instrument):
 
         # set an initialised flag
         self._initialised = True
+
+
+    def initialised(self):
+        """
+        Has initialise successfully passed?
+        :return:
+        """
+        return self._initialised
 
     def est_sync_epoch(self):
         """
@@ -387,7 +395,6 @@ class FxCorrelator(Instrument):
             int(_d['xengine']['output_destination_port']))
         self.set_meta_destination(_d['xengine']['output_destination_ip'],
                                   int(_d['xengine']['output_destination_port']))
-
         # get this from the running x-engines?
         self.xeng_clk = int(_d['xengine']['x_fpga_clock'])
         self.xeng_outbits = int(_d['xengine']['xeng_outbits'])
@@ -396,14 +403,24 @@ class FxCorrelator(Instrument):
         # unit of operation
         self.ports_per_fengine = int(_d['fengine']['ports_per_fengine'])
 
-        # set up the hosts and engines based on the configuration in
-        # the ini file
+        # check if beamformer exists with x-engines
+        self.found_beamformer = False
+        if 'bengine' in self.configd.keys():
+            self.found_beamformer = True
+
+        # set up the hosts and engines based on the configuration in the ini file
         self.fhosts = []
         for host in _d['fengine']['hosts'].split(','):
             host = host.strip()
             fpgahost = fhost_fpga.FpgaFHost.from_config_source(
                 host, self.katcp_port, config_source=_d['fengine'])
             self.fhosts.append(fpgahost)
+
+        # choose class (b-engine inherits x-engine functionality)
+        if self.found_beamformer:
+            _targetClass = bhost_fpga.FpgaBHost
+        else:
+            _targetClass = xhost_fpga.FpgaXHost
         self.xhosts = []
         for host in _d['xengine']['hosts'].split(','):
             host = host.strip()
@@ -819,12 +836,6 @@ class FxCorrelator(Instrument):
                                                 'back to seconds since last sync.',
                                     shape=[], fmt=spead.mkfmt(('f', 64)),
                                     init_val=self.sample_rate_hz)
-
-        # spead_ig.add_item(name='b_per_fpga', id=0x1047,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
-
         self.spead_meta_ig.add_item(name='xeng_out_bits_per_sample', id=0x1048,
                                     description='The number of bits per value of the xeng '
                                                 'accumulator output. Note this is for a '
@@ -836,12 +847,6 @@ class FxCorrelator(Instrument):
                                     description='Number of F engines per FPGA host.',
                                     shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                                     init_val=self.f_per_fpga)
-
-        # spead_ig.add_item(name='beng_out_bits_per_sample', id=0x1050,
-        #                        description='',
-        #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-        #                        init_val=)
-
         # spead_ig.add_item(name='rf_gain_MyAntStr ', id=0x1200+inputN,
         #                        description='',
         #                        shape=[], fmt=spead.mkfmt(('f', 64)),
