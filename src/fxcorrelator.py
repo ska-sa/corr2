@@ -186,7 +186,7 @@ class FxCorrelator(Instrument):
             self.fops.subscribe_to_multicast()
             self.xops.subscribe_to_multicast()
 
-            post_mess_delay = 5
+            post_mess_delay = 10
             self.logger.info('post mess-with-the-switch delay of '
                              '%is' % post_mess_delay)
             time.sleep(post_mess_delay)
