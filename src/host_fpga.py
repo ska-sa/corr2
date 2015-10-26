@@ -127,6 +127,9 @@ class FpgaHost(Host, KatcpFpga):
         rxregs = self.get_tengbe_counters()
         start_time = time.time()
         still_the_same = self.tengbes.names()[:]
+        if 'test_gbe4' in still_the_same:
+            idx = still_the_same.index('test_gbe4')
+            still_the_same.pop(idx)
         while (time.time() < start_time + max_waittime) and \
                 (len(still_the_same) > 0):
             time.sleep(0.1)
