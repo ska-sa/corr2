@@ -290,7 +290,7 @@ class FpgaFHost(DigitiserDataReceiver):
         return len(ss)
 
     def write_delay(self, offset, delay=0, delta_delay=0, phase_offset=0,
-                    delta_phase_offset=0, load_mcnt=None, load_wait_delay=None, 
+                    delta_phase_offset=0, load_mcnt=None, load_wait_delay=None,
                     load_check=True):
         """
         Configures a given stream to a delay in samples and phase in degrees.
@@ -319,7 +319,7 @@ class FpgaFHost(DigitiserDataReceiver):
         # delay #
         #########
 
-        #TODO check register parameters to get delay range 
+        #TODO check register parameters to get delay range
 
         # delays in terms of ADC clock cycles:
         # delay in whole clock cycles
@@ -329,7 +329,7 @@ class FpgaFHost(DigitiserDataReceiver):
         # shift up by amount shifted down by on fpga
 
         delta_delay_shifted = float(delta_delay) * _bshift_val
-        
+
         LOGGER.debug('%s: setting delay for offset %d' %
                      (self.host, offset))
 
@@ -360,7 +360,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         LOGGER.info('%s: wrote %f to initial and %f to delta in '
                     'fractional_delay register' %
-                    (self.host, 
+                    (self.host,
                      fractional_delay, delta_delay_shifted))
 
         ################
@@ -390,7 +390,7 @@ class FpgaFHost(DigitiserDataReceiver):
 
         LOGGER.info('%s: wrote %f to initial and %f to delta in phase '
                     'register' %
-                    (self.host, 
+                    (self.host,
                      phase_offset, delta_phase_offset_shifted))
 
         cd_tl_name = 'tl_cd%i' % offset
@@ -415,7 +415,7 @@ class FpgaFHost(DigitiserDataReceiver):
         fd_armed_before = fd_status_before['armed']
         fd_arm_count_after = fd_status_after['arm_count']
         fd_ld_count_after = fd_status_after['load_count']
-        
+
         # was the system already armed?
         if cd_armed_before == True:
             LOGGER.error('%s: coarse delay timed latch was already armed. '
@@ -434,10 +434,10 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('%s: coarse delay arm count did not change.'
                          % (self.host))
             LOGGER.error('%s: BEFORE: coarse arm_count(%i) ld_count(%i)' %
-                        (self.host, 
+                        (self.host,
                         cd_arm_count_before, cd_ld_count_before))
             LOGGER.error('%s: AFTER:  coarse arm_count(%i) ld_count(%i)' %
-                        (self.host, 
+                        (self.host,
                         cd_arm_count_after, cd_ld_count_after))
             raise RuntimeError('%s: coarse delay arm count did not change.'
                                % (self.host))
@@ -446,10 +446,10 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('%s: phase correction arm count did not '
                          'change.' % (self.host))
             LOGGER.error('%s: BEFORE: phase correction arm_count(%i) ld_count(%i)'
-                        % (self.host, 
+                        % (self.host,
                        fd_arm_count_before, fd_ld_count_before))
             LOGGER.error('%s: AFTER: phase correction arm_count(%i) ld_count(%i)'
-                        % (self.host, 
+                        % (self.host,
                        fd_arm_count_after, fd_ld_count_after))
             raise RuntimeError('%s: phase correction arm count did not '
                                'change' % (self.host))
@@ -500,7 +500,7 @@ class FpgaFHost(DigitiserDataReceiver):
             load_time_msw = int(mcnt/(2**32))
             LOGGER.info('mcnt to load: %d samples => 0x%08x msw:0x%08x lsw:0x%08x' % (
             mcnt, mcnt, load_time_msw, load_time_lsw))
-    
+
         rearmed = False
         for name in names:
             control_reg = self.registers['%s_control' % name]
@@ -508,8 +508,8 @@ class FpgaFHost(DigitiserDataReceiver):
             status_reg = self.registers['%s_status' % name]
 
             status_before[name] = status_reg.read()['data']
-           
-            #we are arming a timed latch that is already armed !! 
+
+            #we are arming a timed latch that is already armed !!
             if status_before[name]['armed'] == True:
                 LOGGER.error('Arming the already armed timed latch %s'%name)
                 time_lsw = control_reg.read()['data']['load_time_lsw']
@@ -535,8 +535,6 @@ class FpgaFHost(DigitiserDataReceiver):
         for name in names:
             status_reg = self.registers['%s_status' % name]
             status_after[name] = status_reg.read()['data']
-
-        mcnt_after = self.get_local_time()
 
         return {
             'status_before': status_before,

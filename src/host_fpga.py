@@ -89,16 +89,15 @@ class FpgaHost(Host, KatcpFpga):
         :return:
         """
         if not self.check_rx_raw(max_waittime=max_waittime):
-            LOGGER.error('{}: raw RX also failed.'.format(self.host))
+            LOGGER.error('{}: Raw RX failed.'.format(self.host))
             return False
         else:
-            LOGGER.info('{}: raw RX passed '.format(self.host))
+            LOGGER.info('{}: Raw RX passed '.format(self.host))
 
         if not self.check_rx_spead(max_waittime=max_waittime):
-            LOGGER.error('{}: SPEAD RX check failed.'.format(self.host))
+            LOGGER.error('{}: SPEAD RX check failed. Ignoring for now'.format(self.host))
         else:
-            LOGGER.info('{}: SPEAD RX passed - checking reorder '
-                        'stage.'.format(self.host))
+            LOGGER.info('{}: SPEAD RX passed.'.format(self.host))
 
         if not self.check_rx_reorder():
             LOGGER.error('{}: reorder RX check failed.'.format(self.host))
