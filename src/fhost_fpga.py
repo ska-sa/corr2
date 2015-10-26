@@ -137,14 +137,10 @@ class FpgaFHost(DigitiserDataReceiver):
         # dictionary, indexed on source name, containing tuples
         # of poly and bram name
         self.eqs = {}
-        # dictionary, indexed on source name, containing offset
-        # to access delay tracking registers
-        self.delays = {}
 
         self._config = config
         self.data_sources = []  # a list of DataSources received by this f-engine host
         self.eqs = {}  # a dictionary, indexed on source name, containing tuples of poly and bram name
-        self.delays = {}  # dictionary, indexed on source name, containing offset to access delay tracking registers
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
             self.ports_per_fengine = int(config['ports_per_fengine'])
@@ -159,6 +155,11 @@ class FpgaFHost(DigitiserDataReceiver):
             self.n_chans = None
             self.min_load_time = None
             self.network_latency_adjust = None
+
+        self.delays = []  # list of dictionaries containing delay settings
+        for offset in range(self.num_fengines):
+            self.delays[offset] = {'delay': 0, 'delta_delay': 0, 'phase_offset': 0, 
+                                        'delta_phase_offset': 0}
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -289,6 +290,25 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
+    def write_delays_all(self, load_mcnt=None, load_wait_delay=None, 
+                            load_check=True):
+        """
+        Goes through all offsets and writes delays with stored delay settings
+        """
+
+    def set_delay(self, offset, delay=0, delta_delay=0, phase_offset=0,
+                    delta_phase_offset=0):
+        """
+        Update delay settings for data stream at offset specified ready for writing
+
+        :param delay is in samples
+        :param delta delay is in samples per sample
+        :param phase offset is in fractions of a sample
+        :param delta phase offset is in samples per sample
+        :return 
+        """
+
+
     def write_delay(self, offset, delay=0, delta_delay=0, phase_offset=0,
                     delta_phase_offset=0, load_mcnt=None, load_wait_delay=None,
                     load_check=True):
@@ -302,6 +322,7 @@ class FpgaFHost(DigitiserDataReceiver):
         By default, it will load immediately and verify that things worked
         as expected.
 
+        :offset is polarisation's offset within FPGA
         :param delay is in samples
         :param delta delay is in samples per sample
         :param phase offset is in fractions of a sample
@@ -309,6 +330,7 @@ class FpgaFHost(DigitiserDataReceiver):
         :param load_mcnt is in samples since epoch
         :param load_wait_delay is seconds to wait for delay values to load
         :param load_check whether to check if load happened
+        :return actual values to be loaded
         """
 
         # TODO should this be in config file?
