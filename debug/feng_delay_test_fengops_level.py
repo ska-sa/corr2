@@ -8,18 +8,20 @@ Created on Tuesday Oct  6 2015
 
 @author: andrew
 """
-import corr2, os, time, numpy
+import corr2, os, time, numpy, logging
 import matplotlib.pyplot as plt
 
-ant_name = 'ant0_y'
+logging.basicConfig(level=logging.INFO)
+
+ant_name = 'ant1_y'
 sample_rate = 1712*(10**6)
 shift_bits = 23
-sleep_time = 2
+sleep_time = 0
 ld_time = 0.2
 offset = 1
 
 #delay
-delay_val_seconds = float(2) / float(sample_rate)
+delay_val_seconds = float(1) / float(sample_rate)
 #delay_val_seconds = 0
 
 #delta delay
@@ -37,7 +39,7 @@ delta_phase_val_radians_per_second = 0
 c = corr2.fxcorrelator.FxCorrelator('rts wbc', config_source=os.environ['CORR2INI'])
 c.initialise(qdr_cal=False,program=False)
 c.est_sync_epoch()
-f = c.fhosts[0]
+f = c.fhosts[1]
 
 # set up tvg
 f.registers.impulse1.write(amplitude=0.5, offset=offset)
@@ -47,13 +49,15 @@ f.registers.control.write(tvg_adc=1)
 x_0 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
 
 # set delay
-c.fops.set_delay(ant_name, delay=delay_val_seconds, delta_delay=delta_delay_val_seconds_per_second, phase_offset=phase_val_radians, delta_phase_offset=delta_phase_val_radians_per_second, ld_time=time.time()+0.2, ld_check=False)
+#ld_time=time.time()+ld_time
+ld_time=None
+c.fops.set_delay(ant_name, delay=delay_val_seconds, delta_delay=delta_delay_val_seconds_per_second, phase_offset=phase_val_radians, delta_phase_offset=delta_phase_val_radians_per_second, ld_time=ld_time, ld_check=False)
 
 # capture data just after setting up delaysa
 x_1 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
 
 # sleep 
-time.sleep(sleep_time+ld_time)
+#time.sleep(sleep_time+ld_time)
 
 # capture data after
 x_2 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
