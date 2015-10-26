@@ -426,24 +426,23 @@ class FpgaFHost(DigitiserDataReceiver):
 
         # did the system arm correctly
         if cd_arm_count_before == cd_arm_count_after:
-            LOGGER.error('%s: coarse delay arm count did not change.'
-                         % (self.host))
-            LOGGER.error('%s: BEFORE: coarse arm_count(%i) ld_count(%i)' %
-                        (self.host,
-                        cd_arm_count_before, cd_ld_count_before))
-            LOGGER.error('%s: AFTER:  coarse arm_count(%i) ld_count(%i)' %
-                        (self.host,
-                        cd_arm_count_after, cd_ld_count_after))
+            # don't report error if it was already armed as count won't increase
+            if cd_armed_before == False:
+                LOGGER.error('%s: coarse delay arm count did not change.'
+                    % (self.host))
+                LOGGER.error('%s: BEFORE: coarse arm_count(%i) ld_count(%i)'
+                    % (self.host, cd_arm_count_before, cd_ld_count_before))
+                LOGGER.error('%s: AFTER:  coarse arm_count(%i) ld_count(%i)'
+                    % (self.host, cd_arm_count_after, cd_ld_count_after))
 
         if fd_arm_count_before == fd_arm_count_after:
-            LOGGER.error('%s: phase correction arm count did not '
-                         'change.' % (self.host))
-            LOGGER.error('%s: BEFORE: phase correction arm_count(%i) ld_count(%i)'
-                        % (self.host,
-                       fd_arm_count_before, fd_ld_count_before))
-            LOGGER.error('%s: AFTER: phase correction arm_count(%i) ld_count(%i)'
-                        % (self.host,
-                       fd_arm_count_after, fd_ld_count_after))
+            if fd_armed_before == False:
+                LOGGER.error('%s: phase correction arm count did not '
+                            'change.' % (self.host))
+                LOGGER.error('%s: BEFORE: phase correction arm_count(%i) ld_count(%i)'
+                            % (self.host, fd_arm_count_before, fd_ld_count_before))
+                LOGGER.error('%s: AFTER: phase correction arm_count(%i) ld_count(%i)'
+                            % (self.host, fd_arm_count_after, fd_ld_count_after))
 
         # did the system load?
         if load_check == True:
