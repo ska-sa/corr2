@@ -307,6 +307,9 @@ class FpgaFHost(DigitiserDataReceiver):
         :param delta phase offset is in samples per sample
         :return 
         """
+        delays[offset] = {'delay': delay, 'delta_delay': delta_delay, 
+                            'phase_offset': phase_offset, 
+                            'delta_phase_offset': delta_phase_offset}
 
 
     def write_delay(self, offset, delay=0, delta_delay=0, phase_offset=0,
