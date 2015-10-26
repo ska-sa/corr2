@@ -333,35 +333,38 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: setting delay for offset %d' %
                      (self.host, offset))
 
+
         # delay registers
         coarse_delay_reg = self.registers['coarse_delay%i' % offset]
         fractional_delay_reg = self.registers['fractional_delay%i' % offset]
 
-        # setup the delays:
-        coarse_delay_reg.write(coarse_delay=coarse_delay)
-        LOGGER.info('%s: set a coarse delay of %i samples.' %
+        LOGGER.info('%s: setting a coarse delay of %i samples.' %
                     (self.host, coarse_delay))
+
+        # setup the delays
+        try:
+            coarse_delay_reg.write(coarse_delay=coarse_delay)
+        except ValueError as e:
+            LOGGER.error('%s: coarse delay range error - %s' %
+                         (self.host, e.message))
+
+        LOGGER.info('%s: writing %f to initial and %f to delta in '
+                    'fractional_delay register' %
+                    (self.host,
+                     fractional_delay, delta_delay_shifted))
 
         try:
             fractional_delay_reg.write(initial=fractional_delay)
         except ValueError as e:
             LOGGER.error('%s: fractional delay range error - %s' %
                          (self.host, e.message))
-            raise ValueError('%s: fractional delay range error - %s' %
-                             (self.host, e.message))
 
         try:
             fractional_delay_reg.write(delta=delta_delay_shifted)
         except ValueError as e:
             LOGGER.error('%s: delay change range error - %s' %
                          (self.host, e.message))
-            raise ValueError('%s: delay change range error - %s' %
-                             (self.host, e.message))
 
-        LOGGER.info('%s: wrote %f to initial and %f to delta in '
-                    'fractional_delay register' %
-                    (self.host,
-                     fractional_delay, delta_delay_shifted))
 
         ################
         # phase offset #
@@ -372,26 +375,22 @@ class FpgaFHost(DigitiserDataReceiver):
         # multiply by amount shifted down by on FPGA
         delta_phase_offset_shifted = float(delta_phase_offset) * _bshift_val
 
+        LOGGER.info('%s: writing %f to initial and %f to delta in phase '
+                    'register' %
+                    (self.host,
+                     phase_offset, delta_phase_offset_shifted))
+
         # setup the phase offset
         try:
             phase_reg.write(initial=phase_offset)
         except ValueError as e:
             LOGGER.error('%s: phase offset range error - %s' %
                          (self.host, e.message))
-            raise ValueError('%s: phase offset range error - %s' %
-                             (self.host, e.message))
         try:
             phase_reg.write(delta=delta_phase_offset_shifted)
         except ValueError as e:
             LOGGER.error('%s: phase offset change range error - %s' %
                          (self.host, e.message))
-            raise ValueError('%s: phase offset chagne range error - %s' %
-                             (self.host, e.message))
-
-        LOGGER.info('%s: wrote %f to initial and %f to delta in phase '
-                    'register' %
-                    (self.host,
-                     phase_offset, delta_phase_offset_shifted))
 
         cd_tl_name = 'tl_cd%i' % offset
         fd_tl_name = 'tl_fd%i' % offset
@@ -420,16 +419,12 @@ class FpgaFHost(DigitiserDataReceiver):
         if cd_armed_before == True:
             LOGGER.error('%s: coarse delay timed latch was already armed. '
                          'Previous load failed'% (self.host))
-            raise RuntimeError('%s: coarse delay timed latch was already armed. '
-                               'Previous load failed' % (self.host))
 
         if fd_armed_before == True:
             LOGGER.error('%s: phase correction timed latch was already armed. '
                          'Previous load failed'% (self.host))
-            raise RuntimeError('%s: phase correction timed latch was already armed. '
-                               ' Previous load failed' % (self.host))
 
-        # did the system arm?
+        # did the system arm correctly
         if cd_arm_count_before == cd_arm_count_after:
             LOGGER.error('%s: coarse delay arm count did not change.'
                          % (self.host))
@@ -439,8 +434,6 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('%s: AFTER:  coarse arm_count(%i) ld_count(%i)' %
                         (self.host,
                         cd_arm_count_after, cd_ld_count_after))
-            raise RuntimeError('%s: coarse delay arm count did not change.'
-                               % (self.host))
 
         if fd_arm_count_before == fd_arm_count_after:
             LOGGER.error('%s: phase correction arm count did not '
@@ -451,22 +444,16 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('%s: AFTER: phase correction arm_count(%i) ld_count(%i)'
                         % (self.host,
                        fd_arm_count_after, fd_ld_count_after))
-            raise RuntimeError('%s: phase correction arm count did not '
-                               'change' % (self.host))
 
         # did the system load?
         if load_check == True:
             if cd_ld_count_before == cd_ld_count_after:
                 LOGGER.error('%s: coarse delay load count did not change. '
                              'Load failed.' % (self.host))
-                raise RuntimeError('%s: coarse delay load count did not change. '
-                                   'Load failed.' % (self.host))
 
             if fd_ld_count_before == fd_ld_count_after:
                 LOGGER.error('%s: phase correction load count did not '
                              'change. Load failed.' % (self.host))
-                raise RuntimeError('%s: phase correction load count did not '
-                                   'change. Load failed.' % (self.host))
 
         #read values back to see what actual values were loaded
 
@@ -498,10 +485,7 @@ class FpgaFHost(DigitiserDataReceiver):
         if mcnt is not None:
             load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
             load_time_msw = int(mcnt/(2**32))
-            LOGGER.info('mcnt to load: %d samples => 0x%08x msw:0x%08x lsw:0x%08x' % (
-            mcnt, mcnt, load_time_msw, load_time_lsw))
 
-        rearmed = False
         for name in names:
             control_reg = self.registers['%s_control' % name]
             control0_reg = self.registers['%s_control0' % name]
@@ -509,25 +493,12 @@ class FpgaFHost(DigitiserDataReceiver):
 
             status_before[name] = status_reg.read()['data']
 
-            #we are arming a timed latch that is already armed !!
-            if status_before[name]['armed'] == True:
-                LOGGER.error('Arming the already armed timed latch %s'%name)
-                time_lsw = control_reg.read()['data']['load_time_lsw']
-                time_msw = control0_reg.read()['data']['load_time_msw']
-                rearmed = True
-
             if mcnt is None:
                 control0_reg.write(arm='pulse', load_immediate='pulse')
             else:
                 control_reg.write(load_time_lsw=load_time_lsw)
                 control0_reg.write(arm='pulse', load_time_msw=load_time_msw,
                                    load_immediate=0)
-
-            if status_before[name]['armed'] == True:
-                LOGGER.error('It was armed to load at %d samples'%(time_lsw+time_msw*(2**32)))
-
-        if rearmed == True:
-            LOGGER.error('Current time %d samples'%self.get_local_time())
 
         if check_time_delay is not None:
             time.sleep(check_time_delay)
