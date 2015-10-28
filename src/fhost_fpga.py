@@ -158,8 +158,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
         self.delays = []  # list of dictionaries containing delay settings
         for offset in range(self.num_fengines):
-            self.delays[offset] = {'delay': 0, 'delta_delay': 0, 'phase_offset': 0, 
-                                        'delta_phase_offset': 0}
+            self.delays.append({'delay': 0, 'delta_delay': 0, 'phase_offset': 0, 
+                                        'delta_phase_offset': 0})
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -295,6 +295,16 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Goes through all offsets and writes delays with stored delay settings
         """
+        act_vals = []
+        for offset in range(len(self.delays)):
+            coeffs = self.delays[offset]
+            act_val = self.write_delay(offset, coeffs['delay'], coeffs['delta_delay'],
+                            coeffs['phase_offset'], coeffs['delta_phase_offset'],
+                            load_mcnt, load_wait_delay, load_check)
+               
+            act_vals.append(act_val)
+
+        return act_vals
 
     def set_delay(self, offset, delay=0, delta_delay=0, phase_offset=0,
                     delta_phase_offset=0):
@@ -307,10 +317,9 @@ class FpgaFHost(DigitiserDataReceiver):
         :param delta phase offset is in samples per sample
         :return 
         """
-        delays[offset] = {'delay': delay, 'delta_delay': delta_delay, 
+        self.delays[offset] = {'delay': delay, 'delta_delay': delta_delay, 
                             'phase_offset': phase_offset, 
                             'delta_phase_offset': delta_phase_offset}
-
 
     def write_delay(self, offset, delay=0, delta_delay=0, phase_offset=0,
                     delta_phase_offset=0, load_mcnt=None, load_wait_delay=None,
