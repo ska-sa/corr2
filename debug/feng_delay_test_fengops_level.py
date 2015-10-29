@@ -16,8 +16,8 @@ logging.basicConfig(level=logging.INFO)
 ant_name = 'ant1_y'
 sample_rate = 1712*(10**6)
 shift_bits = 23
-sleep_time = 0
-ld_time = 0.2
+sleep_time = 0.5
+ld_offset = 0.5
 offset = 1
 
 #delay
@@ -39,7 +39,7 @@ delta_phase_val_radians_per_second = 0
 c = corr2.fxcorrelator.FxCorrelator('rts wbc', config_source=os.environ['CORR2INI'])
 c.initialise(qdr_cal=False,program=False)
 c.est_sync_epoch()
-f = c.fhosts[1]
+f = c.fhosts[0]
 
 # set up tvg
 f.registers.impulse1.write(amplitude=0.5, offset=offset)
@@ -49,15 +49,41 @@ f.registers.control.write(tvg_adc=1)
 x_0 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
 
 # set delay
-#ld_time=time.time()+ld_time
-ld_time=None
-c.fops.set_delay(ant_name, delay=delay_val_seconds, delta_delay=delta_delay_val_seconds_per_second, phase_offset=phase_val_radians, delta_phase_offset=delta_phase_val_radians_per_second, ld_time=ld_time, ld_check=False)
+
+# defaults of 0
+coeffs=[]
+for cnt in range(len(c.fengine_sources)):
+    delay_coeffs = [0,0]
+    phase_coeffs = [0,0]
+    coeffs.append([delay_coeffs, phase_coeffs])
+
+coeffs[1] = [[delay_val_seconds, delta_delay_val_seconds_per_second],
+                [phase_val_radians, delta_phase_val_radians_per_second]]
+
+return_vals = c.fops.set_delays_all(time.time()+ld_offset, coeffs)
+
+actual_val = return_vals[1]
+print('actual delay = %es'%actual_val['act_delay'])
+print('actual delta delay = %fs/s'%actual_val['act_delta_delay'])
+print('actual phase offset = %f radians'%actual_val['act_phase_offset'])
+print('actual delta phase offset = %f radians/s'%actual_val['act_delta_phase_offset'])
+
+#ld_time=time.time()+ld_offset
+#c.fops.set_delay(ant_name, delay=delay_val_seconds, delta_delay=delta_delay_val_seconds_per_second, 
+#                phase_offset=phase_val_radians, delta_phase_offset=delta_phase_val_radians_per_second, 
+#                ld_time=ld_time, ld_check=False)
+
+# set delay
+#ld_time=time.time()+ld_offset
+#c.fops.set_delay(ant_name, delay=delay_val_seconds, delta_delay=delta_delay_val_seconds_per_second, 
+#                phase_offset=phase_val_radians, delta_phase_offset=delta_phase_val_radians_per_second, 
+#                ld_time=ld_time, ld_check=False)
 
 # capture data just after setting up delaysa
 x_1 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
 
 # sleep 
-#time.sleep(sleep_time+ld_time)
+time.sleep(sleep_time+ld_offset)
 
 # capture data after
 x_2 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
