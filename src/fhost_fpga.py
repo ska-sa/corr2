@@ -156,10 +156,12 @@ class FpgaFHost(DigitiserDataReceiver):
             self.min_load_time = None
             self.network_latency_adjust = None
 
-        self.delays = []  # list of dictionaries containing delay settings
+        self.delays = []  # list of dictionaries containing delay settings for each stream
+
         for offset in range(self.num_fengines):
-            self.delays.append({'delay': 0, 'delta_delay': 0, 'phase_offset': 0, 
-                                        'delta_phase_offset': 0})
+            self.delays.append({'delay': 0, 'delta_delay': 0, 
+                                'phase_offset': 0, 'delta_phase_offset': 0, 
+                                'load_time': None, 'load_wait': None, 'load_check': True})
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -290,8 +292,7 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
-    def write_delays_all(self, load_mcnt=None, load_wait_delay=None, 
-                            load_check=True):
+    def write_delays_all(self):
         """
         Goes through all offsets and writes delays with stored delay settings
         """
@@ -300,14 +301,15 @@ class FpgaFHost(DigitiserDataReceiver):
             coeffs = self.delays[offset]
             act_val = self.write_delay(offset, coeffs['delay'], coeffs['delta_delay'],
                             coeffs['phase_offset'], coeffs['delta_phase_offset'],
-                            load_mcnt, load_wait_delay, load_check)
+                            coeffs['load_time'], coeffs['load_wait'], coeffs['load_check'])
                
             act_vals.append(act_val)
 
         return act_vals
 
-    def set_delay(self, offset, delay=0, delta_delay=0, phase_offset=0,
-                    delta_phase_offset=0):
+    def set_delay(self, offset, delay=0, delta_delay=0, 
+                    phase_offset=0, delta_phase_offset=0, 
+                    load_time=None, load_wait=None, load_check=True):
         """
         Update delay settings for data stream at offset specified ready for writing
 
@@ -319,11 +321,13 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         self.delays[offset] = {'delay': delay, 'delta_delay': delta_delay, 
                             'phase_offset': phase_offset, 
-                            'delta_phase_offset': delta_phase_offset}
+                            'delta_phase_offset': delta_phase_offset,
+                            'load_time': load_time, 'load_wait': load_wait,
+                            'load_check': load_check}
 
-    def write_delay(self, offset, delay=0, delta_delay=0, phase_offset=0,
-                    delta_phase_offset=0, load_mcnt=None, load_wait_delay=None,
-                    load_check=True):
+    def write_delay(self, offset, delay=0, delta_delay=0, 
+                    phase_offset=0, delta_phase_offset=0, 
+                    load_mcnt=None, load_wait_delay=None, load_check=True):
         """
         Configures a given stream to a delay in samples and phase in degrees.
 
@@ -364,40 +368,36 @@ class FpgaFHost(DigitiserDataReceiver):
 
         delta_delay_shifted = float(delta_delay) * _bshift_val
 
-        LOGGER.debug('%s: setting delay for offset %d' %
-                     (self.host, offset))
-
-
         # delay registers
         coarse_delay_reg = self.registers['coarse_delay%i' % offset]
         fractional_delay_reg = self.registers['fractional_delay%i' % offset]
 
-        LOGGER.info('%s: setting a coarse delay of %i samples.' %
-                    (self.host, coarse_delay))
+        LOGGER.info('%s:%d setting a coarse delay of %i samples.' %
+                    (self.host, offset, coarse_delay))
 
         # setup the delays
         try:
             coarse_delay_reg.write(coarse_delay=coarse_delay)
         except ValueError as e:
-            LOGGER.error('%s: coarse delay range error - %s' %
-                         (self.host, e.message))
+            LOGGER.error('%s:%d coarse delay range error - %s' %
+                         (self.host, offset, e.message))
 
-        LOGGER.info('%s: writing %f to initial and %f to delta in '
+        LOGGER.info('%s:%d writing %f to initial and %f to delta in '
                     'fractional_delay register' %
-                    (self.host,
+                    (self.host, offset, 
                      fractional_delay, delta_delay_shifted))
 
         try:
             fractional_delay_reg.write(initial=fractional_delay)
         except ValueError as e:
-            LOGGER.error('%s: fractional delay range error - %s' %
-                         (self.host, e.message))
+            LOGGER.error('%s:%d fractional delay range error - %s' %
+                         (self.host, offset, e.message))
 
         try:
             fractional_delay_reg.write(delta=delta_delay_shifted)
         except ValueError as e:
-            LOGGER.error('%s: delay change range error - %s' %
-                         (self.host, e.message))
+            LOGGER.error('%s:%d delay change range error - %s' %
+                         (self.host, offset, e.message))
 
 
         ################
@@ -409,9 +409,9 @@ class FpgaFHost(DigitiserDataReceiver):
         # multiply by amount shifted down by on FPGA
         delta_phase_offset_shifted = float(delta_phase_offset) * _bshift_val
 
-        LOGGER.info('%s: writing %f to initial and %f to delta in phase '
+        LOGGER.info('%s:%d writing %f to initial and %f to delta in phase '
                     'register' %
-                    (self.host,
+                    (self.host, offset,
                      phase_offset, delta_phase_offset_shifted))
 
         # setup the phase offset
@@ -451,42 +451,42 @@ class FpgaFHost(DigitiserDataReceiver):
 
         # was the system already armed?
         if cd_armed_before == True:
-            LOGGER.error('%s: coarse delay timed latch was already armed. '
-                         'Previous load failed'% (self.host))
+            LOGGER.error('%s:%d coarse delay timed latch was already armed. '
+                         'Previous load failed'% (self.host, offset))
 
         if fd_armed_before == True:
-            LOGGER.error('%s: phase correction timed latch was already armed. '
-                         'Previous load failed'% (self.host))
+            LOGGER.error('%s:%d phase correction timed latch was already armed. '
+                         'Previous load failed'% (self.host, offset))
 
         # did the system arm correctly
         if cd_arm_count_before == cd_arm_count_after:
             # don't report error if it was already armed as count won't increase
             if cd_armed_before == False:
-                LOGGER.error('%s: coarse delay arm count did not change.'
-                    % (self.host))
-                LOGGER.error('%s: BEFORE: coarse arm_count(%i) ld_count(%i)'
-                    % (self.host, cd_arm_count_before, cd_ld_count_before))
-                LOGGER.error('%s: AFTER:  coarse arm_count(%i) ld_count(%i)'
-                    % (self.host, cd_arm_count_after, cd_ld_count_after))
+                LOGGER.error('%s:%d coarse delay arm count did not change.'
+                    % (self.host, offset))
+                LOGGER.error('%s:%d BEFORE: coarse arm_count(%i) ld_count(%i)'
+                    % (self.host, offset, cd_arm_count_before, cd_ld_count_before))
+                LOGGER.error('%s:%d AFTER:  coarse arm_count(%i) ld_count(%i)'
+                    % (self.host, offset, cd_arm_count_after, cd_ld_count_after))
 
         if fd_arm_count_before == fd_arm_count_after:
             if fd_armed_before == False:
-                LOGGER.error('%s: phase correction arm count did not '
-                            'change.' % (self.host))
-                LOGGER.error('%s: BEFORE: phase correction arm_count(%i) ld_count(%i)'
-                            % (self.host, fd_arm_count_before, fd_ld_count_before))
-                LOGGER.error('%s: AFTER: phase correction arm_count(%i) ld_count(%i)'
-                            % (self.host, fd_arm_count_after, fd_ld_count_after))
+                LOGGER.error('%s:%d phase correction arm count did not '
+                            'change.' % (self.host, offset))
+                LOGGER.error('%s:%d BEFORE: phase correction arm_count(%i) ld_count(%i)'
+                            % (self.host, offset, fd_arm_count_before, fd_ld_count_before))
+                LOGGER.error('%s:%d AFTER: phase correction arm_count(%i) ld_count(%i)'
+                            % (self.host, offset, fd_arm_count_after, fd_ld_count_after))
 
         # did the system load?
         if load_check == True:
             if cd_ld_count_before == cd_ld_count_after:
-                LOGGER.error('%s: coarse delay load count did not change. '
-                             'Load failed.' % (self.host))
+                LOGGER.error('%s:%d coarse delay load count did not change. '
+                             'Load failed.' % (self.host, offset))
 
             if fd_ld_count_before == fd_ld_count_after:
-                LOGGER.error('%s: phase correction load count did not '
-                             'change. Load failed.' % (self.host))
+                LOGGER.error('%s:%d phase correction load count did not '
+                             'change. Load failed.' % (self.host, offset))
 
         #read values back to see what actual values were loaded
 
