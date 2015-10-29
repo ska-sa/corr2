@@ -306,7 +306,7 @@ class FEngineOperations(object):
             self.logger.error('New delay error - %s' % e.message)
             raise
 
-        actual_values = self._prepare_actual_delay_vals(actual_vals['delay'])
+        actual_values = self._prepare_actual_delay_vals(actual_vals)
 
         self.logger.info(
             'Phase offset actually set to %6.3f radians.' %
