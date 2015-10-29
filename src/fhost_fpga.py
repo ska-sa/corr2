@@ -359,46 +359,32 @@ class FpgaFHost(DigitiserDataReceiver):
 
         #TODO check register parameters to get delay range
 
-        # delays in terms of ADC clock cycles:
-        # delay in whole clock cycles
-        coarse_delay = int(delay)
-        # delay remainder - need a negative slope for positive delay
-        fractional_delay = float(delay)-float(coarse_delay)
-        # shift up by amount shifted down by on fpga
 
+        # shift up by amount shifted down by on fpga
         delta_delay_shifted = float(delta_delay) * _bshift_val
 
         # delay registers
-        coarse_delay_reg = self.registers['coarse_delay%i' % offset]
-        fractional_delay_reg = self.registers['fractional_delay%i' % offset]
+        delay_reg = self.registers['delay%i' % offset]
+        delta_delay_reg = self.registers['delta_delay%i' % offset]
 
-        LOGGER.info('%s:%d setting a coarse delay of %i samples.' %
-                    (self.host, offset, coarse_delay))
+        LOGGER.info('%s:%d setting an intial delay of %i samples.' %
+                    (self.host, offset, delay))
 
         # setup the delays
         try:
-            coarse_delay_reg.write(coarse_delay=coarse_delay)
+            delay_reg.write(initial=delay)
         except ValueError as e:
-            LOGGER.error('%s:%d coarse delay range error - %s' %
+            LOGGER.error('%s:%d initial delay range error - %s' %
                          (self.host, offset, e.message))
 
-        LOGGER.info('%s:%d writing %f to initial and %f to delta in '
-                    'fractional_delay register' %
-                    (self.host, offset, 
-                     fractional_delay, delta_delay_shifted))
+        LOGGER.info('%s:%d %f to delta in delta_delay register' %
+                    (self.host, offset, delta_delay_shifted))
 
         try:
-            fractional_delay_reg.write(initial=fractional_delay)
-        except ValueError as e:
-            LOGGER.error('%s:%d fractional delay range error - %s' %
-                         (self.host, offset, e.message))
-
-        try:
-            fractional_delay_reg.write(delta=delta_delay_shifted)
+            delta_delay_reg.write(delta=delta_delay_shifted)
         except ValueError as e:
             LOGGER.error('%s:%d delay change range error - %s' %
                          (self.host, offset, e.message))
-
 
         ################
         # phase offset #
@@ -490,10 +476,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
         #read values back to see what actual values were loaded
 
-        act_coarse_delay = coarse_delay_reg.read()['data']['coarse_delay']
-        act_fractional_delay = fractional_delay_reg.read()['data']['initial']
-        act_delay = float(act_coarse_delay) + act_fractional_delay
-        act_delta_delay = fractional_delay_reg.read()['data']['delta'] / _bshift_val
+        act_delay = delay_reg.read()['data']['initial']
+        act_delta_delay = delta_delay_reg.read()['data']['delta'] / _bshift_val
         act_phase_offset = phase_reg.read()['data']['initial']
         act_delta_phase_offset = phase_reg.read()['data']['delta'] / _bshift_val
 
