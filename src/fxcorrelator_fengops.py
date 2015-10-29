@@ -201,14 +201,14 @@ class FEngineOperations(object):
     def delays_process_parallel(self, loadtime, delays):
         
         if loadtime <= time.time():
-            logger.error('Loadtime %.3f is in the past?' % loadtime)
+            self.logger.error('Loadtime %.3f is in the past?' % loadtime)
         # This was causing an error
         dlist = delays#.split(' ')
         ant_delay = []
         for delay in dlist:
             bits = delay.strip().split(':')
             if len(bits) != 2:
-                logger.error('%s is not a valid delay setting' % delay)
+                self.logger.error('%s is not a valid delay setting' % delay)
             delay = bits[0]
             delay = delay.split(',')
             delay = (float(delay[0]), float(delay[1]))
