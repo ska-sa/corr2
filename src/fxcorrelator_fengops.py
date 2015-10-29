@@ -222,8 +222,11 @@ class FEngineOperations(object):
         rv = ''
         for val in actual_vals:
 
-            res_str = '%.3f,%.3f:%.3f,%.3f' % \
-                      (val['act_delay'], val['act_delta_delay'],
+#            res_str = '%f,%f:%f,%f' % \
+#                      (val['act_delay'], val['act_delta_delay'],
+#                       val['act_phase_offset'], val['act_delta_phase_offset'])
+            res_str = '{},{}:{},{}'.format(
+                      val['act_delay'], val['act_delta_delay'],
                        val['act_phase_offset'], val['act_delta_phase_offset'])
             rv = '%s %s' % (rv, res_str)
         return rv
