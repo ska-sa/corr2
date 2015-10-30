@@ -307,8 +307,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
         return act_vals
 
-    def set_delay(self, offset, delay=0, delta_delay=0, 
-                    phase_offset=0, delta_phase_offset=0, 
+    def set_delay(self, offset, delay=0.0, delta_delay=0.0, 
+                    phase_offset=0.0, delta_phase_offset=0.0, 
                     load_time=None, load_wait=None, load_check=True):
         """
         Update delay settings for data stream at offset specified ready for writing
@@ -325,8 +325,8 @@ class FpgaFHost(DigitiserDataReceiver):
                             'load_time': load_time, 'load_wait': load_wait,
                             'load_check': load_check}
 
-    def write_delay(self, offset, delay=0, delta_delay=0, 
-                    phase_offset=0, delta_phase_offset=0, 
+    def write_delay(self, offset, delay=0.0, delta_delay=0.0, 
+                    phase_offset=0.0, delta_phase_offset=0.0, 
                     load_mcnt=None, load_wait_delay=None, load_check=True):
         """
         Configures a given stream to a delay in samples and phase in degrees.
@@ -359,7 +359,6 @@ class FpgaFHost(DigitiserDataReceiver):
 
         #TODO check register parameters to get delay range
 
-
         # shift up by amount shifted down by on fpga
         delta_delay_shifted = float(delta_delay) * _bshift_val
 
@@ -367,7 +366,7 @@ class FpgaFHost(DigitiserDataReceiver):
         delay_reg = self.registers['delay%i' % offset]
         delta_delay_reg = self.registers['delta_delay%i' % offset]
 
-        LOGGER.info('%s:%d setting an intial delay of %i samples.' %
+        LOGGER.info('%s:%d setting an intial delay of %f samples.' %
                     (self.host, offset, delay))
 
         # setup the delays
