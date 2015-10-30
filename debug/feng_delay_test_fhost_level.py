@@ -27,7 +27,7 @@ load_check_wait_time = None
 load_check = False
 
 #delay
-delay_val = 1
+delay_val = 2.9999999999999
 
 #delta delay
 delta_delay_val_samples = 0
@@ -66,7 +66,7 @@ vals = f.write_delays_all()
 # capture data just after setting up delays
 x_1 = f.snapshots.snap_quant1_ss.read(man_valid=False, man_trig=False)['data']
 
-print('delay after = %d'%vals[stream_offset]['act_delay'])
+print('delay after = %f'%vals[stream_offset]['act_delay'])
 print('delta delay after = %f'%vals[stream_offset]['act_delta_delay'])
 print('phase offset after = %f'%vals[stream_offset]['act_phase_offset'])
 print('delta phase offset after = %f'%vals[stream_offset]['act_delta_phase_offset'])
