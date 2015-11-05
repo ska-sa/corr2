@@ -47,8 +47,10 @@ class FpgaBHost(FpgaXHost):
         :return
         """
         beam_reg = self.registers['bf%i_config' % beam.index]
+        # beam_reg.write(beam_id=beam.index,
+        #                n_partitions=beam.partitions_total)
         beam_reg.write(beam_id=beam.index,
-                       n_partitions=beam.partitions_total)
+                       n_partitions=1)
         LOGGER.info('%s:%i: Beam %i:%s config register set' % (
             self.host, self.index, beam.index, beam.name))
 

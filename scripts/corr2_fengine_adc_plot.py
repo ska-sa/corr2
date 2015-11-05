@@ -17,24 +17,34 @@ from matplotlib import pyplot
 
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Plot a histogram of the incoming ADC '
-                                             'data for a fengine host.',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='host', type=str, action='store', default='',
-                    help='the f-engine host to query, if an int, will be taken '
-                         'positionally from the config file list of f-hosts')
-parser.add_argument('--config', dest='config', type=str, action='store', default='',
-                    help='a corr2 config file, will use $CORR2INI if none given')
-parser.add_argument('--hist', dest='hist', action='store_true', default=False,
-                    help='plot a histogram of the incoming data')
-parser.add_argument('--fft', dest='fft', action='store_true', default=False,
-                    help='perform a soft FFT on the data before plotting')
-parser.add_argument('--integrate', dest='integrate', type=int, action='store', default='0',
-                    help='fft option - how many spectra should be integrated')
-parser.add_argument('--linear', dest='linear', action='store_true', default=False,
-                    help='plot linear, not log')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
-                    help='log level to use, options INFO, DEBUG, ERROR')
+parser = argparse.ArgumentParser(
+    description='Plot a histogram of the incoming ADC data for a fengine host.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    dest='host', type=str, action='store', default='',
+    help='the f-engine host to query, if an int, will be taken positionally '
+         'from the config file list of f-hosts')
+parser.add_argument(
+    '--config', dest='config', type=str, action='store', default='',
+    help='a corr2 config file, will use $CORR2INI if none given')
+parser.add_argument(
+    '--range', dest='range', action='store', default='-1,-1',
+    help='range to plot, -1 means start/end')
+parser.add_argument(
+    '--hist', dest='hist', action='store_true', default=False,
+    help='plot a histogram of the incoming data')
+parser.add_argument(
+    '--fft', dest='fft', action='store_true', default=False,
+    help='perform a soft FFT on the data before plotting')
+parser.add_argument(
+    '--integrate', dest='integrate', type=int, action='store', default=0,
+    help='fft option - how many spectra should be integrated')
+parser.add_argument(
+    '--linear', dest='linear', action='store_true', default=False,
+    help='plot linear, not log')
+parser.add_argument(
+    '--loglevel', dest='log_level', action='store', default='INFO',
+    help='log level to use, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 if args.log_level != '':
@@ -57,6 +67,13 @@ try:
     logging.info('Got hostname %s from config file.' % hostname)
 except ValueError:
     hostname = args.host
+
+# process the range argument
+plotrange = eval(args.range)
+if plotrange[0] == -1:
+    plotrange = (0, plotrange[1])
+if (plotrange[1] != -1) and (plotrange[1] <= plotrange[0]):
+    raise RuntimeError('Plot range of %s is incorrect.' % str(plotrange))
 
 
 def exit_gracefully(_, __):
@@ -84,8 +101,11 @@ def get_data():
 def plot_func(figure, sub_plots, idata, ictr, pctr):
     data = get_data()
     ictr += 1
-    p0_data = data['p0']
-    p1_data = data['p1']
+
+    topstop = plotrange[1] if plotrange[1] != -1 else len(data['p0'])
+
+    p0_data = data['p0'][plotrange[0]:topstop]
+    p1_data = data['p1'][plotrange[0]:topstop]
 
     # print '\tMean:   %.10f' % numpy.mean(p0_data[1000:3000])
     # print '\tStddev: %.10f' % numpy.std(p0_data[1000:3000])

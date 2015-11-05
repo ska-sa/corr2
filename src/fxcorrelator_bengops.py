@@ -231,10 +231,15 @@ class BEngineOperations(object):
                          target_function=(
                              lambda fpga_:
                              fpga_.registers.bf_control.write_int(0), [], {}))
+
+        data_id = 0x5000 >> 8
+
         THREADED_FPGA_OP(self.hosts, timeout=5,
                          target_function=(
                              lambda fpga_:
-                             fpga_.registers.bf_config.write_int(0), [], {}))
+                             fpga_.registers.bf_config.write(data_id=data_id,
+                                                             time_id=33000),
+                             [], {}))
         # set up the beams
         for beam in self.beams.values():
             beam.initialise()
@@ -320,8 +325,8 @@ class BEngineOperations(object):
                 shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                 init_val=-1)
 
-            # id is 0xB + 12 least sig bits id of each beam
-            beam_data_id = 0xB000 + beam.index
+            # id is 0x5 + 12 least sig bits id of each beam
+            beam_data_id = 0x5000 + beam.index
 
             n_chans = int(self.corr.configd['fengine']['n_chans'])
             xeng_acc_len = int(
@@ -336,7 +341,9 @@ class BEngineOperations(object):
                             'block is given by xeng_acc_len (id 0x101F). Each '
                             'value is a complex number -- two (real and '
                             'imaginary) signed integers.',
-                ndarray=numpy.ndarray(shape=(n_chans, xeng_acc_len, 2),
+                # ndarray=numpy.ndarray(shape=(n_chans, xeng_acc_len, 2),
+                #                       dtype=numpy.int8))
+                ndarray=numpy.ndarray(shape=(128, 256, 2),
                                       dtype=numpy.int8))
 
             if send_now:

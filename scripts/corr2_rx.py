@@ -52,8 +52,6 @@ class CorrRx(threading.Thread):
                 items=None, **kwargs):
         logger = self.logger
 
-        data_port = 8889
-
         logger.info('Data reception on port %i.' % data_port)
         rx = spead.TransportUDPrx(data_port, pkt_count=1024,
                                   buffer_size=51200000)
@@ -86,7 +84,8 @@ class CorrRx(threading.Thread):
         meta = {}
         for heap in spead.iterheaps(rx):
             ig.update(heap)
-            logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f' % (idx, heap.heap_cnt, time.time()))
+            logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f' % (
+                idx, heap.heap_cnt, time.time()))
             # output item values specified
             if items is not None:
                 for name in ig.keys():
