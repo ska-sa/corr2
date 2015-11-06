@@ -311,7 +311,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         try:
-            actual = self.instrument.fops.delays_process(
+            actual = self.instrument.fops.delays_process_parallel(
                 loadtime, delay_strings)
             return 'ok', actual
         except Exception as e:
