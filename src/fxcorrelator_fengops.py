@@ -139,19 +139,22 @@ class FEngineOperations(object):
         load_wait_delay = None
         if ld_check:
             if ld_time is not None:
-                load_wait_delay = ld_time - time.time() + \
-                                  self.corr.min_load_time
+                load_wait_delay = (ld_time - time.time() +
+                                   self.corr.min_load_time)
 
-        return {'delay': delay_s, 'delta_delay': delta_delay, 'phase_offset': phase_offset_s,
-                'delta_phase_offset': delta_phase_offset_s, 'load_time': ld_time_mcnt, 
+        return {'delay': delay_s, 'delta_delay': delta_delay,
+                'phase_offset': phase_offset_s,
+                'delta_phase_offset': delta_phase_offset_s,
+                'load_time': ld_time_mcnt,
                 'load_wait': load_wait_delay}
 
     def _prepare_actual_delay_vals(self, actual_vals):
         return {
-        'act_delay': actual_vals['act_delay'] / self.corr.sample_rate_hz,
-        'act_delta_delay': actual_vals['act_delta_delay'],
-        'act_phase_offset': actual_vals['act_phase_offset']*numpy.pi,
-        'act_delta_phase_offset': actual_vals['act_delta_phase_offset']*numpy.pi*self.corr.sample_rate_hz
+            'act_delay': actual_vals['act_delay'] / self.corr.sample_rate_hz,
+            'act_delta_delay': actual_vals['act_delta_delay'],
+            'act_phase_offset': actual_vals['act_phase_offset']*numpy.pi,
+            'act_delta_phase_offset': actual_vals['act_delta_phase_offset'] *
+                                      numpy.pi * self.corr.sample_rate_hz
         }
 
     def delays_process(self, loadtime, delays):
@@ -199,7 +202,6 @@ class FEngineOperations(object):
         return rv
 
     def delays_process_parallel(self, loadtime, delays):
-        
         if loadtime <= time.time():
             self.logger.error('Loadtime %.3f is in the past?' % loadtime)
         # This was causing an error
@@ -219,16 +221,12 @@ class FEngineOperations(object):
 
         actual_vals = self.set_delays_all(loadtime, ant_delay)
 
-        rv = ''
+        rv = []
         for val in actual_vals:
-
-#            res_str = '%f,%f:%f,%f' % \
-#                      (val['act_delay'], val['act_delta_delay'],
-#                       val['act_phase_offset'], val['act_delta_phase_offset'])
             res_str = '{},{}:{},{}'.format(
-                      val['act_delay'], val['act_delta_delay'],
-                       val['act_phase_offset'], val['act_delta_phase_offset'])
-            rv = '%s %s' % (rv, res_str)
+                val['act_delay'], val['act_delta_delay'],
+                val['act_phase_offset'], val['act_delta_phase_offset'])
+            rv.append(res_str)
         return rv
     
     def set_delays_all(self, loadtime, coeffs):

@@ -319,7 +319,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             actual = self.instrument.fops.delays_process_parallel(
                 loadtime, delay_strings)
-            return 'ok', actual
+            return 'ok', list_to_katcp_list(actual)
         except Exception as e:
             return 'fail', 'could not set delays - %s' % e.message
 
