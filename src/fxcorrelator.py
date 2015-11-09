@@ -345,14 +345,10 @@ class FxCorrelator(Instrument):
 
     def get_labels(self):
         """
-        Get the current fengine source labels as a string.
+        Get the current fengine source labels as a list of label names.
         :return:
         """
-        source_names = ''
-        for fsrc in self.fengine_sources:
-            source_names += fsrc['source'].name + ' '
-        source_names = source_names.strip()
-        return source_names
+        return [src['source'].name for src in self.fengine_sources]
 
     def _read_config(self):
         """

@@ -17,6 +17,13 @@ else:
     import Queue
 
 
+def list_to_katcp_list(pylist):
+    katlist = str(pylist)
+    katlist = katlist.replace('[', '').replace(']', '').replace(',', '')
+    katlist = katlist.replace("'", "")
+    return katlist
+
+
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
@@ -266,7 +273,7 @@ class Corr2Server(katcp.DeviceServer):
         if len(newlist) > 0:
             try:
                 self.instrument.set_labels(newlist)
-                return 'ok', self.instrument.get_labels()
+                return 'ok', list_to_katcp_list(self.instrument.get_labels())
             except ValueError as ve:
                 return 'fail', 'provided input labels were not ' \
                                'correct: %s' % ve.message
@@ -274,7 +281,7 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'provided input labels were not ' \
                                'correct: Unhandled exception'
         else:
-            return 'ok', self.instrument.get_labels()
+            return 'ok', list_to_katcp_list(self.instrument.get_labels())
 
     @request(Str(default=''), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -295,9 +302,8 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'unknown exception: %s' % e.message
         _src = self.instrument.fops.eq_get(source_name)
         eqstring = str(_src[source_name]['eq'])
-        eqstring = eqstring.replace('(', '').replace(')', '').replace('[', '')
-        eqstring = eqstring.replace(']', '').replace(',', '')
-        return 'ok', eqstring
+        eqstring = eqstring.replace('(', '').replace(')', '')
+        return 'ok', list_to_katcp_list(eqstring)
 
     @request(Float(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -354,9 +360,7 @@ class Corr2Server(katcp.DeviceServer):
         for complex_word in snapdata:
             quant_string += ' %s' % str(complex_word)
         quant_string = quant_string.replace('(', '').replace(')', '')
-        quant_string = quant_string.replace('[', '').replace(']', '')
-        quant_string = quant_string.replace(',', '')
-        return 'ok', quant_string
+        return 'ok', list_to_katcp_list(quant_string)
 
     @request()
     @return_reply()
