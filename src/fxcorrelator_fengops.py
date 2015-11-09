@@ -248,7 +248,7 @@ class FEngineOperations(object):
                            vals['phase_offset'], vals['delta_phase_offset'],
                            vals['load_time'], None, False)
 
-        #spawn threads to write values out, giving a maximum time of 0.75 seconds to do them all
+        # spawn threads to write values out, giving a maximum time of 0.75 seconds to do them all
         actual_vals = THREADED_FPGA_FUNC(self.corr.fhosts, timeout=0.75, target_function='write_delays_all')
 
         if len(actual_vals) != len(self.corr.fhosts):
@@ -534,3 +534,16 @@ class FEngineOperations(object):
         _hz_per_chan = _band / self.corr.n_chans
         _chan_index = numpy.floor(freq / _hz_per_chan)
         return _chan_index
+
+    def get_quant_snap(self, source_name):
+        """
+        Get the quantiser snapshot for this source_name
+        :param source_name:
+        :return:
+        """
+        for host in self.corr.fhosts:
+            try:
+                return host.get_quant_snapshot(source_name)
+            except ValueError:
+                pass
+        raise ValueError('Could not find source %s anywhere.' % source_name)

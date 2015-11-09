@@ -373,43 +373,45 @@ class FxCorrelator(Instrument):
 
         # TODO: Load config values from the bitstream meta information -
         # f per fpga, x per fpga, etc
-        self.arp_wait_time = int(_d['FxCorrelator']['arp_wait_time'])
-        self.sensor_poll_time = int(_d['FxCorrelator']['sensor_poll_time'])
-        self.katcp_port = int(_d['FxCorrelator']['katcp_port'])
-        self.f_per_fpga = int(_d['fengine']['f_per_fpga'])
-        self.x_per_fpga = int(_d['xengine']['x_per_fpga'])
-        self.sample_rate_hz = int(_d['FxCorrelator']['sample_rate_hz'])
-        self.adc_demux_factor = int(_d['fengine']['adc_demux_factor'])
-        self.accumulation_len = int(_d['xengine']['accumulation_len'])
-        self.xeng_accumulation_len = int(_d['xengine']['xeng_accumulation_len'])
-        self.n_chans = int(_d['fengine']['n_chans'])
-        self.n_antennas = int(_d['fengine']['n_antennas'])
-        self.min_load_time = float(_d['fengine']['min_load_time'])
+        _fxcorr_d = self.configd['FxCorrelator']
+        self.arp_wait_time = int(_fxcorr_d['arp_wait_time'])
+        self.sensor_poll_time = int(_fxcorr_d['sensor_poll_time'])
+        self.katcp_port = int(_fxcorr_d['katcp_port'])
+        self.sample_rate_hz = int(_fxcorr_d['sample_rate_hz'])
 
-        self.set_stream_destination(
-            _d['xengine']['output_destination_ip'],
-            int(_d['xengine']['output_destination_port']))
-        self.set_meta_destination(_d['xengine']['output_destination_ip'],
-                                  int(_d['xengine']['output_destination_port']))
+        _feng_d = self.configd['fengine']
+        self.adc_demux_factor = int(_feng_d['adc_demux_factor'])
+        self.n_chans = int(_feng_d['n_chans'])
+        self.n_antennas = int(_feng_d['n_antennas'])
+        self.min_load_time = float(_feng_d['min_load_time'])
+        self.f_per_fpga = int(_feng_d['f_per_fpga'])
+        self.ports_per_fengine = int(_feng_d['ports_per_fengine'])
+
+        _xeng_d = self.configd['xengine']
+        self.x_per_fpga = int(_xeng_d['x_per_fpga'])
+        self.accumulation_len = int(_xeng_d['accumulation_len'])
+        self.xeng_accumulation_len = int(_xeng_d['xeng_accumulation_len'])
+        self.set_stream_destination(_xeng_d['output_destination_ip'],
+                                    int(_xeng_d['output_destination_port']))
+        self.set_meta_destination(_xeng_d['output_destination_ip'],
+                                  int(_xeng_d['output_destination_port']))
+
         # get this from the running x-engines?
-        self.xeng_clk = int(_d['xengine']['x_fpga_clock'])
-        self.xeng_outbits = int(_d['xengine']['xeng_outbits'])
-
-        # the f-engines have this many 10Gbe ports per f-engine
-        # unit of operation
-        self.ports_per_fengine = int(_d['fengine']['ports_per_fengine'])
+        self.xeng_clk = int(_xeng_d['x_fpga_clock'])
+        self.xeng_outbits = int(_xeng_d['xeng_outbits'])
 
         # check if beamformer exists with x-engines
         self.found_beamformer = False
         if 'bengine' in self.configd.keys():
             self.found_beamformer = True
 
-        # set up the hosts and engines based on the configuration in the ini file
+        # set up hosts and engines based on the configuration in the ini file
+        _targetClass = fhost_fpga.FpgaFHost
         self.fhosts = []
-        for host in _d['fengine']['hosts'].split(','):
+        for host in _feng_d['hosts'].split(','):
             host = host.strip()
-            fpgahost = fhost_fpga.FpgaFHost.from_config_source(
-                host, self.katcp_port, config_source=_d['fengine'])
+            fpgahost = _targetClass.from_config_source(
+                host, self.katcp_port, config_source=_feng_d)
             self.fhosts.append(fpgahost)
 
         # choose class (b-engine inherits x-engine functionality)
@@ -418,35 +420,29 @@ class FxCorrelator(Instrument):
         else:
             _targetClass = xhost_fpga.FpgaXHost
         self.xhosts = []
-        for host in _d['xengine']['hosts'].split(','):
+        hostlist = _xeng_d['hosts'].split(',')
+        for hostindex, host in enumerate(hostlist):
             host = host.strip()
-            fpgahost = xhost_fpga.FpgaXHost.from_config_source(
-                host, self.katcp_port, config_source=_d['xengine'])
+            fpgahost = _targetClass.from_config_source(
+                host, self.katcp_port, config_source=_xeng_d)
             self.xhosts.append(fpgahost)
-        self.bhosts = []
-        # x-eng host b-eng
-        for host in _d['xengine']['hosts'].split(','):
-            host = host.strip()
-            fpgahost = bhost_fpga.FpgaBHost.from_config_source(
-                host, self.katcp_port, config_source=_d['xengine'])
-            self.bhosts.append(fpgahost)
 
         # check that no hosts overlap
         for _fh in self.fhosts:
             for _xh in self.xhosts:
                 if _fh.host == _xh.host:
-                    self.logger.error('Host %s is assigned to both X- and '
-                                      'F-engines' % _fh.host)
+                    self.logger.error('Host %s is assigned to '
+                                      'both X- and F-engines' % _fh.host)
                     raise RuntimeError
 
         # what data sources have we been allocated?
         self._handle_sources()
 
         # turn the product names into a list
-        prodlist = _d['xengine']['output_products'].replace('[', '').replace(']', '').split(',')
-        _d['xengine']['output_products'] = []
+        prodlist = _xeng_d['output_products'].replace('[', '').replace(']', '').split(',')
+        _xeng_d['output_products'] = []
         for prod in prodlist:
-            _d['xengine']['output_products'].append(prod.strip(''))
+            _xeng_d['output_products'].append(prod.strip(''))
 
     def _handle_sources(self):
         """

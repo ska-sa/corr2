@@ -135,8 +135,8 @@ class Corr2Server(katcp.DeviceServer):
         except Exception as e:
             localexc = e
             pass
-        logging.error('create threw Exception: %s' % localexc.message)
-        return 'fail', 'create threw Exception: %s' % localexc.message
+        logging.error('initialise threw Exception: %s' % localexc.message)
+        return 'fail', 'initialise threw Exception: %s' % localexc.message
 
     @request(Str(multiple=True))
     @return_reply()
@@ -352,7 +352,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         try:
             snapdata = self.instrument.fops.get_quant_snap(source_name)
-        except Exception as e:
+        except ValueError as e:
             logging.info(e)
             return 'fail', 'failed to read quant snap data for ' \
                            'given source %s' % source_name
