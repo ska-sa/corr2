@@ -33,42 +33,51 @@ class FpgaBHost(FpgaXHost):
         :param beam: a Beam object
         :return
         """
-        self.registers['bf%i_config' % beam.index].write(
-            port=beam.data_destination['port'])
-        self.registers['bf%i_ip' % beam.index].write(
-            ip=int(beam.data_destination['ip']))
+        beam_cfgreg = self.registers['bf%i_config' % beam.index]
+        beam_ipreg = self.registers['bf%i_ip' % beam.index]
+        beam_cfgreg.write(port=beam.data_destination['port'])
+        beam_ipreg.write(ip=int(beam.data_destination['ip']))
         LOGGER.info('%s:%i: Beam %i:%s destination set to %s:%i' % (
             self.host, self.index, beam.index, beam.name,
             beam.data_destination['ip'], beam.data_destination['port']))
 
-    def beam_config_set(self, beam):
+    def beam_index_set(self, beam):
         """
-        :param beam: a Beam object
-        :return
+        Set the beam index.
+        :param beam:
+        :return:
         """
-        beam_reg = self.registers['bf%i_config' % beam.index]
-        # beam_reg.write(beam_id=beam.index,
-        #                n_partitions=beam.partitions_total)
-        beam_reg.write(beam_id=beam.index,
-                       n_partitions=1)
-        LOGGER.info('%s:%i: Beam %i:%s config register set' % (
-            self.host, self.index, beam.index, beam.name))
+        beam_cfgreg = self.registers['bf%i_config' % beam.index]
+        beam_cfgreg.write(beam_id=beam.index)
+        LOGGER.info('%s:%i: Beam %i:%s index set - %i' % (
+            self.host, self.index, beam.index, beam.name, beam.index))
 
-    def beam_partitions_set(self, beam):
+    def beam_num_partitions_set(self, beam):
         """
         :param beam: a Beam object
         :return
         """
-        # partitions offsets must be worked out
-        partition_start = self.index * self.beng_per_host
-        beam_reg = self.registers['bf%i_partitions' % beam.index]
-        beam_reg.write(partition0_offset=partition_start,
-                       partition1_offset=partition_start+1,
-                       partition2_offset=partition_start+2,
-                       partition3_offset=partition_start+3)
-        LOGGER.info('%s:%i: Beam %i:%s partitions set to %i:%i' % (
-            self.host, self.index, beam.index, beam.name,
-            partition_start, partition_start+self.beng_per_host-1))
+        beam_cfgreg = self.registers['bf%i_config' % beam.index]
+        numparts = len(beam.partitions_active)
+        beam_cfgreg.write(n_partitions=numparts)
+        LOGGER.info('%s:%i: Beam %i:%s num_partitions set - %i' % (
+            self.host, self.index, beam.index, beam.name, numparts))
+
+    # def beam_partitions_set(self, beam):
+    #     """
+    #     :param beam: a Beam object
+    #     :return
+    #     """
+    #     # partitions offsets must be worked out
+    #     partition_start = self.index * self.beng_per_host
+    #     beam_reg = self.registers['bf%i_partitions' % beam.index]
+    #     beam_reg.write(partition0_offset=partition_start,
+    #                    partition1_offset=partition_start+1,
+    #                    partition2_offset=partition_start+2,
+    #                    partition3_offset=partition_start+3)
+    #     LOGGER.info('%s:%i: Beam %i:%s partitions set to %i:%i' % (
+    #         self.host, self.index, beam.index, beam.name,
+    #         partition_start, partition_start+self.beng_per_host-1))
 
     def beam_weights_set(self, beam):
         """
@@ -93,21 +102,45 @@ class FpgaBHost(FpgaXHost):
         actv_parts = beam.partitions_active
         parts_to_set = set(host_parts).intersection(actv_parts)
         parts_to_clr = set(host_parts).difference(parts_to_set)
-        LOGGER.info('%s:%i: Beam %i:%s beam_active(%s) host(%s) toset(%s) '
-                    'toclr(%s)' %
-                    (self.host, self.index, beam.index, beam.name,
-                     list(actv_parts), list(host_parts), list(parts_to_set),
-                     list(parts_to_clr)))
-        if len(parts_to_set) > 0:
-            self.registers.bf_value_in1.write(filt=1)
-            for part in parts_to_set:
+        if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
+            LOGGER.info('%s:%i: Beam %i:%s beam_active(%s) host(%s) toset(%s) '
+                        'toclr(%s)' %
+                        (self.host, self.index, beam.index, beam.name,
+                         list(actv_parts), list(host_parts), list(parts_to_set),
+                         list(parts_to_clr),))
+        if (len(parts_to_set) > 4) or (len(parts_to_clr) > 4):
+            raise RuntimeError('Cannot set or clear more than 4 partitions'
+                               'per host?')
+
+        # set the total number of partitions
+        if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
+            self.beam_num_partitions_set(beam)
+
+        # clear first
+        if len(parts_to_clr) > 0:
+            self.registers.bf_value_in1.write(filt=0)
+            for part in parts_to_clr:
                 beng_for_part = host_parts.index(part)
                 self.registers.bf_control.write(stream=beam.index,
                                                 beng=beng_for_part)
                 self.registers.bf_value_ctrl.write(filt='pulse')
-        if len(parts_to_clr) > 0:
-            self.registers.bf_value_in1.write(filt=0)
-            for part in parts_to_clr:
+
+        # enable next
+        if len(parts_to_set) > 0:
+            # set the offsets
+            part_offsets = {}
+            for part in parts_to_set:
+                beng_for_part = host_parts.index(part)
+                part_offset = actv_parts.index(part)
+                part_offsets['partition%i_offset' % beng_for_part] = part_offset
+            LOGGER.info('%s:%i: Beam %i:%s %s' %
+                        (self.host, self.index, beam.index, beam.name,
+                         part_offsets))
+            beam_poffset_reg = self.registers['bf%i_partitions' % beam.index]
+            beam_poffset_reg.write(**part_offsets)
+            # enable filter stages
+            self.registers.bf_value_in1.write(filt=1)
+            for part in parts_to_set:
                 beng_for_part = host_parts.index(part)
                 self.registers.bf_control.write(stream=beam.index,
                                                 beng=beng_for_part)

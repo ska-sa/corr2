@@ -24,7 +24,6 @@ class Beam(object):
         self.index = beam_index
         self.hosts = None
 
-        self.total_num_partitions = None
         self.partitions_total = None
         self.partitions_per_host = None
         self.partitions = None
@@ -53,7 +52,7 @@ class Beam(object):
         obj.partitions_per_host = int(config['xengine']['x_per_fpga'])
         obj.partitions_total = obj.partitions_per_host * len(obj.hosts)
         obj.partitions = range(0, obj.partitions_total)
-        obj.partitions_active = obj.partitions[:]
+        obj.partitions_active = []
         obj.partitions_by_host = [
             obj.partitions[b:b+obj.partitions_per_host]
             for b in range(0, obj.partitions_total, obj.partitions_per_host)
@@ -76,24 +75,56 @@ class Beam(object):
         return 'Beam %i:%s destination(%s) meta_dest(%s)' % (
             self.index, self.name, self.data_destination, self.meta_destination)
 
+    def _check_partitions(self, partitions):
+        """
+        Does a given list of partitions make sense against this beam's
+        partitions?
+        :param partitions:
+        :return:
+        """
+        # check to see whether the partitions to be activated are contiguous
+        for ctr in range(0, len(partitions)-1):
+            if partitions[ctr] != partitions[ctr+1] - 1:
+                raise ValueError('Currently only contiguous partition '
+                                 'ranges are supported.')
+        # does the list of partitions make sense?
+        if max(partitions) > max(self.partitions):
+            raise ValueError('Partitions > max(partitions) make no sense')
+        if min(partitions) < min(self.partitions):
+            raise ValueError('Partitions < 0 make no sense')
+
     def partitions_deactivate(self, partitions=None):
         """
         Deactive one or more partitions
         :param partitions: a list of partitions to deactivate
         :return:
         """
-        if partitions is None:
-            partitions = self.partitions_active[:]
-        if not partitions:
+        if not self.partitions_active:
+            LOGGER.info('Beam %i:%s - all partitions already deactivate' % (
+                self.index, self.name))
             return
+        # if nothing is given, then do all of them
+        if partitions is None:
+            LOGGER.info('Beam %i:%s - deactivating all active partitions' % (
+                self.index, self.name))
+            partitions = self.partitions_active[:]
+        # make the new active selection
+        currently_active = self.partitions_active[:]
+        _changed = False
         for val in partitions:
             try:
-                _ind = self.partitions_active.index(val)
-                self.partitions_active.pop(_ind)
+                _ind = currently_active.index(val)
+                currently_active.pop(_ind)
+                _changed = True
             except ValueError:
-                raise ValueError('Beam %i:%s partition %i not found' % (
-                    self.index, self.name, val))
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_partitions_control', [self], {}))
+                pass
+        if _changed:
+            LOGGER.debug('Beam %i%s - applying new active partitions' % (
+                self.index, self.name))
+            self.partitions_activate(currently_active)
+        else:
+            LOGGER.debug('Beam %i%s - no changes to active partitions' % (
+                self.index, self.name))
 
     def partitions_activate(self, partitions=None):
         """
@@ -102,28 +133,26 @@ class Beam(object):
         :return:
         """
         if partitions is None:
+            LOGGER.info('Beam %i:%s - activating all partitions' % (
+                self.index, self.name))
             partitions = self.partitions[:]
-        if not partitions:
+        if partitions == self.partitions_active:
+            LOGGER.info('Beam %i:%s - specd partitions already active' % (
+                self.index, self.name))
             return
-        for val in partitions:
-            try:
-                self.partitions.index(val)
-                self.partitions_active.append(val)
-            except ValueError:
-                raise ValueError('Beam %i:%s partition %i not found' % (
-                    self.index, self.name, val))
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_partitions_control', [self], {}))
+        if partitions:
+            self._check_partitions(partitions)
+        self.partitions_active = partitions[:]
+        THREADED_FPGA_FUNC(self.hosts, 5,
+                           ('beam_partitions_control', [self], {}))
 
     def initialise(self):
         """
         Set up the beam for first operation.
         :return:
         """
-        # set the total number of partitions and the beam index
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_config_set', [self], {}))
-
-        # set the partitions for this beam
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_partitions_set', [self], {}))
+        # set the beam index
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_index_set', [self], {}))
 
         # set the beam destination registers
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_destination_set', [self], {}))
@@ -248,19 +277,19 @@ class BEngineOperations(object):
         # done
         self.logger.info('Beamformer initialised.')
 
-    def partitions_activate(self, partitions_to_activate):
+    def partitions_activate(self, partitions_to_activate=None):
         """
-        Deactivate all partitions for all beams
+        Activate partitions for all beams
         """
         for beam in self.beams.values():
             beam.partitions_activate(partitions_to_activate)
 
-    def partitions_deactivate(self):
+    def partitions_deactivate(self, partitions_to_deactivate=None):
         """
-        Deactivate all partitions for all beams
+        Deactivate partitions for all beams
         """
         for beam in self.beams.values():
-            beam.partitions_deactivate()
+            beam.partitions_deactivate(partitions_to_deactivate)
 
     def _create_spead_tx_ig(self):
         """
@@ -327,11 +356,11 @@ class BEngineOperations(object):
 
             # id is 0x5 + 12 least sig bits id of each beam
             beam_data_id = 0x5000 + beam.index
-
             n_chans = int(self.corr.configd['fengine']['n_chans'])
+            chans_per_partition = n_chans / len(self.corr.xhosts)
             xeng_acc_len = int(
                 self.corr.configd['xengine']['xeng_accumulation_len'])
-
+            beam_chans = chans_per_partition*len(beam.partitions_active)
             spead_ig.add_item(
                 name=beam_name, id=beam_data_id,
                 description='Raw data for bengines in the system. Frequencies '
@@ -341,13 +370,12 @@ class BEngineOperations(object):
                             'block is given by xeng_acc_len (id 0x101F). Each '
                             'value is a complex number -- two (real and '
                             'imaginary) signed integers.',
-                # ndarray=numpy.ndarray(shape=(n_chans, xeng_acc_len, 2),
-                #                       dtype=numpy.int8))
-                ndarray=numpy.ndarray(shape=(128, 256, 2),
+                ndarray=numpy.ndarray(shape=(beam_chans, xeng_acc_len, 2),
                                       dtype=numpy.int8))
 
             if send_now:
-                LOGGER.info('Issued static SPEAD metadata for beam %s' % beam.name)
+                LOGGER.info('Issued static SPEAD metadata for '
+                            'beam %s' % beam.name)
                 spead_tx.send_heap(spead_ig.get_heap())
 
     def spead_destination_meta_issue(self, beams=None, send_now=True):
