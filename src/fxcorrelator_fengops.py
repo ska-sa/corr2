@@ -256,9 +256,15 @@ class FEngineOperations(object):
         for count,src in enumerate(self.corr.fengine_sources):
             host = src['host'].host
             offset = src['numonhost']
-            
             act_vals.append(self._prepare_actual_delay_vals(actual_vals[host][offset]))
-
+            self.logger.info(
+                '[%s] Phase offset actually set to %6.3f rad with rate %e rad/s.' %
+                (src['source'].name,actual_vals[host][offset]['phase_offset'],
+                actual_values[host][offset]['delta_phase_offset']))
+            self.logger.info(
+                '[%s] Delay actually set to %e samples with rate %e.' %
+                (src['source'].name,actual_values[host][offset]['delay'],
+                actual_values[host][offset]['delta_delay']))
         return act_vals
 
     def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
