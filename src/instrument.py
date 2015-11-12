@@ -52,8 +52,8 @@ class Instrument(object):
     def _read_config(self):
         """
         Read the instrument configuration from self.config_source.
-        :return: True if the instrument read a config successfully, raise
-        an error if not?
+        :return: True if the instrument read a config successfully,
+        raise an error if not?
         """
         if self.config_source is None:
             raise RuntimeError('Running _read_config with no config source. '
@@ -64,14 +64,14 @@ class Instrument(object):
             return
         except (IOError, ValueError) as excep:
             LOGGER.error(excep.message)
-            try:
-                # server?
-                self._read_config_server()
-                return
-            except:
-                raise
-        raise RuntimeError('Supplied config_source %s is invalid' %
-                           self.config_source)
+            # try:
+            #     # server?
+            #     self._read_config_server()
+            #     return
+            # except:
+            #     raise
+        raise RuntimeError('Supplied config_source %s is '
+                           'invalid' % self.config_source)
 
     def set_synch_time(self, new_synch_time):
         """

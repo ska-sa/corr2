@@ -17,13 +17,13 @@ class FpgaBHost(FpgaXHost):
         # parent constructor
         FpgaXHost.__init__(self, host, index, katcp_port=katcp_port,
                            boffile=boffile, connect=connect, config=config)
-        self.beng_per_host = int(self.config['xengine']['x_per_fpga'])
+        self.beng_per_host = int(self.config['x_per_fpga'])
         LOGGER.info('FpgaBHost %i:%s created' % (
             self.index, self.host))
 
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port, config_source):
-        boffile = config_source['xengine']['bitstream']
+        boffile = config_source['bitstream']
         return cls(hostname, index, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 

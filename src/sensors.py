@@ -200,7 +200,7 @@ def _feng_pfb_okay(sensor, executor, f_host):
 
 
 @tornado.gen.coroutine
-def _fhost_check_rx(sensor, executor, f_eng_ops):
+def _fhost_check_rx(sensor, executor, f_host):
     """
     Check that the f-hosts are receiving data correctly
     :param sensor:
@@ -209,16 +209,16 @@ def _fhost_check_rx(sensor, executor, f_eng_ops):
     """
     result = False
     try:
-        result = yield executor.submit(f_eng_ops.check_rx)
+        result = yield executor.submit(f_host.check_rx)
     except Exception:
         LOGGER.exception('Exception updating fhost rx sensor')
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_fhost_check_rx ran')
-    IOLoop.current().call_later(10, _fhost_check_rx, sensor, executor, f_eng_ops)
+    IOLoop.current().call_later(10, _fhost_check_rx, sensor, executor, f_host)
 
 
 @tornado.gen.coroutine
-def _fhost_check_tx(sensor, executor, f_eng_ops):
+def _fhost_check_tx(sensor, executor, f_host):
     """
     Check that the f-hosts are sending data correctly
     :param sensor:
@@ -228,15 +228,16 @@ def _fhost_check_tx(sensor, executor, f_eng_ops):
     """
     result = False
     try:
-        result = yield executor.submit(f_eng_ops.check_tx)
+        result = yield executor.submit(f_host.check_tx_raw)
     except Exception:
         LOGGER.exception('Exception updating fhost tx sensor')
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_fhost_check_tx ran')
-    IOLoop.current().call_later(10, _fhost_check_tx, sensor, executor, f_eng_ops)
+    IOLoop.current().call_later(10, _fhost_check_tx, sensor, executor, f_host)
+
 
 @tornado.gen.coroutine
-def _xhost_check_rx(sensor, executor, x_eng_ops):
+def _xhost_check_rx(sensor, executor, x_host):
     """
     Check that the x-hosts are receiving data correctly
     :param sensor:
@@ -246,12 +247,31 @@ def _xhost_check_rx(sensor, executor, x_eng_ops):
     """
     result = False
     try:
-        result = yield executor.submit(x_eng_ops.check_rx)
+        result = yield executor.submit(x_host.check_rx)
     except Exception:
         LOGGER.exception('Exception updating xhost rx sensor')
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_xhost_check_rx ran')
-    IOLoop.current().call_later(10, _xhost_check_rx, sensor, executor, x_eng_ops)
+    IOLoop.current().call_later(10, _xhost_check_rx, sensor, executor, x_host)
+
+
+@tornado.gen.coroutine
+def _xhost_check_tx(sensor, executor, x_host):
+    """
+    Check that the x-hosts are sending data correctly
+    :param sensor:
+    :param executor:
+    :param x_host:
+    :return:
+    """
+    result = False
+    try:
+        result = yield executor.submit(x_host.check_tx_raw)
+    except Exception:
+        LOGGER.exception('Exception updating xhost tx sensor')
+    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+    LOGGER.debug('_xhost_check_tx ran')
+    IOLoop.current().call_later(10, _xhost_check_tx, sensor, executor, x_host)
 
 
 def setup_sensors(instrument, katcp_server):
@@ -374,27 +394,39 @@ def setup_sensors(instrument, katcp_server):
         ioloop.add_callback(_feng_pfb_okay, sensor, executor, _f)
 
     # f-engine comms rx
-    fengops = instrument.fops
-    sensor = Sensor.boolean(name='fhosts_check_rx',
-                            description='F-hosts rx okay',
-                            default=True)
-    katcp_server.add_sensor(sensor)
-    instrument._sensors[sensor.name] = sensor
-    ioloop.add_callback(_fhost_check_rx, sensor, executor, fengops)
+    for _f in instrument.fhosts:
+        sensor = Sensor.boolean(name='%s_feng_check_rx' % _f.host,
+                                description='F-engine RX path okay',
+                                default=True)
+        katcp_server.add_sensor(sensor)
+        instrument._sensors[sensor.name] = sensor
+        ioloop.add_callback(_fhost_check_rx, sensor, executor, _f)
 
-    # # f-engine comms tx
-    sensor = Sensor.boolean(name='fhosts_check_tx',
-                            description='F-hosts tx okay',
-                            default=True)
-    katcp_server.add_sensor(sensor)
-    instrument._sensors[sensor.name] = sensor
-    ioloop.add_callback(_fhost_check_tx, sensor, executor, fengops)
+    # f-engine comms tx
+    for _f in instrument.fhosts:
+        sensor = Sensor.boolean(name='%s_feng_check_tx' % _f.host,
+                                description='F-engine TX okay transmitting '
+                                            'packets without error',
+                                default=True)
+        katcp_server.add_sensor(sensor)
+        instrument._sensors[sensor.name] = sensor
+        ioloop.add_callback(_fhost_check_tx, sensor, executor, _f)
 
     # x-engine comms rx
-    xengops = instrument.xops
-    sensor = Sensor.boolean(name='xhosts_check_rx',
-                            description='X-hosts rx okay',
-                            default=True)
-    katcp_server.add_sensor(sensor)
-    instrument._sensors[sensor.name] = sensor
-    ioloop.add_callback(_xhost_check_rx, sensor, executor, xengops)
+    for _x in instrument.xhosts:
+        sensor = Sensor.boolean(name='%s_xeng_check_rx' % _x.host,
+                                description='X-engine RX path okay',
+                                default=True)
+        katcp_server.add_sensor(sensor)
+        instrument._sensors[sensor.name] = sensor
+        ioloop.add_callback(_xhost_check_rx, sensor, executor, _x)
+
+    # x-engine comms tx
+    for _x in instrument.xhosts:
+        sensor = Sensor.boolean(name='%s_xeng_check_tx' % _x.host,
+                                description='X-engine TX okay transmitting '
+                                            'packets without error',
+                                default=True)
+        katcp_server.add_sensor(sensor)
+        instrument._sensors[sensor.name] = sensor
+        ioloop.add_callback(_xhost_check_tx, sensor, executor, _x)

@@ -334,11 +334,28 @@ class BEngineOperations(object):
                 spead_ig = self.spead_meta_ig[beam_name]
             spead_tx = self.spead_tx[beam_name]
 
+            # calculate a few things for this beam
+            n_chans = int(self.corr.configd['fengine']['n_chans'])
+            n_bhosts = len(self.hosts)
+            n_bengs = self.beng_per_host * n_bhosts
+            chans_per_host = n_chans / n_bhosts
+            chans_per_partition = chans_per_host / self.beng_per_host
+            xeng_acc_len = int(
+                self.corr.configd['xengine']['xeng_accumulation_len'])
+            beam_chans = chans_per_partition * len(beam.partitions_active)
+
+            self.corr.speadops.item_0x1007(sig=spead_ig)
+            self.corr.speadops.item_0x1009(sig=spead_ig)
+            self.corr.speadops.item_0x100a(sig=spead_ig)
+
             spead_ig.add_item(
                 name='n_bengs', id=0x100F,
                 description='The total number of B engines in the system.',
                 shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                init_val=self.beng_per_host*len(self.hosts))
+                init_val=n_bengs)
+
+            self.corr.speadops.item_0x1020(sig=spead_ig)
+            self.corr.speadops.item_0x1045(sig=spead_ig)
 
             spead_ig.add_item(
                 name='b_per_fpga', id=0x1047,
@@ -356,11 +373,6 @@ class BEngineOperations(object):
 
             # id is 0x5 + 12 least sig bits id of each beam
             beam_data_id = 0x5000 + beam.index
-            n_chans = int(self.corr.configd['fengine']['n_chans'])
-            chans_per_partition = n_chans / len(self.corr.xhosts)
-            xeng_acc_len = int(
-                self.corr.configd['xengine']['xeng_accumulation_len'])
-            beam_chans = chans_per_partition*len(beam.partitions_active)
             spead_ig.add_item(
                 name=beam_name, id=beam_data_id,
                 description='Raw data for bengines in the system. Frequencies '
@@ -452,6 +464,34 @@ class BEngineOperations(object):
                 LOGGER.info('Issued SPEAD EQ metadata for beam %s' % beam.name)
                 spead_tx.send_heap(spead_ig.get_heap())
 
+    def spead_labels_meta_issue(self, beams=None, send_now=True):
+        """
+        Issues a SPEAD heap for the ant labels.
+        :param beams: list of beam names, all beams if None
+        :return:
+        """
+        if (not self.spead_tx) or (not self.spead_meta_ig):
+            self._create_spead_tx_ig()
+
+        if not beams:
+            beams = self.beams.keys()
+
+        for beam_name in beams:
+            beam = self.beams[beam_name]
+            if send_now:
+                spead_ig = spead.ItemGroup()
+            else:
+                spead_ig = self.spead_meta_ig[beam_name]
+            spead_tx = self.spead_tx[beam_name]
+
+            # use the fxcorrelator object to add 0x100E to the beam IG
+            self.corr.spead_add_label_meta(spead_ig)
+
+            if send_now:
+                LOGGER.info('Issued SPEAD label metadata for '
+                            'beam %s' % beam.name)
+                spead_tx.send_heap(spead_ig.get_heap())
+
     def spead_bf_issue_all(self, beams=None):
         """
         Issues all SPEAD metadata for given beams.
@@ -464,7 +504,9 @@ class BEngineOperations(object):
         if not beams:
             beams = self.beams.keys()
 
+        # update the IGs, but do not send yet
         self.spead_meta_issue(beams, False)
+        self.spead_labels_meta_issue(beams, False)
         self.spead_destination_meta_issue(beams, False)
         self.spead_weights_meta_issue(beams, False)
 
