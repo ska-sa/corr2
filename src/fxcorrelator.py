@@ -531,11 +531,11 @@ class FxCorrelator(Instrument):
         :return: <nothing>
         """
         if txip_str is None:
-            txip = tengbe.IpAddress.str2ip(self.xeng_tx_destination[0])
+            txip = tengbe.IpAddress.str2ip(self.xeng_tx_destination['ip'])
         else:
             txip = tengbe.IpAddress.str2ip(txip_str)
         if txport is None:
-            txport = self.xeng_tx_destination[1]
+            txport = self.xeng_tx_destination['port']
         else:
             txport = int(txport)
         self.logger.info('Setting stream destination to %s:%d' %
@@ -552,7 +552,8 @@ class FxCorrelator(Instrument):
         except AttributeError:
             self.logger.warning('Set SPEAD stream destination called, but '
                                 'devices NOT written! Have they been created?')
-        self.xeng_tx_destination = (tengbe.IpAddress.ip2str(txip), txport)
+        self.xeng_tx_destination = {'ip': tengbe.IpAddress.ip2str(txip),
+                                    'port': txport}
 
     def set_meta_destination(self, txip=None, txport=None):
         """

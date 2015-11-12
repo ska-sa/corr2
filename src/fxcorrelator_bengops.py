@@ -244,8 +244,10 @@ class BEngineOperations(object):
 
         self.beng_per_host = int(self.corr.configd['xengine']['x_per_fpga'])
 
-    def initialise(self, config_output=True,
-                   send_spead=True, set_weights=True):
+        # configure the SPEAD IG and TX
+        self._create_spead_tx_ig()
+
+    def initialise(self):
         """
         Initialises the b-engines and checks for errors.
 
@@ -291,48 +293,14 @@ class BEngineOperations(object):
         for beam in self.beams.values():
             beam.partitions_deactivate(partitions_to_deactivate)
 
-    def _create_spead_tx_ig(self):
-        """
-        Create the SPEAD metadata transmitter
-        :return:
-        """
-        del self.spead_tx, self.spead_meta_ig
-        self.spead_tx = {}
-        self.spead_meta_ig = {}
-        for beam in self.beams.values():
-            stx = spead.Transmitter(
-                spead.TransportUDPtx(str(beam.meta_destination['ip']),
-                                     beam.meta_destination['port']))
-            # update the multicast socket option to use a TTL of 2,
-            # in order to traverse the L3 network on site.
-            ttl_bin = struct.pack('@i', 2)
-            stx.t._udp_out.setsockopt(socket.IPPROTO_IP,
-                                      socket.IP_MULTICAST_TTL, ttl_bin)
-            # make the item group we're going to use
-            sig = spead.ItemGroup()
-            self.spead_tx[beam.name] = stx
-            self.spead_meta_ig[beam.name] = sig
-
-    def spead_meta_issue(self, beams=None, send_now=True):
+    def spead_meta_update_beamformer(self):
         """
         Issues the SPEAD metadata packets containing the payload
         and options descriptors and unpack sequences.
-        :param beams: a list of beam names, all beams if None
         :return:
         """
-        if (not self.spead_tx) or (not self.spead_meta_ig):
-            self._create_spead_tx_ig()
-
-        if not beams:
-            beams = self.beams.keys()
-
-        for beam_name in beams:
-            beam = self.beams[beam_name]
-            if send_now:
-                spead_ig = spead.ItemGroup()
-            else:
-                spead_ig = self.spead_meta_ig[beam_name]
-            spead_tx = self.spead_tx[beam_name]
+        for beam_name, beam in self.beams.items():
+            spead_ig = self.spead_meta_ig[beam_name]
 
             # calculate a few things for this beam
             n_chans = int(self.corr.configd['fengine']['n_chans'])
@@ -355,7 +323,9 @@ class BEngineOperations(object):
                 init_val=n_bengs)
 
             self.corr.speadops.item_0x1020(sig=spead_ig)
+            self.corr.speadops.item_0x1027(sig=spead_ig)
             self.corr.speadops.item_0x1045(sig=spead_ig)
+            self.corr.speadops.item_0x1046(sig=spead_ig)
 
             spead_ig.add_item(
                 name='b_per_fpga', id=0x1047,
@@ -371,6 +341,8 @@ class BEngineOperations(object):
                 shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
                 init_val=-1)
 
+            self.corr.speadops.item_0x1600(sig=spead_ig)
+
             # id is 0x5 + 12 least sig bits id of each beam
             beam_data_id = 0x5000 + beam.index
             spead_ig.add_item(
@@ -385,70 +357,39 @@ class BEngineOperations(object):
                 ndarray=numpy.ndarray(shape=(beam_chans, xeng_acc_len, 2),
                                       dtype=numpy.int8))
 
-            if send_now:
-                LOGGER.info('Issued static SPEAD metadata for '
-                            'beam %s' % beam.name)
-                spead_tx.send_heap(spead_ig.get_heap())
+            self.logger.info('Beam %i:%s - updated beamformer metadata' % (
+                beam.index, beam.name))
 
-    def spead_destination_meta_issue(self, beams=None, send_now=True):
+    def spead_meta_update_destination(self):
         """
-        Issues a SPEAD packet to notify the receiver of changes to destination
-        :param beams: list of beam names, all beams if None
+        Update the SPEAD IGs to notify the receiver of changes to destination
         :return:
         """
-        if (not self.spead_tx) or (not self.spead_meta_ig):
-            self._create_spead_tx_ig()
-
-        if not beams:
-            beams = self.beams.keys()
-
-        for beam_name in beams:
-            beam = self.beams[beam_name]
-            if send_now:
-                spead_ig = spead.ItemGroup()
-            else:
-                spead_ig = self.spead_meta_ig[beam_name]
-            spead_tx = self.spead_tx[beam_name]
+        for beam_name, beam in self.beams.items():
+            spead_ig = self.spead_meta_ig[beam_name]
 
             spead_ig.add_item(
                 name='rx_udp_port', id=0x1022,
                 description='Destination UDP port for B engine output.',
                 shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                init_val=beam.meta_destination['port'])
+                init_val=beam.data_destination['port'])
 
             spead_ig.add_item(
                 name='rx_udp_ip_str', id=0x1024,
                 description='Destination IP address for B engine output UDP '
                             'packets.',
                 shape=[-1], fmt=spead.STR_FMT,
-                init_val=str(beam.meta_destination['ip']))
+                init_val=str(beam.data_destination['ip']))
+            self.logger.info('Beam %i:%s - updated meta destination '
+                             'metadata' % (beam.index, beam.name))
 
-            if send_now:
-                LOGGER.info('Issued destination SPEAD metadata for '
-                            'beam %s' % beam.name)
-                spead_tx.send_heap(spead_ig.get_heap())
-
-    def spead_weights_meta_issue(self, beams=None, send_now=True):
+    def spead_meta_update_weights(self):
         """
-        Issues a SPEAD heap for the weights settings.
-        :param beams: list of beam names, all beams if None
+        Update the weights in the BEAM SPEAD ItemGroups.
         :return:
         """
-        if (not self.spead_tx) or (not self.spead_meta_ig):
-            self._create_spead_tx_ig()
-
-        if not beams:
-            beams = self.beams.keys()
-
-        for beam_name in beams:
-            beam = self.beams[beam_name]
-            if send_now:
-                spead_ig = spead.ItemGroup()
-            else:
-                spead_ig = self.spead_meta_ig[beam_name]
-            spead_tx = self.spead_tx[beam_name]
-
-            # weights settings
+        for beam_name, beam in self.beams.items():
+            spead_ig = self.spead_meta_ig[beam_name]
             for wctr, wght in enumerate(beam.source_weights):
                 spead_ig.add_item(
                     name='beam%i_ant%i' % (beam.index, wctr), id=0x2000+wctr,
@@ -459,63 +400,78 @@ class BEngineOperations(object):
                                 'floats.' % (beam.index, wctr),
                     shape=[], fmt=spead.mkfmt(('f', 32)),
                     init_val=wght)
+            self.logger.info('Beam %i:%s - updated weights metadata' % (
+                beam.index, beam.name))
 
-            if send_now:
-                LOGGER.info('Issued SPEAD EQ metadata for beam %s' % beam.name)
-                spead_tx.send_heap(spead_ig.get_heap())
-
-    def spead_labels_meta_issue(self, beams=None, send_now=True):
+    def spead_meta_update_labels(self):
         """
-        Issues a SPEAD heap for the ant labels.
-        :param beams: list of beam names, all beams if None
+        Update the labels in the BEAM SPEAD ItemGroups.
         :return:
         """
-        if (not self.spead_tx) or (not self.spead_meta_ig):
-            self._create_spead_tx_ig()
-
-        if not beams:
-            beams = self.beams.keys()
-
-        for beam_name in beams:
-            beam = self.beams[beam_name]
-            if send_now:
-                spead_ig = spead.ItemGroup()
-            else:
-                spead_ig = self.spead_meta_ig[beam_name]
-            spead_tx = self.spead_tx[beam_name]
-
-            # use the fxcorrelator object to add 0x100E to the beam IG
-            self.corr.spead_add_label_meta(spead_ig)
-
-            if send_now:
-                LOGGER.info('Issued SPEAD label metadata for '
-                            'beam %s' % beam.name)
-                spead_tx.send_heap(spead_ig.get_heap())
-
-    def spead_bf_issue_all(self, beams=None):
-        """
-        Issues all SPEAD metadata for given beams.
-        :param beams: list of beam names, all beams if None
-        :return:
-        """
-        if (not self.spead_tx) or (not self.spead_meta_ig):
-            self._create_spead_tx_ig()
-
-        if not beams:
-            beams = self.beams.keys()
-
-        # update the IGs, but do not send yet
-        self.spead_meta_issue(beams, False)
-        self.spead_labels_meta_issue(beams, False)
-        self.spead_destination_meta_issue(beams, False)
-        self.spead_weights_meta_issue(beams, False)
-
-        for beam_name in beams:
-            beam = self.beams[beam_name]
+        for beam_name, beam in self.beams.items():
             spead_ig = self.spead_meta_ig[beam_name]
-            spead_tx = self.spead_tx[beam_name]
-            LOGGER.info('Issued all SPEAD metadata for beam %s' % beam.name)
-            spead_tx.send_heap(spead_ig.get_heap())
+            self.corr.speadops.item_0x100e(sig=spead_ig)
+            self.logger.info('Beam %i:%s - updated label metadata' % (
+                beam.index, beam.name))
+
+    def spead_meta_update_all(self):
+        """
+        Update the IGs for all beams for all beamformer info
+        :return:
+        """
+        self.spead_meta_update_beamformer()
+        self.spead_meta_update_destination()
+        self.spead_meta_update_weights()
+        self.spead_meta_update_labels()
+
+    def spead_meta_transmit_all(self):
+        """
+        Transmit SPEAD metadata for all beams
+        :return:
+        """
+        for beam_name, beam in self.beams.items():
+            if beam.meta_destination is None:
+                self.logger.info('SPEAD meta destination is still unset, '
+                                 'NOT sending metadata at this time.')
+                continue
+            beam_ig = self.spead_meta_ig[beam_name]
+            beam_tx = self.spead_tx[beam_name]
+            beam_tx.send_heap(beam_ig.get_heap())
+            self.logger.info('Beam %i:%s - sent SPEAD metadata to %s:%i' % (
+                beam.index, beam.name, beam.meta_destination['ip'],
+                beam.meta_destination['port']))
+
+    def spead_meta_issue_all(self):
+        """
+        Issue = update + transmit
+        """
+        if not self.beams:
+            self.logger.info('Cannot issue metadata without beams!')
+            raise RuntimeError
+        self.spead_meta_update_all()
+        self.spead_meta_transmit_all()
+
+    def _create_spead_tx_ig(self):
+        """
+        Create the SPEAD metadata transmitter
+        :return:
+        """
+        del self.spead_tx, self.spead_meta_ig
+        self.spead_tx = {}
+        self.spead_meta_ig = {}
+        for beam in self.beams.values():
+            stx = spead.Transmitter(
+                spead.TransportUDPtx(str(beam.meta_destination['ip']),
+                                     beam.meta_destination['port']))
+            # update the multicast socket option to use a TTL of 2,
+            # in order to traverse the L3 network on site.
+            ttl_bin = struct.pack('@i', 2)
+            stx.t._udp_out.setsockopt(socket.IPPROTO_IP,
+                                      socket.IP_MULTICAST_TTL, ttl_bin)
+            # make the item group we're going to use
+            sig = spead.ItemGroup()
+            self.spead_tx[beam.name] = stx
+            self.spead_meta_ig[beam.name] = sig
 
     # BFSTAGE_DUPLICATE = 0
     # BFSTAGE_CALIBRATE = 1

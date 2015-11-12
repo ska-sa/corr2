@@ -130,6 +130,15 @@ class SpeadOperations(object):
             shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
             init_val=quant_bits)
 
+    def item_0x1027(self, sig=None, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='sync_time', id=0x1027,
+            description='The time at which the digitisers were synchronised. '
+                        'Seconds since the Unix Epoch.',
+            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+            init_val=self.corr.synchronisation_epoch)
+
     def item_0x1045(self, sig=None, stx=None):
         sample_bits = int(self.corr.configd['fengine']['sample_bits'])
         self.add_item(
@@ -138,6 +147,16 @@ class SpeadOperations(object):
             description='How many bits per ADC sample.',
             shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
             init_val=sample_bits)
+
+    def item_0x1046(self, sig=None, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='scale_factor_timestamp', id=0x1046,
+            description='Timestamp scaling factor. Divide the SPEAD '
+                        'data packet timestamp by this number to get '
+                        'back to seconds since last sync.',
+            shape=[], fmt=spead.mkfmt(('f', 64)),
+            init_val=self.corr.sample_rate_hz)
 
     def item_0x1400(self, sig=None, stx=None):
         all_eqs = self.corr.fops.eq_get()
@@ -156,6 +175,18 @@ class SpeadOperations(object):
                 fmt=spead.mkfmt(('u', 32)),
                 init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for
                           eq_coeff in all_eqs[_srcname]['eq']])
+
+    def item_0x1600(self, sig=None, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='timestamp', id=0x1600,
+            description='Timestamp of start of this integration. uint '
+                        'counting multiples of ADC samples since last sync '
+                        '(sync_time, id=0x1027). Divide this number by '
+                        'timestamp_scale (id=0x1046) to get back to seconds '
+                        'since last sync when this integration was actually '
+                        'started.',
+            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
 
     def meta_update_all(self):
         """
@@ -227,6 +258,13 @@ class SpeadOperations(object):
             shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
             init_val=pkt_len)
 
+        port = self.corr.xeng_tx_destination['port']
+        self.meta_ig.add_item(
+            name='rx_udp_port', id=0x1022,
+            description='Destination UDP port for xengine data output.',
+            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+            init_val=port)
+
         port = int(self.corr.configd['fengine']['10gbe_port'])
         self.meta_ig.add_item(
             name='feng_udp_port', id=0x1023,
@@ -234,13 +272,19 @@ class SpeadOperations(object):
             shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
             init_val=port)
 
+        ipstr = self.corr.xeng_tx_destination['ip']
+        self.meta_ig.add_item(
+            name='rx_udp_ip_str', id=0x1024,
+            description='Destination IP address for xengine data ouput.',
+            shape=[-1], fmt=spead.STR_FMT,
+            init_val=str(ipstr))
+
         ipstr = self.corr.configd['fengine']['10gbe_start_ip']
-        ip = struct.unpack('>I', socket.inet_aton(ipstr))[0]
         self.meta_ig.add_item(
             name='feng_start_ip', id=0x1025,
             description='Start IP address for F-engines in the system.',
-            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-            init_val=ip)
+            shape=[-1], fmt=spead.STR_FMT,
+            init_val=ipstr)
 
         self.meta_ig.add_item(
             name='xeng_rate', id=0x1026,
@@ -248,12 +292,7 @@ class SpeadOperations(object):
             shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
             init_val=self.corr.xeng_clk)
 
-        self.meta_ig.add_item(
-            name='sync_time', id=0x1027,
-            description='The time at which the digitisers were synchronised. '
-                        'Seconds since the Unix Epoch.',
-            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-            init_val=self.corr.synchronisation_epoch)
+        self.item_0x1027()
 
         x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
         self.meta_ig.add_item(
@@ -262,15 +301,16 @@ class SpeadOperations(object):
             shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
             init_val=x_per_fpga)
 
-        self.item_0x1045()
-
         self.meta_ig.add_item(
-            name='scale_factor_timestamp', id=0x1046,
-            description='Timestamp scaling factor. Divide the SPEAD '
-                        'data packet timestamp by this number to get '
-                        'back to seconds since last sync.',
-            shape=[], fmt=spead.mkfmt(('f', 64)),
-            init_val=self.corr.sample_rate_hz)
+            name='ddc_mix_freq', id=0x1043,
+            description='Digital downconverter mixing frequency as a fraction '
+                        'of the ADC sampling frequency. eg: 0.25. Set to zero '
+                        'if no DDC is present.',
+            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+            init_val=0)
+
+        self.item_0x1045()
+        self.item_0x1046()
 
         self.meta_ig.add_item(
             name='xeng_out_bits_per_sample', id=0x1048,
@@ -288,15 +328,7 @@ class SpeadOperations(object):
 
         self.item_0x1400()
 
-        self.meta_ig.add_item(
-            name='timestamp', id=0x1600,
-            description='Timestamp of start of this integration. uint '
-                        'counting multiples of ADC samples since last sync '
-                        '(sync_time, id=0x1027). Divide this number by '
-                        'timestamp_scale (id=0x1046) to get back to seconds '
-                        'since last sync when this integration was actually '
-                        'started.',
-            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)))
+        self.item_0x1600()
 
         self.meta_ig.add_item(
             name='flags_xeng_raw', id=0x1601,
