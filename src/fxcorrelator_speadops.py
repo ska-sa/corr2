@@ -91,6 +91,25 @@ class SpeadOperations(object):
             description='input labels and numbers',
             init_val=metalist)
 
+    def item_0x1015(self, sig=None, stx=None):
+        spec_acclen = (self.corr.accumulation_len *
+                       self.corr.xeng_accumulation_len)
+        self.add_item(
+            sig=sig, stx=stx,
+            name='n_accs', id=0x1015,
+            description='The number of spectra that are accumulated '
+                        'per X-engine dump.',
+            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+            init_val=spec_acclen)
+
+    def item_0x1016(self, sig=None, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='int_time', id=0x1016,
+            description='The time per integration, in seconds.',
+            shape=[], fmt=spead.mkfmt(('f', 64)),
+            init_val=self.corr.xops.get_acc_time())
+
     def item_0x101e(self, sig=None, stx=None):
         self.add_item(
             sig=sig, stx=stx,
@@ -183,21 +202,8 @@ class SpeadOperations(object):
             shape=[], fmt=spead.mkfmt(('f', 64)),
             init_val=int(self.corr.configd['fengine']['bandwidth']))
 
-        spec_acclen = (self.corr.accumulation_len *
-                       self.corr.xeng_accumulation_len)
-        self.meta_ig.add_item(
-            name='n_accs', id=0x1015,
-            description='The number of spectra that are accumulated '
-                        'per X-engine dump.',
-            shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-            init_val=spec_acclen)
-
-        self.meta_ig.add_item(
-            name='int_time', id=0x1016,
-            description='The time per integration, in seconds.',
-            shape=[], fmt=spead.mkfmt(('f', 64)),
-            init_val=self.corr.xops.get_acc_time())
-
+        self.item_0x1015()
+        self.item_0x1016()
         self.item_0x101e()
 
         self.meta_ig.add_item(

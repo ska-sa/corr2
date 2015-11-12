@@ -506,11 +506,10 @@ class XEngineOperations(object):
         self.logger.info('Set VACC accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
-        if self.corr.spead_meta_ig is not None:
-            self.corr.spead_meta_ig['n_accs'] = self.corr.accumulation_len * \
-                                                self.corr.xeng_accumulation_len
-            self.corr.spead_meta_ig['int_time'] = self.get_acc_time()
-            self.corr.spead_tx.send_heap(self.corr.spead_meta_ig.get_heap())
+
+        self.corr.speadops.item_0x1015()
+        self.corr.speadops.item_0x1016(stx=True)
+
         if vacc_resync:
             self.vacc_sync()
 

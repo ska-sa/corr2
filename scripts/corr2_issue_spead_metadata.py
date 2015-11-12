@@ -35,6 +35,6 @@ if 'CORR2INI' in os.environ.keys() and args.config == '':
 c = fxcorrelator.FxCorrelator('corr', config_source=args.config)
 c.standard_log_config()
 c.initialise(program=False)
-c.spead_issue_meta()
+c.speadops.meta_issue_all()
 
 # end
