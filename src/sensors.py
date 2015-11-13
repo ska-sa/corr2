@@ -296,7 +296,7 @@ def setup_sensors(instrument, katcp_server):
 
     instrument._sensors = {}
 
-    ## f-engine lru
+    # f-engine lru
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_lru' % _f.host,
