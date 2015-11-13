@@ -326,7 +326,7 @@ def setup_sensors(instrument, katcp_server):
         instrument._sensors[sensor.name] = sensor
         ioloop.add_callback(_sensor_feng_tx, sensor, executor, _f)
 
-     f-engine rx counters
+    # f-engine rx counters
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_rx' % _f.host,
@@ -337,7 +337,6 @@ def setup_sensors(instrument, katcp_server):
         ioloop.add_callback(_sensor_feng_rx, sensor, executor, _f)
 
     # x-engine tx counters
-     bug introducer
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_tx' % _x.host,
@@ -347,7 +346,7 @@ def setup_sensors(instrument, katcp_server):
         instrument._sensors[sensor.name] = sensor
         ioloop.add_callback(_sensor_xeng_tx, sensor, executor, _x)
 
-    ## x-engine rx counters
+    # x-engine rx counters
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_rx' % _x.host,
@@ -357,7 +356,7 @@ def setup_sensors(instrument, katcp_server):
         instrument._sensors[sensor.name] = sensor
         ioloop.add_callback(_sensor_xeng_rx,  sensor, executor, _x)
 
-    ## x-engine QDR errors
+    # x-engine QDR errors
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_qdr' % _x.host,
@@ -367,7 +366,7 @@ def setup_sensors(instrument, katcp_server):
         instrument._sensors[sensor.name] = sensor
         ioloop.add_callback(_xeng_qdr_okay, sensor, executor, _x)
 
-    ## f-engine QDR errors
+    # f-engine QDR errors
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_qdr' % _f.host,
@@ -377,7 +376,7 @@ def setup_sensors(instrument, katcp_server):
         instrument._sensors[sensor.name] = sensor
         ioloop.add_callback(_feng_qdr_okay, sensor, executor, _f)
 
-    ## x-engine PHY counters
+    # x-engine PHY counters
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_phy' % _x.host,
@@ -407,7 +406,7 @@ def setup_sensors(instrument, katcp_server):
         instrument._sensors[sensor.name] = sensor
         ioloop.add_callback(_feng_pfb_okay, sensor, executor, _f)
 
-    ## f-engine comms rx
+    # f-engine comms rx
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_check_rx' % _f.host,
@@ -417,7 +416,7 @@ def setup_sensors(instrument, katcp_server):
         instrument._sensors[sensor.name] = sensor
         ioloop.add_callback(_fhost_check_rx, sensor, executor, _f)
 
-    ## f-engine comms tx
+    # f-engine comms tx
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_check_tx' % _f.host,
