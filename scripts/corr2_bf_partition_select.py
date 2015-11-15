@@ -59,22 +59,22 @@ c.initialise(program=False)
 
 if args.activate == 'all':
     c.bops.partitions_activate()
-    c.bops.tx_start()
+    c.bops.tx_control_update()
 elif args.activate != '':
     argslist = args.activate.strip().split(',')
     partlist = [int(arg) for arg in argslist]
     if len(partlist) > 0:
         c.bops.partitions_activate(partlist)
-        c.bops.tx_start()
+        c.bops.tx_control_update()
 
 if args.deactivate == 'all':
     c.bops.partitions_deactivate()
-    c.bops.tx_stop()
+    c.bops.tx_control_update()
 elif args.deactivate != '':
     argslist = args.deactivate.strip().split(',')
     partlist = [int(arg) for arg in argslist]
     if len(partlist) > 0:
         c.bops.partitions_deactivate(partlist)
-        c.bops.tx_start()
+        c.bops.tx_control_update()
 
 # end

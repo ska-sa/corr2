@@ -186,21 +186,13 @@ class Beam(object):
                 rv.append(ctr)
         return rv
 
-    def tx_start(self):
+    def tx_control_update(self):
         """
         Start transmission of active partitions on this beam
         :return:
         """
         THREADED_FPGA_FUNC(self.hosts, 5,
                            ('beam_partitions_control', [self], {}))
-
-    def tx_stop(self):
-        """
-        Stop transmission of all partitions on this beam
-        :return:
-        """
-        THREADED_FPGA_FUNC(self.hosts, 5,
-                           ('beam_partitions_control_stop', [self], {}))
 
     def set_weights(self, input_name, new_weight):
         """
@@ -357,7 +349,7 @@ class BEngineOperations(object):
         # done
         self.logger.info('Beamformer initialised.')
 
-    def tx_start(self, beams=None):
+    def tx_control_update(self, beams=None):
         """
         Start transmission of active partitions on all beams
         :param beams - list of beam names
@@ -367,19 +359,7 @@ class BEngineOperations(object):
             beams = self.beams.keys()
         for beam_name in beams:
             beam = self.beams[beam_name]
-            beam.tx_start()
-
-    def tx_stop(self, beams=None):
-        """
-        Stop transmission of all partitions on all beam
-        :param beams - list of beam names
-        :return:
-        """
-        if not beams:
-            beams = self.beams.keys()
-        for beam_name in beams:
-            beam = self.beams[beam_name]
-            beam.tx_stop()
+            beam.tx_control_update()
 
     def partitions_current(self):
         """
@@ -399,7 +379,6 @@ class BEngineOperations(object):
             _changed = beam.partitions_activate(partitions_to_activate)
             changed |= _changed
         if changed:
-            print "BOOOOOOOOOOO"
             self.spead_meta_update_dataheap()
             self.spead_meta_transmit_all()
 

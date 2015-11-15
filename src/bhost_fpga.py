@@ -153,28 +153,6 @@ class FpgaBHost(FpgaXHost):
                                                 beng=beng_for_part)
                 self.registers.bf_value_ctrl.write(filt='pulse')
 
-    def beam_partitions_control_stop(self, beam):
-        """
-        Stop transmission for active partitions on the given beam
-        """
-        host_parts = beam.partitions_by_host[self.index]
-        parts_to_clr = set(beam.partitions_active).intersection(set(host_parts))
-        if len(parts_to_clr) > 0:
-            LOGGER.debug('%s:%i: Beam %i:%s STOP to_clear(%s)' %
-                        (self.host, self.index, beam.index, beam.name,
-                         parts_to_clr,))
-        if len(parts_to_clr) > 4:
-            raise RuntimeError('Cannot clear more than 4 partitions'
-                               'per host?')
-        if len(parts_to_clr) > 0:
-            self.beam_num_partitions_set(beam)
-            self.registers.bf_value_in1.write(filt=0)
-            for part in parts_to_clr:
-                beng_for_part = host_parts.index(part)
-                self.registers.bf_control.write(stream=beam.index,
-                                                beng=beng_for_part)
-                self.registers.bf_value_ctrl.write(filt='pulse')
-
     # def value_duplicate_set(self):
     #     raise NotImplementedError
     #
