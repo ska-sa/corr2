@@ -177,14 +177,7 @@ class FxCorrelator(Instrument):
 
             # are there beamformers?
             if self.found_beamformer:
-                self.bops.initialise(self)
-
-                # we're using only one beng per host, so only enable
-                # those partitions so we can try to get a heap
-                self.bops.partitions_deactivate()
-                self.bops.partitions_activate([0])
-
-                # raise RuntimeError('debugging beamformer')
+                self.bops.initialise()
 
             # for fpga_ in self.fhosts:
             #     fpga_.tap_arp_reload()
@@ -330,11 +323,15 @@ class FxCorrelator(Instrument):
                      (len(newlist), len(self.fengine_sources))
             self.logger.error(errstr)
             raise ValueError(errstr)
+        oldnames = []
+        newnames = []
         for ctr, source in enumerate(self.fengine_sources):
             _source = source['source']
             # update the source name
             old_name = _source.name
             _source.name = newlist[ctr]
+            oldnames.append(old_name)
+            newnames.append(newlist[ctr])
             # update the eq associated with that name
             found_eq = False
             for fhost in self.fhosts:
@@ -346,6 +343,9 @@ class FxCorrelator(Instrument):
                 raise ValueError(
                     'Could not find the old EQ value, %s, to update '
                     'to new name, %s.' % (old_name, _source.name))
+        # update the beam input labels
+        if self.found_beamformer:
+            self.bops.update_labels(oldnames, newnames)
         self.speadops.item_0x100e(stx=True)
 
     def get_labels(self):
@@ -572,8 +572,8 @@ class FxCorrelator(Instrument):
         if txport is None or txip is None:
             self.logger.error('Cannot set part of meta destination to None '
                               '- %s:%d' % (txip, txport))
-            raise RuntimeError('Cannot set part of meta destination to None '
-                               '- %s:%d' % (txip, txport))
+            raise ValueError('Cannot set part of meta destination to None '
+                             '- %s:%d' % (txip, txport))
         self.meta_destination = {'ip': tengbe.IpAddress(txip),
                                  'port': txport}
         self.logger.info('Setting meta destination to %s:%d' %

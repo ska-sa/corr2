@@ -22,18 +22,19 @@ class Beam(object):
         """
         self.name = beam_name
         self.index = beam_index
-        self.hosts = None
+        self.hosts = []
 
-        self.partitions_total = None
-        self.partitions_per_host = None
-        self.partitions = None
-        self.partitions_active = None
-        self.partitions_by_host = None
+        self.partitions_total = -1
+        self.partitions_per_host = -1
+        self.partitions = []
+        self.partitions_active = []
+        self.partitions_by_host = []
 
         self.center_freq = None
         self.bandwidth = None
 
         self.source_weights = None
+        self.source_labels = None
         self.source_poly = None
 
         self.meta_destination = None
@@ -64,16 +65,48 @@ class Beam(object):
         obj.set_meta_destination(beam_dict['meta_ip'], beam_dict['meta_port'])
         obj.set_data_destination(beam_dict['data_ip'], beam_dict['data_port'])
 
-        weight_str = beam_dict['source_weights'].strip().split(',')
+        weight_list = beam_dict['source_weights'].strip().split(',')
         obj.source_weights = []
-        for weight in weight_str:
-            obj.source_weights.append(float(weight.strip()))
+        obj.source_labels = []
+        for weight in weight_list:
+            _split = weight.strip().split(':')
+            input_name = _split[0]
+            input_weight = float(_split[1])
+            obj.source_labels.append(input_name)
+            obj.source_weights.append(input_weight)
         obj.source_poly = []
         return obj
 
     def __str__(self):
         return 'Beam %i:%s destination(%s) meta_dest(%s)' % (
             self.index, self.name, self.data_destination, self.meta_destination)
+
+    def initialise(self):
+        """
+        Set up the beam for first operation after programming.
+        Anything that needs to be done EVERY TIME a new correlator is
+        instantiated should go in self.configure
+        :return:
+        """
+        # set the beam index
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_index_set', [self], {}))
+
+        # set the beam destination registers
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_destination_set', [self], {}))
+
+        # set the weights for this beam
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set', [self], {}))
+
+        LOGGER.info('Beam %i:%s: initialised okay' % (
+            self.index, self.name))
+
+    def configure(self):
+        """
+        Configure the beam when starting a correlator instance
+        :return:
+        """
+        # set the active partitions to the partitions set in hardware
+        self.partitions_active = self.partitions_current()
 
     def _check_partitions(self, partitions):
         """
@@ -97,71 +130,111 @@ class Beam(object):
         """
         Deactive one or more partitions
         :param partitions: a list of partitions to deactivate
-        :return:
+        :return: True is partitions were changed
         """
         if not self.partitions_active:
-            LOGGER.info('Beam %i:%s - all partitions already deactivate' % (
+            LOGGER.info('Beam %i:%s - all partitions already deactive' % (
                 self.index, self.name))
-            return
-        # if nothing is given, then do all of them
-        if partitions is None:
+            return False
+        if not partitions:
             LOGGER.info('Beam %i:%s - deactivating all active partitions' % (
                 self.index, self.name))
-            partitions = self.partitions_active[:]
+            self.partitions_active = []
+            return True
         # make the new active selection
-        currently_active = self.partitions_active[:]
-        _changed = False
-        for val in partitions:
-            try:
-                _ind = currently_active.index(val)
-                currently_active.pop(_ind)
-                _changed = True
-            except ValueError:
-                pass
-        if _changed:
-            LOGGER.debug('Beam %i%s - applying new active partitions' % (
+        partitions = set(partitions)
+        currently_active = set(self.partitions_active)
+        new_active = list(currently_active.difference(partitions))
+        if new_active != list(currently_active):
+            LOGGER.info('Beam %i:%s - applying new active partitions' % (
                 self.index, self.name))
-            self.partitions_activate(currently_active)
+            return self.partitions_activate(new_active)
         else:
-            LOGGER.debug('Beam %i%s - no changes to active partitions' % (
+            LOGGER.info('Beam %i:%s - no changes to active partitions' % (
                 self.index, self.name))
+            return False
 
     def partitions_activate(self, partitions=None):
         """
         Activate one or more partitions.
         :param partitions: a list of partitions to activate
-        :return:
+        :return: True if active partitions changed
         """
-        if partitions is None:
+        if not partitions:
             LOGGER.info('Beam %i:%s - activating all partitions' % (
                 self.index, self.name))
             partitions = self.partitions[:]
         if partitions == self.partitions_active:
             LOGGER.info('Beam %i:%s - specd partitions already active' % (
                 self.index, self.name))
-            return
-        if partitions:
-            self._check_partitions(partitions)
+            return False
+        self._check_partitions(partitions)
         self.partitions_active = partitions[:]
+        LOGGER.info('Beam %i:%s - active partitions: %s' % (
+                self.index, self.name, self.partitions_active))
+        return True
+
+    def partitions_current(self):
+        results = THREADED_FPGA_FUNC(self.hosts, 5,
+                                     ('beam_partitions_read', [self], {}))
+        curr = []
+        for host in self.hosts:
+            curr.extend(results[host.host])
+        rv = []
+        for ctr, cval in enumerate(curr):
+            if cval == 1:
+                rv.append(ctr)
+        return rv
+
+    def tx_start(self):
+        """
+        Start transmission of active partitions on this beam
+        :return:
+        """
         THREADED_FPGA_FUNC(self.hosts, 5,
                            ('beam_partitions_control', [self], {}))
 
-    def initialise(self):
+    def tx_stop(self):
         """
-        Set up the beam for first operation.
+        Stop transmission of all partitions on this beam
         :return:
         """
-        # set the beam index
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_index_set', [self], {}))
+        THREADED_FPGA_FUNC(self.hosts, 5,
+                           ('beam_partitions_control_stop', [self], {}))
 
-        # set the beam destination registers
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_destination_set', [self], {}))
+    def set_weights(self, input_name, new_weight):
+        """
+        Set the input weights for this beam
+        :return:
+        """
+        input_index = self.source_labels.index(input_name)
+        if new_weight == self.source_weights[input_index]:
+            LOGGER.info('Beam %i:%s: %s weight already %.3f' % (
+                self.index, self.name, input_name, new_weight))
+            return False
+        self.source_weights[input_index] = new_weight
+        THREADED_FPGA_FUNC(self.hosts, 5,
+                           ('beam_weights_set', [self], {}))
+        LOGGER.info('Beam %i:%s: %s weight set to %.3f' % (
+            self.index, self.name, input_name, new_weight))
+        return True
 
-        # set the weights for this beam
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set', [self], {}))
-
-        LOGGER.info('Beam %i:%s: initialised okay' % (
-            self.index, self.name))
+    def update_labels(self, oldnames, newnames):
+        """
+        Update the input labels
+        :return: True if anything changed, False if not
+        """
+        changes = False
+        for oldname in oldnames:
+            for ctr, srcname in enumerate(self.source_labels):
+                if srcname == oldname:
+                    LOGGER.info('Beam %i:%s: changed input %i label from '
+                                '%s to %s' % (self.index, self.name, ctr,
+                                              oldname, newnames[ctr]))
+                    self.source_labels[ctr] = newnames[ctr]
+                    changes = True
+                    continue
+        return changes
 
     def set_meta_destination(self, txip=None, txport=None):
         """
@@ -242,6 +315,10 @@ class BEngineOperations(object):
                                        self.corr.configd)
             self.beams[newbeam.name] = newbeam
 
+        # configure the beams
+        for beam in self.beams.values():
+            beam.configure()
+
         self.beng_per_host = int(self.corr.configd['xengine']['x_per_fpga'])
 
         # configure the SPEAD IG and TX
@@ -262,15 +339,16 @@ class BEngineOperations(object):
                          target_function=(
                              lambda fpga_:
                              fpga_.registers.bf_control.write_int(0), [], {}))
-
+        # the base data id is shifted down by 8 bits to account for the concat
+        # of 8 bits of stream id on the lsb.
         data_id = 0x5000 >> 8
-
-        THREADED_FPGA_OP(self.hosts, timeout=5,
-                         target_function=(
-                             lambda fpga_:
-                             fpga_.registers.bf_config.write(data_id=data_id,
-                                                             time_id=33000),
-                             [], {}))
+        # time id is 0x1600 immediate
+        time_id = 0x1600 | (0x1 << 15)
+        THREADED_FPGA_OP(
+            self.hosts, timeout=5,
+            target_function=(
+                lambda fpga_: fpga_.registers.bf_config.write(
+                    data_id=data_id, time_id=time_id), [], {}))
         # set up the beams
         for beam in self.beams.values():
             beam.initialise()
@@ -279,19 +357,121 @@ class BEngineOperations(object):
         # done
         self.logger.info('Beamformer initialised.')
 
+    def tx_start(self, beams=None):
+        """
+        Start transmission of active partitions on all beams
+        :param beams - list of beam names
+        :return:
+        """
+        if not beams:
+            beams = self.beams.keys()
+        for beam_name in beams:
+            beam = self.beams[beam_name]
+            beam.tx_start()
+
+    def tx_stop(self, beams=None):
+        """
+        Stop transmission of all partitions on all beam
+        :param beams - list of beam names
+        :return:
+        """
+        if not beams:
+            beams = self.beams.keys()
+        for beam_name in beams:
+            beam = self.beams[beam_name]
+            beam.tx_stop()
+
+    def partitions_current(self):
+        """
+        Get the currently active partitions for each beam, directly from
+        the host.
+        :return:
+        """
+        return {beam.name: beam.partitions_current()
+                for beam in self.beams.values()}
+
     def partitions_activate(self, partitions_to_activate=None):
         """
         Activate partitions for all beams
         """
+        changed = False
         for beam in self.beams.values():
-            beam.partitions_activate(partitions_to_activate)
+            _changed = beam.partitions_activate(partitions_to_activate)
+            changed |= _changed
+        if changed:
+            print "BOOOOOOOOOOO"
+            self.spead_meta_update_dataheap()
+            self.spead_meta_transmit_all()
 
     def partitions_deactivate(self, partitions_to_deactivate=None):
         """
         Deactivate partitions for all beams
         """
+        changed = False
         for beam in self.beams.values():
-            beam.partitions_deactivate(partitions_to_deactivate)
+            _changed = beam.partitions_deactivate(partitions_to_deactivate)
+            changed |= _changed
+        if changed:
+            self.spead_meta_update_dataheap()
+            self.spead_meta_transmit_all()
+
+    def set_beam_weights(self, beam_name, input_name, new_weight):
+        """
+
+        :return:
+        """
+        if beam_name not in self.beams:
+            raise RuntimeError('No such beam: %s, available beams: %s' % (
+                beam_name, self.beams))
+        updated = self.beams[beam_name].set_weights(input_name, new_weight)
+        if updated:
+            self.spead_meta_update_weights()
+            self.spead_meta_transmit_all()
+
+    def update_labels(self, oldnames, newnames):
+        """
+        Update the input labels
+        :return:
+        """
+        updated = False
+        for beam in self.beams:
+            _updated = beam.update_labels(oldnames, newnames)
+            updated |= _updated
+        if updated:
+            self.spead_meta_update_weights()
+            self.spead_meta_update_labels()
+            self.spead_meta_transmit_all()
+
+    def spead_meta_update_dataheap(self):
+        """
+
+        :return:
+        """
+        for beam_name, beam in self.beams.items():
+            spead_ig = self.spead_meta_ig[beam_name]
+            xeng_acc_len = int(
+                self.corr.configd['xengine']['xeng_accumulation_len'])
+            n_chans = int(self.corr.configd['fengine']['n_chans'])
+            n_bhosts = len(self.hosts)
+            chans_per_host = n_chans / n_bhosts
+            chans_per_partition = chans_per_host / self.beng_per_host
+            beam_chans = chans_per_partition * len(beam.partitions_active)
+
+            # id is 0x5 + 12 least sig bits id of each beam
+            beam_data_id = 0x5000 + beam.index
+            spead_ig.add_item(
+                name=beam_name, id=beam_data_id,
+                description='Raw data for bengines in the system. Frequencies '
+                            'are assembled from lowest frequency to highest '
+                            'frequency. Frequencies come in blocks of values '
+                            'in time order where the number of samples in a '
+                            'block is given by xeng_acc_len (id 0x101F). Each '
+                            'value is a complex number -- two (real and '
+                            'imaginary) signed integers.',
+                ndarray=numpy.ndarray(shape=(beam_chans, xeng_acc_len, 2),
+                                      dtype=numpy.int8))
+            self.logger.info('Beam %i:%s - updated dataheap metadata' % (
+                beam.index, beam.name))
 
     def spead_meta_update_beamformer(self):
         """
@@ -303,14 +483,8 @@ class BEngineOperations(object):
             spead_ig = self.spead_meta_ig[beam_name]
 
             # calculate a few things for this beam
-            n_chans = int(self.corr.configd['fengine']['n_chans'])
             n_bhosts = len(self.hosts)
             n_bengs = self.beng_per_host * n_bhosts
-            chans_per_host = n_chans / n_bhosts
-            chans_per_partition = chans_per_host / self.beng_per_host
-            xeng_acc_len = int(
-                self.corr.configd['xengine']['xeng_accumulation_len'])
-            beam_chans = chans_per_partition * len(beam.partitions_active)
 
             self.corr.speadops.item_0x1007(sig=spead_ig)
             self.corr.speadops.item_0x1009(sig=spead_ig)
@@ -342,20 +516,6 @@ class BEngineOperations(object):
                 init_val=-1)
 
             self.corr.speadops.item_0x1600(sig=spead_ig)
-
-            # id is 0x5 + 12 least sig bits id of each beam
-            beam_data_id = 0x5000 + beam.index
-            spead_ig.add_item(
-                name=beam_name, id=beam_data_id,
-                description='Raw data for bengines in the system. Frequencies '
-                            'are assembled from lowest frequency to highest '
-                            'frequency. Frequencies come in blocks of values '
-                            'in time order where the number of samples in a '
-                            'block is given by xeng_acc_len (id 0x101F). Each '
-                            'value is a complex number -- two (real and '
-                            'imaginary) signed integers.',
-                ndarray=numpy.ndarray(shape=(beam_chans, xeng_acc_len, 2),
-                                      dtype=numpy.int8))
 
             self.logger.info('Beam %i:%s - updated beamformer metadata' % (
                 beam.index, beam.name))
@@ -392,7 +552,8 @@ class BEngineOperations(object):
             spead_ig = self.spead_meta_ig[beam_name]
             for wctr, wght in enumerate(beam.source_weights):
                 spead_ig.add_item(
-                    name='beam%i_ant%i' % (beam.index, wctr), id=0x2000+wctr,
+                    name='beam%i_%s' % (beam.index, beam.source_labels[wctr]),
+                    id=0x2000+wctr,
                     description='The unitless per-channel digital scaling '
                                 'factors implemented prior to combining '
                                 'antenna signals during beamforming for input '
@@ -420,6 +581,7 @@ class BEngineOperations(object):
         :return:
         """
         self.spead_meta_update_beamformer()
+        self.spead_meta_update_dataheap()
         self.spead_meta_update_destination()
         self.spead_meta_update_weights()
         self.spead_meta_update_labels()

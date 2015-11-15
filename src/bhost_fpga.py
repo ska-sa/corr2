@@ -60,7 +60,7 @@ class FpgaBHost(FpgaXHost):
         beam_cfgreg = self.registers['bf%i_config' % beam.index]
         numparts = len(beam.partitions_active)
         beam_cfgreg.write(n_partitions=numparts)
-        LOGGER.info('%s:%i: Beam %i:%s num_partitions set - %i' % (
+        LOGGER.debug('%s:%i: Beam %i:%s num_partitions set - %i' % (
             self.host, self.index, beam.index, beam.name, numparts))
 
     # def beam_partitions_set(self, beam):
@@ -90,32 +90,40 @@ class FpgaBHost(FpgaXHost):
                                                 beng=beng_ctr,
                                                 antenna=ant_ctr)
                 self.registers.bf_value_ctrl.write(bw='pulse')
-        LOGGER.info('%s:%i: Beam %i:%s set antenna(%i) stream(%i) weights(%s)'
-                    % (self.host, self.index, beam.index, beam.name,
-                       self.index, beam.index, beam.source_weights))
+        LOGGER.info('%s:%i: Beam %i:%s set antenna(%i) '
+                    'stream(%i) weights(%s)' % (self.host, self.index,
+                                                beam.index, beam.name,
+                                                self.index, beam.index,
+                                                beam.source_weights))
+
+    def beam_partitions_read(self, beam):
+        """
+        Determine which partitions are currently active in the hardware.
+        """
+        self.registers.bf_control.write(stream=beam.index)
+        vals = self.registers.bf_valout_filt.read()['data']
+        return [v for v in vals.values()]
 
     def beam_partitions_control(self, beam):
         """
-        Set the active partitions for a beam on this host.
+        Enable the active partitions for a beam on this host.
         """
         host_parts = beam.partitions_by_host[self.index]
         actv_parts = beam.partitions_active
         parts_to_set = set(host_parts).intersection(actv_parts)
         parts_to_clr = set(host_parts).difference(parts_to_set)
         if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
-            LOGGER.info('%s:%i: Beam %i:%s beam_active(%s) host(%s) toset(%s) '
-                        'toclr(%s)' %
-                        (self.host, self.index, beam.index, beam.name,
-                         list(actv_parts), list(host_parts), list(parts_to_set),
-                         list(parts_to_clr),))
+            LOGGER.debug('%s:%i: Beam %i:%s beam_active(%s) host(%s) toset(%s) '
+                         'toclr(%s)' %
+                         (self.host, self.index, beam.index, beam.name,
+                          list(actv_parts), list(host_parts),
+                          list(parts_to_set), list(parts_to_clr),))
         if (len(parts_to_set) > 4) or (len(parts_to_clr) > 4):
             raise RuntimeError('Cannot set or clear more than 4 partitions'
                                'per host?')
-
         # set the total number of partitions
         if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
             self.beam_num_partitions_set(beam)
-
         # clear first
         if len(parts_to_clr) > 0:
             self.registers.bf_value_in1.write(filt=0)
@@ -124,7 +132,6 @@ class FpgaBHost(FpgaXHost):
                 self.registers.bf_control.write(stream=beam.index,
                                                 beng=beng_for_part)
                 self.registers.bf_value_ctrl.write(filt='pulse')
-
         # enable next
         if len(parts_to_set) > 0:
             # set the offsets
@@ -133,7 +140,7 @@ class FpgaBHost(FpgaXHost):
                 beng_for_part = host_parts.index(part)
                 part_offset = actv_parts.index(part)
                 part_offsets['partition%i_offset' % beng_for_part] = part_offset
-            LOGGER.info('%s:%i: Beam %i:%s %s' %
+            LOGGER.debug('%s:%i: Beam %i:%s %s' %
                         (self.host, self.index, beam.index, beam.name,
                          part_offsets))
             beam_poffset_reg = self.registers['bf%i_partitions' % beam.index]
@@ -141,6 +148,28 @@ class FpgaBHost(FpgaXHost):
             # enable filter stages
             self.registers.bf_value_in1.write(filt=1)
             for part in parts_to_set:
+                beng_for_part = host_parts.index(part)
+                self.registers.bf_control.write(stream=beam.index,
+                                                beng=beng_for_part)
+                self.registers.bf_value_ctrl.write(filt='pulse')
+
+    def beam_partitions_control_stop(self, beam):
+        """
+        Stop transmission for active partitions on the given beam
+        """
+        host_parts = beam.partitions_by_host[self.index]
+        parts_to_clr = set(beam.partitions_active).intersection(set(host_parts))
+        if len(parts_to_clr) > 0:
+            LOGGER.debug('%s:%i: Beam %i:%s STOP to_clear(%s)' %
+                        (self.host, self.index, beam.index, beam.name,
+                         parts_to_clr,))
+        if len(parts_to_clr) > 4:
+            raise RuntimeError('Cannot clear more than 4 partitions'
+                               'per host?')
+        if len(parts_to_clr) > 0:
+            self.beam_num_partitions_set(beam)
+            self.registers.bf_value_in1.write(filt=0)
+            for part in parts_to_clr:
                 beng_for_part = host_parts.index(part)
                 self.registers.bf_control.write(stream=beam.index,
                                                 beng=beng_for_part)
