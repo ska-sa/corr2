@@ -281,8 +281,10 @@ def setup_sensors(instrument, katcp_server):
     :return:
     """
 
-    nr_engines = len(instrument.fhosts + instrument.xhosts)
-    executor = futures.ThreadPoolExecutor(max_workers=nr_engines)
+    # Set up a 1-worker pool per host to serialise interactions with each host
+    host_executors = {host.host: futures.ThreadPoolExecutor(max_workers=1)
+                        for host in instrument.fhosts + instrument.xhosts}
+
     if not instrument._initialised:
         raise RuntimeError('Cannot set up sensors until instrument is initialised.')
 
@@ -296,6 +298,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine lru
     for _f in instrument.fhosts:
+        executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_lru' % _f.host,
                                 description='F-engine %s LRU okay' % _f.host,
                                 default=True)
@@ -305,6 +308,7 @@ def setup_sensors(instrument, katcp_server):
 
     # x-engine lru
     for _x in instrument.xhosts:
+        executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_lru' % _x.host,
                                 description='X-engine %s LRU okay' % _x.host,
                                 default=True)
@@ -314,6 +318,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine tx counters
     for _f in instrument.fhosts:
+        executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_tx' % _f.host,
                                 description='F-engine TX okay - counters incrementing',
                                 default=True)
@@ -323,6 +328,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine rx counters
     for _f in instrument.fhosts:
+        executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_rx' % _f.host,
                                 description='F-engine RX okay - counters incrementing',
                                 default=True)
@@ -332,6 +338,7 @@ def setup_sensors(instrument, katcp_server):
 
     # x-engine tx counters
     for _x in instrument.xhosts:
+        executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_tx' % _x.host,
                                 description='X-engine TX okay - counters incrementing',
                                 default=True)
@@ -341,6 +348,7 @@ def setup_sensors(instrument, katcp_server):
 
     # x-engine rx counters
     for _x in instrument.xhosts:
+        executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_rx' % _x.host,
                                 description='X-engine RX okay - counters incrementing',
                                 default=True)
@@ -350,6 +358,7 @@ def setup_sensors(instrument, katcp_server):
 
     # x-engine QDR errors
     for _x in instrument.xhosts:
+        executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_qdr' % _x.host,
                                 description='X-engine QDR okay',
                                 default=True)
@@ -359,6 +368,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine QDR errors
     for _f in instrument.fhosts:
+        executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_qdr' % _f.host,
                                 description='F-engine QDR okay',
                                 default=True)
@@ -368,6 +378,7 @@ def setup_sensors(instrument, katcp_server):
 
     # x-engine PHY counters
     for _x in instrument.xhosts:
+        executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_phy' % _x.host,
                                 description='X-engine PHY okay',
                                 default=True)
@@ -377,6 +388,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine PHY counters
     for _f in instrument.fhosts:
+        executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_phy' % _f.host,
                                 description='F-engine PHY okay',
                                 default=True)
@@ -386,6 +398,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine PFB counters
     for _f in instrument.fhosts:
+        executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_pfb' % _f.host,
                                 description='F-engine PFB okay',
                                 default=True)
@@ -395,6 +408,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine comms rx
     for _f in instrument.fhosts:
+        executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_check_rx' % _f.host,
                                 description='F-engine RX path okay',
                                 default=True)
@@ -404,6 +418,7 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine comms tx
     for _f in instrument.fhosts:
+        executor = host_executors[_f.host]
         sensor = Sensor.boolean(name='%s_feng_check_tx' % _f.host,
                                 description='F-engine TX okay transmitting '
                                             'packets without error',
@@ -414,6 +429,7 @@ def setup_sensors(instrument, katcp_server):
 
     # x-engine comms rx
     for _x in instrument.xhosts:
+        executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_check_rx' % _x.host,
                                 description='X-engine RX path okay',
                                 default=True)
@@ -423,6 +439,7 @@ def setup_sensors(instrument, katcp_server):
 
     # x-engine comms tx
     for _x in instrument.xhosts:
+        executor = host_executors[_x.host]
         sensor = Sensor.boolean(name='%s_xeng_check_tx' % _x.host,
                                 description='X-engine TX okay transmitting '
                                             'packets without error',
