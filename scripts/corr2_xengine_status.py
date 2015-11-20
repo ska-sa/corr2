@@ -43,11 +43,11 @@ signal.signal(signal.SIGHUP, signal_handler)
 
 polltime = args.polltime
 
-if args.log_level != '':
+if args.log_level:
     import logging
     log_level = args.log_level.strip()
     try:
-        logging.basicConfig(level=eval('logging.%s' % log_level))
+        logging.basicConfig(level=getattr(logging, log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
@@ -123,7 +123,7 @@ try:
                         xpos += 20
             scroller.draw_screen()
             last_refresh = time.time()
-except Exception, e:
+except KeyboardInterrupt:
     signal_handler(None, None)
     raise
 

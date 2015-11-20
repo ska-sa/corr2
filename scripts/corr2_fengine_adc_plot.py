@@ -69,7 +69,7 @@ except ValueError:
     hostname = args.host
 
 # process the range argument
-plotrange = eval(args.range)
+plotrange = args.range.split(',')
 if plotrange[0] == -1:
     plotrange = (0, plotrange[1])
 if (plotrange[1] != -1) and (plotrange[1] <= plotrange[0]):

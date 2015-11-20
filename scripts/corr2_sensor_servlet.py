@@ -95,7 +95,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     try:
-        log_level = eval('logging.%s' % args.loglevel)
+        log_level = getattr(logging, args.loglevel)
     except:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 
@@ -126,6 +126,7 @@ if __name__ == '__main__':
     print 'Sensor Server listening on port %d, ' % args.port
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
-    instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=args.config)
+    instrument = fxcorrelator.FxCorrelator('RTS correlator',
+                                           config_source=args.config)
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()

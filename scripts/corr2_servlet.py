@@ -507,7 +507,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     try:
-        log_level = eval('logging.%s' % args.loglevel)
+        log_level = getattr(logging, args.loglevel)
     except:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 

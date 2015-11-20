@@ -309,19 +309,19 @@ if __name__ == '__main__':
     else:
         print 'Not tracking any items.'
 
-    if args.log_level != '':
+    if args.log_level:
         import logging
         log_level = args.log_level.strip()
         try:
-            logging.basicConfig(level=eval('logging.%s' % log_level))
+            logging.basicConfig(level=getattr(logging, log_level))
         except AttributeError:
             raise RuntimeError('No such log level: %s' % log_level)
     
-    if args.spead_log_level != '':
+    if args.spead_log_level:
         import logging
         spead_log_level = args.spead_log_level.strip()
         try:
-            logging.basicConfig(level=eval('logging.%s' % spead_log_level))
+            logging.basicConfig(level=getattr(logging, spead_log_level))
         except AttributeError:
             raise RuntimeError('No such log level: %s' % spead_log_level)
 

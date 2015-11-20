@@ -41,11 +41,11 @@ args = parser.parse_args()
 if not (args.stop or args.start):
     print 'Cowardly refusing to do nothing!'
 else:
-    if args.log_level != '':
+    if args.log_level:
         import logging
         log_level = args.log_level.strip()
         try:
-            logging.basicConfig(level=eval('logging.%s' % log_level))
+            logging.basicConfig(level=getattr(logging, log_level))
         except AttributeError:
             raise RuntimeError('No such log level: %s' % log_level)
 

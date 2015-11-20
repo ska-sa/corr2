@@ -16,7 +16,8 @@ Revs:
 2010-11-26  JRM Added command-line option for autoscaling.
 """
 
-import spead64_48 as spead
+import spead2
+import spead2.recv as s2rx
 import time
 import threading
 import os
@@ -25,9 +26,7 @@ import Queue
 import numpy as np
 import matplotlib.pyplot as pyplot
 
-
 logging.basicConfig(level=logging.DEBUG)
-spead.DEBUG = True
 
 
 class CorrRx(threading.Thread):
@@ -37,7 +36,7 @@ class CorrRx(threading.Thread):
         self.logger.addHandler(logging.StreamHandler())
         self.logger.setLevel(logging.DEBUG)
 
-        spead.logging.getLogger().setLevel(logging.DEBUG)
+        spead2._logger.setLevel(logging.DEBUG)
 
         self._target = self.rx_cont
         self._kwargs = kwargs
@@ -59,56 +58,66 @@ class CorrRx(threading.Thread):
         data_port = 8889
 
         logger.info('Data reception on port %i.' % data_port)
-        rx = spead.TransportUDPrx(data_port, pkt_count=1024,
-                                  buffer_size=51200000)
-        ig = spead.ItemGroup()
+
+        ig = spead2.ItemGroup()
+
+        strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, max_heaps=8,
+                           ring_heaps=8)
+        strm.add_udp_reader(port=data_port, max_size=9200,
+                            buffer_size=51200000)
+
         idx = 0
         last_heap_cnt = -1
 
         heap_ctr = 0
 
         try:
-            for heap in spead.iterheaps(rx):
+            for heap in strm:
 
                 if last_heap_cnt == -1:
-                    last_heap_cnt = heap.heap_cnt - 2097152
+                    last_heap_cnt = heap.cnt - 2097152
 
-                diff = heap.heap_cnt - last_heap_cnt
+                diff = heap.cnt - last_heap_cnt
 
                 if diff < 0:
                     raise RuntimeError
 
                 if diff != 2097152:
-                    logger.debug('Heap cnt JUMP: %i -> %i' % (last_heap_cnt, heap.heap_cnt))
-                last_heap_cnt = heap.heap_cnt
+                    logger.debug('Heap cnt JUMP: %i -> %i' % (last_heap_cnt,
+                                                              heap.cnt))
+                last_heap_cnt = heap.cnt
 
                 ig.update(heap)
 
                 logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f - %i' % (
-                    idx, heap.heap_cnt, time.time(), diff))
+                    idx, heap.cnt, time.time(), diff))
 
                 print 'PROCESSING HEAP idx(%i) cnt(%i) @ %.4f - %i' % (
-                    idx, heap.heap_cnt, time.time(), diff)
+                    idx, heap.cnt, time.time(), diff)
 
                 print 'IG KEYS:', ig.keys()
 
                 if 'x' in ig.keys():
                     if ig['x'] is not None:
-                        # print np.shape(ig['x'])
-                        channel_select = 66
-                        chandata = ig['x'][channel_select, :]
 
-                        chandata = ig['x'][:, 0]
+                        bfraw = ig['x'].value
+                        if bfraw is not None:
 
-                        _cd = []
-                        for _d in chandata:
-                            _pwr = np.sqrt(_d[0]**2 + _d[1]**2)
-                            _cd.append(_pwr)
-                        chandata = _cd[:]
+                            # print np.shape(bfraw)
+                            channel_select = 66
+                            chandata = bfraw[channel_select, :]
 
-                        if not got_data_event.is_set():
-                            plotqueue.put((channel_select, chandata))
-                            got_data_event.set()
+                            chandata = bfraw[:, 0]
+
+                            _cd = []
+                            for _d in chandata:
+                                _pwr = np.sqrt(_d[0]**2 + _d[1]**2)
+                                _cd.append(_pwr)
+                            chandata = _cd[:]
+
+                            if not got_data_event.is_set():
+                                plotqueue.put((channel_select, chandata))
+                                got_data_event.set()
 
                 # should we quit?
                 if self.quit_event.is_set():
@@ -122,7 +131,7 @@ class CorrRx(threading.Thread):
         except MemoryError:
             self.memory_error_event.set()
 
-        rx.stop()
+        strm.stop()
         logger.info("Files and sockets closed.")
         self.quit_event.clear()
 
