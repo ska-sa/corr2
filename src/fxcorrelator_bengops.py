@@ -1,10 +1,13 @@
 import numpy
 import logging
-import spead64_48 as spead
+import spead2
+import spead2.send as sptx
 import struct
 import socket
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
+
+from fxcorrelator_speadops import SPEAD_ADDRSIZE
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -447,8 +450,8 @@ class BEngineOperations(object):
                             'block is given by xeng_acc_len (id 0x101F). Each '
                             'value is a complex number -- two (real and '
                             'imaginary) signed integers.',
-                ndarray=numpy.ndarray(shape=(beam_chans, xeng_acc_len, 2),
-                                      dtype=numpy.int8))
+                dtype=numpy.int8,
+                shape=[beam_chans, xeng_acc_len, 2])
             self.logger.info('Beam %i:%s - updated dataheap metadata' % (
                 beam.index, beam.name))
 
@@ -472,8 +475,8 @@ class BEngineOperations(object):
             spead_ig.add_item(
                 name='n_bengs', id=0x100F,
                 description='The total number of B engines in the system.',
-                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                init_val=n_bengs)
+                shape=[], format=[('u', SPEAD_ADDRSIZE)],
+                value=n_bengs)
 
             self.corr.speadops.item_0x1020(sig=spead_ig)
             self.corr.speadops.item_0x1027(sig=spead_ig)
@@ -483,16 +486,16 @@ class BEngineOperations(object):
             spead_ig.add_item(
                 name='b_per_fpga', id=0x1047,
                 description='The number of b-engines per fpga.',
-                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                init_val=self.beng_per_host)
+                shape=[], format=[('u', SPEAD_ADDRSIZE)],
+                value=self.beng_per_host)
 
             spead_ig.add_item(
                 name='beng_out_bits_per_sample', id=0x1050,
                 description='The number of bits per value in the beng output. '
                             'Note that this is for a single value, not the '
                             'combined complex value size.',
-                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                init_val=-1)
+                shape=[], format=[('u', SPEAD_ADDRSIZE)],
+                value=8)
 
             self.corr.speadops.item_0x1600(sig=spead_ig)
 
@@ -510,15 +513,17 @@ class BEngineOperations(object):
             spead_ig.add_item(
                 name='rx_udp_port', id=0x1022,
                 description='Destination UDP port for B engine output.',
-                shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
-                init_val=beam.data_destination['port'])
+                shape=[], format=[('u', SPEAD_ADDRSIZE)],
+                value=beam.data_destination['port'])
 
+            ipstr = numpy.array(beam.data_destination['ip'])
             spead_ig.add_item(
                 name='rx_udp_ip_str', id=0x1024,
                 description='Destination IP address for B engine output UDP '
                             'packets.',
-                shape=[-1], fmt=spead.STR_FMT,
-                init_val=str(beam.data_destination['ip']))
+                shape=ipstr.shape,
+                dtype=ipstr.dtype,
+                value=ipstr)
             self.logger.info('Beam %i:%s - updated meta destination '
                              'metadata' % (beam.index, beam.name))
 
@@ -538,8 +543,8 @@ class BEngineOperations(object):
                                 'antenna signals during beamforming for input '
                                 'beam%i_ant%i. Complex number real 32 bit '
                                 'floats.' % (beam.index, wctr),
-                    shape=[], fmt=spead.mkfmt(('f', 32)),
-                    init_val=wght)
+                    shape=[], format=[('f', 32)],
+                    value=wght)
             self.logger.info('Beam %i:%s - updated weights metadata' % (
                 beam.index, beam.name))
 
@@ -601,17 +606,26 @@ class BEngineOperations(object):
         self.spead_tx = {}
         self.spead_meta_ig = {}
         for beam in self.beams.values():
-            stx = spead.Transmitter(
-                spead.TransportUDPtx(str(beam.meta_destination['ip']),
-                                     beam.meta_destination['port']))
-            # update the multicast socket option to use a TTL of 2,
-            # in order to traverse the L3 network on site.
+            streamconfig = sptx.StreamConfig(max_packet_size=9200,
+                                             max_heaps=8)
+            streamsocket = socket.socket(family=socket.AF_INET,
+                                         type=socket.SOCK_DGRAM,
+                                         proto=socket.IPPROTO_IP)
             ttl_bin = struct.pack('@i', 2)
-            stx.t._udp_out.setsockopt(socket.IPPROTO_IP,
-                                      socket.IP_MULTICAST_TTL, ttl_bin)
+            streamsocket.setsockopt(
+                socket.IPPROTO_IP,
+                socket.IP_MULTICAST_TTL,
+                ttl_bin)
+            speadstream = sptx.UdpStream(spead2.ThreadPool(),
+                                         str(beam.meta_destination['ip']),
+                                         beam.meta_destination['port'],
+                                         streamconfig,
+                                         51200000,
+                                         streamsocket)
             # make the item group we're going to use
-            sig = spead.ItemGroup()
-            self.spead_tx[beam.name] = stx
+            sig = sptx.ItemGroup(
+                flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
+            self.spead_tx[beam.name] = speadstream
             self.spead_meta_ig[beam.name] = sig
 
     # BFSTAGE_DUPLICATE = 0
@@ -1399,7 +1413,7 @@ class BEngineOperations(object):
     # #
     # #         # spead_ig.add_item(name='bf_MyBeamName', id=0xb000+beamN,
     # #         #                        description='',
-    # #         #                        shape=[], fmt=spead.mkfmt(('u', spead.ADDRSIZE)),
+    # #         #                        shape=[], format=[('u', SPEAD_ADDRSIZE)],
     # #         #                        init_val=)
     # #
     # #         self.spead_tx.send_heap(self.spead_meta_ig.get_heap())

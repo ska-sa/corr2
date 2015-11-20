@@ -16,8 +16,9 @@ Revs:
 2010-11-26  JRM Added command-line option for autoscaling.
 """
 
+import spead2
+import spead2.recv as s2rx
 import numpy as np
-import spead64_48 as spead
 import time
 import h5py
 import threading
@@ -38,7 +39,7 @@ class CorrRx(threading.Thread):
         # self.logger.addHandler(self.log_handler)
         # self.logger.setLevel(log_level)
         self.logger = logging.getLogger(__name__)
-        spead.logging.getLogger().setLevel(spead_log_level)
+        spead2._logger.setLevel(logging.DEBUG)
         self._target = self.rx_cont
         self._kwargs = kwargs
         self.quit_event = quit_event
@@ -48,31 +49,23 @@ class CorrRx(threading.Thread):
         print 'starting target with kwargs ', self._kwargs
         self._target(**self._kwargs)
 
-    def rx_cont(self, data_port=7148, acc_scale=True, filename=None,
-                items=None, **kwargs):
+    def rx_cont(self, data_port=7148, acc_scale=True,
+                filename=None, items=None, **kwargs):
+
         logger = self.logger
-
         logger.info('Data reception on port %i.' % data_port)
-        rx = spead.TransportUDPrx(data_port, pkt_count=1024,
-                                  buffer_size=51200000)
 
-        # group = '239.2.0.100'
-        # addrinfo = socket.getaddrinfo(group, None)[0]
-        # group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
-        # mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
-        #
-        # s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        #
-        #
-        #
-        # print "Subscribing to %s." % group
+        strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
+                           max_heaps=8, ring_heaps=8)
+        strm.add_udp_reader(port=data_port, max_size=9200,
+                            buffer_size=51200000)
 
         h5_file = None
         if filename is not None:
             logger.info('Starting file %s.' % filename)
             h5_file = h5py.File(filename, mode='w')
 
-        ig = spead.ItemGroup()
+        ig = spead2.ItemGroup()
         idx = 0
         dump_size = 0
         datasets = {}
@@ -82,10 +75,10 @@ class CorrRx(threading.Thread):
         meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
                          'center_freq', 'bls_ordering', 'n_accs']
         meta = {}
-        for heap in spead.iterheaps(rx):
+        for heap in strm:
             ig.update(heap)
             logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f' % (
-                idx, heap.heap_cnt, time.time()))
+                idx, heap.cnt, time.time()))
             # output item values specified
             if items is not None:
                 for name in ig.keys():
@@ -211,16 +204,22 @@ class CorrRx(threading.Thread):
             if len(plot_baselines) > 0:
                 if 'xeng_raw' in ig.keys():
                     if ig['xeng_raw'] is not None:
-                        # print np.shape(ig['xeng_raw'])
+                        xeng_raw = ig['xeng_raw'].value
+                        if xeng_raw is None:
+                            continue
+                        # print np.shape(xeng_raw)
                         baseline_data = []
                         baseline_phase = []
                         for baseline in range(0, 40):
-                            # print 'baseline %i:' % baseline, ig['xeng_raw'][:, baseline]
+                            # print 'baseline %i:' % baseline, \
+                            #     ig['xeng_raw'][:, baseline]
                             FREQ_TO_PLOT = 0
-                            print 'f_%i bls_%i:' % (FREQ_TO_PLOT, baseline), ig['xeng_raw'][FREQ_TO_PLOT, baseline]
+                            print 'f_%i bls_%i:' % (
+                                FREQ_TO_PLOT, baseline), \
+                                xeng_raw[FREQ_TO_PLOT, baseline]
                             # if baseline in [39, 9, 21, 33]:
                             if baseline in plot_baselines:
-                                bdata = ig['xeng_raw'][:, baseline]
+                                bdata = xeng_raw[:, baseline]
                                 powerdata = []
                                 phasedata = []
                                 for ctr in range(plot_startchan, plot_endchan):
