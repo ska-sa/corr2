@@ -118,7 +118,7 @@ class FpgaHost(Host, KatcpFpga):
             returndata[gbecore.name] = gbecore.read_counters()
         return returndata
 
-    def check_rx_raw(self, max_waittime=5):
+    def check_rx_raw(self, max_waittime=10):
         """
         Is this host receiving 10gbe data correctly?
         :param max_waittime: maximum time to try for data
@@ -127,8 +127,9 @@ class FpgaHost(Host, KatcpFpga):
         rxregs = self.get_tengbe_counters()
         start_time = time.time()
         still_the_same = self.tengbes.names()[:]
-        while (time.time() < start_time + max_waittime) and \
-                (len(still_the_same) > 0):
+        while ((time.time() < start_time + max_waittime) and
+              (len(still_the_same) > 0)):
+
             time.sleep(0.1)
             core = still_the_same[0]
             rxregs_new = self.tengbes[core].read_counters()
@@ -138,6 +139,7 @@ class FpgaHost(Host, KatcpFpga):
             rxerr_new = rxregs_new['%s_rxerrctr' % core]['data']['reg']
             if (rxctr_old != rxctr_new) and (rxerr_old == rxerr_new):
                 still_the_same.remove(core)
+
         if len(still_the_same) > 0:
             LOGGER.error('%s: not receiving 10GbE data on interfaces %s, '
                          'or is receiving bad data, over a %.3f second '
