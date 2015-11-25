@@ -4,7 +4,8 @@ import threading
 import copy
 import Queue
 
-import spead64_48 as spead
+import spead2
+import spead2.recv as s2rx
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,8 +29,8 @@ class CorrRx(threading.Thread):
 
     def stop(self):
         self.quit_event.set()
-        if hasattr(self, 'rx') and self.rx.is_running():
-            self.rx.stop()
+        if hasattr(self, 'strm'):
+            self.strm.stop()
             self.logger.info("SPEAD receiver stopped")
 
     def start(self, timeout=None):
@@ -40,12 +41,16 @@ class CorrRx(threading.Thread):
     def run(self, acc_scale=True):
         logger = self.logger
         logger.info('Data reception on port %i.' % self.data_port)
-        self.rx = rx = spead.TransportUDPrx(
-            self.data_port, pkt_count=1024, buffer_size=51200000)
+
+        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
+                           max_heaps=8, ring_heaps=8)
+        strm.add_udp_reader(port=self.data_port, max_size=9200,
+                            buffer_size=51200000)
+
         self.running_event.set()
 
         try:
-            ig = spead.ItemGroup()
+            ig = spead2.ItemGroup()
             idx = -1
             dump_size = 0
             datasets = {}
@@ -56,33 +61,27 @@ class CorrRx(threading.Thread):
             meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
                              'center_freq', 'bls_ordering', 'n_accs']
             meta = {}
-            for heap in spead.iterheaps(rx):
+            for heap in self.strm:
                 idx += 1
-                ig.update(heap)
+                updated = ig.update(heap)
                 logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f' % (
-                    idx, heap.heap_cnt, time.time()))
+                    idx, heap.cnt, time.time()))
                 # output item values specified
 
-                try:
-                    xeng_raw = ig.get_item('xeng_raw')
-                except KeyError:
-                    xeng_raw = None
-                if xeng_raw is None:
-                    logger.info('Skipping heap {} since no xeng_raw was found'.format(idx))
+                if 'xeng_raw' not in updated:
+                    logger.info('Skipping heap {} since no xeng_raw was not updated'.format(idx))
                     continue
 
-                if xeng_raw.has_changed():
-                    ig_copy = copy.deepcopy(ig)
-                    try:
-                        self.data_queue.put_nowait(ig_copy)
-                    except Queue.Full:
-                        logger.info('Data Queue full, disposing of heap {}.'.format(idx))
-                    try:
-                        self.data_callback(ig_copy)
-                    except Exception:
-                        logger.exception(
-                            'Unhandled exception while calling data_callback()')
-                xeng_raw.unset_changed()
+                ig_copy = copy.deepcopy(ig)
+                try:
+                    self.data_queue.put_nowait(ig_copy)
+                except Queue.Full:
+                    logger.info('Data Queue full, disposing of heap {}.'.format(idx))
+                try:
+                    self.data_callback(ig_copy)
+                except Exception:
+                    logger.exception(
+                        'Unhandled exception while calling data_callback()')
 
                 # should we quit?
                 if self.quit_event.is_set():
@@ -91,7 +90,7 @@ class CorrRx(threading.Thread):
 
         finally:
             try:
-                rx.stop()
+                strm.stop()
                 logger.info("SPEAD receiver stopped")
             except Exception:
                 logger.exception('Exception trying to stop self.rx')
