@@ -1,5 +1,4 @@
 import numpy
-import spead64_48 as spead
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
@@ -9,6 +8,7 @@ import time
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+
 
 class FEngineOperations(object):
 
@@ -428,31 +428,8 @@ class FEngineOperations(object):
         self.logger.info('Writing EQ on all fhosts based on stored '
                          'per-source EQ values...')
         THREADED_FPGA_FUNC(self.hosts, 10, 'write_eq_all')
-        if self.corr.spead_meta_ig is not None:
-            self.eq_update_metadata()
-            self.corr.spead_tx.send_heap(self.corr.spead_meta_ig.get_heap())
+        self.corr.speadops.item_0x1400(stx=True)
         self.logger.info('done.')
-
-    def eq_update_metadata(self):
-        """
-        Update the EQ metadata for this correlator.
-        :return:
-        """
-        all_eqs = self.eq_get()
-        for source in self.corr.fengine_sources:
-            _srcname = source['source'].name
-            _srcnum = source['source_num']
-            eqlen = len(all_eqs[_srcname]['eq'])
-            self.corr.spead_meta_ig.add_item(
-                name='eq_coef_%s' % _srcname, id=0x1400 + _srcnum,
-                description='The unitless per-channel digital scaling '
-                            'factors implemented prior to requantisation, '
-                            'post-FFT, for input %s. Complex number '
-                            'real,imag 32 bit integers.' % _srcname,
-                shape=[eqlen, 2],
-                fmt=spead.mkfmt(('u', 32)),
-                init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for
-                          eq_coeff in all_eqs[_srcname]['eq']])
 
     def set_fft_shift_all(self, shift_value=None):
         """
@@ -468,10 +445,7 @@ class FEngineOperations(object):
                          'boards...' % shift_value)
         THREADED_FPGA_FUNC(self.hosts, 10, ('set_fft_shift', (shift_value,),))
         self.logger.info('done.')
-        if self.corr.spead_meta_ig is not None:
-            _fftshift = self.corr.configd['fengine']['fft_shift']
-            self.corr.spead_meta_ig['fft_shift'] = int(_fftshift)
-            self.corr.spead_tx.send_heap(self.corr.spead_meta_ig.get_heap())
+        self.corr.speadops.item_0x101e(stx=True)
         return shift_value
 
     def get_fft_shift_all(self):

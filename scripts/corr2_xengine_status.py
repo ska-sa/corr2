@@ -33,13 +33,21 @@ parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
+
+def signal_handler(signal_, frame):
+    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+    scroll.screen_teardown()
+    sys.exit(0)
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGHUP, signal_handler)
+
 polltime = args.polltime
 
-if args.log_level != '':
+if args.log_level:
     import logging
     log_level = args.log_level.strip()
     try:
-        logging.basicConfig(level=eval('logging.%s' % log_level))
+        logging.basicConfig(level=getattr(logging, log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
@@ -54,9 +62,6 @@ hosts = utils.parse_hosts(args.hosts, section='xengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-# xeng_hosts = ['roach020921', 'roach020927', 'roach020919', 'roach020925',
-#           'roach02091a', 'roach02091e', 'roach020923', 'roach020924']
-
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
 fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
@@ -69,30 +74,9 @@ for fpga_ in fpgas:
     print '%s: found %i 10gbe core%s.' % (fpga_.host, numgbes, '' if numgbes == 1 else 's')
 
 
-def print_headers(scr):
-    """Print the table headers.
-    """
-    scr.addstr(2, 2, 'xhost')
-    scr.addstr(2, 20, 'tap')
-    scr.addstr(2, 30, 'TX')
-    scr.addstr(3, 30, 'cnt')
-    scr.addstr(3, 40, 'err')
-    scr.addstr(2, 50, 'RX')
-    scr.addstr(3, 50, 'cnt')
-    scr.addstr(3, 60, 'err')
-
-
 def get_fpga_data(fpga_):
-    return {'gbe': {core_.name: core_.read_counters() for core_ in fpga_.tengbes}}
-
-fpga_data = get_fpga_data(fpgas[0])
-
-def signal_handler(signal_, frame):
-    fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-    scroll.screen_teardown()
-    sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGHUP, signal_handler)
+    return {'gbe': {core_.name: core_.read_counters()
+                    for core_ in fpga_.tengbes}}
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
@@ -139,7 +123,7 @@ try:
                         xpos += 20
             scroller.draw_screen()
             last_refresh = time.time()
-except Exception, e:
+except KeyboardInterrupt:
     signal_handler(None, None)
     raise
 

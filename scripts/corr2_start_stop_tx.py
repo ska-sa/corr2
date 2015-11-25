@@ -12,32 +12,40 @@ from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Start or stop 10gbe transmission on a CASPER device',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='comma-delimited list of hosts, or a corr2 config file')
-parser.add_argument('--class', dest='hclass', action='store', default='',
-                    help='start/stop a class: fengine or xengine')
-parser.add_argument('--start', dest='start', action='store_true', default=False,
-                    help='start TX')
-parser.add_argument('--stop', dest='stop', action='store_true', default=False,
-                    help='stop TX')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                    help='log level to use, default None, options INFO, DEBUG, ERROR')
-parser.add_argument('--listhosts', dest='listhosts', action='store_true', default=False,
-                    help='list hosts and exit')
+parser = argparse.ArgumentParser(
+    description='Start or stop 10gbe transmission on a CASPER device',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    '--hosts', dest='hosts', type=str, action='store', default='',
+    help='comma-delimited list of hosts, or a corr2 config file')
+parser.add_argument(
+    '--class', dest='hclass', action='store', default='',
+    help='start/stop a class: fengine or xengine')
+parser.add_argument(
+    '--start', dest='start', action='store_true', default=False,
+    help='start TX')
+parser.add_argument(
+    '--stop', dest='stop', action='store_true', default=False,
+    help='stop TX')
+parser.add_argument(
+    '--comms', dest='comms', action='store', default='katcp', type=str,
+    help='katcp (default) or dcp?')
+parser.add_argument(
+    '--loglevel', dest='log_level', action='store', default='',
+    help='log level to use, default None, options INFO, DEBUG, ERROR')
+parser.add_argument(
+    '--listhosts', dest='listhosts', action='store_true', default=False,
+    help='list hosts and exit')
 args = parser.parse_args()
 
 if not (args.stop or args.start):
     print 'Cowardly refusing to do nothing!'
 else:
-    if args.log_level != '':
+    if args.log_level:
         import logging
         log_level = args.log_level.strip()
         try:
-            logging.basicConfig(level=eval('logging.%s' % log_level))
+            logging.basicConfig(level=getattr(logging, log_level))
         except AttributeError:
             raise RuntimeError('No such log level: %s' % log_level)
 
@@ -76,21 +84,28 @@ else:
         if fpgas[0].registers.names().count('control') > 0:
             if fpgas[0].registers.control.field_names().count('gbe_out_en') > 0:
                 print '\tProduction control registers found.'
-                fpgautils.threaded_fpga_operation(fpgas, 10,
-                                                  lambda fpga: fpga.registers.control.write(gbe_out_en=stopstart))
+                fpgautils.threaded_fpga_operation(
+                    fpgas, 10,
+                    lambda fpga: fpga.registers.control.write(
+                        gbe_out_en=stopstart))
             elif fpgas[0].registers.control.field_names().count('gbe_txen') > 0:
                 print '\tSim-style control registers found.'
-                fpgautils.threaded_fpga_operation(fpgas, 10,
-                                                  lambda fpga: fpga.registers.control.write(gbe_txen=stopstart))
+                fpgautils.threaded_fpga_operation(
+                    fpgas, 10,
+                    lambda fpga: fpga.registers.control.write(
+                        gbe_txen=stopstart))
             elif fpgas[0].registers.control.field_names().count('comms_en') > 0:
                 print '\tOld-style control registers found.'
-                fpgautils.threaded_fpga_operation(fpgas, 10,
-                                                  lambda fpga: fpga.registers.control.write(comms_en=stopstart))
+                fpgautils.threaded_fpga_operation(
+                    fpgas, 10,
+                    lambda fpga: fpga.registers.control.write(
+                        comms_en=stopstart))
         elif fpgas[0].registers.names().count('ctrl') > 0:
             if fpgas[0].registers.ctrl.field_names().count('comms_en') > 0:
                 print '\tSome control registers found?'
-                print fpgautils.threaded_fpga_operation(fpgas, 10,
-                                                        lambda fpga: fpga.registers.ctrl.write(comms_en=stopstart))
+                print fpgautils.threaded_fpga_operation(
+                    fpgas, 10,
+                    lambda fpga: fpga.registers.ctrl.write(comms_en=stopstart))
         else:
             print '\tCould not find the correct registers to control TX'
 

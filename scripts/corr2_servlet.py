@@ -183,9 +183,8 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if stream not in self.instrument.configd['xengine']['output_products']:
-            return 'fail', 'stream %s is not in product list: %s' % \
-                   (stream,
-                    self.instrument.configd['xengine']['output_products'])
+            return 'fail', 'stream %s is not in product list: %s' % (
+                stream, self.instrument.configd['xengine']['output_products'])
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
@@ -362,14 +361,22 @@ class Corr2Server(katcp.DeviceServer):
         quant_string = quant_string.replace('(', '').replace(')', '')
         return 'ok', list_to_katcp_list(quant_string)
 
-    @request()
+    @request(Str(), Str(), Float(multiple=True))
     @return_reply()
-    def request_beam_weights(self, sock):
+    def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
         """
-
+        Set the weight for a input
         :param sock:
         :return:
         """
+        if not self.instrument.found_beamformer:
+            return 'fail', 'Cannot run beamformer commands with no beamformer'
+        try:
+            self.instrument.bops.set_beam_weights(beam_name,
+                                                  input_name,
+                                                  weight_list[0])
+        except Exception as e:
+            return 'fail', '%s' % e.message
         return 'ok',
 
     @request()
@@ -380,7 +387,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        return 'ok',
+        return 'fail', 'Not implemented yet'
 
     @request(Str(), Str())
     @return_reply()
@@ -393,7 +400,13 @@ class Corr2Server(katcp.DeviceServer):
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
-        self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
+        try:
+            self.instrument.set_meta_destination(txip_str=txipstr,
+                                                 txport=txport)
+        except ValueError as e:
+            return 'fail', '%s' % e.message
+        except Exception as e:
+            return 'fail', 'Unknown error: %s' % e.message
         return 'ok',
 
     @request()
@@ -404,7 +417,10 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        self.instrument.xops.vacc_sync()
+        try:
+            self.instrument.xops.vacc_sync()
+        except Exception as e:
+            return 'fail', 'Error syncing vaccs: ' % e.message
         return 'ok',
 
     @request(Int(default=-1))
@@ -491,7 +507,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     try:
-        log_level = eval('logging.%s' % args.loglevel)
+        log_level = getattr(logging, args.loglevel)
     except:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 
