@@ -372,15 +372,34 @@ class FpgaFHost(DigitiserDataReceiver):
         delay_reg = self.registers['delay%i' % offset]
         delta_delay_reg = self.registers['delta_delay%i' % offset]
 
-        LOGGER.info('%s:%d setting an intial delay of %f samples.' %
+        LOGGER.info('%s:%d setting an initial delay of %f samples.' %
                     (self.host, offset, delay))
 
-        # setup the delays
+        # setup the delay
         try:
             delay_reg.write(initial=delay)
         except ValueError as e:
             LOGGER.error('%s:%d initial delay range error - %s' %
                          (self.host, offset, e.message))
+
+            if delay < 0:
+                LOGGER.error('%s:%d smallest delay is 0' % (self.host, offset))
+                compromise = 0
+                LOGGER.error('%s:%d setting delay to %f data samples' %
+                             (self.host, offset, compromise))
+                delay_reg.write(initial=compromise)
+            
+            reg_info = delay_reg.block_info
+            bw = int(reg_info['bitwidths']) 
+            b = int(reg_info['bin_pts'])
+            max_delay = 2**(bw - b) - 1/float(2**b)
+            if delay > max_delay:
+                LOGGER.error('%s:%d largest possible delay is %f data samples' %
+                            (self.host, offset, max_delay))
+                compromise = max_delay
+                LOGGER.error('%s:%d setting delay to %f data samples' %
+                             (self.host, offset, compromise))
+                delay_reg.write(initial=compromise)
 
         LOGGER.info('%s:%d %f to delta in delta_delay register' %
                     (self.host, offset, delta_delay_shifted))
