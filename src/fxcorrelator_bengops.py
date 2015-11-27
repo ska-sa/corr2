@@ -214,6 +214,76 @@ class Beam(object):
             self.index, self.name, input_name, new_weight))
         return True
 
+    def _bandwidth_to_partitions(self, bandwidth, centerfreq):
+        """
+        Given a bandwidth and center frequency, return the relevant
+        partitions that should be activated.
+        :param bandwidth: in hz
+        :param centerfreq: in hz
+        :return: a list of partition numbers
+        """
+        # configured freq range
+        startbw = self.center_freq - (self.bandwidth / 2.0)
+        endbw = self.center_freq + (self.bandwidth / 2.0)
+        # given freq range
+        startgiven = centerfreq - (bandwidth / 2.0)
+        endgiven = centerfreq + (bandwidth / 2.0)
+        # check
+        if (startgiven < startbw) or (endgiven > endbw):
+            raise ValueError('Given freq range (%.2f, %.2f) falls outside '
+                             'beamformer range (%.2f, %.2f)' %
+                             (startgiven, endgiven, startbw, endbw))
+        # bb and partitions
+        bbstart = startgiven - startbw
+        bbend = endgiven - startbw
+        hz_per_partition = self.bandwidth / self.partitions_total
+        part_start = int(numpy.floor(bbstart / hz_per_partition))
+        part_end = int(numpy.ceil(bbend / hz_per_partition))
+        return range(part_start, part_end)
+
+    def _partitions_to_bandwidth(self, partitions=None):
+        """
+        Given a list of partitions, return the corresponding cf and bw
+        :param partitions: a list of partitions
+        :return: tuple, (bw, cf)
+        """
+        if not partitions:
+            partitions = self.partitions_active
+        if len(partitions) == 0:
+            return 0, 0
+        hz_per_partition = self.bandwidth / self.partitions_total
+        rv_bw = hz_per_partition * len(partitions)
+        first_part = partitions[0]
+        part_start_hz = first_part * hz_per_partition
+        actual_start_hz = self.center_freq - (self.bandwidth / 2.0)
+        rv_cf = actual_start_hz + part_start_hz + (rv_bw / 2.0)
+        return rv_bw, rv_cf
+
+    def set_beam_bandwidth(self, bandwidth, centerfreq):
+        """
+        Set the partitions for this beam based on a provided bandwidth
+        and center frequency.
+        :param bandwidth: the bandwidth, in hz
+        :param centerfreq: the center freq of this band, in hz
+        :return: tuple, the set (bw, cf) for that beam
+        """
+        parts = self._bandwidth_to_partitions(bandwidth, centerfreq)
+        LOGGER.info('BW(%.3f) CF(%.3f) translates to partitions: %s' %
+                    (bandwidth, centerfreq, parts))
+        self.partitions_activate(parts)
+        return self.get_beam_bandwidth()
+
+    def get_beam_bandwidth(self):
+        """
+        Get the partitions for this beam i.t.o. bandwidth
+        and center frequency.
+        :return: (beam bandwidth, beam_cf)
+        """
+        (bw, cf) = self._partitions_to_bandwidth()
+        LOGGER.info('Partitions %s give BW(%.3f) CF(%.3f)' %
+                    (self.partitions_active, bw, cf))
+        return bw, cf
+
     def update_labels(self, oldnames, newnames):
         """
         Update the input labels
@@ -397,6 +467,34 @@ class BEngineOperations(object):
             self.spead_meta_update_dataheap()
             self.spead_meta_transmit_all()
 
+    def set_beam_bandwidth(self, beam_name, bandwidth, centerfreq):
+        """
+        Set the partitions for a given beam based on a provided bandwidth
+        and center frequency.
+        :param beam_name: the name of the beam to set
+        :param bandwidth: the bandwidth, in hz
+        :param centerfreq: the center freq of this band, in hz
+        :return: tuple, the set (bw, cf) for that beam
+        """
+        if beam_name not in self.beams:
+            raise RuntimeError('No such beam: %s, available beams: %s' % (
+                beam_name, self.beams))
+        beam = self.beams[beam_name]
+        return beam.set_beam_bandwidth(bandwidth, centerfreq)
+
+    def get_beam_bandwidth(self, beam_name):
+        """
+        Get the partitions for a given beam i.t.o. bandwidth
+        and center frequency.
+        :param beam_name: the name of the beam to set
+        :return: (beam bandwidth, beam_cf)
+        """
+        if beam_name not in self.beams:
+            raise RuntimeError('No such beam: %s, available beams: %s' % (
+                beam_name, self.beams))
+        beam = self.beams[beam_name]
+        return beam.get_beam_bandwidth()
+
     def set_beam_weights(self, beam_name, input_name, new_weight):
         """
 
@@ -442,7 +540,7 @@ class BEngineOperations(object):
             # id is 0x5 + 12 least sig bits id of each beam
             beam_data_id = 0x5000 + beam.index
             spead_ig.add_item(
-                name=beam_name, id=beam_data_id,
+                name='bf_raw', id=beam_data_id,
                 description='Raw data for bengines in the system. Frequencies '
                             'are assembled from lowest frequency to highest '
                             'frequency. Frequencies come in blocks of values '
@@ -534,17 +632,16 @@ class BEngineOperations(object):
         """
         for beam_name, beam in self.beams.items():
             spead_ig = self.spead_meta_ig[beam_name]
-            for wctr, wght in enumerate(beam.source_weights):
-                spead_ig.add_item(
-                    name='beam%i_%s' % (beam.index, beam.source_labels[wctr]),
-                    id=0x2000+wctr,
-                    description='The unitless per-channel digital scaling '
-                                'factors implemented prior to combining '
-                                'antenna signals during beamforming for input '
-                                'beam%i_ant%i. Complex number real 32 bit '
-                                'floats.' % (beam.index, wctr),
-                    shape=[], format=[('f', 32)],
-                    value=wght)
+            spead_ig.add_item(
+                name='beamweight',
+                id=0x2000,
+                description='The unitless per-channel digital scaling '
+                            'factors implemented prior to combining '
+                            'antenna signals during beamforming for input '
+                            'beam %s. Complex number real 32 bit '
+                            'floats.' % beam.name,
+                shape=[len(beam.source_weights)], format=[('i', 32)],
+                value=beam.source_weights)
             self.logger.info('Beam %i:%s - updated weights metadata' % (
                 beam.index, beam.name))
 
@@ -774,7 +871,7 @@ class BEngineOperations(object):
     #
     # def fft_bin2frequency(corr, fft_bins):
     #     """
-    #     returns a list of centre frequencies associated with the fft bins supplied
+    #     returns a list of center frequencies associated with the fft bins supplied
     #     :param fft_bins:
     #     :return: frequencies
     #     """
@@ -931,7 +1028,7 @@ class BEngineOperations(object):
     #     """
     #     Read beam parameter (same for all antennas)
     #     :param beams: string
-    #     :param param: location, name, centre_frequency, bandwidth,
+    #     :param param: location, name, center_frequency, bandwidth,
     #                   rx_meta_ip_str, rx_udp_ip_str, rx_udp_port
     #     :return: values
     #     """
@@ -1031,26 +1128,26 @@ class BEngineOperations(object):
 
     #
     #
-    # def cf_bw2fft_bins(corr, centre_frequency, bandwidth):
+    # def cf_bw2fft_bins(corr, center_frequency, bandwidth):
     #     """
-    #     returns fft bins associated with provided centre_frequency and bandwidth
-    #     centre_frequency is assumed to be the centre of the 2^(N-1) fft bin
-    #     :param centre_frequency:
+    #     returns fft bins associated with provided center_frequency and bandwidth
+    #     center_frequency is assumed to be the center of the 2^(N-1) fft bin
+    #     :param center_frequency:
     #     :param bandwidth:
     #     :return: bins
     #     """
     #     max_bandwidth = float(corr.configd['fengine']['bandwidth'])
     #     fft_bin_width = get_fft_bin_bandwidth(corr)
-    #     centre_frequency = float(centre_frequency)
+    #     center_frequency = float(center_frequency)
     #     bandwidth = float(bandwidth)
     #     # TODO spectral line mode systems??
-    #     if (centre_frequency-bandwidth/2) < 0 or \
-    #             (centre_frequency+bandwidth/2) > max_bandwidth or \
-    #             (centre_frequency-bandwidth/2) >= (centre_frequency+bandwidth/2):
+    #     if (center_frequency-bandwidth/2) < 0 or \
+    #             (center_frequency+bandwidth/2) > max_bandwidth or \
+    #             (center_frequency-bandwidth/2) >= (center_frequency+bandwidth/2):
     #         raise corr.logger.error('Band specified not valid for our system')
     #     # get fft bin for edge frequencies
-    #     edge_bins = frequency2fft_bin(corr, frequencies=[centre_frequency-bandwidth/2,
-    #                                                      centre_frequency+bandwidth/2-fft_bin_width])
+    #     edge_bins = frequency2fft_bin(corr, frequencies=[center_frequency-bandwidth/2,
+    #                                                      center_frequency+bandwidth/2-fft_bin_width])
     #     bins = range(edge_bins[0], edge_bins[1]+1)
     #     return bins
     #
@@ -1080,22 +1177,22 @@ class BEngineOperations(object):
     #     return bf_indices
     #
     #
-    # def cf_bw2cf_bw(corr, centre_frequency, bandwidth):
+    # def cf_bw2cf_bw(corr, center_frequency, bandwidth):
     #     """
-    #     converts specfied centre_frequency, bandwidth to values possible for our system
-    #     :param centre_frequency:
+    #     converts specfied center_frequency, bandwidth to values possible for our system
+    #     :param center_frequency:
     #     :param bandwidth:
-    #     :return: beam_centre_frequency, beam_bandwidth
+    #     :return: beam_center_frequency, beam_bandwidth
     #     """
-    #     bins = cf_bw2fft_bins(corr, centre_frequency, bandwidth)
+    #     bins = cf_bw2fft_bins(corr, center_frequency, bandwidth)
     #     bfs = frequency2bf_index(corr, fft_bins=bins, unique=True)
     #     # bfs = 1  # for now
     #     bf_bandwidth = get_bf_bandwidth(corr)
-    #     # calculate start frequency accounting for frequency specified in centre of bin
+    #     # calculate start frequency accounting for frequency specified in center of bin
     #     start_frequency = min(bfs)*bf_bandwidth
-    #     beam_centre_frequency = start_frequency+bf_bandwidth*(float(len(bfs))/2)
+    #     beam_center_frequency = start_frequency+bf_bandwidth*(float(len(bfs))/2)
     #     beam_bandwidth = len(bfs) * bf_bandwidth
-    #     return beam_centre_frequency, beam_bandwidth
+    #     return beam_center_frequency, beam_bandwidth
     #
     #
     #
@@ -1220,32 +1317,32 @@ class BEngineOperations(object):
     #
     #
     # # TODO might be obsolete
-    # def set_passband(corr, beams, centre_frequency=None,
+    # def set_passband(corr, beams, center_frequency=None,
     #                  bandwidth=None, spead_issue=True):
     #     """
-    #     sets the centre frequency and/or bandwidth for the specified beams
+    #     sets the center frequency and/or bandwidth for the specified beams
     #     :param beams:
-    #     :param centre_frequency:
+    #     :param center_frequency:
     #     :param bandwidth:
     #     :param spead_issue:
     #     :return:
     #     """
     #     for beam in beams:
     #         # parameter checking
-    #         if centre_frequency is None:
-    #             cf = float(get_beam_param(corr, beam, 'centre_frequency'))
+    #         if center_frequency is None:
+    #             cf = float(get_beam_param(corr, beam, 'center_frequency'))
     #         else:
-    #             cf = centre_frequency
+    #             cf = center_frequency
     #         if bandwidth is None:
     #             b = float(get_beam_param(corr, beam, 'bandwidth'))
     #         else:
     #             b = bandwidth
     #         cf_actual, b_actual = cf_bw2cf_bw(corr, cf, b)
-    #         if centre_frequency is not None:
-    #             corr.logger.info('Centre frequency for beam %s set to %i Hz' % (beam, cf_actual))
+    #         if center_frequency is not None:
+    #             corr.logger.info('center frequency for beam %s set to %i Hz' % (beam, cf_actual))
     #         if bandwidth is not None:
     #             corr.logger.info('Bandwidth for beam %s set to %i Hz' % (beam, b_actual))
-    #         if centre_frequency is not None or bandwidth is not None:
+    #         if center_frequency is not None or bandwidth is not None:
     #             # restart if currently transmitting
     #             restart = bf_tx_status_get(corr, beam)
     #             if restart:
@@ -1258,12 +1355,12 @@ class BEngineOperations(object):
     #
     # def get_passband(corr, beam):
     #     """
-    #     gets the centre frequency and bandwidth for the specified beam
+    #     gets the center frequency and bandwidth for the specified beam
     #     :param beam:
     #     :return:
     #     """
     #     # parameter checking
-    #     cf = get_beam_param(corr, beam, 'centre_frequency')
+    #     cf = get_beam_param(corr, beam, 'center_frequency')
     #     b = get_beam_param(corr, beam, 'bandwidth')
     #     cf_actual, b_actual = cf_bw2cf_bw(corr, cf, b)
     #     return cf_actual, b_actual

@@ -208,8 +208,8 @@ class Corr2Server(katcp.DeviceServer):
             if product_name not in config_products:
                 return 'fail', 'requested product name not found'
         sock.inform(product_string, '%s:%d' % (
-            self.instrument.xeng_tx_destination[0],
-            self.instrument.xeng_tx_destination[1]))
+            self.instrument.xeng_tx_destination['ip'],
+            self.instrument.xeng_tx_destination['port']))
         return 'ok',
 
     def _check_product_name(self, product_name):
@@ -379,15 +379,24 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', '%s' % e.message
         return 'ok',
 
-    @request()
-    @return_reply()
-    def request_beam_passband(self, sock):
+    @request(Str(), Float(), Float())
+    @return_reply(Str(), Str(), Str())
+    def request_beam_passband(self, sock, beam_name, bandwidth, centerfreq):
         """
-
+        Set the beamformer bandwidth/partitions
         :param sock:
         :return:
         """
-        return 'fail', 'Not implemented yet'
+        if not self.instrument.found_beamformer:
+            return 'fail', 'Cannot run beamformer commands with no beamformer'
+        try:
+            (cur_bw, cur_cf) = self.instrument.bops.set_beam_bandwidth(
+                beam_name,
+                bandwidth,
+                centerfreq)
+        except Exception as e:
+            return 'fail', '%s' % e.message
+        return 'ok', beam_name, str(cur_bw), str(cur_cf)
 
     @request(Str(), Str())
     @return_reply()
