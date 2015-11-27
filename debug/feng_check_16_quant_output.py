@@ -106,7 +106,7 @@ def get_data():
     for loop_ctr in range(0, loops_necessary):
         temp_snapdata = {}
         for snap in required_snaps:
-            offset = 8*1024*loop_ctr
+            offset = 8*snapshot_bytes*loop_ctr
             # print 'reading at offset %i' % offset
             temp_snapdata[snap] = fpgautils.threaded_fpga_operation(
                 fpgas, 10, lambda fpga_: fpga_.snapshots[snap].read(offset=offset))

@@ -362,7 +362,7 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok', list_to_katcp_list(quant_string)
 
     @request(Str(), Str(), Float(multiple=True))
-    @return_reply()
+    @return_reply(Str(multiple=True))
     def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
         """
         Set the weight for a input
@@ -377,7 +377,9 @@ class Corr2Server(katcp.DeviceServer):
                                                   weight_list[0])
         except Exception as e:
             return 'fail', '%s' % e.message
-        return 'ok',
+        cur_weights = self.instrument.bops.get_beam_weights(
+            beam_name, input_name)
+        return 'ok', list_to_katcp_list(cur_weights)
 
     @request(Str(), Float(), Float())
     @return_reply(Str(), Str(), Str())
