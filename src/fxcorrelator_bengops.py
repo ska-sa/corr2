@@ -199,7 +199,7 @@ class Beam(object):
 
     def set_weights(self, input_name, new_weight):
         """
-        Set the input weights for this beam
+        Set the weight for this beam for a given input
         :return:
         """
         input_index = self.source_labels.index(input_name)
@@ -213,6 +213,15 @@ class Beam(object):
         LOGGER.info('Beam %i:%s: %s weight set to %.3f' % (
             self.index, self.name, input_name, new_weight))
         return True
+
+    def get_weights(self, input_name):
+        """
+        Get the current weight(s) associated with an input on this beam.
+        :param input_name:
+        :return:
+        """
+        input_index = self.source_labels.index(input_name)
+        return self.source_weights[input_index]
 
     def update_labels(self, oldnames, newnames):
         """
@@ -399,7 +408,9 @@ class BEngineOperations(object):
 
     def set_beam_weights(self, beam_name, input_name, new_weight):
         """
-
+        Set the beam weights for a given beam and input.
+        :param beam_name str: the beam name
+        :param input_name str: the input name
         :return:
         """
         if beam_name not in self.beams:
@@ -409,6 +420,16 @@ class BEngineOperations(object):
         if updated:
             self.spead_meta_update_weights()
             self.spead_meta_transmit_all()
+
+    def get_beam_weights(self, beam_name, input_name):
+        """
+        Get the current beam weights for a given beam and input.
+        :param beam_name str: the beam name
+        :param input_name str: the input name
+        :return: the beam weight(s) for this combination
+        """
+        beam = self.beams[beam_name]
+        return beam.get_weights(input_name)
 
     def update_labels(self, oldnames, newnames):
         """
