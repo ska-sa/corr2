@@ -17,7 +17,8 @@ class Instrument(object):
     These Hosts host processing Engines that do work.
     Instruments produce data products.
     """
-    def __init__(self, descriptor, identifier=-1, config_source=None):
+    def __init__(self, descriptor, identifier=-1, config_source=None,
+                 logger=None):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
@@ -34,6 +35,7 @@ class Instrument(object):
         self.identifier = identifier
         self.config_source = config_source
         self.configd = None
+        self.logger = logger or LOGGER
 
         # an instrument knows about hosts, but specifics are left to
         # child classes
@@ -42,12 +44,17 @@ class Instrument(object):
         # an instrument was synchronised at some UNIX time - -1 means unset
         self.synchronisation_epoch = -1
 
+        # an instrument provides data products, keyed on unique name
+        self.data_products = {}
+
+        self._initialised = False
+
         if self.config_source is not None:
             try:
                 self._read_config()
             except:
                 raise
-        LOGGER.info('%s %s created.' % (self.classname, self.descriptor))
+        self.logger.info('%s %s created.' % (self.classname, self.descriptor))
 
     def _read_config(self):
         """
@@ -63,7 +70,7 @@ class Instrument(object):
             self._read_config_file()
             return
         except (IOError, ValueError) as excep:
-            LOGGER.error(excep.message)
+            self.logger.error(excep.message)
             # try:
             #     # server?
             #     self._read_config_server()
@@ -81,12 +88,12 @@ class Instrument(object):
         """
         time_now = time.time()
         if new_synch_time > time_now:
-            LOGGER.error('Synch time in the future makes no '
+            self.logger.error('Synch time in the future makes no '
                          'sense? %d > %d' % (new_synch_time, time_now))
             raise RuntimeError('Synch time in the future makes no '
                                'sense? %d > %d' % (new_synch_time, time_now))
         self.synchronisation_epoch = new_synch_time
-        LOGGER.info('Set synch epoch to %d' % new_synch_time)
+        self.logger.info('Set synch epoch to %d' % new_synch_time)
 
     def get_synch_time(self):
         """
@@ -115,5 +122,23 @@ class Instrument(object):
         :return:
         """
         raise NotImplementedError
+
+    def initialised(self):
+        """
+        Has initialise successfully passed?
+        :return:
+        """
+        return self._initialised
+
+    def register_data_product(self, data_product):
+        """
+        Register a data product with this instrument
+        :return:
+        """
+        if data_product.name in self.data_products:
+            raise RuntimeError('DataProduct %s already in self.data_products' %
+                               data_product.name)
+        self.data_products[data_product.name] = data_product
+        self.logger.info('DataProduct %s registered.' % data_product.name)
 
 # end

@@ -169,10 +169,37 @@ class Corr2Server(katcp.DeviceServer):
             except RuntimeError:
                 return 'fail', 'request digitiser_synch_epoch did not ' \
                                'succeed, check the log'
-            except Exception:
+            except Exception as e:
                 return 'fail', 'request digitiser_synch_epoch failed for an ' \
-                               'unknown reason, check the log'
+                               'unknown reason, check the log, %s' % e.message
         return 'ok', self.instrument.get_synch_time()
+
+    def _check_product_name(self, product_name):
+        """
+        Does a given product name exist on this instrument?
+        :param product_name:
+        :return:
+        """
+        return product_name in self.instrument.data_products
+
+    @request(Str(), Str())
+    @return_reply()
+    def request_meta_destination(self, sock, stream, ipportstr):
+        """
+
+        :param sock:
+        :return:
+        """
+        temp = ipportstr.split(':')
+        txipstr = temp[0]
+        txport = int(temp[1])
+        try:
+            self.instrument.product_set_meta_destination(
+                stream, txip_str=txipstr, txport=txport)
+        except Exception as e:
+            return 'fail', 'setting meta destination for %s failed: %s' % \
+                   (stream, e.message)
+        return 'ok',
 
     @request(Str(), Str())
     @return_reply()
@@ -182,14 +209,15 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        if stream not in self.instrument.configd['xengine']['output_products']:
-            return 'fail', 'stream %s is not in product list: %s' % (
-                stream, self.instrument.configd['xengine']['output_products'])
-        temp = ipportstr.split(':')
-        txipstr = temp[0]
-        txport = int(temp[1])
-        self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
-        self.instrument.set_stream_destination(txip_str=txipstr, txport=txport)
+        try:
+            temp = ipportstr.split(':')
+            txipstr = temp[0]
+            txport = int(temp[1])
+            self.instrument.product_set_destination(
+                stream, txipstr, txport)
+        except Exception as e:
+            return 'fail', 'setting capture destination for %s failed: %s' % \
+                   (stream, e.message)
         return 'ok',
 
     @request(Str(default=''))
@@ -199,27 +227,21 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        config_products = self.instrument.configd['xengine']['output_products']
-        if product_name == '':
-            product_list = config_products
-            product_string = str(product_list).replace('[', '').replace(']', '')
+        product_names = []
+        if product_name != '':
+            product_names.append(product_name)
         else:
-            product_string = product_name
-            if product_name not in config_products:
-                return 'fail', 'requested product name not found'
-        sock.inform(product_string, '%s:%d' % (
-            self.instrument.xeng_tx_destination['ip'],
-            self.instrument.xeng_tx_destination['port']))
+            product_names.extend(self.instrument.data_products.keys())
+        for prod in product_names:
+            if not self._check_product_name(prod):
+                return 'fail', 'Product %s not in instrument data ' \
+                               'products: %s' % (prod,
+                                                 self.instrument.data_products)
+            dprod = self.instrument.data_products[prod]
+            sock.inform(prod, '%s:%d' % (
+                dprod.destination.ip,
+                dprod.destination.port))
         return 'ok',
-
-    def _check_product_name(self, product_name):
-        """
-        Does a given product name exist in the instrument config?
-        :param product_name:
-        :return:
-        """
-        config_products = self.instrument.configd['xengine']['output_products']
-        return product_name in config_products
 
     @request(Str(default=''))
     @return_reply()
@@ -230,7 +252,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         if not self._check_product_name(product_name):
             return 'fail', 'requested product name not found'
-        self.instrument.tx_start()
+        self.instrument.product_tx_enable(product_name)
         return 'ok',
 
     @request(Str(default=''))
@@ -242,7 +264,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         if not self._check_product_name(product_name):
             return 'fail', 'requested product name not found'
-        self.instrument.tx_stop()
+        self.instrument.product_tx_disable(product_name)
         return 'ok',
 
     @request(Str(default=''))
@@ -255,14 +277,14 @@ class Corr2Server(katcp.DeviceServer):
         """
         if not self._check_product_name(product_name):
             return 'fail', 'requested product name not found'
-        self.instrument.spead_issue_meta()
+        self.instrument.product_issue_metadata(product_name)
         return 'ok',
 
     @request(Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_input_labels(self, sock, *newlist):
         """
-
+        Set and get the input labels on the instrument
         :param sock:
         :return:
         """
@@ -272,15 +294,13 @@ class Corr2Server(katcp.DeviceServer):
         if len(newlist) > 0:
             try:
                 self.instrument.set_labels(newlist)
-                return 'ok', list_to_katcp_list(self.instrument.get_labels())
             except ValueError as ve:
                 return 'fail', 'provided input labels were not ' \
                                'correct: %s' % ve.message
-            except:
+            except Exception as e:
                 return 'fail', 'provided input labels were not ' \
-                               'correct: Unhandled exception'
-        else:
-            return 'ok', list_to_katcp_list(self.instrument.get_labels())
+                               'correct: Unhandled exception, %s' % e.message
+        return 'ok', list_to_katcp_list(self.instrument.get_labels())
 
     @request(Str(default=''), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -399,26 +419,6 @@ class Corr2Server(katcp.DeviceServer):
         except Exception as e:
             return 'fail', '%s' % e.message
         return 'ok', beam_name, str(cur_bw), str(cur_cf)
-
-    @request(Str(), Str())
-    @return_reply()
-    def request_meta_destination(self, sock, stream, ipportstr):
-        """
-
-        :param sock:
-        :return:
-        """
-        temp = ipportstr.split(':')
-        txipstr = temp[0]
-        txport = int(temp[1])
-        try:
-            self.instrument.set_meta_destination(txip_str=txipstr,
-                                                 txport=txport)
-        except ValueError as e:
-            return 'fail', '%s' % e.message
-        except Exception as e:
-            return 'fail', 'Unknown error: %s' % e.message
-        return 'ok',
 
     @request()
     @return_reply()

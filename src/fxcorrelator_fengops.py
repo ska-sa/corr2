@@ -14,7 +14,8 @@ class FEngineOperations(object):
 
     def __init__(self, corr_obj):
         """
-        A collection of f-engine operations that act on/with a correlator instance.
+        A collection of f-engine operations that act on/with a
+        correlator instance.
         :param corr_obj:
         :return:
         """
@@ -25,7 +26,8 @@ class FEngineOperations(object):
 
     def initialise(self):
         """
-        Set up f-engines on this device.
+        Set up f-engines on this device. This is done after programming the
+        devices in the instrument.
         :return:
         """
         # set eq and shift
@@ -33,10 +35,11 @@ class FEngineOperations(object):
         self.set_fft_shift_all()
 
         # set up the fpga comms
-        THREADED_FPGA_OP(self.hosts, timeout=10,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
-        THREADED_FPGA_OP(self.hosts, timeout=10,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
+        self.tx_disable()
+        THREADED_FPGA_OP(
+            self.hosts, timeout=10,
+            target_function=(
+                lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
         self.clear_status_all()
 
         # where does the f-engine data go?
@@ -47,6 +50,25 @@ class FEngineOperations(object):
         THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
             lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),) )
 
+        # set up the 10gbe cores
+        self._setup_gbes()
+
+        # release from reset
+        THREADED_FPGA_OP(self.hosts, timeout=10, target_function=(
+            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+
+    def configure(self):
+        """
+        Configure the fengine operations - this is done whenever a correlator
+        is instantiated.
+        :return:
+        """
+
+    def _setup_gbes(self):
+        """
+        Set up the 10gbe cores on the f hosts
+        :return:
+        """
         # set up the 10gbe cores
         feng_port = int(self.corr.configd['fengine']['10gbe_port'])
         mac_start = tengbe.Mac(self.corr.configd['fengine']['10gbe_start_mac'])
@@ -72,19 +94,18 @@ class FEngineOperations(object):
                 this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
                 gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
                 self.logger.info(
-                    'fhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i) tx(%s:%i)' %
-                    (f.host, gbe.name, str(gbe.mac), feng_port, board_id,
-                     self.corr.fengine_output.ip_address, self.corr.fengine_output.port))
+                    'fhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i) '
+                    'tx(%s:%i)' % (f.host, gbe.name, str(gbe.mac), feng_port,
+                                   board_id,
+                                   self.corr.fengine_output.ip_address,
+                                   self.corr.fengine_output.port))
                 # gbe.tap_start(restart=True)
                 gbe.dhcp_start()
                 mac_ctr += 1
 
         timeout = len(self.hosts[0].tengbes) * 30 * 1.1
-        THREADED_FPGA_OP(self.hosts, timeout=timeout, target_function=(setup_gbes,))
-
-        # release from reset
-        THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
-            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+        THREADED_FPGA_OP(
+            self.hosts, timeout=timeout, target_function=(setup_gbes,))
 
     def sys_reset(self, sleeptime=0):
         """
@@ -104,8 +125,9 @@ class FEngineOperations(object):
         :return:
         """
         self.logger.info('Checking F hosts are receiving data...')
-        results = THREADED_FPGA_FUNC(self.hosts, timeout=max_waittime+1,
-                                     target_function=('check_rx', (max_waittime,),))
+        results = THREADED_FPGA_FUNC(
+            self.hosts, timeout=max_waittime+1,
+            target_function=('check_rx', (max_waittime,),))
         all_okay = True
         for _v in results.values():
             all_okay = all_okay and _v
@@ -233,7 +255,7 @@ class FEngineOperations(object):
        
         load_check = False
         load_wait_time = None  
-        for count,src in enumerate(self.corr.fengine_sources):
+        for count, src in enumerate(self.corr.fengine_sources):
             vals = self._prepare_delay_vals(coeffs[count][0][0], 
                                             coeffs[count][0][1],
                                             coeffs[count][1][0],
@@ -428,7 +450,7 @@ class FEngineOperations(object):
         self.logger.info('Writing EQ on all fhosts based on stored '
                          'per-source EQ values...')
         THREADED_FPGA_FUNC(self.hosts, 10, 'write_eq_all')
-        self.corr.speadops.item_0x1400(stx=True)
+        self.corr.speadops.update_metadata([0x1400])
         self.logger.info('done.')
 
     def set_fft_shift_all(self, shift_value=None):
@@ -445,7 +467,7 @@ class FEngineOperations(object):
                          'boards...' % shift_value)
         THREADED_FPGA_FUNC(self.hosts, 10, ('set_fft_shift', (shift_value,),))
         self.logger.info('done.')
-        self.corr.speadops.item_0x101e(stx=True)
+        self.corr.speadops.update_metadata([0x101e])
         return shift_value
 
     def get_fft_shift_all(self):
