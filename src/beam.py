@@ -130,7 +130,6 @@ class Beam(object):
         Start transmission of data products from the b-engines
         :return:
         """
-        self.partitions_activate()
         self.tx_control_update()
         LOGGER.info('Beam %i:%s output enabled.' % (self.index, self.name))
 
