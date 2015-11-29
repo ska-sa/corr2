@@ -130,7 +130,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument.initialise(program=program)
             if monitor_vacc:
-                self.instrument.xops.vacc_start_check_timer()
+                self.instrument.xops.vacc_check_timer_start()
             return 'ok',
         except Exception as e:
             localexc = e
