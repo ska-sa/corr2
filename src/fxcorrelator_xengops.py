@@ -22,15 +22,17 @@ class XEngineOperations(object):
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
-        # do config things
-        self.xengines_per_xhost = int(self.corr.configd['xengine']['x_per_fpga'])
-        self.channels_per_xhost = self.corr.n_chans / len(self.hosts)
-        self.channels_per_xengine = self.channels_per_xhost / self.xengines_per_xhost
+        self.vacc_check_enabled = False
 
     def _vacc_periodic_check(self, old_data, check_time):
 
         self.logger.debug('Checking VACC operation at %.3f' % time.time())
         last_data = old_data
+
+        if not self.vacc_check_enabled:
+            self.logger.debug('Check logic disabled, returning without '
+                              'doing anything.')
+            return
     
         def get_data():
             """
@@ -98,8 +100,15 @@ class XEngineOperations(object):
         IOLoop.current().call_later(check_time,
                                     self._vacc_periodic_check,
                                     new_data, check_time)
-    
-    def vacc_start_check_timer(self, vacc_check_time=30):
+
+    def vacc_check_timer_stop(self):
+        """
+        Disable the vacc_check timer
+        :return:
+        """
+        self.vacc_check_enabled = False
+
+    def vacc_check_timer_start(self, vacc_check_time=30):
         """
         Set up a periodic check on the vacc operation.
         :param corr: the correlator instance
@@ -113,6 +122,7 @@ class XEngineOperations(object):
         if vacc_check_time < self.get_acc_time():
             raise RuntimeError('A check time smaller than the accumulation'
                                'time makes no sense.')
+        self.vacc_check_enabled = True
         IOLoop.current().add_callback(self._vacc_periodic_check,
                                       None, vacc_check_time)
 
@@ -471,12 +481,11 @@ class XEngineOperations(object):
         """
         if use_xeng_sim:
             raise RuntimeError('That\'s not an option anymore.')
-        else:
-            new_acc_len = (
-                (self.corr.sample_rate_hz * acc_time_s) /
-                (self.corr.xeng_accumulation_len * self.corr.n_chans * 2.0))
-            new_acc_len = round(new_acc_len)
-            self.set_acc_len(new_acc_len, vacc_resync)
+        new_acc_len = (
+            (self.corr.sample_rate_hz * acc_time_s) /
+            (self.corr.xeng_accumulation_len * self.corr.n_chans * 2.0))
+        new_acc_len = round(new_acc_len)
+        self.set_acc_len(new_acc_len, vacc_resync)
 
     def get_acc_time(self):
         """
@@ -496,6 +505,11 @@ class XEngineOperations(object):
         :param acc_len:
         :return:
         """
+        if self.vacc_check_enabled:
+            self.vacc_check_timer_stop()
+            reenable_timer = True
+        else:
+            reenable_timer = False
         if acc_len is not None:
             self.corr.accumulation_len = acc_len
         THREADED_FPGA_OP(
@@ -512,6 +526,8 @@ class XEngineOperations(object):
 
         if vacc_resync:
             self.vacc_sync()
+        if reenable_timer:
+            self.vacc_check_timer_start()
 
     def get_baseline_order(self):
         """

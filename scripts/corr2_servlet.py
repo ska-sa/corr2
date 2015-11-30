@@ -130,7 +130,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument.initialise(program=program)
             if monitor_vacc:
-                self.instrument.xops.vacc_start_check_timer()
+                self.instrument.xops.vacc_check_timer_start()
             return 'ok',
         except Exception as e:
             localexc = e
@@ -208,8 +208,8 @@ class Corr2Server(katcp.DeviceServer):
             if product_name not in config_products:
                 return 'fail', 'requested product name not found'
         sock.inform(product_string, '%s:%d' % (
-            self.instrument.xeng_tx_destination[0],
-            self.instrument.xeng_tx_destination[1]))
+            self.instrument.xeng_tx_destination['ip'],
+            self.instrument.xeng_tx_destination['port']))
         return 'ok',
 
     def _check_product_name(self, product_name):
@@ -362,7 +362,7 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok', list_to_katcp_list(quant_string)
 
     @request(Str(), Str(), Float(multiple=True))
-    @return_reply()
+    @return_reply(Str(multiple=True))
     def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
         """
         Set the weight for a input
@@ -377,17 +377,28 @@ class Corr2Server(katcp.DeviceServer):
                                                   weight_list[0])
         except Exception as e:
             return 'fail', '%s' % e.message
-        return 'ok',
+        cur_weights = self.instrument.bops.get_beam_weights(
+            beam_name, input_name)
+        return 'ok', list_to_katcp_list(cur_weights)
 
-    @request()
-    @return_reply()
-    def request_beam_passband(self, sock):
+    @request(Str(), Float(), Float())
+    @return_reply(Str(), Str(), Str())
+    def request_beam_passband(self, sock, beam_name, bandwidth, centerfreq):
         """
-
+        Set the beamformer bandwidth/partitions
         :param sock:
         :return:
         """
-        return 'fail', 'Not implemented yet'
+        if not self.instrument.found_beamformer:
+            return 'fail', 'Cannot run beamformer commands with no beamformer'
+        try:
+            (cur_bw, cur_cf) = self.instrument.bops.set_beam_bandwidth(
+                beam_name,
+                bandwidth,
+                centerfreq)
+        except Exception as e:
+            return 'fail', '%s' % e.message
+        return 'ok', beam_name, str(cur_bw), str(cur_cf)
 
     @request(Str(), Str())
     @return_reply()
