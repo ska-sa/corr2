@@ -37,7 +37,7 @@ SPEAD_ADDRSIZE = 48
 speadig = s2tx.ItemGroup(
     flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
 
-streamconfig = s2tx.StreamConfig(max_packet_size=9200,
+streamconfig = s2tx.StreamConfig(max_packet_size=4096,
                                  max_heaps=8)
 streamsocket = socket.socket(family=socket.AF_INET,
                              type=socket.SOCK_DGRAM,
