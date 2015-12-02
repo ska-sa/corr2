@@ -17,13 +17,6 @@ else:
     import Queue
 
 
-def list_to_katcp_list(pylist):
-    katlist = str(pylist)
-    katlist = katlist.replace('[', '').replace(']', '').replace(',', '')
-    katlist = katlist.replace("'", "")
-    return katlist
-
-
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
@@ -130,7 +123,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument.initialise(program=program)
             if monitor_vacc:
-                self.instrument.xops.vacc_start_check_timer()
+                self.instrument.xops.vacc_check_timer_start()
             return 'ok',
         except Exception as e:
             localexc = e
@@ -158,20 +151,20 @@ class Corr2Server(katcp.DeviceServer):
         :param synch_time:
         :return:
         """
-        if not self.instrument.initialised():
-            logging.warn('request %s before initialised... refusing.' %
-                         'request_digitiser_synch_epoch')
-            return 'fail', 'request %s before initialised... refusing.' % \
-                   'request_digitiser_synch_epoch'
+        # if not self.instrument.initialised():
+        #     logging.warn('request %s before initialised... refusing.' %
+        #                  'request_digitiser_synch_epoch')
+        #     return 'fail', 'request %s before initialised... refusing.' % \
+        #            'request_digitiser_synch_epoch'
         if synch_time > -1:
             try:
                 self.instrument.set_synch_time(synch_time)
-            except RuntimeError:
+            except RuntimeError as ve:
                 return 'fail', 'request digitiser_synch_epoch did not ' \
-                               'succeed, check the log'
-            except Exception as e:
+                               'succeed, check the log - ' % ve.message
+            except Exception as ve:
                 return 'fail', 'request digitiser_synch_epoch failed for an ' \
-                               'unknown reason, check the log, %s' % e.message
+                               'unknown reason, check the log - ' % ve.message
         return 'ok', self.instrument.get_synch_time()
 
     def _check_product_name(self, product_name):
@@ -294,13 +287,15 @@ class Corr2Server(katcp.DeviceServer):
         if len(newlist) > 0:
             try:
                 self.instrument.set_labels(newlist)
+                return tuple(['ok'] + self.instrument.get_labels())
             except ValueError as ve:
                 return 'fail', 'provided input labels were not ' \
                                'correct: %s' % ve.message
-            except Exception as e:
+            except Exception as ve:
                 return 'fail', 'provided input labels were not ' \
-                               'correct: Unhandled exception, %s' % e.message
-        return 'ok', list_to_katcp_list(self.instrument.get_labels())
+                               'correct: Unhandled exception - ' % ve.message
+        else:
+            return tuple(['ok'] + self.instrument.get_labels())
 
     @request(Str(default=''), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -322,7 +317,9 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(source_name)
         eqstring = str(_src[source_name]['eq'])
         eqstring = eqstring.replace('(', '').replace(')', '')
-        return 'ok', list_to_katcp_list(eqstring)
+        eqstring = eqstring.replace('[', '').replace(']', '')
+        eqstring = eqstring.replace(',', '')
+        return tuple(['ok'] + eqstring.split(' '))
 
     @request(Float(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -338,7 +335,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             actual = self.instrument.fops.delays_process_parallel(
                 loadtime, delay_strings)
-            return 'ok', list_to_katcp_list(actual)
+            return tuple(['ok'] + actual)
         except Exception as e:
             return 'fail', 'could not set delays - %s' % e.message
 
@@ -379,7 +376,9 @@ class Corr2Server(katcp.DeviceServer):
         for complex_word in snapdata:
             quant_string += ' %s' % str(complex_word)
         quant_string = quant_string.replace('(', '').replace(')', '')
-        return 'ok', list_to_katcp_list(quant_string)
+        quant_string = quant_string.replace('[', '').replace(']', '')
+        quant_string = quant_string.replace(',', '')
+        return tuple(['ok'] + quant_string.split(' '))
 
     @request(Str(), Str(), Float(multiple=True))
     @return_reply(Str(multiple=True))
@@ -399,7 +398,11 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', '%s' % e.message
         cur_weights = self.instrument.bops.get_beam_weights(
             beam_name, input_name)
-        return 'ok', list_to_katcp_list(cur_weights)
+        wght_str = str(cur_weights)
+        wght_str = wght_str.replace('(', '').replace(')', '')
+        wght_str = wght_str.replace('[', '').replace(']', '')
+        wght_str = wght_str.replace(',', '')
+        return tuple(['ok'] + wght_str.split(' '))
 
     @request(Str(), Float(), Float())
     @return_reply(Str(), Str(), Str())
@@ -489,7 +492,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         print 'pong', astring, anint
-        return 'ok',
+        return 'ok'
 
 if USE_TORNADO:
     @gen.coroutine
