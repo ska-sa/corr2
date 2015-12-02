@@ -151,20 +151,20 @@ class Corr2Server(katcp.DeviceServer):
         :param synch_time:
         :return:
         """
-        if not self.instrument.initialised():
-            logging.warn('request %s before initialised... refusing.' %
-                         'request_digitiser_synch_epoch')
-            return 'fail', 'request %s before initialised... refusing.' % \
-                   'request_digitiser_synch_epoch'
+        # if not self.instrument.initialised():
+        #     logging.warn('request %s before initialised... refusing.' %
+        #                  'request_digitiser_synch_epoch')
+        #     return 'fail', 'request %s before initialised... refusing.' % \
+        #            'request_digitiser_synch_epoch'
         if synch_time > -1:
             try:
                 self.instrument.set_synch_time(synch_time)
-            except RuntimeError:
+            except RuntimeError as ve:
                 return 'fail', 'request digitiser_synch_epoch did not ' \
-                               'succeed, check the log'
-            except Exception:
+                               'succeed, check the log - ' % ve.message
+            except Exception as ve:
                 return 'fail', 'request digitiser_synch_epoch failed for an ' \
-                               'unknown reason, check the log'
+                               'unknown reason, check the log - ' % ve.message
         return 'ok', self.instrument.get_synch_time()
 
     @request(Str(), Str())
