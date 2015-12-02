@@ -27,7 +27,7 @@ class SpeadOperations(object):
         self.meta_ig = sptx.ItemGroup(
             flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
 
-        streamconfig = sptx.StreamConfig(max_packet_size=9200,
+        streamconfig = sptx.StreamConfig(max_packet_size=4096,
                                          max_heaps=8)
         streamsocket = socket.socket(family=socket.AF_INET,
                                      type=socket.SOCK_DGRAM,
@@ -365,10 +365,11 @@ class SpeadOperations(object):
                         'represents a full spectrum (all frequency channels) '
                         'assembled from lowest frequency to highest '
                         'frequency. Each frequency channel contains the data '
-                        'for all baselines (n_bls given by SPEAD ID 0x100b). '
-                        'Each value is a complex number -- two (real and '
-                        'imaginary) unsigned integers.' % n_xengs,
-            dtype=numpy.int32,
+                        'for all baselines (baselines given by SPEAD ID '
+                        '0x100C). Each value is a complex number -- two (real '
+                        'and imaginary) unsigned integers.' % n_xengs,
+            # dtype=numpy.int32,
+            dtype=numpy.dtype('>i4'),
             shape=[self.corr.n_chans,
                    len(self.corr.xops.get_baseline_order()),
                    2])
