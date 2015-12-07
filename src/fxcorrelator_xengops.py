@@ -5,6 +5,10 @@ from tornado.ioloop import IOLoop
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
+import data_product
+from net_address import NetAddress
+from fxcorrelator_speadops import SPEAD_ADDRSIZE
+
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
@@ -15,13 +19,150 @@ class XEngineOperations(object):
 
     def __init__(self, corr_obj):
         """
-        A collection of x-engine operations that act on/with a correlator instance.
-        :param corr_obj:
+        A collection of x-engine operations that act on/with a correlator
+        instance.
+        :param corr_obj: the FxCorrelator instance
         :return:
         """
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
+        self.data_product = None
+
+    def initialise(self):
+        """
+        Set up x-engines on this device.
+        :return:
+        """
+        # simulator
+        if use_xeng_sim:
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.simulator.write(
+                        en=False, rst='pulse'),))
+
+        # disable transmission, place cores in reset, and give control
+        # register a known state
+        self.tx_disable(None)
+
+        def _gberst(hosts, state):
+            THREADED_FPGA_OP(
+                hosts, timeout=5,
+                target_function=(
+                    lambda fpga_:
+                    fpga_.registers.control.write(gbe_rst=state),))
+
+        _gberst(self.hosts, True)
+
+        self.clear_status_all()
+
+        # set up the 10gbe cores
+        self._setup_gbes()
+
+        # write the data product destination to the registers
+        self.write_data_product_destination(None)
+
+        # clear gbe status
+        THREADED_FPGA_OP(
+            self.hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.control.write(gbe_debug_rst='pulse'),))
+
+        # release cores from reset
+        _gberst(self.hosts, False)
+
+        # simulator
+        if use_xeng_sim:
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.simulator.write(en=True),))
+
+        # set up accumulation length
+        self.set_acc_len(vacc_resync=False)
+
+        # clear general status
+        THREADED_FPGA_OP(
+            self.hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.control.write(status_clr='pulse'),))
+
+        # check for errors
+        # TODO - read status regs?
+
+    def configure(self):
+        """
+        Configure the xengine operations - this is done whenever a correlator
+        is instantiated.
+        :return:
+        """
+        # set up the xengine data product
+        self._setup_data_product()
+
+    def _setup_gbes(self):
+        """
+        Set up the 10gbe cores on the x hosts
+        :return:
+        """
+        # set up the 10gbe cores
+        xeng_port = int(self.corr.configd['xengine']['10gbe_port'])
+        mac_start = tengbe.Mac(self.corr.configd['xengine']['10gbe_start_mac'])
+
+        boards_info = {}
+        board_id = 0
+        mac = int(mac_start)
+        for f in self.hosts:
+            macs = []
+            for gbe in f.tengbes:
+                macs.append(mac)
+                mac += 1
+            boards_info[f.host] = board_id, macs
+            board_id += 1
+
+        def setup_gbes(f):
+            board_id, macs = boards_info[f.host]
+            f.registers.board_id.write(reg=board_id)
+            mac_ctr = 1
+            for gbe, this_mac in zip(f.tengbes, macs):
+                this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
+                gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
+                self.logger.info(
+                    'xhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i)' %
+                    (f.host, gbe.name, str(gbe.mac), xeng_port, board_id))
+                # gbe.tap_start(restart=True)
+                gbe.dhcp_start()
+                mac_ctr += 1
+        THREADED_FPGA_OP(self.hosts, timeout=40, target_function=(setup_gbes,))
+
+    def _setup_data_product(self):
+        """
+        Set up the data product for the xengine output
+        :return:
+        """
+        # the x-engine output data product setup
+        _xeng_d = self.corr.configd['xengine']
+
+        data_addr = NetAddress(_xeng_d['output_destination_ip'],
+                               _xeng_d['output_destination_port'])
+        meta_addr = NetAddress(_xeng_d['output_destination_ip'],
+                               _xeng_d['output_destination_port'])
+
+        xeng_prod = data_product.DataProduct(
+            name=_xeng_d['output_products'][0],
+            category=data_product.XENGINE_CROSS_PRODUCTS,
+            destination=data_addr,
+            meta_destination=meta_addr,
+            destination_cb=self.write_data_product_destination,
+            meta_destination_cb=self.spead_meta_issue_all,
+            tx_enable_method=self.tx_enable,
+            tx_disable_method=self.tx_disable)
+
+        self.data_product = xeng_prod
+        self.corr.register_data_product(xeng_prod)
+
         self.vacc_check_enabled = False
 
     def _vacc_periodic_check(self, old_data, check_time):
@@ -126,85 +267,33 @@ class XEngineOperations(object):
         IOLoop.current().add_callback(self._vacc_periodic_check,
                                       None, vacc_check_time)
 
-    def initialise(self):
+    def write_data_product_destination(self, data_product):
         """
-        Set up x-engines on this device.
+        Write the x-engine data stream destination to the hosts.
         :return:
         """
-        # simulator
-        if use_xeng_sim:
-            THREADED_FPGA_OP(self.hosts, timeout=5,
-                             target_function=(
-                                 lambda fpga_: fpga_.registers.simulator.write(en=False, rst='pulse'),))
-    
-        # disable transmission, place cores in reset, and give control register a known state
-        THREADED_FPGA_OP(self.hosts, timeout=5,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
-        THREADED_FPGA_OP(self.hosts, timeout=5,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
-        self.clear_status_all()
-    
-        # set up default destination ip and port
-        self.corr.set_stream_destination()
-        self.corr.set_meta_destination()
-    
-        # set up the 10gbe cores
-        xeng_port = int(self.corr.configd['xengine']['10gbe_port'])
-        mac_start = tengbe.Mac(self.corr.configd['xengine']['10gbe_start_mac'])
-    
-        boards_info = {}
-        board_id = 0
-        mac = int(mac_start)
-        for f in self.hosts:
-            macs = []
-            for gbe in f.tengbes:
-                macs.append(mac)
-                mac += 1
-            boards_info[f.host] = board_id, macs
-            board_id += 1
-    
-        def setup_gbes(f):
-            board_id, macs = boards_info[f.host]
-            f.registers.board_id.write(reg=board_id)
-            mac_ctr = 1
-            for gbe, this_mac in zip(f.tengbes, macs):
-                this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
-                gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
-                self.logger.info(
-                    'xhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i)' %
-                    (f.host, gbe.name, str(gbe.mac), xeng_port, board_id))
-                # gbe.tap_start(restart=True)
-                gbe.dhcp_start()
-                mac_ctr += 1
-
-        THREADED_FPGA_OP(self.hosts, timeout=40, target_function=(setup_gbes,))
-    
-        # clear gbe status
-        THREADED_FPGA_OP(
-            self.hosts, timeout=5,
-            target_function=(lambda fpga_: fpga_.registers.control.write(gbe_debug_rst='pulse'),))
-    
-        # release cores from reset
-        THREADED_FPGA_OP(
-            self.hosts, timeout=5,
-            target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
-    
-        # simulator
-        if use_xeng_sim:
+        dprod = data_product or self.data_product
+        txip = int(dprod.destination.ip)
+        txport = dprod.destination.port
+        try:
             THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(lambda fpga_: fpga_.registers.simulator.write(en=True),))
-    
-        # set up accumulation length
-        self.set_acc_len(vacc_resync=False)
-    
-        # clear general status
-        THREADED_FPGA_OP(
-            self.hosts, timeout=5,
-            target_function=(lambda fpga_: fpga_.registers.control.write(status_clr='pulse'),))
-    
-        # check for errors
-        # TODO - read status regs?
+                self.hosts, timeout=10,
+                target_function=(lambda fpga_:
+                                 fpga_.registers.gbe_iptx.write(reg=txip),))
+            THREADED_FPGA_OP(
+                self.hosts, timeout=10,
+                target_function=(lambda fpga_:
+                                 fpga_.registers.gbe_porttx.write(reg=txport),))
+        except AttributeError:
+            self.logger.warning('Writing product %s destination to '
+                                'hardware failed!' % dprod.name)
+
+        # update meta data on product destination change
+        self.spead_meta_update_product_destination()
+        dprod.meta_transmit()
+
+        self.logger.info('Wrote product %s destination to %s in hardware' % (
+            dprod.name, dprod.destination))
 
     def clear_status_all(self):
         """
@@ -499,6 +588,13 @@ class XEngineOperations(object):
         return (self.corr.xeng_accumulation_len * self.corr.accumulation_len *
                 self.corr.n_chans * 2.0) / self.corr.sample_rate_hz
 
+    def get_acc_len(self):
+        """
+        Read the acc len currently programmed into the FPGA.
+        :return:
+        """
+        return self.hosts[0].registers.acc_len.read_uint()
+
     def set_acc_len(self, acc_len=None, vacc_resync=True):
         """
         Set the QDR vector accumulation length.
@@ -520,10 +616,7 @@ class XEngineOperations(object):
         self.logger.info('Set VACC accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
-
-        self.corr.speadops.item_0x1015()
-        self.corr.speadops.item_0x1016(stx=True)
-
+        self.corr.speadops.update_metadata([0x1015, 0x1016])
         if vacc_resync:
             self.vacc_sync()
         if reenable_timer:
@@ -563,25 +656,216 @@ class XEngineOperations(object):
             rv.append((source_names[baseline[0] * 2 + 1],
                        source_names[baseline[1] * 2]))
         return rv
-    
-    def tx_disable(self):
-        """
-        Start transmission of data products from the x-engines
-        :param corr:
-        :return:
-        """
-        THREADED_FPGA_OP(
-            self.hosts, timeout=5,
-            target_function=(
-                lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
 
-    def tx_enable(self):
+    def tx_enable(self, data_product):
         """
         Start transmission of data products from the x-engines
-        :param corr:
         :return:
         """
+        dprod = data_product or self.data_product
         THREADED_FPGA_OP(
             self.hosts, timeout=5,
             target_function=(
                 lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+        self.logger.info('X-engine output enabled')
+
+    def tx_disable(self, data_product):
+        """
+        Start transmission of data products from the x-engines
+        :return:
+        """
+        dprod = data_product or self.data_product
+        THREADED_FPGA_OP(
+            self.hosts, timeout=5,
+            target_function=(
+                lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+        self.logger.info('X-engine output disabled')
+
+    def spead_meta_update_product_destination(self):
+        self.data_product.meta_ig.add_item(
+            name='rx_udp_port', id=0x1022,
+            description='Destination UDP port for %s data '
+                        'output.' % self.data_product.name,
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.data_product.destination.port)
+
+        ipstr = numpy.array(str(self.data_product.destination.ip))
+        self.data_product.meta_ig.add_item(
+            name='rx_udp_ip_str', id=0x1024,
+            description='Destination IP address for %s data '
+                        'output.' % self.data_product.name,
+            shape=ipstr.shape,
+            dtype=ipstr.dtype,
+            value=ipstr)
+
+    # x-engine-specific SPEAD operations
+    def spead_meta_update_all(self):
+        """
+        Update metadata for this correlator's xengine output.
+        :return:
+        """
+        meta_ig = self.data_product.meta_ig
+
+        self.corr.speadops.item_0x1007(meta_ig)
+
+        meta_ig.add_item(
+            name='n_bls', id=0x1008,
+            description='Number of baselines in the data product.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=len(self.get_baseline_order()))
+
+        self.corr.speadops.item_0x1009(meta_ig)
+        self.corr.speadops.item_0x100a(meta_ig)
+
+        n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
+        meta_ig.add_item(
+            name='n_xengs', id=0x100B,
+            description='The number of x-engines in the system.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=n_xengs)
+
+        bls_ordering = numpy.array(
+            [baseline for baseline in self.get_baseline_order()])
+        # this is a list of the baseline product pairs, e.g. ['ant0x' 'ant0y']
+        meta_ig.add_item(
+            name='bls_ordering', id=0x100C,
+            description='The baseline ordering in the output data product.',
+            shape=bls_ordering.shape,
+            dtype=bls_ordering.dtype,
+            value=bls_ordering)
+
+        self.corr.speadops.item_0x100e(meta_ig)
+
+        meta_ig.add_item(
+            name='center_freq', id=0x1011,
+            description='The on-sky centre-frequency.',
+            shape=[], format=[('f', 64)],
+            value=int(self.corr.configd['fengine']['true_cf']))
+
+        meta_ig.add_item(
+            name='bandwidth', id=0x1013,
+            description='The input (analogue) bandwidth of the system.',
+            shape=[], format=[('f', 64)],
+            value=int(self.corr.configd['fengine']['bandwidth']))
+
+        self.corr.speadops.item_0x1015(meta_ig)
+        self.corr.speadops.item_0x1016(meta_ig)
+        self.corr.speadops.item_0x101e(meta_ig)
+
+        meta_ig.add_item(
+            name='xeng_acc_len', id=0x101F,
+            description='Number of spectra accumulated inside X engine. '
+                        'Determines minimum integration time and '
+                        'user-configurable integration time stepsize. '
+                        'X-engine correlator internals.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.corr.xeng_accumulation_len)
+
+        self.corr.speadops.item_0x1020(meta_ig)
+
+        pkt_len = int(self.corr.configd['fengine']['10gbe_pkt_len'])
+        meta_ig.add_item(
+            name='feng_pkt_len', id=0x1021,
+            description='Payload size of 10GbE packet exchange between '
+                        'F and X engines in 64 bit words. Usually equal '
+                        'to the number of spectra accumulated inside X '
+                        'engine. F-engine correlator internals.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=pkt_len)
+
+        self.spead_meta_update_product_destination()
+
+        port = int(self.corr.configd['fengine']['10gbe_port'])
+        meta_ig.add_item(
+            name='feng_udp_port', id=0x1023,
+            description='Port for F-engines 10Gbe links in the system.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=port)
+
+        ipstr = numpy.array(self.corr.configd['fengine']['10gbe_start_ip'])
+        meta_ig.add_item(
+            name='feng_start_ip', id=0x1025,
+            description='Start IP address for F-engines in the system.',
+            shape=ipstr.shape,
+            dtype=ipstr.dtype,
+            value=ipstr)
+
+        meta_ig.add_item(
+            name='xeng_rate', id=0x1026,
+            description='Target clock rate of processing engines (xeng).',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.corr.xeng_clk)
+
+        self.corr.speadops.item_0x1027(meta_ig)
+
+        x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
+        meta_ig.add_item(
+            name='x_per_fpga', id=0x1041,
+            description='Number of X engines per FPGA host.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=x_per_fpga)
+
+        meta_ig.add_item(
+            name='ddc_mix_freq', id=0x1043,
+            description='Digital downconverter mixing frequency as a fraction '
+                        'of the ADC sampling frequency. eg: 0.25. Set to zero '
+                        'if no DDC is present.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=0)
+
+        self.corr.speadops.item_0x1045(meta_ig)
+        self.corr.speadops.item_0x1046(meta_ig)
+
+        meta_ig.add_item(
+            name='xeng_out_bits_per_sample', id=0x1048,
+            description='The number of bits per value of the xeng '
+                        'accumulator output. Note this is for a '
+                        'single value, not the combined complex size.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.corr.xeng_outbits)
+
+        meta_ig.add_item(
+            name='f_per_fpga', id=0x1049,
+            description='Number of F engines per FPGA host.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.corr.f_per_fpga)
+
+        self.corr.speadops.item_0x1400(meta_ig)
+
+        self.corr.speadops.item_0x1600(meta_ig)
+
+        meta_ig.add_item(
+            name='flags_xeng_raw', id=0x1601,
+            description='Flags associated with xeng_raw data output. '
+                        'bit 34 - corruption or data missing during integration'
+                        'bit 33 - overrange in data path '
+                        'bit 32 - noise diode on during integration '
+                        'bits 0 - 31 reserved for internal debugging',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)])
+
+        meta_ig.add_item(
+            name='xeng_raw', id=0x1800,
+            description='Raw data for %i xengines in the system. This item '
+                        'represents a full spectrum (all frequency channels) '
+                        'assembled from lowest frequency to highest '
+                        'frequency. Each frequency channel contains the data '
+                        'for all baselines (n_bls given by SPEAD ID 0x100b). '
+                        'Each value is a complex number - two (real and '
+                        'imaginary) unsigned integers.' % n_xengs,
+            # dtype=numpy.int32,
+            dtype=numpy.dtype('>i4'),
+            shape=[self.corr.n_chans, len(self.get_baseline_order()), 2])
+
+    def spead_meta_issue_all(self, data_product):
+        """
+        Issue = update the metadata then send it.
+        :return:
+        """
+        dprod = data_product or self.data_product
+        self.spead_meta_update_all()
+        dprod.meta_transmit()
+        self.logger.info('Issued SPEAD data descriptor for data product %s '
+                         'to %s.' % (dprod.name,
+                                     dprod.meta_destination))
+
+# end
