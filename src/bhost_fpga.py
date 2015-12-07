@@ -12,42 +12,189 @@ LOGGER = logging.getLogger(__name__)
 
 
 class FpgaBHost(FpgaXHost):
-    def __init__(self, host, katcp_port=7147, boffile=None,
+    def __init__(self, host, index, katcp_port=7147, boffile=None,
                  connect=True, config=None):
         # parent constructor
-        FpgaXHost.__init__(self, host, katcp_port=katcp_port,
+        FpgaXHost.__init__(self, host, index, katcp_port=katcp_port,
                            boffile=boffile, connect=connect, config=config)
-        # if self.config is not None:
-        #     self.bf_per_fpga = int(self.config['bengine']['beng_per_fpga'])
-
-        LOGGER.info('BHost created')
+        self.beng_per_host = int(self.config['x_per_fpga'])
+        LOGGER.info('FpgaBHost %i:%s created' % (
+            self.index, self.host))
 
     @classmethod
-    def from_config_source(cls, hostname, katcp_port, config_source):
+    def from_config_source(cls, hostname, index, katcp_port, config_source):
         boffile = config_source['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+        return cls(hostname, index, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
-    def write_value_duplicate(self):
-        pass
+    def beam_destination_set(self, beam):
+        """
+        Set the data destination for this beam.
+        :param beam: a Beam object
+        :return
+        """
+        beam_cfgreg = self.registers['bf%i_config' % beam.index]
+        beam_ipreg = self.registers['bf%i_ip' % beam.index]
+        beam_cfgreg.write(port=beam.data_destination['port'])
+        beam_ipreg.write(ip=int(beam.data_destination['ip']))
+        LOGGER.info('%s:%i: Beam %i:%s destination set to %s:%i' % (
+            self.host, self.index, beam.index, beam.name,
+            beam.data_destination['ip'], beam.data_destination['port']))
 
-    def write_value_calibrate(self):
-        pass
+    def beam_index_set(self, beam):
+        """
+        Set the beam index.
+        :param beam:
+        :return:
+        """
+        beam_cfgreg = self.registers['bf%i_config' % beam.index]
+        beam_cfgreg.write(beam_id=beam.index)
+        LOGGER.info('%s:%i: Beam %i:%s index set - %i' % (
+            self.host, self.index, beam.index, beam.name, beam.index))
 
-    def write_value_steer(self):
-        pass
+    def beam_num_partitions_set(self, beam):
+        """
+        :param beam: a Beam object
+        :return
+        """
+        beam_cfgreg = self.registers['bf%i_config' % beam.index]
+        numparts = len(beam.partitions_active)
+        beam_cfgreg.write(n_partitions=numparts)
+        LOGGER.debug('%s:%i: Beam %i:%s num_partitions set - %i' % (
+            self.host, self.index, beam.index, beam.name, numparts))
 
-    def write_value_combine(self):
-        pass
+    # def beam_partitions_set(self, beam):
+    #     """
+    #     :param beam: a Beam object
+    #     :return
+    #     """
+    #     # partitions offsets must be worked out
+    #     partition_start = self.index * self.beng_per_host
+    #     beam_reg = self.registers['bf%i_partitions' % beam.index]
+    #     beam_reg.write(partition0_offset=partition_start,
+    #                    partition1_offset=partition_start+1,
+    #                    partition2_offset=partition_start+2,
+    #                    partition3_offset=partition_start+3)
+    #     LOGGER.info('%s:%i: Beam %i:%s partitions set to %i:%i' % (
+    #         self.host, self.index, beam.index, beam.name,
+    #         partition_start, partition_start+self.beng_per_host-1))
 
-    def write_value_visibility(self):
-        pass
+    def beam_weights_set(self, beam):
+        """
+        Set the beam weights for the given beam.
+        """
+        for ant_ctr, ant_weight in enumerate(beam.source_weights):
+            self.registers.bf_value_in0.write(bw=ant_weight)
+            for beng_ctr in range(0, self.beng_per_host):
+                self.registers.bf_control.write(stream=beam.index,
+                                                beng=beng_ctr,
+                                                antenna=ant_ctr)
+                self.registers.bf_value_ctrl.write(bw='pulse')
+        LOGGER.info('%s:%i: Beam %i:%s set antenna(%i) '
+                    'stream(%i) weights(%s)' % (self.host, self.index,
+                                                beam.index, beam.name,
+                                                self.index, beam.index,
+                                                beam.source_weights))
 
-    def write_value_quantise(self):
-        pass
+    def beam_partitions_read(self, beam):
+        """
+        Determine which partitions are currently active in the hardware.
+        """
+        self.registers.bf_control.write(stream=beam.index)
+        vals = self.registers.bf_valout_filt.read()['data']
+        return [v for v in vals.values()]
 
-    def write_value_filter(self):
-        pass
+    def beam_partitions_control(self, beam):
+        """
+        Enable the active partitions for a beam on this host.
+        """
+        host_parts = beam.partitions_by_host[self.index]
+        actv_parts = beam.partitions_active
+        parts_to_set = set(host_parts).intersection(actv_parts)
+        parts_to_clr = set(host_parts).difference(parts_to_set)
+        if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
+            LOGGER.debug('%s:%i: Beam %i:%s beam_active(%s) host(%s) toset(%s) '
+                         'toclr(%s)' %
+                         (self.host, self.index, beam.index, beam.name,
+                          list(actv_parts), list(host_parts),
+                          list(parts_to_set), list(parts_to_clr),))
+        if (len(parts_to_set) > 4) or (len(parts_to_clr) > 4):
+            raise RuntimeError('Cannot set or clear more than 4 partitions'
+                               'per host?')
+        # set the total number of partitions
+        if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
+            self.beam_num_partitions_set(beam)
+        # clear first
+        if len(parts_to_clr) > 0:
+            self.registers.bf_value_in1.write(filt=0)
+            for part in parts_to_clr:
+                beng_for_part = host_parts.index(part)
+                self.registers.bf_control.write(stream=beam.index,
+                                                beng=beng_for_part)
+                self.registers.bf_value_ctrl.write(filt='pulse')
+        # enable next
+        if len(parts_to_set) > 0:
+            # set the offsets
+            part_offsets = {}
+            for part in parts_to_set:
+                beng_for_part = host_parts.index(part)
+                part_offset = actv_parts.index(part)
+                part_offsets['partition%i_offset' % beng_for_part] = part_offset
+            LOGGER.debug('%s:%i: Beam %i:%s %s' %
+                        (self.host, self.index, beam.index, beam.name,
+                         part_offsets))
+            beam_poffset_reg = self.registers['bf%i_partitions' % beam.index]
+            beam_poffset_reg.write(**part_offsets)
+            # enable filter stages
+            self.registers.bf_value_in1.write(filt=1)
+            for part in parts_to_set:
+                beng_for_part = host_parts.index(part)
+                self.registers.bf_control.write(stream=beam.index,
+                                                beng=beng_for_part)
+                self.registers.bf_value_ctrl.write(filt='pulse')
+
+    # def value_duplicate_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_calibrate_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_steer_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_combine_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_visibility_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_quantise_set(self):
+    #     raise NotImplementedError
+    #
+    # def value_filter_set(self, value, beng_indices=None):
+    #     """
+    #     Write a value to the filter stage of this bhost's beamformer.
+    #     """
+    #     self.registers.bf_value_in1.write(filt=value)
+    #     bindices = self._write_value_bengines(beng_indices, 'filt')
+    #     LOGGER.info('%s: wrote %.3f to filters on bengines %s' %
+    #                 (self.host, value, bindices))
+    #
+    # def _write_value_bengines(self, beng_indices=None, stage_ctrl_field=''):
+    #     """
+    #     Strobe a value into a stage on a list of bengines by selecting
+    #     the bengine and then pulsing the enable for that stage.
+    #     """
+    #     if beng_indices is None:
+    #         beng_indices = range(0, self.beng_per_host)
+    #     if len(beng_indices) == 0:
+    #         raise RuntimeError('Makes no sense acting on no b-engines?')
+    #     # enable each of the bengines in turn
+    #     self.registers.bf_value_ctrl.write(**{stage_ctrl_field: 0})
+    #     for beng_index in beng_indices:
+    #         self.registers.bf_control.write(beng=beng_index)
+    #         self.registers.bf_value_ctrl.write(**{stage_ctrl_field: 'pulse'})
+    #     return beng_indices
 
     # def read_bf_config(self):
     #     """

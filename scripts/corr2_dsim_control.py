@@ -193,7 +193,7 @@ if args.zeros_noise:
             noise_source = getattr(dhost.noise_sources, '{}'.format(source))
             noise_source.set(0)
             print "noise source {}, set to {}.".format(noise_source.name,
-                noise_source.scale)
+                                                       noise_source.scale)
         except:
             print "An error occured."
             sys.exit(1)

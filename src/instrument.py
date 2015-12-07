@@ -22,18 +22,21 @@ class Instrument(object):
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
         :param identifier: An optional integer identifier.
-        :param config_source: The instrument configuration source, can be a text file, hostname, whatever.
+        :param config_source: The instrument configuration source, can be a
+        text file, hostname, whatever.
         :return: <nothing>
         """
         self.classname = self.__class__.__name__
         if descriptor is None:
-            raise RuntimeError('Cannot instantiate an Instrument without a meaningful descriptor.')
+            raise RuntimeError('Cannot instantiate an Instrument without a '
+                               'meaningful descriptor.')
         self.descriptor = descriptor
         self.identifier = identifier
         self.config_source = config_source
         self.configd = None
 
-        # an instrument knows about hosts, but specifics are left to child classes
+        # an instrument knows about hosts, but specifics are left to
+        # child classes
         self.hosts = []
 
         # an instrument was synchronised at some UNIX time - -1 means unset
@@ -78,8 +81,10 @@ class Instrument(object):
         """
         time_now = time.time()
         if new_synch_time > time_now:
-            LOGGER.error('Synch time in the future makes no sense? %d > %d' % (new_synch_time, time_now))
-            raise RuntimeError('Synch time in the future makes no sense? %d > %d' % (new_synch_time, time_now))
+            LOGGER.error('Synch time in the future makes no '
+                         'sense? %d > %d' % (new_synch_time, time_now))
+            raise RuntimeError('Synch time in the future makes no '
+                               'sense? %d > %d' % (new_synch_time, time_now))
         self.synchronisation_epoch = new_synch_time
         LOGGER.info('Set synch epoch to %d' % new_synch_time)
 

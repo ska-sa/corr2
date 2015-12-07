@@ -11,28 +11,31 @@ class FpgaXHost(FpgaHost):
     """
     A Host, that hosts Xengines, that is a CASPER KATCP FPGA.
     """
-    def __init__(self, host, katcp_port=7147, boffile=None,
+    def __init__(self, host, index, katcp_port=7147, boffile=None,
                  connect=True, config=None):
         FpgaHost.__init__(self, host, katcp_port=katcp_port,
                           boffile=boffile, connect=connect)
         self.config = config
+        self.index = index
         if self.config is not None:
             self.vacc_len = int(self.config['xeng_accumulation_len'])
             self.x_per_fpga = int(self.config['x_per_fpga'])
 
-        # TODO - and if there is no config and this was made on a running device?
-        # something like set it to -1, if it's accessed when -1 then try and discover it
+        # TODO - and if there is no config and this
+        # was made on a running device?
+        # something like set it to -1, if it's accessed when -1
+        # then try and discover it
         self.x_per_fpga = 4
 
     @classmethod
-    def from_config_source(cls, hostname, katcp_port, config_source):
+    def from_config_source(cls, hostname, index, katcp_port, config_source):
         boffile = config_source['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+        return cls(hostname, index, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
     def clear_status(self):
         """
-        Clear the status registers and counters on this f-engine host
+        Clear the status registers and counters on this x-engine host
         :return:
         """
         self.registers.control.write(status_clr='pulse', cnt_rst='pulse',
@@ -214,7 +217,6 @@ class FpgaXHost(FpgaHost):
     def qdr_okay(self):
         """
         Checks if parity bits on x-eng are zero
-        :param wait_time:
         :return: True/False
         """
         for xeng in range(0, self.x_per_fpga):

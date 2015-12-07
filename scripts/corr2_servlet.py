@@ -17,13 +17,6 @@ else:
     import Queue
 
 
-def list_to_katcp_list(pylist):
-    katlist = str(pylist)
-    katlist = katlist.replace('[', '').replace(']', '').replace(',', '')
-    katlist = katlist.replace("'", "")
-    return katlist
-
-
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
@@ -130,7 +123,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument.initialise(program=program)
             if monitor_vacc:
-                self.instrument.xops.vacc_start_check_timer()
+                self.instrument.xops.vacc_check_timer_start()
             return 'ok',
         except Exception as e:
             localexc = e
@@ -158,20 +151,20 @@ class Corr2Server(katcp.DeviceServer):
         :param synch_time:
         :return:
         """
-        if not self.instrument.initialised():
-            logging.warn('request %s before initialised... refusing.' %
-                         'request_digitiser_synch_epoch')
-            return 'fail', 'request %s before initialised... refusing.' % \
-                   'request_digitiser_synch_epoch'
+        # if not self.instrument.initialised():
+        #     logging.warn('request %s before initialised... refusing.' %
+        #                  'request_digitiser_synch_epoch')
+        #     return 'fail', 'request %s before initialised... refusing.' % \
+        #            'request_digitiser_synch_epoch'
         if synch_time > -1:
             try:
                 self.instrument.set_synch_time(synch_time)
-            except RuntimeError:
+            except RuntimeError as ve:
                 return 'fail', 'request digitiser_synch_epoch did not ' \
-                               'succeed, check the log'
-            except Exception:
+                               'succeed, check the log - ' % ve.message
+            except Exception as ve:
                 return 'fail', 'request digitiser_synch_epoch failed for an ' \
-                               'unknown reason, check the log'
+                               'unknown reason, check the log - ' % ve.message
         return 'ok', self.instrument.get_synch_time()
 
     @request(Str(), Str())
@@ -183,9 +176,8 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if stream not in self.instrument.configd['xengine']['output_products']:
-            return 'fail', 'stream %s is not in product list: %s' % \
-                   (stream,
-                    self.instrument.configd['xengine']['output_products'])
+            return 'fail', 'stream %s is not in product list: %s' % (
+                stream, self.instrument.configd['xengine']['output_products'])
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
@@ -209,8 +201,8 @@ class Corr2Server(katcp.DeviceServer):
             if product_name not in config_products:
                 return 'fail', 'requested product name not found'
         sock.inform(product_string, '%s:%d' % (
-            self.instrument.xeng_tx_destination[0],
-            self.instrument.xeng_tx_destination[1]))
+            self.instrument.xeng_tx_destination['ip'],
+            self.instrument.xeng_tx_destination['port']))
         return 'ok',
 
     def _check_product_name(self, product_name):
@@ -273,15 +265,15 @@ class Corr2Server(katcp.DeviceServer):
         if len(newlist) > 0:
             try:
                 self.instrument.set_labels(newlist)
-                return 'ok', list_to_katcp_list(self.instrument.get_labels())
+                return tuple(['ok'] + self.instrument.get_labels())
             except ValueError as ve:
                 return 'fail', 'provided input labels were not ' \
                                'correct: %s' % ve.message
-            except:
+            except Exception as ve:
                 return 'fail', 'provided input labels were not ' \
-                               'correct: Unhandled exception'
+                               'correct: Unhandled exception - ' % ve.message
         else:
-            return 'ok', list_to_katcp_list(self.instrument.get_labels())
+            return tuple(['ok'] + self.instrument.get_labels())
 
     @request(Str(default=''), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -303,7 +295,9 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(source_name)
         eqstring = str(_src[source_name]['eq'])
         eqstring = eqstring.replace('(', '').replace(')', '')
-        return 'ok', list_to_katcp_list(eqstring)
+        eqstring = eqstring.replace('[', '').replace(']', '')
+        eqstring = eqstring.replace(',', '')
+        return tuple(['ok'] + eqstring.split(' '))
 
     @request(Float(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -319,7 +313,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             actual = self.instrument.fops.delays_process_parallel(
                 loadtime, delay_strings)
-            return 'ok', list_to_katcp_list(actual)
+            return tuple(['ok'] + actual)
         except Exception as e:
             return 'fail', 'could not set delays - %s' % e.message
 
@@ -360,27 +354,52 @@ class Corr2Server(katcp.DeviceServer):
         for complex_word in snapdata:
             quant_string += ' %s' % str(complex_word)
         quant_string = quant_string.replace('(', '').replace(')', '')
-        return 'ok', list_to_katcp_list(quant_string)
+        quant_string = quant_string.replace('[', '').replace(']', '')
+        quant_string = quant_string.replace(',', '')
+        return tuple(['ok'] + quant_string.split(' '))
 
-    @request()
-    @return_reply()
-    def request_beam_weights(self, sock):
+    @request(Str(), Str(), Float(multiple=True))
+    @return_reply(Str(multiple=True))
+    def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
         """
-
+        Set the weight for a input
         :param sock:
         :return:
         """
-        return 'ok',
+        if not self.instrument.found_beamformer:
+            return 'fail', 'Cannot run beamformer commands with no beamformer'
+        try:
+            self.instrument.bops.set_beam_weights(beam_name,
+                                                  input_name,
+                                                  weight_list[0])
+        except Exception as e:
+            return 'fail', '%s' % e.message
+        cur_weights = self.instrument.bops.get_beam_weights(
+            beam_name, input_name)
+        wght_str = str(cur_weights)
+        wght_str = wght_str.replace('(', '').replace(')', '')
+        wght_str = wght_str.replace('[', '').replace(']', '')
+        wght_str = wght_str.replace(',', '')
+        return tuple(['ok'] + wght_str.split(' '))
 
-    @request()
-    @return_reply()
-    def request_beam_passband(self, sock):
+    @request(Str(), Float(), Float())
+    @return_reply(Str(), Str(), Str())
+    def request_beam_passband(self, sock, beam_name, bandwidth, centerfreq):
         """
-
+        Set the beamformer bandwidth/partitions
         :param sock:
         :return:
         """
-        return 'ok',
+        if not self.instrument.found_beamformer:
+            return 'fail', 'Cannot run beamformer commands with no beamformer'
+        try:
+            (cur_bw, cur_cf) = self.instrument.bops.set_beam_bandwidth(
+                beam_name,
+                bandwidth,
+                centerfreq)
+        except Exception as e:
+            return 'fail', '%s' % e.message
+        return 'ok', beam_name, str(cur_bw), str(cur_cf)
 
     @request(Str(), Str())
     @return_reply()
@@ -393,7 +412,13 @@ class Corr2Server(katcp.DeviceServer):
         temp = ipportstr.split(':')
         txipstr = temp[0]
         txport = int(temp[1])
-        self.instrument.set_meta_destination(txip_str=txipstr, txport=txport)
+        try:
+            self.instrument.set_meta_destination(txip_str=txipstr,
+                                                 txport=txport)
+        except ValueError as e:
+            return 'fail', '%s' % e.message
+        except Exception as e:
+            return 'fail', 'Unknown error: %s' % e.message
         return 'ok',
 
     @request()
@@ -404,7 +429,10 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        self.instrument.xops.vacc_sync()
+        try:
+            self.instrument.xops.vacc_sync()
+        except Exception as e:
+            return 'fail', 'Error syncing vaccs: ' % e.message
         return 'ok',
 
     @request(Int(default=-1))
@@ -491,7 +519,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     try:
-        log_level = eval('logging.%s' % args.loglevel)
+        log_level = getattr(logging, args.loglevel)
     except:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 

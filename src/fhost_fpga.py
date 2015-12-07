@@ -160,11 +160,12 @@ class FpgaFHost(DigitiserDataReceiver):
             self.min_load_time = None
             self.network_latency_adjust = None
 
-        for offset in range(self.num_fengines):
-            self.delays.append({'delay': 0, 'delta_delay': 0, 
-                                'phase_offset': 0, 'delta_phase_offset': 0, 
-                                'load_time': None, 'load_wait': None,
-                                'load_check': True})
+        if self.num_fengines:
+            for offset in range(self.num_fengines):
+                self.delays.append({'delay': 0, 'delta_delay': 0,
+                                    'phase_offset': 0, 'delta_phase_offset': 0,
+                                    'load_time': None, 'load_wait': None,
+                                    'load_check': True})
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
