@@ -28,6 +28,7 @@ class XEngineOperations(object):
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
         self.data_product = None
+        self.vacc_check_enabled = False
 
     def initialise(self):
         """
@@ -162,7 +163,6 @@ class XEngineOperations(object):
 
         self.data_product = xeng_prod
         self.corr.register_data_product(xeng_prod)
-
         self.vacc_check_enabled = False
 
     def _vacc_periodic_check(self, old_data, check_time):
@@ -357,35 +357,8 @@ class XEngineOperations(object):
         """
         return THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                   target_function='vacc_get_status')
-    
-    def vacc_sync(self, vacc_load_time=None):
-        """
-        Sync the vector accumulators on all the x-engines.
-        Assumes that the x-engines are all receiving data.
-        :return:
-        """
-        min_ld_time = 2
-        # how long should we wait for the vacc load
-        if vacc_load_time is None:
-            self.logger.info("Vacc sync time not specified. Syncing in %2.2f "
-                             "seconds' time." % (2*min_ld_time))
-            vacc_load_time = time.time()+2*min_ld_time
-    
-        t_now = time.time()
-        if vacc_load_time < (t_now + min_ld_time):
-            raise RuntimeError(
-                'Cannot load at a time in the past. '
-                'Need at least %2.2f seconds lead time. You asked for %s.%i, '
-                'and it is now %s.%i.' % (
-                    min_ld_time,
-                    time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
-                    (vacc_load_time-int(vacc_load_time))*100,
-                    time.strftime('%H:%M:%S', time.gmtime(t_now)),
-                    (t_now-int(t_now))*100))
-    
-        self.logger.info('xeng vaccs syncing at %s (in %2.2fs)'
-                         % (time.ctime(), vacc_load_time-time.time()))
-    
+
+    def _vacc_sync_check_reset(self):
         # check if the vaccs need resetting
         vaccstat = THREADED_FPGA_FUNC(
             self.hosts, timeout=10,
@@ -396,7 +369,7 @@ class XEngineOperations(object):
                 self.logger.info('xeng_vacc_sync: %s has a vacc that '
                                  'needs resetting' % xhost)
                 reset_required = True
-    
+
         if reset_required:
             THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                target_function='vacc_reset')
@@ -409,6 +382,36 @@ class XEngineOperations(object):
                              '%s failed.' % xhost
                     self.logger.error(errstr)
                     raise RuntimeError(errstr)
+
+    def vacc_sync(self, vacc_load_time=None):
+        """
+        Sync the vector accumulators on all the x-engines.
+        Assumes that the x-engines are all receiving data.
+        :return:
+        """
+        min_ld_time = 2
+        # how long should we wait for the vacc load
+        if vacc_load_time is None:
+            self.logger.info("Vacc sync time not specified. Syncing in %2.2f "
+                             "seconds' time." % (2*min_ld_time))
+            vacc_load_time = time.time() + (2*min_ld_time)
+    
+        t_now = time.time()
+        if vacc_load_time < (t_now + min_ld_time):
+            raise RuntimeError(
+                'Cannot load at a time in the past. '
+                'Need at least %2.2f seconds lead time. You asked for %s.%i, '
+                'and it is now %s.%i.' % (
+                    min_ld_time,
+                    time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
+                    (vacc_load_time-int(vacc_load_time))*100,
+                    time.strftime('%H:%M:%S', time.gmtime(t_now)),
+                    (t_now-int(t_now))*100))
+        self.logger.info('xeng vaccs syncing at %s (in %2.2fs)'
+                         % (time.ctime(), vacc_load_time-time.time()))
+    
+        # check if the vaccs need resetting
+        self._vacc_sync_check_reset()
     
         # set the vacc load time on the xengines
         ldmcnt = int(self.corr.mcnt_from_time(vacc_load_time))
@@ -492,9 +495,22 @@ class XEngineOperations(object):
         self.logger.info('\tx engines have vacc ld time %i' % xldtime)
     
         # wait for the vaccs to arm
-        wait_time = self.corr.time_from_mcnt(ldmcnt) - time.time() + 0.2
+        t_now = time.time()
+        t_from_mcnt = self.corr.time_from_mcnt(ldmcnt)
+        wait_time = t_from_mcnt - t_now + 0.2
         self.logger.info('\tWaiting %2.2f seconds for arm to '
                          'trigger.' % wait_time)
+        if wait_time <= 0:
+            self.logger.error('This is wonky - why is the wait_time '
+                              'less than zero? %.3f' % wait_time)
+            self.logger.error('corr synch epoch: %i' %
+                              self.corr.synchronisation_epoch)
+            self.logger.error('time.time(): %.10f' %
+                              t_now)
+            self.logger.error('time_from_mcnt: %.10f' % t_from_mcnt)
+            self.logger.error('ldmcnt: %i' % ldmcnt)
+            raise RuntimeError('This is wonky - why is the wait_time '
+                               'less than zero? %.3f' % wait_time)
         time.sleep(wait_time)
     
         # check the status to see that the load count increased
@@ -513,7 +529,7 @@ class XEngineOperations(object):
         self.logger.info('\tWaiting %2.2fs for an accumulation to flush, '
                          'to correctly populate parity bits.' %
                          self.get_acc_time())
-        time.sleep(self.get_acc_time()+0.2)
+        time.sleep(self.get_acc_time() + 0.2)
     
         self.logger.info('\tClearing status and reseting counters.')
         THREADED_FPGA_FUNC(self.hosts, timeout=10,
@@ -522,7 +538,7 @@ class XEngineOperations(object):
         # wait for a good accumulation to finish.
         self.logger.info('\tWaiting %2.2fs for an accumulation to flush '
                          'before checking counters.' % self.get_acc_time())
-        time.sleep(self.get_acc_time()+0.2)
+        time.sleep(self.get_acc_time() + 0.2)
     
         # check the vacc status, errors and accumulations
         vac_okay = self.vacc_check_okay_initial()
@@ -564,7 +580,8 @@ class XEngineOperations(object):
 
     def set_acc_time(self, acc_time_s, vacc_resync=True):
         """
-        Set the vacc accumulation length based on a required dump time, in seconds
+        Set the vacc accumulation length based on a required dump time,
+        in seconds
         :param acc_time_s: new dump time, in seconds
         :return:
         """
@@ -580,7 +597,8 @@ class XEngineOperations(object):
         """
         Get the dump time currently being used.
     
-        Note: Will only be correct if accumulation time was set using this correlator
+        Note: Will only be correct if accumulation time was set using this
+        correlator
         object instance since cached values are used for the calculation.
         I.e., the number of accumulations are _not_ read from the FPGAs.
         :return:
