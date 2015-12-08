@@ -9,12 +9,15 @@ LOGGER = logging.getLogger(__name__)
 
 class DigitiserDataReceiver(FpgaHost):
     """
-    The RX section of a fengine and filter engine are the same - receive the digitiser data
+    The RX section of a fengine and filter engine are
+    the same - receive the digitiser data
     """
 
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True):
-        super(DigitiserDataReceiver, self).__init__(host, katcp_port=katcp_port,
-                                                    boffile=boffile, connect=connect)
+        super(DigitiserDataReceiver, self).__init__(host,
+                                                    katcp_port=katcp_port,
+                                                    boffile=boffile,
+                                                    connect=connect)
 
     def _get_rxreg_data(self):
         """
@@ -104,12 +107,14 @@ class DigitiserDataReceiver(FpgaHost):
         Get the local timestamp of this board, received from the digitiser
         :return: time in samples since the digitiser epoch
         """
-        first_msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
-        while self.registers.local_time_msw.read()['data']['timestamp_msw'] == first_msw:
+        _msw = self.registers.local_time_msw
+        _lsw = self.registers.local_time_lsw
+        first_msw = _msw.read()['data']['timestamp_msw']
+        while _msw.read()['data']['timestamp_msw'] == first_msw:
             time.sleep(0.01)
-        lsw = self.registers.local_time_lsw.read()['data']['timestamp_lsw']
-        msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
-        assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
+        lsw = _lsw.read()['data']['timestamp_lsw']
+        msw = _msw.read()['data']['timestamp_msw']
+        assert msw == first_msw + 1  # if this fails the network is waaaaay slow
         return (msw << 32) | lsw
 
     def clear_status(self):
@@ -306,31 +311,36 @@ class FpgaFHost(DigitiserDataReceiver):
         act_vals = []
         for offset in range(len(self.delays)):
             coeffs = self.delays[offset]
-            act_val = self.write_delay(offset, coeffs['delay'], coeffs['delta_delay'],
-                            coeffs['phase_offset'], coeffs['delta_phase_offset'],
-                            coeffs['load_time'], coeffs['load_wait'], coeffs['load_check'])
-               
+            act_val = self.write_delay(offset, coeffs['delay'],
+                                       coeffs['delta_delay'],
+                                       coeffs['phase_offset'],
+                                       coeffs['delta_phase_offset'],
+                                       coeffs['load_time'],
+                                       coeffs['load_wait'],
+                                       coeffs['load_check'])
             act_vals.append(act_val)
 
         return act_vals
 
-    def set_delay(self, offset, delay=0.0, delta_delay=0.0, 
-                    phase_offset=0.0, delta_phase_offset=0.0, 
-                    load_time=None, load_wait=None, load_check=True):
+    def set_delay(self, offset, delay=0.0, delta_delay=0.0,
+                  phase_offset=0.0, delta_phase_offset=0.0,
+                  load_time=None, load_wait=None, load_check=True):
         """
-        Update delay settings for data stream at offset specified ready for writing
+        Update delay settings for data stream at offset specified
+        ready for writing
 
         :param delay is in samples
-        :param delta delay is in samples per sample
-        :param phase offset is in fractions of a sample
-        :param delta phase offset is in samples per sample
+        :param delta_delay is in samples per sample
+        :param phase_offset is in fractions of a sample
+        :param delta_phase_offset is in samples per sample
         :return 
         """
-        self.delays[offset] = {'delay': delay, 'delta_delay': delta_delay, 
-                            'phase_offset': phase_offset, 
-                            'delta_phase_offset': delta_phase_offset,
-                            'load_time': load_time, 'load_wait': load_wait,
-                            'load_check': load_check}
+        self.delays[offset] = {
+            'delay': delay, 'delta_delay': delta_delay,
+            'phase_offset': phase_offset,
+            'delta_phase_offset': delta_phase_offset,
+            'load_time': load_time, 'load_wait': load_wait,
+            'load_check': load_check}
 
     def write_delay(self, offset, delay=0.0, delta_delay=0.0, 
                     phase_offset=0.0, delta_phase_offset=0.0, 
@@ -364,7 +374,7 @@ class FpgaFHost(DigitiserDataReceiver):
         # delay #
         #########
 
-        #TODO check register parameters to get delay range
+        # TODO check register parameters to get delay range
 
         # shift up by amount shifted down by on fpga
         delta_delay_shifted = float(delta_delay) * _bshift_val
@@ -442,36 +452,43 @@ class FpgaFHost(DigitiserDataReceiver):
         fd_ld_count_after = fd_status_after['load_count']
 
         # was the system already armed?
-        if cd_armed_before == True:
-            LOGGER.error('%s:%d coarse delay timed latch was already armed. '
-                         'Previous load failed'% (self.host, offset))
+        if cd_armed_before:
+            LOGGER.error('%s:%d coarse delay timed latch was already '
+                         'armed. Previous load failed' % (self.host, offset))
 
-        if fd_armed_before == True:
-            LOGGER.error('%s:%d phase correction timed latch was already armed. '
-                         'Previous load failed'% (self.host, offset))
+        if fd_armed_before:
+            LOGGER.error('%s:%d phase correction timed latch was '
+                         'already armed. Previous load failed' % (self.host,
+                                                                  offset))
 
         # did the system arm correctly
         if cd_arm_count_before == cd_arm_count_after:
             # don't report error if it was already armed as count won't increase
-            if cd_armed_before == False:
-                LOGGER.error('%s:%d coarse delay arm count did not change.'
-                    % (self.host, offset))
+            if not cd_armed_before:
+                LOGGER.error('%s:%d coarse delay arm count did not '
+                             'change.' % (self.host, offset))
                 LOGGER.error('%s:%d BEFORE: coarse arm_count(%i) ld_count(%i)'
-                    % (self.host, offset, cd_arm_count_before, cd_ld_count_before))
+                             '' % (self.host, offset, cd_arm_count_before,
+                                   cd_ld_count_before))
                 LOGGER.error('%s:%d AFTER:  coarse arm_count(%i) ld_count(%i)'
-                    % (self.host, offset, cd_arm_count_after, cd_ld_count_after))
+                             '' % (self.host, offset, cd_arm_count_after,
+                                   cd_ld_count_after))
 
         if fd_arm_count_before == fd_arm_count_after:
-            if fd_armed_before == False:
-                LOGGER.error('%s:%d phase correction arm count did not '
-                            'change.' % (self.host, offset))
-                LOGGER.error('%s:%d BEFORE: phase correction arm_count(%i) ld_count(%i)'
-                            % (self.host, offset, fd_arm_count_before, fd_ld_count_before))
-                LOGGER.error('%s:%d AFTER: phase correction arm_count(%i) ld_count(%i)'
-                            % (self.host, offset, fd_arm_count_after, fd_ld_count_after))
+            if not fd_armed_before:
+                LOGGER.error('%s:%d phase correction arm count did not change.'
+                             '' % (self.host, offset))
+                LOGGER.error('%s:%d BEFORE: phase correction arm_count(%i) '
+                             'ld_count(%i)' % (self.host, offset,
+                                               fd_arm_count_before,
+                                               fd_ld_count_before))
+                LOGGER.error('%s:%d AFTER: phase correction arm_count(%i) '
+                             'ld_count(%i)' % (self.host, offset,
+                                               fd_arm_count_after,
+                                               fd_ld_count_after))
 
         # did the system load?
-        if load_check == True:
+        if load_check:
             if cd_ld_count_before == cd_ld_count_after:
                 LOGGER.error('%s:%d coarse delay load count did not change. '
                              'Load failed.' % (self.host, offset))
@@ -480,7 +497,7 @@ class FpgaFHost(DigitiserDataReceiver):
                 LOGGER.error('%s:%d phase correction load count did not '
                              'change. Load failed.' % (self.host, offset))
 
-        #read values back to see what actual values were loaded
+        # read values back to see what actual values were loaded
 
         act_delay = delay_reg.read()['data']['initial']
         act_delta_delay = delta_delay_reg.read()['data']['delta'] / _bshift_val
@@ -538,9 +555,11 @@ class FpgaFHost(DigitiserDataReceiver):
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
         Set the FFT shift schedule.
-        :param shift_schedule: int representing bit mask. '1' represents a shift for that stage. First stage is MSB.
+        :param shift_schedule: int representing bit mask. '1' represents a
+        shift for that stage. First stage is MSB.
         Use default if None provided
-        :param issue_meta: Should SPEAD meta data be sent after the value is changed?
+        :param issue_meta: Should SPEAD meta data be sent after the value is
+        changed?
         :return: <nothing>
         """
         if shift_schedule is None:
@@ -550,7 +569,8 @@ class FpgaFHost(DigitiserDataReceiver):
     def get_fft_shift(self):
         """
         Get the current FFT shift schedule from the FPGA.
-        :return: integer representing the FFT shift schedule for all the FFTs on this engine.
+        :return: integer representing the FFT shift schedule for all the FFTs
+        on this engine.
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 

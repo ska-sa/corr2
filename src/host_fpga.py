@@ -1,5 +1,3 @@
-__author__ = 'paulp'
-
 import logging
 import time
 
@@ -41,45 +39,56 @@ class FpgaHost(Host, KatcpFpga):
 
             def _checkregs(keyname, required, equal):
                 if keyname in _d1:
+                    _d1val = _d1[keyname]['data']['reg']
+                    _d2val = _d2[keyname]['data']['reg']
+                    _d3val = _d3[keyname]['data']['reg']
+
                     if not equal:
-                        if _d2[keyname]['data']['reg'] == _d1[keyname]['data']['reg']\
-                                and _d3[keyname]['data']['reg'] == _d2[keyname]['data']['reg']:
-                            LOGGER.info('%s: %s not changing' % (self.host, keyname))
+                        if (_d2val == _d1val) and (_d3val == _d2val):
+                            LOGGER.info('%s: %s not changing' % (self.host,
+                                                                 keyname))
                             return False
                     else:
-                        if _d2[keyname]['data']['reg'] != _d1[keyname]['data']['reg']\
-                                and _d3[keyname]['data']['reg'] != _d2[keyname]['data']['reg']:
-                            LOGGER.info('%s: %s changing' % (self.host, keyname))
+                        if (_d2val != _d1val) and (_d3val != _d2val):
+                            LOGGER.info('%s: %s changing' % (self.host,
+                                                             keyname))
                             return False
                 else:
                     if required:
-                        LOGGER.error('%s: %s does not exist' % (self.host, keyname))
+                        LOGGER.error('%s: %s does not exist' % (self.host,
+                                                                keyname))
                         return False
                     else:
-                        LOGGER.warn('%s: %s does not exist' % (self.host, keyname))
+                        LOGGER.warn('%s: %s does not exist' % (self.host,
+                                                               keyname))
                 return True
 
             # tx counter and error counter registers MUST exist
-            if not _checkregs('{}_txctr'.format(_core), required=True, equal=False):
+            if not _checkregs('{}_txctr'.format(_core),
+                              required=True, equal=False):
                 return False
-            if not _checkregs('{}_txerrctr'.format(_core), required=True, equal=True):
+            if not _checkregs('{}_txerrctr'.format(_core),
+                              required=True, equal=True):
                 return False
 
             # certain registers can not exist but absence are noted
-            if not _checkregs('{}_txvldctr'.format(_core), required=False, equal=False):
+            if not _checkregs('{}_txvldctr'.format(_core),
+                              required=False, equal=False):
                 return False
-            if not _checkregs('{}_txofctr'.format(_core), required=False, equal=True):
+            if not _checkregs('{}_txofctr'.format(_core),
+                              required=False, equal=True):
                 return False
-            if not _checkregs('{}_txfullctr'.format(_core), required=False, equal=True):
+            if not _checkregs('{}_txfullctr'.format(_core),
+                              required=False, equal=True):
                 return False
 
-#            if ((_d2['%s_txctr' % _core]['data']['reg'] - _d1['%s_txctr' % _core]['data']['reg'] <= 0) or
-#                    (_d2['%s_txvldctr' % _core]['data']['reg'] - _d1['%s_txvldctr' % _core]['data']['reg'] <= 0)):
-#                return False
-#            if ((_d2['%s_txofctr' % _core]['data']['reg'] - _d1['%s_txofctr' % _core]['data']['reg'] > 0) or
-#                    (_d2['%s_txerrctr' % _core]['data']['reg'] - _d1['%s_txerrctr' % _core]['data']['reg'] > 0) or
-#                    (_d2['%s_txfullctr' % _core]['data']['reg'] - _d1['%s_txfullctr' % _core]['data']['reg'] > 0)):
-#                return False
+            # if ((_d2['%s_txctr' % _core]['data']['reg'] - _d1['%s_txctr' % _core]['data']['reg'] <= 0) or
+            #         (_d2['%s_txvldctr' % _core]['data']['reg'] - _d1['%s_txvldctr' % _core]['data']['reg'] <= 0)):
+            #     return False
+            # if ((_d2['%s_txofctr' % _core]['data']['reg'] - _d1['%s_txofctr' % _core]['data']['reg'] > 0) or
+            #         (_d2['%s_txerrctr' % _core]['data']['reg'] - _d1['%s_txerrctr' % _core]['data']['reg'] > 0) or
+            #         (_d2['%s_txfullctr' % _core]['data']['reg'] - _d1['%s_txfullctr' % _core]['data']['reg'] > 0)):
+            #     return False
         return True
 
     def check_rx(self, max_waittime=30):
@@ -95,7 +104,8 @@ class FpgaHost(Host, KatcpFpga):
             LOGGER.info('{}: Raw RX passed '.format(self.host))
 
         if not self.check_rx_spead(max_waittime=max_waittime):
-            LOGGER.error('{}: SPEAD RX check failed. Ignoring for now'.format(self.host))
+            LOGGER.error('{}: SPEAD RX check failed. Ignoring '
+                         'for now'.format(self.host))
         else:
             LOGGER.info('{}: SPEAD RX passed.'.format(self.host))
 
@@ -170,9 +180,9 @@ class FpgaHost(Host, KatcpFpga):
             time.sleep(0.1)
             ctrs1 = self.read_spead_counters()
             for _core_ctr in range(0, len(spead_errors)):
-                counter_incrementing = ctrs1[_core_ctr][0] != ctrs0[_core_ctr][0]
+                counter_incr = ctrs1[_core_ctr][0] != ctrs0[_core_ctr][0]
                 errors_the_same = ctrs1[_core_ctr][1] == ctrs0[_core_ctr][1]
-                if counter_incrementing and errors_the_same:
+                if counter_incr and errors_the_same:
                     spead_errors[_core_ctr] = False
         if spead_errors.count(True) > 0:
             LOGGER.error('%s: not receiving good SPEAD data '
