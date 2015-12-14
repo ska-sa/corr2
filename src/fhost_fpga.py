@@ -402,7 +402,7 @@ class FpgaFHost(DigitiserDataReceiver):
                              (self.host, offset, compromise))
                 delay_reg.write(initial=compromise)
 
-        LOGGER.info('%s:%d %f to delta in delta_delay register' %
+        LOGGER.info('%s:%d setting delay delta to %e' %
                     (self.host, offset, delta_delay))
 
         try:
@@ -411,24 +411,26 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('%s:%d delay change range error - %s' %
                          (self.host, offset, e.message))
 
-            reg_info = delta_delay_reg.block_into
-            bw = int(reg_info['bitwidths']) 
-            b = int(reg_info['bin_pts'])
+            reg_info = delta_delay_reg.block_info
+            bw_str = reg_info['bitwidths']
+            bw = int(bw_str[1:len(bw_str)-1]) 
+            b_str = reg_info['bin_pts']
+            b = int(b_str[1:len(b_str)-1])
     
             max_positive_delta_delay = 1 - 1/float(2**b)
-            max_negative_delta_delay = -1
-            if delta_delay_shifted > max_pos_delta_delay:
+            max_negative_delta_delay = -1 
+            if delta_delay_shifted > max_positive_delta_delay:
                 compromise = max_positive_delta_delay
-                LOGGER.error('%s:%d largest possible positive delta delay is %f data samples/sample' %
+                LOGGER.error('%s:%d largest possible positive delta delay is %e data samples/sample' %
                             (self.host, offset, compromise / _bshift_val))
-                LOGGER.error('%s:%d setting delay to %f data samples/sample' %
+                LOGGER.error('%s:%d setting delay to %e data samples/sample' %
                              (self.host, offset, compromise / _bshift_val))
                 delta_delay_reg.write(delta=compromise)
             if delta_delay_shifted < max_negative_delta_delay: 
                 compromise = max_negative_delta_delay
-                LOGGER.error('%s:%d largest possible negative delta delay is %f data samples/sample' %
+                LOGGER.error('%s:%d largest possible negative delta delay is %e data samples/sample' %
                             (self.host, offset, compromise / _bshift_val))
-                LOGGER.error('%s:%d setting delay to %f data samples/sample' %
+                LOGGER.error('%s:%d setting delay to %e data samples/sample' %
                              (self.host, offset, compromise / _bshift_val))
                 delta_delay_reg.write(delta=compromise)
 
