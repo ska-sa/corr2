@@ -681,10 +681,7 @@ class XEngineOperations(object):
         :return:
         """
         dprod = data_product or self.data_product
-        THREADED_FPGA_OP(
-            self.hosts, timeout=5,
-            target_function=(
-                lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+        THREADED_FPGA_FUNC(self.hosts, 5, 'gbe_tx_enable')
         self.logger.info('X-engine output enabled')
 
     def tx_disable(self, data_product):
@@ -693,10 +690,7 @@ class XEngineOperations(object):
         :return:
         """
         dprod = data_product or self.data_product
-        THREADED_FPGA_OP(
-            self.hosts, timeout=5,
-            target_function=(
-                lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+        THREADED_FPGA_FUNC(self.hosts, 5, 'gbe_tx_disable')
         self.logger.info('X-engine output disabled')
 
     def spead_meta_update_product_destination(self):
