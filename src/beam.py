@@ -48,9 +48,10 @@ class Beam(object):
             self.index, self.name))
 
     @classmethod
-    def from_config(cls, beam_name, bhosts, config, speadops):
+    def from_config(cls, beam_key, bhosts, config, speadops):
         # look for the section matching the name
-        beam_dict = config['beam_%s' % beam_name]
+        beam_dict = config[beam_key]
+        beam_name = beam_dict['output_products'].strip()
         obj = cls(beam_name, int(beam_dict['stream_index']))
         obj.hosts = bhosts
         obj.speadops = speadops

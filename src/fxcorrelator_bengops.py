@@ -65,18 +65,19 @@ class BEngineOperations(object):
 
         # get beam names from config
         beam_names = []
-        for k in self.corr.configd:
-            if k.startswith('beam_'):
-                beam_names.append(k.strip().replace('beam_', ''))
-        self.logger.info('Found beams: %s' % beam_names)
-
-        # make the beams
         self.beams = {}
-        for beam_idx, beam_name in enumerate(beam_names):
-            newbeam = Beam.from_config(beam_name, self.hosts,
-                                       self.corr.configd,
-                                       self.corr.speadops)
-            self.beams[newbeam.name] = newbeam
+        for k in self.corr.configd:
+            if k.startswith('beam'):
+                bmnm = self.corr.configd[k]['output_products']
+                if bmnm in beam_names:
+                    raise ValueError('Cannot have more than one beam with '
+                                     'the name %s. Please check the '
+                                     'config file.' % bmnm)
+                newbeam = Beam.from_config(k, self.hosts, self.corr.configd,
+                                           self.corr.speadops)
+                self.beams[newbeam.name] = newbeam
+                beam_names.append(bmnm.strip())
+        self.logger.info('Found beams: %s' % beam_names)
 
         # configure the beams
         for beam in self.beams.values():
