@@ -59,7 +59,9 @@ class FpgaFilterHost(DigitiserDataReceiver):
                 rxaddr = str(source.ip_address)
                 rxaddr_bits = rxaddr.split('.')
                 rxaddr_base = int(rxaddr_bits[3])
-                rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
+                rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0],
+                                               rxaddr_bits[1],
+                                               rxaddr_bits[2])
                 for _ctr in range(0, source.ip_range):
                     gbename = self.tengbes.names()[gbe_ctr]
                     gbe = self.tengbes[gbename]

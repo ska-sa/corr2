@@ -229,6 +229,22 @@ class FpgaXHost(FpgaHost):
         LOGGER.info('%s: QDR okay.' % self.host)
         return True
 
+    def gbe_tx_enable(self):
+        """
+        Enable transmission from the gbe cores on this host
+        :return:
+        """
+        self.registers.control.write(gbe_txen=True)
+        LOGGER.info('%s: GBE tx enabled' % self.host)
+
+    def gbe_tx_disable(self):
+        """
+        Disable transmission from the gbe cores on this host
+        :return:
+        """
+        self.registers.control.write(gbe_txen=False)
+        LOGGER.info('%s: GBE tx disabled' % self.host)
+
     # def set_accumulation_length(self, accumulation_length, issue_meta=True):
     #     """ Set the accumulation time for the vector accumulator
     #     @param accumulation_length: the accumulation time in spectra.

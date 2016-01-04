@@ -252,7 +252,7 @@ class CorrRx(threading.Thread):
             logger.info("Got a SPEAD end-of-stream marker. Closing File.")
             h5_file.flush()
             h5_file.close()
-        rx.stop()
+        strm.stop()
         logger.info("Files and sockets closed.")
         self.quit_event.clear()
 

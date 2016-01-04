@@ -6,18 +6,9 @@ Created on Feb 28, 2013
 
 # things all fxcorrelators Instruments do
 
-# to start the digitiser in the lab:
-
-# paulp@dbertsc:/home/henno/work/projects/d_engine/scripts/svn/dig003$ ./m1130_2042sdp_rev1_of_start.py
-
-# if power cycles, then: ./config.py -b 3
-# this will configure the correct image on the digitiser, not the test one
-
 import logging
 import time
-import numpy
 
-from casperfpga import tengbe
 from casperfpga import utils as fpgautils
 
 import log
@@ -35,12 +26,12 @@ from fxcorrelator_bengops import BEngineOperations
 from fxcorrelator_filterops import FilterOperations
 from fxcorrelator_speadops import SpeadOperations
 
-use_xeng_sim = False
-
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 LOGGER = logging.getLogger(__name__)
+
+POST_MESS_DELAY = 10
 
 
 class FxCorrelator(Instrument):
@@ -84,20 +75,16 @@ class FxCorrelator(Instrument):
         self.x_per_fpga = None
         self.accumulation_len = None
         self.xeng_accumulation_len = None
-        self.xeng_tx_destination = None
-        self.meta_destination = None
         self.fengine_sources = None
 
         self._sensors = {}
 
         # parent constructor
-        Instrument.__init__(self, descriptor, identifier, config_source)
-
-        self._initialised = False
+        Instrument.__init__(self, descriptor, identifier, config_source, logger)
 
     def standard_log_config(self, log_level=logging.INFO, silence_spead=True):
         """Convenience method for setting up logging in scripts etc.
-        :param logger: The loglevel to use by default, logging.INFO.
+        :param log_level: The loglevel to use by default, logging.INFO.
         :param silence_spead: Set 'spead' logger to level WARNING if True
 
         """
@@ -160,64 +147,11 @@ class FxCorrelator(Instrument):
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
 
-        if self.found_beamformer:
-            self.bops.configure()
+        # run configuration on the parts of the instrument
+        self.configure()
 
-        if program:
-            # cal the qdr on all boards
-            if qdr_cal:
-                self.qdr_calibrate()
-            else:
-                self.logger.info('Skipping QDR cal - are you sure you '
-                                 'want to do this?')
-
-            # init the engines
-            self.fops.initialise()
-            self.xops.initialise()
-
-            # are there beamformers?
-            if self.found_beamformer:
-                self.bops.initialise()
-
-            # for fpga_ in self.fhosts:
-            #     fpga_.tap_arp_reload()
-            # for fpga_ in self.xhosts:
-            #     fpga_.tap_arp_reload()
-
-            # subscribe all the engines to the multicast groups
-            self.fops.subscribe_to_multicast()
-            self.xops.subscribe_to_multicast()
-
-            post_mess_delay = 10
-            self.logger.info('post mess-with-the-switch delay of %is' %
-                             post_mess_delay)
-            time.sleep(post_mess_delay)
-
-            # force a reset on the f-engines
-            self.fops.sys_reset(sleeptime=1)
-
-            # reset all counters on fhosts and xhosts
-            self.fops.clear_status_all()
-            self.xops.clear_status_all()
-
-            # check to see if the f engines are receiving all their data
-            if not self.fops.check_rx():
-                raise RuntimeError('The f-engines RX have a problem.')
-
-            # start f-engine TX
-            self.logger.info('Starting f-engine datastream')
-            self.fops.tx_enable()
-
-            # check that the F-engines are transmitting data correctly
-            if not self.fops.check_tx():
-                raise RuntimeError('The f-engines TX have a problem.')
-
-            # check that the X-engines are receiving data
-            if not self.xops.check_rx():
-                raise RuntimeError('The x-engines RX have a problem.')
-
-            # arm the vaccs on the x-engines
-            self.xops.vacc_sync()
+        # run post-programming initialisation
+        self._initialise(program, qdr_cal)
 
         # reset all counters on fhosts and xhosts
         self.fops.clear_status_all()
@@ -226,12 +160,72 @@ class FxCorrelator(Instrument):
         # set an initialised flag
         self._initialised = True
 
-    def initialised(self):
+    def _initialise(self, program, qdr_cal):
         """
-        Has initialise successfully passed?
+        Run this if boards in the system have been programmed. Basic setup
+        of devices.
         :return:
         """
-        return self._initialised
+        if not program:
+            # only run the contents of this function after programming.
+            return
+
+        # cal the qdr on all boards
+        if qdr_cal:
+            self.qdr_calibrate()
+        else:
+            self.logger.info('Skipping QDR cal - are you sure you '
+                             'want to do this?')
+
+        # init the engines
+        self.fops.initialise()
+        self.xops.initialise()
+        if self.found_beamformer:
+            self.bops.initialise()
+
+        # subscribe all the engines to the multicast groups
+        self.fops.subscribe_to_multicast()
+        self.xops.subscribe_to_multicast()
+
+        self.logger.info('post mess-with-the-switch delay of %is' %
+                         POST_MESS_DELAY)
+        time.sleep(POST_MESS_DELAY)
+
+        # force a reset on the f-engines
+        self.fops.sys_reset(sleeptime=1)
+
+        # reset all counters on fhosts and xhosts
+        self.fops.clear_status_all()
+        self.xops.clear_status_all()
+
+        # check to see if the f engines are receiving all their data
+        if not self.fops.check_rx():
+            raise RuntimeError('The f-engines RX have a problem.')
+
+        # start f-engine TX
+        self.logger.info('Starting f-engine datastream')
+        self.fops.tx_enable()
+
+        # check that the F-engines are transmitting data correctly
+        if not self.fops.check_tx():
+            raise RuntimeError('The f-engines TX have a problem.')
+
+        # check that the X-engines are receiving data
+        if not self.xops.check_rx():
+            raise RuntimeError('The x-engines RX have a problem.')
+
+        # arm the vaccs on the x-engines
+        self.xops.vacc_sync()
+
+    def configure(self):
+        """
+        Operations to run to configure the instrument, after programming.
+        :return:
+        """
+        self.fops.configure()
+        self.xops.configure()
+        if self.found_beamformer:
+            self.bops.configure()
 
     def est_sync_epoch(self):
         """
@@ -343,10 +337,12 @@ class FxCorrelator(Instrument):
                 raise ValueError(
                     'Could not find the old EQ value, %s, to update '
                     'to new name, %s.' % (old_name, _source.name))
+        self.logger.info('Source labels updated from %s to %s' % (
+            oldnames, newnames))
         # update the beam input labels
         if self.found_beamformer:
             self.bops.update_labels(oldnames, newnames)
-        self.speadops.item_0x100e(stx=True)
+        self.speadops.update_metadata([0x100e])
 
     def get_labels(self):
         """
@@ -358,8 +354,7 @@ class FxCorrelator(Instrument):
     def _read_config(self):
         """
         Read the instrument configuration from self.config_source.
-        :return: True if the instrument read a config successfully, raise
-        an error if not?
+        :return:
         """
         Instrument._read_config(self)
         _d = self.configd
@@ -391,15 +386,12 @@ class FxCorrelator(Instrument):
         self.min_load_time = float(_feng_d['min_load_time'])
         self.f_per_fpga = int(_feng_d['f_per_fpga'])
         self.ports_per_fengine = int(_feng_d['ports_per_fengine'])
+        self.analogue_bandwidth = int(_feng_d['bandwidth'])
 
         _xeng_d = self.configd['xengine']
         self.x_per_fpga = int(_xeng_d['x_per_fpga'])
         self.accumulation_len = int(_xeng_d['accumulation_len'])
         self.xeng_accumulation_len = int(_xeng_d['xeng_accumulation_len'])
-        self.set_stream_destination(_xeng_d['output_destination_ip'],
-                                    int(_xeng_d['output_destination_port']))
-        self.set_meta_destination(_xeng_d['output_destination_ip'],
-                                  int(_xeng_d['output_destination_port']))
 
         # get this from the running x-engines?
         self.xeng_clk = int(_xeng_d['x_fpga_clock'])
@@ -522,90 +514,64 @@ class FxCorrelator(Instrument):
         """
         raise NotImplementedError('_read_config_server not implemented')
 
-    def set_stream_destination(self, txip_str=None, txport=None):
+    def product_set_destination(self, product_name, txip_str=None, txport=None):
         """
-        Set destination for output of fxcorrelator.
+        Set the destination for a data product.
         :param txip_str: A dotted-decimal string representation of the
         IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.
         :return: <nothing>
         """
-        if txip_str is None:
-            txip = tengbe.IpAddress.str2ip(self.xeng_tx_destination['ip'])
-        else:
-            txip = tengbe.IpAddress.str2ip(txip_str)
-        if txport is None:
-            txport = self.xeng_tx_destination['port']
-        else:
-            txport = int(txport)
-        self.logger.info('Setting stream destination to %s:%d' %
-                         (tengbe.IpAddress.ip2str(txip), txport))
-        try:
-            THREADED_FPGA_OP(
-                self.xhosts, timeout=10,
-                target_function=(lambda fpga_:
-                                 fpga_.registers.gbe_iptx.write(reg=txip),))
-            THREADED_FPGA_OP(
-                self.xhosts, timeout=10,
-                target_function=(lambda fpga_:
-                                 fpga_.registers.gbe_porttx.write(reg=txport),))
-        except AttributeError:
-            self.logger.warning('Set SPEAD stream destination called, but '
-                                'devices NOT written! Have they been created?')
-        self.xeng_tx_destination = {'ip': tengbe.IpAddress.ip2str(txip),
-                                    'port': txport}
+        if product_name not in self.data_products:
+            raise ValueError('product %s is not in product list: %s' % (
+                product_name, self.data_products))
+        self.data_products[product_name].set_destination(txip_str, txport)
 
-    def set_meta_destination(self, txip=None, txport=None):
+    def product_set_meta_destination(self, product_name,
+                                     txip_str=None, txport=None):
         """
-        Set destination for meta info output of fxcorrelator.
-        :param txip: A dotted-decimal string, int or IpAddress representation of
-        the IP address. e.g. '1.2.3.4'
+        Set the meta destination for a data product.
+        :param txip_str: A dotted-decimal string representation of the
+        IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.
         :return: <nothing>
         """
-        if txip is None:
-            txip = self.meta_destination['ip']
-        if txport is None:
-            txport = self.meta_destination['port']
-        else:
-            txport = int(txport)
-        if txport is None or txip is None:
-            self.logger.error('Cannot set part of meta destination to None '
-                              '- %s:%d' % (txip, txport))
-            raise ValueError('Cannot set part of meta destination to None '
-                             '- %s:%d' % (txip, txport))
-        self.meta_destination = {'ip': tengbe.IpAddress(txip),
-                                 'port': txport}
-        self.logger.info('Setting meta destination to %s:%d' %
-                         (txip, txport))
+        if product_name not in self.data_products:
+            raise ValueError('product %s is not in product list: %s' % (
+                product_name, self.data_products))
+        self.data_products[product_name].set_meta_destination(txip_str, txport)
 
-    def tx_start(self, issue_spead=True):
+    def product_tx_enable(self, product_name):
         """
-        Turns on xengine output pipes needed to start data flow from xengines
+        Enable tranmission for a product
+        :param product_name:
+        :return:
         """
-        self.logger.info('Starting transmission')
-        if issue_spead:
-            self.speadops.meta_issue_all()
-        # start tx on the x-engines
-        for f in self.xhosts:
-            f.registers.control.write(gbe_txen=True)
+        if product_name not in self.data_products:
+            raise ValueError('product %s is not in product list: %s' % (
+                product_name, self.data_products))
+        self.data_products[product_name].tx_enable()
 
-    def tx_stop(self, stop_f=False):
+    def product_tx_disable(self, product_name):
         """
-        Turns off output pipes to start data flow from xengines
-        :param stop_f: stop output of fengines as well
+        Disable tranmission for a product
+        :param product_name:
+        :return:
         """
-        self.logger.info('Stopping X transmission')
+        if product_name not in self.data_products:
+            raise ValueError('product %s is not in product list: %s' % (
+                product_name, self.data_products))
+        self.data_products[product_name].tx_disable()
 
-        THREADED_FPGA_OP(
-            self.xhosts, timeout=10, target_function=(
-                lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
-        if stop_f:
-            self.logger.info('Stopping F transmission')
-            THREADED_FPGA_OP(
-                self.fhosts, timeout=10, target_function=(
-                    lambda fpga_:
-                    fpga_.registers.control.write(comms_en=False),))
+    def product_issue_metadata(self, product_name):
+        """
 
+        :param product_name:
+        :return:
+        """
+        if product_name not in self.data_products:
+            raise ValueError('product %s is not in product list: %s' % (
+                product_name, self.data_products))
+        self.data_products[product_name].meta_issue()
 
 # end
