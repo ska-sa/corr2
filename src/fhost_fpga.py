@@ -504,14 +504,14 @@ class FpgaFHost(DigitiserDataReceiver):
                 compromise = max_positive_delta_phase
                 LOGGER.error('%s:%d largest possible positive phase delta is %expi radians/sample' %
                             (self.host, offset, compromise / _bshift_val))
-                LOGGER.error('%s:%d setting phase offset delta to %expi radians/sample (%e after shift)' %
+                LOGGER.error('%s:%d setting phase delta to %expi radians/sample (%e after shift)' %
                              (self.host, offset, compromise / _bshift_val, compromise))
                 phase_reg.write(delta=compromise)
-            if delta_phase_shifted < max_negative_delta_phase: 
+            if delta_phase_offset_shifted < max_negative_delta_phase: 
                 compromise = max_negative_delta_phase
-                LOGGER.error('%s:%d largest possible negative phase offset delta is %expi radians/sample' %
+                LOGGER.error('%s:%d largest possible negative phase delta is %expi radians/sample' %
                             (self.host, offset, compromise / _bshift_val))
-                LOGGER.error('%s:%d setting phase offset delta to %expiradians/sample (%e after shift)' %
+                LOGGER.error('%s:%d setting phase delta to %expiradians/sample (%e after shift)' %
                              (self.host, offset, compromise / _bshift_val, compromise))
                 phase_reg.write(delta=compromise)
 
