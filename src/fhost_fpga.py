@@ -383,24 +383,66 @@ class FpgaFHost(DigitiserDataReceiver):
         delay_reg = self.registers['delay%i' % offset]
         delta_delay_reg = self.registers['delta_delay%i' % offset]
 
-        LOGGER.info('%s:%d setting an intial delay of %f samples.' %
+        LOGGER.info('%s:%d setting an initial delay of %f samples.' %
                     (self.host, offset, delay))
 
-        # setup the delays
+        # setup the delay
         try:
             delay_reg.write(initial=delay)
         except ValueError as e:
             LOGGER.error('%s:%d initial delay range error - %s' %
                          (self.host, offset, e.message))
 
-        LOGGER.info('%s:%d %f to delta in delta_delay register' %
-                    (self.host, offset, delta_delay_shifted))
+            if delay < 0:
+                LOGGER.error('%s:%d smallest delay is 0' % (self.host, offset))
+                compromise = 0
+                LOGGER.error('%s:%d setting delay to %f data samples' %
+                             (self.host, offset, compromise))
+                delay_reg.write(initial=compromise)
+            
+            reg_info = delay_reg.block_info
+            bw = int(reg_info['bitwidths']) 
+            b = int(reg_info['bin_pts'])
+            max_delay = 2**(bw - b) - 1/float(2**b)
+            if delay > max_delay:
+                LOGGER.error('%s:%d largest possible delay is %f data samples' %
+                            (self.host, offset, max_delay))
+                compromise = max_delay
+                LOGGER.error('%s:%d setting delay to %f data samples' %
+                             (self.host, offset, compromise))
+                delay_reg.write(initial=compromise)
+
+        LOGGER.info('%s:%d setting delay delta to %e (%e after shift)' %
+                    (self.host, offset, delta_delay, delta_delay_shifted))
 
         try:
             delta_delay_reg.write(delta=delta_delay_shifted)
         except ValueError as e:
-            LOGGER.error('%s:%d delay change range error - %s' %
+            LOGGER.error('%s:%d delay delta range error - %s' %
                          (self.host, offset, e.message))
+
+            reg_info = delta_delay_reg.block_info
+            bw_str = reg_info['bitwidths']
+            bw = int(bw_str[1:len(bw_str)-1]) 
+            b_str = reg_info['bin_pts']
+            b = int(b_str[1:len(b_str)-1])
+    
+            max_positive_delta_delay = 1 - 1/float(2**b)
+            max_negative_delta_delay = -1 + 1/float(2**b)
+            if delta_delay_shifted > max_positive_delta_delay:
+                compromise = max_positive_delta_delay
+                LOGGER.error('%s:%d largest possible positive delay delta is %e data samples/sample' %
+                            (self.host, offset, compromise / _bshift_val))
+                LOGGER.error('%s:%d setting delay delta to %e data samples/sample (%e after shift)' %
+                             (self.host, offset, compromise / _bshift_val, compromise))
+                delta_delay_reg.write(delta=compromise)
+            if delta_delay_shifted < max_negative_delta_delay: 
+                compromise = max_negative_delta_delay
+                LOGGER.error('%s:%d largest possible negative delay delta is %e data samples/sample' %
+                            (self.host, offset, compromise / _bshift_val))
+                LOGGER.error('%s:%d setting delay delta to %e data samples/sample (%e after shift)' %
+                             (self.host, offset, compromise / _bshift_val, compromise))
+                delta_delay_reg.write(delta=compromise)
 
         ################
         # phase offset #
@@ -411,10 +453,8 @@ class FpgaFHost(DigitiserDataReceiver):
         # multiply by amount shifted down by on FPGA
         delta_phase_offset_shifted = float(delta_phase_offset) * _bshift_val
 
-        LOGGER.info('%s:%d writing %f to initial and %f to delta in phase '
-                    'register' %
-                    (self.host, offset,
-                     phase_offset, delta_phase_offset_shifted))
+        LOGGER.info('%s:%d setting initial phase to %f and phase delta to %e'
+                    %(self.host, offset, phase_offset, delta_phase_offset_shifted))
 
         # setup the phase offset
         try:
@@ -422,11 +462,58 @@ class FpgaFHost(DigitiserDataReceiver):
         except ValueError as e:
             LOGGER.error('%s: phase offset range error - %s' %
                          (self.host, e.message))
+
+            reg_info = phase_reg.block_info
+            bw_str = reg_info['bitwidths']
+            bw = int(bw_str[1:len(bw_str)-1].rsplit(' ')[0]) 
+            b_str = reg_info['bin_pts']
+            b = int(b_str[1:len(b_str)-1].rsplit(' ')[0])
+    
+            max_positive_phase_offset = 1 - 1/float(2**b)
+            max_negative_phase_offset = -1 + 1/float(2**b)
+            if phase_offset > max_positive_phase_offset:
+                compromise = max_positive_phase_offset
+                LOGGER.error('%s:%d largest possible positive phase offset is %e pi' %
+                            (self.host, offset, compromise))
+                LOGGER.error('%s:%d setting phase offset to %e pi' %
+                             (self.host, offset, compromise))
+                phase_reg.write(initial=compromise)
+            if phase_offset < max_negative_phase_offset: 
+                compromise = max_negative_phase_offset
+                LOGGER.error('%s:%d largest possible negative phase_offset is %e pi' %
+                            (self.host, offset, compromise))
+                LOGGER.error('%s:%d setting phase offset to %e pi' %
+                             (self.host, offset, compromise))
+                phase_reg.write(initial=compromise)
+        
         try:
             phase_reg.write(delta=delta_phase_offset_shifted)
         except ValueError as e:
-            LOGGER.error('%s: phase offset change range error - %s' %
+            LOGGER.error('%s: phase offset delta range error - %s' %
                          (self.host, e.message))
+            
+            reg_info = phase_reg.block_info
+            bw_str = reg_info['bitwidths']
+            bw = int(bw_str[1:len(bw_str)-1].rsplit(' ')[1]) 
+            b_str = reg_info['bin_pts']
+            b = int(b_str[1:len(b_str)-1].rsplit(' ')[1])
+            
+            max_positive_delta_phase = 1 - 1/float(2**b)
+            max_negative_delta_phase = -1 + 1/float(2**b)
+            if delta_phase_offset_shifted > max_positive_delta_phase:
+                compromise = max_positive_delta_phase
+                LOGGER.error('%s:%d largest possible positive phase delta is %expi radians/sample' %
+                            (self.host, offset, compromise / _bshift_val))
+                LOGGER.error('%s:%d setting phase delta to %expi radians/sample (%e after shift)' %
+                             (self.host, offset, compromise / _bshift_val, compromise))
+                phase_reg.write(delta=compromise)
+            if delta_phase_offset_shifted < max_negative_delta_phase: 
+                compromise = max_negative_delta_phase
+                LOGGER.error('%s:%d largest possible negative phase delta is %expi radians/sample' %
+                            (self.host, offset, compromise / _bshift_val))
+                LOGGER.error('%s:%d setting phase delta to %expiradians/sample (%e after shift)' %
+                             (self.host, offset, compromise / _bshift_val, compromise))
+                phase_reg.write(delta=compromise)
 
         cd_tl_name = 'tl_cd%i' % offset
         fd_tl_name = 'tl_fd%i' % offset
