@@ -232,14 +232,24 @@ class FxCorrelator(Instrument):
         Estimates the synchronisation epoch based on current F-engine
         timestamp, and the system time.
         """
-        self.logger.warn("Estimating synchronisation epoch...")
+        self.logger.info('Estimating synchronisation epoch:')
         # get current time from an f-engine
-        mcnt_before = self.fhosts[0].get_local_time()
-        self.synchronisation_epoch = (time.time() - mcnt_before /
+        feng_mcnt = self.fhosts[0].get_local_time()
+        self.logger.info('    current f-engine mcnt: %i' % feng_mcnt)
+        if feng_mcnt & 0xfff != 0:
+            _err = 'Bottom 12 bits of timestamp from f-engine are not ' \
+                   'zero?! feng_mcnt(%i)' % feng_mcnt
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        t_now = time.time()
+        self.synchronisation_epoch = (t_now - feng_mcnt /
                                       float(self.sample_rate_hz))
-        self.logger.info('Current f engine timetamp: %i' % mcnt_before)
-        assert mcnt_before & 0xfff == 0, 'Bottom 12 bits of timestamp from ' \
-                                         'f-engine are not zero?!'
+        if self.synchronisation_epoch >= t_now:
+            _err = 'Estimated synch time is the future? time.time(%.3f) ' \
+                   'synch_epoch(%.3f)' % (t_now, self.synchronisation_epoch)
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        self.logger.info('    new epoch: %.3f' % self.synchronisation_epoch)
 
     def time_from_mcnt(self, mcnt):
         """
@@ -247,9 +257,10 @@ class FxCorrelator(Instrument):
         NOT account for wrapping timestamps.
         """
         if self.synchronisation_epoch < 0:
+            self.logger.info('time_from_mcnt: synch epoch unset, estimating')
             self.est_sync_epoch()
-        return self.synchronisation_epoch + (float(mcnt) /
-                                             float(self.sample_rate_hz))
+        return self.synchronisation_epoch + (
+            float(mcnt) / float(self.sample_rate_hz))
 
     def mcnt_from_time(self, time_seconds):
         """
@@ -257,6 +268,7 @@ class FxCorrelator(Instrument):
         (seconds since Unix Epoch). Accounts for wrapping timestamps.
         """
         if self.synchronisation_epoch < 0:
+            self.logger.info('mcnt_from_time: synch epoch unset, estimating')
             self.est_sync_epoch()
         time_diff_from_synch_epoch = time_seconds - self.synchronisation_epoch
         time_diff_in_samples = int(time_diff_from_synch_epoch *

@@ -1,6 +1,8 @@
 import time
 import numpy
 from tornado.ioloop import IOLoop
+from tornado.ioloop import PeriodicCallback
+from tornado.locks import Event as IOLoopEvent
 
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
@@ -28,7 +30,13 @@ class XEngineOperations(object):
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
         self.data_product = None
-        self.vacc_check_enabled = False
+
+        self.vacc_synch_running = IOLoopEvent()
+        self.vacc_synch_running.clear()
+        self.vacc_check_enabled = IOLoopEvent()
+        self.vacc_check_enabled.clear()
+        self.vacc_check_cb = None
+        self.vacc_check_cb_data = None
 
     def initialise(self):
         """
@@ -163,18 +171,24 @@ class XEngineOperations(object):
 
         self.data_product = xeng_prod
         self.corr.register_data_product(xeng_prod)
-        self.vacc_check_enabled = False
+        self.vacc_check_enabled.clear()
+        self.vacc_synch_running.clear()
+        if self.vacc_check_cb is not None:
+            self.vacc_check_cb.stop()
+        self.vacc_check_cb = None
 
-    def _vacc_periodic_check(self, old_data, check_time):
+    def _vacc_periodic_check(self):
 
-        self.logger.debug('Checking VACC operation at %.3f' % time.time())
-        last_data = old_data
+        self.logger.debug('Checking vacc operation @ %s' % time.ctime())
 
-        if not self.vacc_check_enabled:
-            self.logger.debug('Check logic disabled, returning without '
-                              'doing anything.')
+        if not self.vacc_check_enabled.is_set():
+            self.logger.info('Check logic disabled, exiting')
             return
-    
+
+        if self.vacc_synch_running.is_set():
+            self.logger.info('vacc_sync is currently running, exiting')
+            return
+
         def get_data():
             """
             Get the relevant data from the X-engine FPGAs
@@ -198,7 +212,7 @@ class XEngineOperations(object):
                     status1 = d1[host.host][xeng]
                     if ((status1['errors'] > status0['errors']) or
                             (status0['errors'] != 0)):
-                        self.logger.error('\tVACC %i on %s has '
+                        self.logger.error('    vacc %i on %s has '
                                           'errors' % (xeng, host.host))
                         return False
             # check that the accumulations are ticking over
@@ -207,7 +221,7 @@ class XEngineOperations(object):
                     status0 = d0[host.host][xeng]
                     status1 = d1[host.host][xeng]
                     if status1['count'] == status0['count']:
-                        self.logger.error('\tVACC %i on %s is not '
+                        self.logger.error('    vacc %i on %s is not '
                                           'incrementing' % (xeng, host.host))
                         return False
             return True
@@ -217,7 +231,7 @@ class XEngineOperations(object):
                 for ctr in range(0, host.x_per_fpga):
                     reg = 'etim%i' % ctr
                     if d0[host.host][reg] != d1[host.host][reg]:
-                        self.logger.error('\t%s - vacc check reorder '
+                        self.logger.error('    %s - vacc check reorder '
                                           'reg %s error' % (host.host, reg))
                         return False
             return True
@@ -225,34 +239,38 @@ class XEngineOperations(object):
         new_data = get_data()
         # self.logger.info('new_data: %s' % new_data)
     
-        if last_data is not None:
+        if self.vacc_check_cb_data is not None:
             force_sync = False
             # check the vacc status data first
-            if not _vacc_data_check(last_data['vacc'], new_data['vacc']):
+            if not _vacc_data_check(self.vacc_check_cb_data['vacc'],
+                                    new_data['vacc']):
                 force_sync = True
             # check the reorder data
             if not force_sync:
-                if not _reorder_data_check(last_data['reorder'],
+                if not _reorder_data_check(self.vacc_check_cb_data['reorder'],
                                            new_data['reorder']):
                     force_sync = True
             if force_sync:
-                self.logger.error('\tforcing VACC sync')
+                self.logger.error('    forcing vacc sync')
                 self.vacc_sync()
-        IOLoop.current().call_later(check_time,
-                                    self._vacc_periodic_check,
-                                    new_data, check_time)
+
+        self.corr.logger.debug('scheduled check done @ %s' % time.ctime())
+        self.vacc_check_cb_data = new_data
 
     def vacc_check_timer_stop(self):
         """
         Disable the vacc_check timer
         :return:
         """
-        self.vacc_check_enabled = False
+        if self.vacc_check_cb is not None:
+            self.vacc_check_cb.stop()
+        self.vacc_check_cb = None
+        self.vacc_check_enabled.clear()
+        self.corr.logger.info('vacc check timer stopped')
 
     def vacc_check_timer_start(self, vacc_check_time=30):
         """
         Set up a periodic check on the vacc operation.
-        :param corr: the correlator instance
         :param vacc_check_time: the interval, in seconds, at which to check
         :return:
         """
@@ -263,9 +281,13 @@ class XEngineOperations(object):
         if vacc_check_time < self.get_acc_time():
             raise RuntimeError('A check time smaller than the accumulation'
                                'time makes no sense.')
-        self.vacc_check_enabled = True
-        IOLoop.current().add_callback(self._vacc_periodic_check,
-                                      None, vacc_check_time)
+        if self.vacc_check_cb is not None:
+            self.vacc_check_cb.stop()
+        self.vacc_check_cb = PeriodicCallback(self._vacc_periodic_check,
+                                              vacc_check_time * 1000)
+        self.vacc_check_enabled.set()
+        self.vacc_check_cb.start()
+        self.corr.logger.info('vacc check timer started')
 
     def write_data_product_destination(self, data_product):
         """
@@ -359,7 +381,10 @@ class XEngineOperations(object):
                                   target_function='vacc_get_status')
 
     def _vacc_sync_check_reset(self):
-        # check if the vaccs need resetting
+        """
+        Do the vaccs need resetting before a synch?
+        :return:
+        """
         vaccstat = THREADED_FPGA_FUNC(
             self.hosts, timeout=10,
             target_function='vacc_check_arm_load_counts')
@@ -383,186 +408,303 @@ class XEngineOperations(object):
                     self.logger.error(errstr)
                     raise RuntimeError(errstr)
 
-    def vacc_sync(self, vacc_load_time=None):
+    def _vacc_sync_create_loadtime(self, min_loadtime):
         """
-        Sync the vector accumulators on all the x-engines.
-        Assumes that the x-engines are all receiving data.
-        :return:
+        Calculate the load time for the vacc synch based on a
+        given minimum load time
+        :param min_loadtime:
+        :return: the vacc load time, in seconds since the UNIX epoch
         """
-        min_ld_time = 2
         # how long should we wait for the vacc load
-        if vacc_load_time is None:
-            self.logger.info("Vacc sync time not specified. Syncing in %2.2f "
-                             "seconds' time." % (2*min_ld_time))
-            vacc_load_time = time.time() + (2*min_ld_time)
-    
+        self.logger.info('Vacc sync time not specified. Syncing in '
+                         '%2.2f seconds\' time.' % (min_loadtime*2))
         t_now = time.time()
-        if vacc_load_time < (t_now + min_ld_time):
+        vacc_load_time = t_now + (min_loadtime*2)
+
+        if vacc_load_time < (t_now + min_loadtime):
             raise RuntimeError(
                 'Cannot load at a time in the past. '
-                'Need at least %2.2f seconds lead time. You asked for %s.%i, '
-                'and it is now %s.%i.' % (
-                    min_ld_time,
+                'Need at least %2.2f seconds lead time. You asked for '
+                '%s.%i, and it is now %s.%i.' % (
+                    min_loadtime,
                     time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
                     (vacc_load_time-int(vacc_load_time))*100,
                     time.strftime('%H:%M:%S', time.gmtime(t_now)),
                     (t_now-int(t_now))*100))
-        self.logger.info('xeng vaccs syncing at %s (in %2.2fs)'
-                         % (time.ctime(), vacc_load_time-time.time()))
-    
-        # check if the vaccs need resetting
-        self._vacc_sync_check_reset()
-    
-        # set the vacc load time on the xengines
-        ldmcnt = int(self.corr.mcnt_from_time(vacc_load_time))
+
+        self.logger.info('    xeng vaccs will sync at %s (in %2.2fs)'
+                         % (time.ctime(t_now), vacc_load_time-t_now))
+        return vacc_load_time
+
+    def _vacc_sync_calc_load_mcount(self, vacc_loadtime):
+        """
+        Calculate the loadtime in clock ticks
+        :param vacc_loadtime:
+        :return:
+        """
+        ldmcnt = int(self.corr.mcnt_from_time(vacc_loadtime))
+        self.logger.debug('$$$$$$$$$$$ - ldmcnt = %i' % ldmcnt)
+        _ldmcnt_orig = ldmcnt
+        _cfgd = self.corr.configd
+        n_chans = int(_cfgd['fengine']['n_chans'])
+        xeng_acc_len = int(_cfgd['xengine']['xeng_accumulation_len'])
+
         quantisation_bits = int(
-            numpy.log2(int(self.corr.configd['fengine']['n_chans'])) + 1 +
-            numpy.log2(int(self.corr.configd['xengine']['xeng_accumulation_len'])))
-        ldmcnt = ((ldmcnt >> quantisation_bits)+1) << quantisation_bits
-    
-        if self.corr.time_from_mcnt(ldmcnt) < time.time():
-            self.logger.warn('Warning: the board timestamp has probably'
-                             'wrapped!')
-    
-        self.logger.info('\tApplying load time: %i.' % ldmcnt)
-        THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                           target_function=('vacc_set_loadtime', (ldmcnt,),))
-    
+            numpy.log2(n_chans) + 1 +
+            numpy.log2(xeng_acc_len))
+
+        self.logger.debug('$$$$$$$$$$$ - quant bits = %i' % quantisation_bits)
+        ldmcnt = ((ldmcnt >> quantisation_bits) + 1) << quantisation_bits
+        self.logger.debug('$$$$$$$$$$$ - ldmcnt quantised = %i' % ldmcnt)
+        self.logger.debug('$$$$$$$$$$$ - ldmcnt diff = %i' % (
+            ldmcnt - _ldmcnt_orig))
+        if _ldmcnt_orig > ldmcnt:
+            raise RuntimeError('Quantising the ldmcnt has broken it: %i -> '
+                               '%i, diff(%i)' % (_ldmcnt_orig, ldmcnt,
+                                                 ldmcnt - _ldmcnt_orig))
+        time_from_mcnt = self.corr.time_from_mcnt(ldmcnt)
+        t_now = time.time()
+        if time_from_mcnt <= t_now:
+            self.logger.warn('    Warning: the board timestamp has probably'
+                             'wrapped! mcnt_time(%.3f) time.time(%.3f)' %
+                             (time_from_mcnt, t_now))
+        return ldmcnt
+
+    def _vacc_sync_print_vacc_statuses(self, vstatus):
+        """
+        Print the vacc statuses to the logger
+        :param vstatus:
+        :return:
+        """
+        self.logger.info('vacc statii:')
+        for _host in self.hosts:
+            self.logger.info('    %s:' % _host.host)
+            for _ctr, _status in enumerate(vstatus[_host.host]):
+                self.logger.info('        %i: %s' % (_ctr, _status))
+
+    def _vacc_sync_check_counts_initial(self):
+        """
+        Check the arm and load counts initially
+        :return:
+        """
         # read the current arm and load counts
         vacc_status = self.vacc_status()
         arm_count0 = vacc_status[self.hosts[0].host][0]['armcount']
         load_count0 = vacc_status[self.hosts[0].host][0]['loadcount']
-
-        def print_vacc_statuses(vstatus):
-            self.logger.info('VACC statii:')
-            for _host in self.hosts:
-                self.logger.info('\t%s:' % _host.host)
-                for _ctr, _status in enumerate(vstatus[_host.host]):
-                    self.logger.info('\t\t%i: %s' % (_ctr, _status))
-    
+        # check the xhosts load and arm counts
         for host in self.hosts:
             for status in vacc_status[host.host]:
                 _bad_ldcnt = status['loadcount'] != load_count0
                 _bad_armcnt = status['armcount'] != arm_count0
                 if _bad_ldcnt or _bad_armcnt:
-                    self.logger.error('All hosts do not have matching arm and '
-                                      'load counts.')
-                    print_vacc_statuses(vacc_status)
-                    raise RuntimeError('All hosts do not have matching arm and '
-                                       'load counts.')
-
-        self.logger.info('\tBefore arming: arm_count(%i) load_count(%i)' %
+                    _err = 'All hosts do not have matching arm and ' \
+                           'load counts.'
+                    self.logger.error(_err)
+                    self._vacc_sync_print_vacc_statuses(vacc_status)
+                    raise RuntimeError(_err)
+        self.logger.info('    Before arming: arm_count(%i) load_count(%i)' %
                          (arm_count0, load_count0))
-    
-        # then arm them
-        THREADED_FPGA_FUNC(self.hosts, timeout=10, target_function='vacc_arm')
-    
-        # did the arm count increase?
+        return arm_count0, load_count0
+
+    def _vacc_sync_check_arm_count(self, armcount_initial):
+        """
+        Check that the arm count increased
+        :return:
+        """
         vacc_status = self.vacc_status()
         arm_count_new = vacc_status[self.hosts[0].host][0]['armcount']
         for host in self.hosts:
             for status in vacc_status[host.host]:
                 if ((status['armcount'] != arm_count_new) or
-                        (status['armcount'] != arm_count0 + 1)):
-                    errstr = 'xeng_vacc_sync: all hosts do not have matching ' \
-                             'arm counts or arm count did not increase.'
-                    self.logger.error(errstr)
-                    print_vacc_statuses(vacc_status)
-                    raise RuntimeError(errstr)
-        self.logger.info('\tDone arming')
-    
-        # check the the load time was stored correctly
+                        (status['armcount'] != armcount_initial + 1)):
+                    _err = 'xeng_vacc_sync: all hosts do not have ' \
+                           'matching arm counts or arm count did ' \
+                           'not increase.'
+                    self.logger.error(_err)
+                    self._vacc_sync_print_vacc_statuses(vacc_status)
+                    return False
+        self.logger.info('    Done arming')
+        return True
+
+    def _vacc_sync_check_loadtimes(self):
+        """
+
+        :return:
+        """
         lsws = THREADED_FPGA_OP(
             self.hosts, timeout=10,
-            target_function=(lambda x: x.registers.vacc_time_lsw.read()['data']),)
+            target_function=(
+                lambda x: x.registers.vacc_time_lsw.read()['data']),)
         msws = THREADED_FPGA_OP(
             self.hosts, timeout=10,
-            target_function=(lambda x: x.registers.vacc_time_msw.read()['data']),)
+            target_function=(
+                lambda x: x.registers.vacc_time_msw.read()['data']),)
+        _host0 = self.hosts[0].host
         for host in self.hosts:
-            if ((lsws[host.host]['lsw'] != lsws[self.hosts[0].host]['lsw']) or
-                    (msws[host.host]['msw'] != msws[self.hosts[0].host]['msw'])):
-                errstr = 'xeng_vacc_sync: all hosts do not have matching ' \
-                         'VACC LSWs and MSWs'
-                self.logger.error(errstr)
+            if ((lsws[host.host]['lsw'] != lsws[_host0]['lsw']) or
+                    (msws[host.host]['msw'] != msws[_host0]['msw'])):
+                _err = 'xeng_vacc_sync: all hosts do not have matching ' \
+                       'vacc LSWs and MSWs'
+                self.logger.error(_err)
                 print 'lsws:', lsws
                 print 'msws:', msws
                 vacc_status = self.vacc_status()
-                print_vacc_statuses(vacc_status)
-                raise RuntimeError(errstr)
+                self._vacc_sync_print_vacc_statuses(vacc_status)
+                return False
         lsw = lsws[self.hosts[0].host]['lsw']
         msw = msws[self.hosts[0].host]['msw']
         xldtime = (msw << 32) | lsw
-        self.logger.info('\tx engines have vacc ld time %i' % xldtime)
-    
-        # wait for the vaccs to arm
+        self.logger.info('    x engines have vacc ld time %i' % xldtime)
+        return True
+
+    def _vacc_sync_wait_for_arm(self, load_mcount):
+        """
+
+        :param load_mcount:
+        :return:
+        """
         t_now = time.time()
-        t_from_mcnt = self.corr.time_from_mcnt(ldmcnt)
-        wait_time = t_from_mcnt - t_now + 0.2
-        self.logger.info('\tWaiting %2.2f seconds for arm to '
-                         'trigger.' % wait_time)
+        time_from_mcnt = self.corr.time_from_mcnt(load_mcount)
+        wait_time = time_from_mcnt - t_now + 0.2
         if wait_time <= 0:
-            self.logger.error('This is wonky - why is the wait_time '
+            self.logger.error('    This is wonky - why is the wait_time '
                               'less than zero? %.3f' % wait_time)
-            self.logger.error('corr synch epoch: %i' %
+            self.logger.error('    corr synch epoch: %i' %
                               self.corr.synchronisation_epoch)
-            self.logger.error('time.time(): %.10f' %
-                              t_now)
-            self.logger.error('time_from_mcnt: %.10f' % t_from_mcnt)
-            self.logger.error('ldmcnt: %i' % ldmcnt)
+            self.logger.error('    time.time(): %.10f' % t_now)
+            self.logger.error('    time_from_mcnt: %.10f' % time_from_mcnt)
+            self.logger.error('    ldmcnt: %i' % load_mcount)
             raise RuntimeError('This is wonky - why is the wait_time '
                                'less than zero? %.3f' % wait_time)
+        self.logger.info('    Waiting %2.2f seconds for arm to '
+                         'trigger.' % wait_time)
         time.sleep(wait_time)
-    
-        # check the status to see that the load count increased
+
+    def _vacc_sync_check_load_count(self, load_count0):
+        """
+        Did the vaccs load counts increment correctly?
+        :param load_count0:
+        :return:
+        """
         vacc_status = self.vacc_status()
         load_count_new = vacc_status[self.hosts[0].host][0]['loadcount']
         for host in self.hosts:
             for status in vacc_status[host.host]:
                 if ((status['loadcount'] != load_count_new) or
                         (status['loadcount'] != load_count0 + 1)):
-                    self.logger.error('VACC did not trigger!')
-                    print_vacc_statuses(vacc_status)
-                    raise RuntimeError('VACC did not trigger!')
-        self.logger.info('\tAll VACCs triggered correctly.')
-    
-        # allow vacc to flush and correctly populate parity bits:
-        self.logger.info('\tWaiting %2.2fs for an accumulation to flush, '
-                         'to correctly populate parity bits.' %
-                         self.get_acc_time())
-        time.sleep(self.get_acc_time() + 0.2)
-    
-        self.logger.info('\tClearing status and reseting counters.')
-        THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                           target_function='clear_status')
-    
-        # wait for a good accumulation to finish.
-        self.logger.info('\tWaiting %2.2fs for an accumulation to flush '
-                         'before checking counters.' % self.get_acc_time())
-        time.sleep(self.get_acc_time() + 0.2)
-    
-        # check the vacc status, errors and accumulations
+                    self.logger.error('vacc did not trigger!')
+                    self._vacc_sync_print_vacc_statuses(vacc_status)
+                    return False
+        self.logger.info('    All vaccs triggered correctly.')
+        return True
+
+    def _vacc_sync_final_check(self):
+        """
+        Check the vacc status, errors and accumulations
+        :return:
+        """
         vac_okay = self.vacc_check_okay_initial()
         if not vac_okay:
+            vacc_status = self.vacc_status()
             vacc_error_detail = THREADED_FPGA_FUNC(
                 self.hosts, timeout=5,
                 target_function='vacc_get_error_detail')
-            self.logger.error('xeng_vacc_sync: exited on VACC error')
+            self.logger.error('xeng_vacc_sync: exited on vacc error')
             self.logger.error('xeng_vacc_sync: vacc statii:')
             for host, item in vacc_status.items():
-                self.logger.error('\t%s: %s' % (host, str(item)))
+                self.logger.error('    %s: %s' % (host, str(item)))
             self.logger.error('xeng_vacc_sync: vacc errors:')
             for host, item in vacc_error_detail.items():
-                self.logger.error('\t%s: %s' % (host, str(item)))
-            raise RuntimeError('xeng_vacc_sync: exited on VACC error')
-        self.logger.info('\t...accumulations rolling in without error.')
-        return self.corr.time_from_mcnt(ldmcnt)
+                self.logger.error('    %s: %s' % (host, str(item)))
+            self.logger.error('xeng_vacc_sync: exited on vacc error')
+            return False
+        self.logger.info('    ...accumulations rolling in without error.')
+        return True
+
+    def vacc_sync(self):
+        """
+        Sync the vector accumulators on all the x-engines.
+        Assumes that the x-engines are all receiving data.
+        :return: the vacc synch time, in seconds since the UNIX epoch
+        """
+
+        if self.vacc_synch_running.is_set():
+            self.logger.error('vacc_sync called when it was already running?')
+            return
+        self.vacc_synch_running.set()
+        min_load_time = 2
+
+        try:
+            while True:
+                # work out the load time
+                vacc_load_time = self._vacc_sync_create_loadtime(min_load_time)
+
+                # check if the vaccs need resetting
+                self._vacc_sync_check_reset()
+
+                # set the vacc load time on the xengines
+                load_mcount = self._vacc_sync_calc_load_mcount(vacc_load_time)
+
+                # set the load mcount on the x-engines
+                self.logger.info('    Applying load time: %i.' % load_mcount)
+                THREADED_FPGA_FUNC(
+                    self.hosts, timeout=10,
+                    target_function=('vacc_set_loadtime', (load_mcount,),))
+
+                # check the current counts
+                (arm_count0, load_count0) = self._vacc_sync_check_counts_initial()
+
+                # arm the xhosts
+                THREADED_FPGA_FUNC(
+                    self.hosts, timeout=10, target_function='vacc_arm')
+
+                # did the arm count increase?
+                if not self._vacc_sync_check_arm_count(arm_count0):
+                    continue
+
+                # check the the load time was stored correctly
+                if not self._vacc_sync_check_loadtimes():
+                    continue
+
+                # wait for the vaccs to arm
+                self._vacc_sync_wait_for_arm(load_mcount)
+
+                # check the status to see that the load count increased
+                if not self._vacc_sync_check_load_count(load_count0):
+                    continue
+
+                # allow vacc to flush and correctly populate parity bits:
+                self.logger.info('    Waiting %2.2fs for an accumulation to '
+                                 'flush, to correctly populate parity bits.' %
+                                 self.get_acc_time())
+                time.sleep(self.get_acc_time() + 0.2)
+
+                self.logger.info('    Clearing status and reseting counters.')
+                THREADED_FPGA_FUNC(self.hosts, timeout=10,
+                                   target_function='clear_status')
+
+                # wait for a good accumulation to finish.
+                self.logger.info('    Waiting %2.2fs for an accumulation to '
+                                 'flush before checking counters.' %
+                                 self.get_acc_time())
+                time.sleep(self.get_acc_time() + 0.2)
+
+                # check the vacc status, errors and accumulations
+                if not self._vacc_sync_final_check():
+                    continue
+
+                # done
+                synch_time = self.corr.time_from_mcnt(load_mcount)
+                self.vacc_synch_running.clear()
+                return synch_time
+        except KeyboardInterrupt:
+            self.vacc_synch_running.clear()
 
     def vacc_check_okay_initial(self):
         """
         After an initial setup, is the vacc okay?
         Are the error counts zero and the counters
         ticking over?
-        :param corr: The correlator instance.
         :return: True or False
         """
         self.logger.info('\tChecking for errors & accumulations...')
@@ -570,10 +712,10 @@ class XEngineOperations(object):
         for host in self.hosts:
             for status in vacc_status[host.host]:
                 if status['errors'] > 0:
-                    self.logger.error('\t\tVACC errors > 0. Que pasa?')
+                    self.logger.error('\t\tvacc errors > 0. Que pasa?')
                     return False
                 if status['count'] <= 0:
-                    self.logger.error('\t\tVACC counts <= 0. Que pasa?')
+                    self.logger.error('\t\tvacc counts <= 0. Que pasa?')
                     return False
         self.logger.debug('\t\txeng_vacc_check_status: all okay')
         return True
@@ -591,6 +733,8 @@ class XEngineOperations(object):
             (self.corr.sample_rate_hz * acc_time_s) /
             (self.corr.xeng_accumulation_len * self.corr.n_chans * 2.0))
         new_acc_len = round(new_acc_len)
+        self.corr.logger.info('set_acc_time: %.3fs -> new_acc_len(%i)' %
+                              (acc_time_s, new_acc_len))
         self.set_acc_len(new_acc_len, vacc_resync)
 
     def get_acc_time(self):
@@ -619,11 +763,14 @@ class XEngineOperations(object):
         :param acc_len:
         :return:
         """
-        if self.vacc_check_enabled:
+        if (acc_len is not None) and (acc_len <= 0):
+            _err = 'new acc_len of %i makes no sense' % acc_len
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        reenable_timer = False
+        if self.vacc_check_enabled.is_set():
             self.vacc_check_timer_stop()
             reenable_timer = True
-        else:
-            reenable_timer = False
         if acc_len is not None:
             self.corr.accumulation_len = acc_len
         THREADED_FPGA_OP(
@@ -631,7 +778,7 @@ class XEngineOperations(object):
             target_function=(
                 lambda fpga_:
                 fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
-        self.logger.info('Set VACC accumulation length %d system-wide '
+        self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
         self.corr.speadops.update_metadata([0x1015, 0x1016])
@@ -642,7 +789,7 @@ class XEngineOperations(object):
 
     def get_baseline_order(self):
         """
-        Return the order of baseline data output by a CASPER correlator X engine.
+        Return the order of baseline data output by a CASPER correlator X engine
         :return:
         """
         # TODO - nants vs number of inputs?
