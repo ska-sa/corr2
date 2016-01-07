@@ -87,9 +87,9 @@ class BEngineOperations(object):
         for beam in self.beams.values():
             self.corr.register_data_product(beam.data_product)
 
-    def tx_control_update(self, beams=None):
+    def tx_enable(self, beams=None):
         """
-        Start transmission of active partitions on all beams
+        Start transmission of active partitions on beams
         :param beams - list of beam names
         :return:
         """
@@ -97,7 +97,19 @@ class BEngineOperations(object):
             beams = self.beams.keys()
         for beam_name in beams:
             beam = self.beams[beam_name]
-            beam.tx_control_update()
+            beam.tx_enable(None)
+
+    def tx_disable(self, beams=None):
+        """
+        Stop transmission of active partitions on beams
+        :param beams - list of beam names
+        :return:
+        """
+        if not beams:
+            beams = self.beams.keys()
+        for beam_name in beams:
+            beam = self.beams[beam_name]
+            beam.tx_disable(None)
 
     def partitions_current(self):
         """

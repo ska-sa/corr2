@@ -131,7 +131,16 @@ class Beam(object):
         Start transmission of data products from the b-engines
         :return:
         """
-        self.tx_control_update()
+        if len(self.partitions_active) <= 0:
+            LOGGER.info('Beam %i:%s: no partitions to enable.' %
+                        (self.index, self.name))
+            return
+        reg_name = 'bf%i_config' % self.index
+        THREADED_FPGA_OP(
+            self.hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers[reg_name].write(txen=True), [], {}))
         LOGGER.info('Beam %i:%s output enabled.' % (self.index, self.name))
 
     def tx_disable(self, data_product):
@@ -139,8 +148,16 @@ class Beam(object):
         Stop transmission of data products from the b-engines
         :return:
         """
-        self.partitions_deactivate()
-        self.tx_control_update()
+        if len(self.partitions_active) == 0:
+            LOGGER.info('Beam %i:%s: no partitions to disable.' %
+                        (self.index, self.name))
+            return
+        reg_name = 'bf%i_config' % self.index
+        THREADED_FPGA_OP(
+            self.hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers[reg_name].write(txen=False), [], {}))
         LOGGER.info('Beam %i:%s output disabled.' % (self.index, self.name))
 
     def set_beam_destination(self, data_product):
@@ -180,6 +197,7 @@ class Beam(object):
             LOGGER.info('Beam %i:%s - deactivating all active partitions' % (
                 self.index, self.name))
             self.partitions_active = []
+            self._partitions_control_update()
             return True
         # make the new active selection
         partitions = set(partitions)
@@ -213,9 +231,20 @@ class Beam(object):
 
         # TODO - send SPEAD metadata about bandwidth and cf
 
+        # update the bhosts control registers
+        self._partitions_control_update()
+
         LOGGER.info('Beam %i:%s - active partitions: %s' % (
                 self.index, self.name, self.partitions_active))
         return True
+
+    def _partitions_control_update(self):
+        """
+        Start transmission of active partitions on this beam
+        :return:
+        """
+        THREADED_FPGA_FUNC(self.hosts, 5,
+                           ('beam_partitions_control', [self], {}))
 
     def partitions_current(self):
         results = THREADED_FPGA_FUNC(self.hosts, 5,
@@ -228,14 +257,6 @@ class Beam(object):
             if cval == 1:
                 rv.append(ctr)
         return rv
-
-    def tx_control_update(self):
-        """
-        Start transmission of active partitions on this beam
-        :return:
-        """
-        THREADED_FPGA_FUNC(self.hosts, 5,
-                           ('beam_partitions_control', [self], {}))
 
     def set_weights(self, input_name, new_weight):
         """
