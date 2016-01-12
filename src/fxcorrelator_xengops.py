@@ -466,7 +466,7 @@ class XEngineOperations(object):
         t_now = time.time()
         if time_from_mcnt <= t_now:
             self.logger.warn('    Warning: the board timestamp has probably'
-                             'wrapped! mcnt_time(%.3f) time.time(%.3f)' %
+                             ' wrapped! mcnt_time(%.3f) time.time(%.3f)' %
                              (time_from_mcnt, t_now))
         return ldmcnt
 
@@ -574,8 +574,9 @@ class XEngineOperations(object):
             self.logger.error('    time.time(): %.10f' % t_now)
             self.logger.error('    time_from_mcnt: %.10f' % time_from_mcnt)
             self.logger.error('    ldmcnt: %i' % load_mcount)
-            raise RuntimeError('This is wonky - why is the wait_time '
-                               'less than zero? %.3f' % wait_time)
+            # hack
+            wait_time = t_now + 4
+
         self.logger.info('    Waiting %2.2f seconds for arm to '
                          'trigger.' % wait_time)
         time.sleep(wait_time)

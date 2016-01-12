@@ -179,7 +179,51 @@ class FEngineOperations(object):
                                       numpy.pi * self.corr.sample_rate_hz
         }
 
-    def delays_process(self, loadtime, delays):
+    # def delays_process(self, loadtime, delays):
+    #     """
+    #
+    #     :param loadtime:
+    #     :param delays:
+    #     :return:
+    #     """
+    #     if loadtime <= time.time():
+    #         raise ValueError('Loadtime %.3f is in the past?' % loadtime)
+    #     # This was causing an error
+    #     dlist = delays#.split(' ')
+    #     ant_delay = []
+    #     for delay in dlist:
+    #         bits = delay.strip().split(':')
+    #         if len(bits) != 2:
+    #             raise ValueError('%s is not a valid delay setting' % delay)
+    #         delay = bits[0]
+    #         delay = delay.split(',')
+    #         delay = (float(delay[0]), float(delay[1]))
+    #         fringe = bits[1]
+    #         fringe = fringe.split(',')
+    #         fringe = (float(fringe[0]), float(fringe[1]))
+    #         ant_delay.append((delay, fringe))
+    #
+    #     labels = []
+    #     for src in self.corr.fengine_sources:
+    #         labels.append(src['source'].name)
+    #     if len(ant_delay) != len(labels):
+    #         raise ValueError(
+    #             'Too few values provided: expected(%i) got(%i)' %
+    #             (len(labels), len(ant_delay)))
+    #
+    #     rv = ''
+    #     for ctr in range(0, len(labels)):
+    #         res = self.set_delay(labels[ctr],
+    #                              ant_delay[ctr][0][0], ant_delay[ctr][0][1],
+    #                              ant_delay[ctr][1][0], ant_delay[ctr][1][1],
+    #                              loadtime, False)
+    #         res_str = '%.3f,%.3f:%.3f,%.3f' % \
+    #                   (res['act_delay'], res['act_delta_delay'],
+    #                    res['act_phase_offset'], res['act_delta_phase_offset'])
+    #         rv = '%s %s' % (rv, res_str)
+    #     return rv
+
+    def delays_process_parallel(self, loadtime, delays):
         """
 
         :param loadtime:
@@ -187,52 +231,25 @@ class FEngineOperations(object):
         :return:
         """
         if loadtime <= time.time():
-            raise ValueError('Loadtime %.3f is in the past?' % loadtime)
-        # This was causing an error
-        dlist = delays#.split(' ')
+            _err = 'Loadtime %.3f is in the past?' % loadtime
+            self.logger.error(_err)
+            raise ValueError(_err)
+
+        dlist = delays
+        _n_fsource = len(self.corr.fengine_sources)
+        if len(dlist) != _n_fsource:
+            _err = 'Too few delay setup parameters given. Need as' \
+                   ' many as there are f-sources = %i' % _n_fsource
+            self.logger.error(_err)
+            raise ValueError(_err)
+
         ant_delay = []
         for delay in dlist:
             bits = delay.strip().split(':')
             if len(bits) != 2:
-                raise ValueError('%s is not a valid delay setting' % delay)
-            delay = bits[0]
-            delay = delay.split(',')
-            delay = (float(delay[0]), float(delay[1]))
-            fringe = bits[1]
-            fringe = fringe.split(',')
-            fringe = (float(fringe[0]), float(fringe[1]))
-            ant_delay.append((delay, fringe))
-
-        labels = []
-        for src in self.corr.fengine_sources:
-            labels.append(src['source'].name)
-        if len(ant_delay) != len(labels):
-            raise ValueError(
-                'Too few values provided: expected(%i) got(%i)' %
-                (len(labels), len(ant_delay)))
-
-        rv = ''
-        for ctr in range(0, len(labels)):
-            res = self.set_delay(labels[ctr],
-                                 ant_delay[ctr][0][0], ant_delay[ctr][0][1],
-                                 ant_delay[ctr][1][0], ant_delay[ctr][1][1],
-                                 loadtime, False)
-            res_str = '%.3f,%.3f:%.3f,%.3f' % \
-                      (res['act_delay'], res['act_delta_delay'],
-                       res['act_phase_offset'], res['act_delta_phase_offset'])
-            rv = '%s %s' % (rv, res_str)
-        return rv
-
-    def delays_process_parallel(self, loadtime, delays):
-        if loadtime <= time.time():
-            self.logger.error('Loadtime %.3f is in the past?' % loadtime)
-        # This was causing an error
-        dlist = delays#.split(' ')
-        ant_delay = []
-        for delay in dlist:
-            bits = delay.strip().split(':')
-            if len(bits) != 2:
-                self.logger.error('%s is not a valid delay setting' % delay)
+                _err = '%s is not a valid delay setting' % delay
+                self.logger.error(_err)
+                raise ValueError(_err)
             delay = bits[0]
             delay = delay.split(',')
             delay = (float(delay[0]), float(delay[1]))
@@ -242,7 +259,6 @@ class FEngineOperations(object):
             ant_delay.append((delay, fringe))
 
         actual_vals = self.set_delays_all(loadtime, ant_delay)
-
         rv = []
         for val in actual_vals:
             res_str = '{},{}:{},{}'.format(
@@ -252,105 +268,116 @@ class FEngineOperations(object):
         return rv
     
     def set_delays_all(self, loadtime, coeffs):
-       
-        load_check = False
-        load_wait_time = None  
+        """
+        Set delays on all fhosts
+        :param loadtime:
+        :param coeffs:
+        :return:
+        """
         for count, src in enumerate(self.corr.fengine_sources):
             vals = self._prepare_delay_vals(coeffs[count][0][0], 
                                             coeffs[count][0][1],
                                             coeffs[count][1][0],
                                             coeffs[count][1][1],
-                                            loadtime, False)           
-            
+                                            loadtime, False)
             host = src['host']
             offset = src['numonhost']
             host.set_delay(offset, vals['delay'], vals['delta_delay'],
                            vals['phase_offset'], vals['delta_phase_offset'],
                            vals['load_time'], None, False)
 
-        # spawn threads to write values out, giving a maximum time of 0.75 seconds to do them all
-        actual_vals = THREADED_FPGA_FUNC(self.corr.fhosts, timeout=0.75, target_function='write_delays_all')
-
+        # spawn threads to write values out, giving a maximum time of 0.75
+        # seconds to do them all
+        actual_vals = THREADED_FPGA_FUNC(self.corr.fhosts, timeout=0.75,
+                                         target_function='write_delays_all')
         if len(actual_vals) != len(self.corr.fhosts):
-            self.logger.error('Number of delay values returned does not match number of sources')
+            _err = 'Number of delay values returned (%i) does not match ' \
+                   'number of sources (%i)' % \
+                   (len(actual_vals), len(self.corr.fhosts))
+            self.logger.error(_err)
+            raise ValueError(_err)
 
         act_vals = []
-        for count,src in enumerate(self.corr.fengine_sources):
+        for count, src in enumerate(self.corr.fengine_sources):
             host = src['host'].host
             offset = src['numonhost']
-            act_vals.append(self._prepare_actual_delay_vals(actual_vals[host][offset]))
+            vals = self._prepare_actual_delay_vals(actual_vals[host][offset])
+            act_vals.append(vals)
             self.logger.info(
-                '[%s] Phase offset actually set to %6.3f rad with rate %e rad/s.' %
-                (src['source'].name,actual_vals[host][offset]['phase_offset'],
-                actual_values[host][offset]['delta_phase_offset']))
+                '[%s] Phase offset actually set to %6.3f rad with rate %e '
+                'rad/s.' %
+                (src['source'].name,
+                 actual_vals[host][offset]['act_phase_offset'],
+                 actual_vals[host][offset]['act_delta_phase_offset']))
             self.logger.info(
                 '[%s] Delay actually set to %e samples with rate %e.' %
-                (src['source'].name,actual_values[host][offset]['delay'],
-                actual_values[host][offset]['delta_delay']))
+                (src['source'].name,
+                 actual_vals[host][offset]['act_delay'],
+                 actual_vals[host][offset]['act_delta_delay']))
         return act_vals
 
-    def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
-                  delta_phase_offset=0, ld_time=None, ld_check=True):
-        """
-        Set delay correction values for specified source.
-        This is a blocking call.
-        By default, it will wait until load time and verify that things
-        worked as expected.
-        This check can be disabled by setting ld_check param to False.
-        Load time is optional; if not specified, load immediately.
-        :return
-        """
-        self.logger.info('Setting delay correction values for '
-                         'source %s' % source_name)
-        
-        vals = self._prepare_delay_vals(delay, delta_delay, phase_offset, delta_phase_offset,
-                                    ld_time, ld_check)
-        f_delay = vals['delay']
-        f_delta_delay = vals['delta_delay']
-        f_phase_offset = vals['phase_offset']
-        f_delta_phase_offset = vals['delta_phase_offset']
-        f_load_time = vals['load_time']
-        f_load_wait = vals['load_wait']
-
-        # determine fhost to write to
-        write_hosts = []
-        for src in self.corr.fengine_sources:
-            if source_name in src['source'].name:
-                offset = src['numonhost']
-                write_hosts.append(src['host'])
-        if len(write_hosts) == 0:
-            raise ValueError('Unknown source name %s' % source_name)
-        elif len(write_hosts) > 1:
-            raise RuntimeError('Found more than one fhost handling source {!r}: {}'
-                .format(source_name, [h.host for h in write_hosts]))
-
-        fhost = write_hosts[0]
-        try:
-            actual_vals = fhost.write_delay(
-                offset,
-                f_delay, f_delta_delay,
-                f_phase_offset, f_delta_phase_offset,
-                f_load_time, f_load_wait, ld_check)
-        except Exception as e:
-            self.logger.error('New delay error - %s' % e.message)
-            raise
-
-        actual_values = self._prepare_actual_delay_vals(actual_vals)
-
-        self.logger.info(
-            'Phase offset actually set to %6.3f radians.' %
-            (actual_values['act_phase_offset']))
-        self.logger.info(
-            'Phase offset change actually set to %e radians per second.' %
-            (actual_values['act_delta_phase_offset']))
-        self.logger.info(
-            'Delay actually set to %e samples.' %
-            (actual_values['act_delay']))
-        self.logger.info(
-            'Delay rate actually set to %e seconds per second.' %
-            (actual_values['act_delta_delay']))
-
-        return actual_values
+    # def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
+    #               delta_phase_offset=0, ld_time=None, ld_check=True):
+    #     """
+    #     Set delay correction values for specified source.
+    #     This is a blocking call.
+    #     By default, it will wait until load time and verify that things
+    #     worked as expected.
+    #     This check can be disabled by setting ld_check param to False.
+    #     Load time is optional; if not specified, load immediately.
+    #     :return
+    #     """
+    #     self.logger.info('Setting delay correction values for '
+    #                      'source %s' % source_name)
+    #
+    #     vals = self._prepare_delay_vals(delay, delta_delay, phase_offset, delta_phase_offset,
+    #                                 ld_time, ld_check)
+    #     f_delay = vals['delay']
+    #     f_delta_delay = vals['delta_delay']
+    #     f_phase_offset = vals['phase_offset']
+    #     f_delta_phase_offset = vals['delta_phase_offset']
+    #     f_load_time = vals['load_time']
+    #     f_load_wait = vals['load_wait']
+    #
+    #     # determine fhost to write to
+    #     write_hosts = []
+    #     for src in self.corr.fengine_sources:
+    #         if source_name in src['source'].name:
+    #             offset = src['numonhost']
+    #             write_hosts.append(src['host'])
+    #     if len(write_hosts) == 0:
+    #         raise ValueError('Unknown source name %s' % source_name)
+    #     elif len(write_hosts) > 1:
+    #         raise RuntimeError('Found more than one fhost handling source {!r}: {}'
+    #             .format(source_name, [h.host for h in write_hosts]))
+    #
+    #     fhost = write_hosts[0]
+    #     try:
+    #         actual_vals = fhost.write_delay(
+    #             offset,
+    #             f_delay, f_delta_delay,
+    #             f_phase_offset, f_delta_phase_offset,
+    #             f_load_time, f_load_wait, ld_check)
+    #     except Exception as e:
+    #         self.logger.error('New delay error - %s' % e.message)
+    #         raise
+    #
+    #     actual_values = self._prepare_actual_delay_vals(actual_vals)
+    #
+    #     self.logger.info(
+    #         'Phase offset actually set to %6.3f radians.' %
+    #         (actual_values['act_phase_offset']))
+    #     self.logger.info(
+    #         'Phase offset change actually set to %e radians per second.' %
+    #         (actual_values['act_delta_phase_offset']))
+    #     self.logger.info(
+    #         'Delay actually set to %e samples.' %
+    #         (actual_values['act_delay']))
+    #     self.logger.info(
+    #         'Delay rate actually set to %e seconds per second.' %
+    #         (actual_values['act_delta_delay']))
+    #
+    #     return actual_values
 
     def check_tx(self):
         """
