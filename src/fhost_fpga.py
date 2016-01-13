@@ -315,6 +315,16 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
+    def check_delays(self):
+        """
+        Check the delay error events
+        :return: True for all okay, False for errors present
+        """
+        okay = True
+        for delay_err in self.delay_errors:
+            okay = okay and (not delay_err.is_set())
+        return okay
+
     def write_delays_all(self):
         """
         Goes through all offsets and writes delays with stored delay settings

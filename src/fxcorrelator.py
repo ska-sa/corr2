@@ -227,6 +227,23 @@ class FxCorrelator(Instrument):
         if self.found_beamformer:
             self.bops.configure()
 
+    def sensors_clear(self):
+        """
+        Clear the current sensors
+        :return:
+        """
+        self._sensors = {}
+
+    def sensors_add(self, sensor):
+        """
+        Add a sensor to the dictionary of instrument sensors
+        :param sensor:
+        :return:
+        """
+        if sensor.name in self._sensors.keys():
+            raise KeyError('Sensor {} already exists'.format(sensor.name))
+        self._sensors[sensor.name] = sensor
+
     def est_sync_epoch(self):
         """
         Estimates the synchronisation epoch based on current F-engine
