@@ -4,8 +4,6 @@
 # pylint: disable-msg=C0301
 """
 Plot the ADC data on one or more f-engines
-
-@author: paulp
 """
 import time
 import argparse
@@ -74,6 +72,7 @@ if plotrange[0] == -1:
     plotrange = (0, plotrange[1])
 if (plotrange[1] != -1) and (plotrange[1] <= plotrange[0]):
     raise RuntimeError('Plot range of %s is incorrect.' % str(plotrange))
+plotrange = (int(plotrange[0]), int(plotrange[1]))
 
 
 def exit_gracefully(_, __):
@@ -179,6 +178,5 @@ print 'Plot started.'
 # wait here so that the plot can be viewed
 print 'Press Ctrl-C to exit...'
 sys.stdout.flush()
-import time
 while True:
     time.sleep(1)
