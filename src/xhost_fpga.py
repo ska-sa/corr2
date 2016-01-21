@@ -27,14 +27,16 @@ class FpgaXHost(FpgaHost):
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile, connect=True, config=config_source)
+        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+                   connect=True, config=config_source)
 
     def clear_status(self):
         """
         Clear the status registers and counters on this f-engine host
         :return:
         """
-        self.registers.control.write(status_clr='pulse', cnt_rst='pulse', gbe_debug_rst='pulse')
+        self.registers.control.write(status_clr='pulse', cnt_rst='pulse',
+                                     gbe_debug_rst='pulse')
 
     def host_okay(self):
         """

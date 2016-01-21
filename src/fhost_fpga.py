@@ -132,15 +132,19 @@ class FpgaFHost(DigitiserDataReceiver):
                                         katcp_port=katcp_port,
                                         boffile=boffile,
                                         connect=connect)
+
+        self._config = config
+
         # list of DataSources received by this f-engine host
         self.data_sources = []
+
         # dictionary, indexed on source name, containing tuples
         # of poly and bram name
         self.eqs = {}
 
-        self._config = config
-        self.data_sources = []  # a list of DataSources received by this f-engine host
-        self.eqs = {}  # a dictionary, indexed on source name, containing tuples of poly and bram name
+        # list of dictionaries containing delay settings for each stream
+        self.delays = []
+
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
             self.ports_per_fengine = int(config['ports_per_fengine'])
@@ -156,12 +160,11 @@ class FpgaFHost(DigitiserDataReceiver):
             self.min_load_time = None
             self.network_latency_adjust = None
 
-        self.delays = []  # list of dictionaries containing delay settings for each stream
-
         for offset in range(self.num_fengines):
             self.delays.append({'delay': 0, 'delta_delay': 0, 
                                 'phase_offset': 0, 'delta_phase_offset': 0, 
-                                'load_time': None, 'load_wait': None, 'load_check': True})
+                                'load_time': None, 'load_wait': None,
+                                'load_check': True})
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -208,7 +211,10 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         # check that it doesn't already exist before adding it
         for src in self.data_sources:
-            assert src.name != data_source.name
+            if src.name == data_source.name:
+                raise ValueError('%s == %s - cannot have two sources with '
+                                 'the same name on one '
+                                 'fhost' % (src.name, data_source.name))
         self.data_sources.append(data_source)
 
     def get_source_eq(self, source_name=None):
@@ -547,23 +553,35 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 
+    def get_quant_snapshots(self):
+        """
+        Get the quant snapshots for all the sources on this host.
+        :return:
+        """
+        return {src.name: self.get_quant_snapshot(src.name)
+                for src in self.data_sources}
+
     def get_quant_snapshot(self, source_name=None):
         """
         Read the post-quantisation snapshot for a given source
         :return:
         """
         targetsrc = None
-        for src in self.fengine_sources:
+        targetsrc_num = -1
+        for srcnum, src in enumerate(self.data_sources):
             if src.name == source_name:
                 targetsrc = src
+                targetsrc_num = srcnum
                 break
-        if targetsrc is None:
-            raise RuntimeError('Could not find source %s' % source_name)
 
-        if targetsrc.source_number % 2 == 0:
-            snapshot = targetsrc.host.snapshots.snap_quant0_ss
+        if targetsrc is None:
+            raise ValueError('Could not find source %s on '
+                             'this fhost.' % source_name)
+
+        if targetsrc_num % 2 == 0:
+            snapshot = self.snapshots.snap_quant0_ss
         else:
-            snapshot = targetsrc.host.snapshots.snap_quant1_ss
+            snapshot = self.snapshots.snap_quant1_ss
         sdata = snapshot.read()['data']
         compl = []
         for ctr in range(0, len(sdata['real0'])):

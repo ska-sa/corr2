@@ -17,6 +17,13 @@ else:
     import Queue
 
 
+def list_to_katcp_list(pylist):
+    katlist = str(pylist)
+    katlist = katlist.replace('[', '').replace(']', '').replace(',', '')
+    katlist = katlist.replace("'", "")
+    return katlist
+
+
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
         translate_levels = {
@@ -128,8 +135,8 @@ class Corr2Server(katcp.DeviceServer):
         except Exception as e:
             localexc = e
             pass
-        logging.error('create threw Exception: %s' % localexc.message)
-        return 'fail', 'create threw Exception: %s' % localexc.message
+        logging.error('initialise threw Exception: %s' % localexc.message)
+        return 'fail', 'initialise threw Exception: %s' % localexc.message
 
     @request(Str(multiple=True))
     @return_reply()
@@ -266,7 +273,7 @@ class Corr2Server(katcp.DeviceServer):
         if len(newlist) > 0:
             try:
                 self.instrument.set_labels(newlist)
-                return 'ok', self.instrument.get_labels()
+                return 'ok', list_to_katcp_list(self.instrument.get_labels())
             except ValueError as ve:
                 return 'fail', 'provided input labels were not ' \
                                'correct: %s' % ve.message
@@ -274,7 +281,7 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'provided input labels were not ' \
                                'correct: Unhandled exception'
         else:
-            return 'ok', self.instrument.get_labels()
+            return 'ok', list_to_katcp_list(self.instrument.get_labels())
 
     @request(Str(default=''), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -295,9 +302,8 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'unknown exception: %s' % e.message
         _src = self.instrument.fops.eq_get(source_name)
         eqstring = str(_src[source_name]['eq'])
-        eqstring = eqstring.replace('(', '').replace(')', '').replace('[', '')
-        eqstring = eqstring.replace(']', '').replace(',', '')
-        return 'ok', eqstring
+        eqstring = eqstring.replace('(', '').replace(')', '')
+        return 'ok', list_to_katcp_list(eqstring)
 
     @request(Float(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -313,7 +319,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             actual = self.instrument.fops.delays_process_parallel(
                 loadtime, delay_strings)
-            return 'ok', actual
+            return 'ok', list_to_katcp_list(actual)
         except Exception as e:
             return 'fail', 'could not set delays - %s' % e.message
 
@@ -346,7 +352,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         try:
             snapdata = self.instrument.fops.get_quant_snap(source_name)
-        except Exception as e:
+        except ValueError as e:
             logging.info(e)
             return 'fail', 'failed to read quant snap data for ' \
                            'given source %s' % source_name
@@ -354,9 +360,7 @@ class Corr2Server(katcp.DeviceServer):
         for complex_word in snapdata:
             quant_string += ' %s' % str(complex_word)
         quant_string = quant_string.replace('(', '').replace(')', '')
-        quant_string = quant_string.replace('[', '').replace(']', '')
-        quant_string = quant_string.replace(',', '')
-        return 'ok', quant_string
+        return 'ok', list_to_katcp_list(quant_string)
 
     @request()
     @return_reply()
