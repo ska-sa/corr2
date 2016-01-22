@@ -31,18 +31,23 @@ class FEngineOperations(object):
         :return:
         """
 
-        # set up the x-engine information in the f-engine hosts
-        num_x_hosts = len(self.corr.xhosts)
-        num_x = num_x_hosts * int(self.corr.configd['xengine']['x_per_fpga'])
-        f_per_x = self.corr.n_chans / num_x
-        ip_per_x = 1.0
-        THREADED_FPGA_OP(
-            self.hosts, timeout=10,
-            target_function=(
-                lambda fpga_: fpga_.registers.x_setup.write(f_per_x=f_per_x,
-                                                            ip_per_x=ip_per_x,
-                                                            num_x=num_x,),))
-        time.sleep(1)
+        if 'x_setup' in self.hosts[0].registers:
+            self.logger.info('Found num_x independent f-engines')
+            # set up the x-engine information in the f-engine hosts
+            num_x_hosts = len(self.corr.xhosts)
+            num_x = num_x_hosts * int(self.corr.configd['xengine']['x_per_fpga'])
+            f_per_x = self.corr.n_chans / num_x
+            ip_per_x = 1.0
+            THREADED_FPGA_OP(
+                self.hosts, timeout=10,
+                target_function=(
+                    lambda fpga_:
+                    fpga_.registers.x_setup.write(f_per_x=f_per_x,
+                                                  ip_per_x=ip_per_x,
+                                                  num_x=num_x,),))
+            time.sleep(1)
+        else:
+            self.logger.info('Found FIXED num_x f-engines')
 
         # set eq and shift
         self.eq_write_all()
