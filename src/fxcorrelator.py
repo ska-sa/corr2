@@ -31,7 +31,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 LOGGER = logging.getLogger(__name__)
 
-POST_MESS_DELAY = 10
+POST_MESS_DELAY = 5
 
 
 class FxCorrelator(Instrument):
@@ -191,13 +191,16 @@ class FxCorrelator(Instrument):
         self.logger.info('Starting f-engine datastream')
         self.fops.tx_enable()
 
+        # jason's hack
+        for ctr in range(0, 2):
+            time.sleep(1)
+            # force a reset on the f-engines
+            self.fops.sys_reset()
+
         # wait for switches to learn, um, stuff
         self.logger.info('post mess-with-the-switch delay of %is' %
                          POST_MESS_DELAY)
         time.sleep(POST_MESS_DELAY)
-
-        # force a reset on the f-engines
-        self.fops.sys_reset(sleeptime=1)
 
         # reset all counters on fhosts and xhosts
         self.fops.clear_status_all()
