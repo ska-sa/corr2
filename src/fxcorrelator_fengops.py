@@ -31,7 +31,7 @@ class FEngineOperations(object):
         :return:
         """
 
-        if 'x_setup' in self.hosts[0].registers:
+        if 'x_setup' in self.hosts[0].registers.names():
             self.logger.info('Found num_x independent f-engines')
             # set up the x-engine information in the f-engine hosts
             num_x_hosts = len(self.corr.xhosts)
