@@ -187,6 +187,11 @@ class FxCorrelator(Instrument):
         self.fops.subscribe_to_multicast()
         self.xops.subscribe_to_multicast()
 
+        # start f-engine TX
+        self.logger.info('Starting f-engine datastream')
+        self.fops.tx_enable()
+
+        # wait for switches to learn, um, stuff
         self.logger.info('post mess-with-the-switch delay of %is' %
                          POST_MESS_DELAY)
         time.sleep(POST_MESS_DELAY)
@@ -201,10 +206,6 @@ class FxCorrelator(Instrument):
         # check to see if the f engines are receiving all their data
         if not self.fops.check_rx():
             raise RuntimeError('The f-engines RX have a problem.')
-
-        # start f-engine TX
-        self.logger.info('Starting f-engine datastream')
-        self.fops.tx_enable()
 
         # check that the F-engines are transmitting data correctly
         if not self.fops.check_tx():
