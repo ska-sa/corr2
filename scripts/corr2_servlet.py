@@ -95,7 +95,7 @@ class Corr2Server(katcp.DeviceServer):
         logging.info('got a create request with config file %s' % config_file)
         try:
             self.instrument = fxcorrelator.FxCorrelator(
-                'RTS correlator', config_source=config_file)
+                'a_correlator', config_source=config_file)
             self.instrument.standard_log_config()
             logging.info('made correlator okay')
             return 'ok',
@@ -218,6 +218,7 @@ class Corr2Server(katcp.DeviceServer):
     def request_capture_list(self, sock, product_name):
         """
         :param sock:
+        :param product_name:
         :return:
         """
         product_names = []
@@ -245,6 +246,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         if not self._check_product_name(product_name):
             return 'fail', 'requested product name not found'
+        self.instrument.product_issue_metadata(product_name)
         self.instrument.product_tx_enable(product_name)
         return 'ok',
 
