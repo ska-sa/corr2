@@ -191,10 +191,9 @@ class FxCorrelator(Instrument):
         self.logger.info('Starting f-engine datastream')
         self.fops.tx_enable()
 
-        # jason's hack
+        # jason's hack to force a reset on the f-engines
         for ctr in range(0, 2):
             time.sleep(1)
-            # force a reset on the f-engines
             self.fops.sys_reset()
 
         # wait for switches to learn, um, stuff

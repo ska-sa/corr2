@@ -637,11 +637,14 @@ class XEngineOperations(object):
 
         try:
             while True:
-                # work out the load time
-                vacc_load_time = self._vacc_sync_create_loadtime(min_load_time)
-
                 # check if the vaccs need resetting
                 self._vacc_sync_check_reset()
+
+                # estimate the sync time, if needed
+                self._vacc_sync_calc_load_mcount(time.time())
+
+                # work out the load time
+                vacc_load_time = self._vacc_sync_create_loadtime(min_load_time)
 
                 # set the vacc load time on the xengines
                 load_mcount = self._vacc_sync_calc_load_mcount(vacc_load_time)
