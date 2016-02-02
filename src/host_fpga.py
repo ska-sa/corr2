@@ -59,8 +59,8 @@ class FpgaHost(Host, KatcpFpga):
                                                                 keyname))
                         return False
                     else:
-                        LOGGER.warn('%s: %s does not exist' % (self.host,
-                                                               keyname))
+                        LOGGER.debug('%s: %s does not exist' % (self.host,
+                                                                keyname))
                 return True
 
             # tx counter and error counter registers MUST exist
@@ -90,6 +90,13 @@ class FpgaHost(Host, KatcpFpga):
             #         (_d2['%s_txfullctr' % _core]['data']['reg'] - _d1['%s_txfullctr' % _core]['data']['reg'] > 0)):
             #     return False
         return True
+
+    def check_rx_reorder(self):
+        """
+
+        :return:
+        """
+        raise NotImplementedError
 
     def check_rx(self, max_waittime=30):
         """
