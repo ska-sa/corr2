@@ -7,7 +7,8 @@ Plot the spectrum using the output snapshots on the f-engine
 """
 import argparse
 import os
-import casperfpga
+
+from corr2.fhost_fpga import FpgaFHost
 from casperfpga import spead as casperspead
 from casperfpga import snap as caspersnap
 from casperfpga import tengbe
@@ -54,11 +55,16 @@ try:
 except ValueError:
     hostname = args.host
 
-f = casperfpga.KatcpFpga(hostname)
+f = FpgaFHost(hostname)
 f.get_system_information()
 
-FREQS_PER_X = 128
-NUM_FREQ = 4096
+# read the config
+config = utils.parse_ini_file(args.config)
+n_chans = int(config['fengine']['n_chans'])
+n_xhost = len(config['xengine']['hosts'].split(','))
+x_per_host = int(config['xengine']['x_per_fpga'])
+NUM_FREQ = n_chans
+FREQS_PER_X = NUM_FREQ / (n_xhost * x_per_host)
 EXPECTED_PKT_LEN = 128 + 10
 
 ips_and_freqs = {}
@@ -69,7 +75,8 @@ spectrum_count = [[0] * NUM_FREQ, [0] * NUM_FREQ]
 def print_ips():
     for ipint in ips_and_freqs:
         print str(tengbe.IpAddress(ipint)), ':', len(ips_and_freqs[ipint])
-    print '**********'
+    print '********** - press ctrl-c to quit or wait for %i fchans' % \
+          FREQS_PER_X
 
 
 def b2fp(dword):
@@ -77,8 +84,7 @@ def b2fp(dword):
     i1 = (dword >> 0) & 0xff
     r1 = bin2fp(r1, 8, 7, True)
     i1 = bin2fp(i1, 8, 7, True)
-    v1 = r1**2 + i1**2
-    return v1
+    return r1**2 + i1**2
 
 
 while True:
@@ -116,23 +122,41 @@ while True:
                     ips_and_freqs[pkt.ip].append(freq)
                 ips_and_freqs[pkt.ip].sort()
 
+                pkt_words = 0
                 for data in pkt.data:
-                    v0 = b2fp((data >> 48) & 65535)
-                    v1 = b2fp((data >> 32) & 65535)
-                    v2 = b2fp((data >> 16) & 65535)
-                    v3 = b2fp((data >> 0) & 65535)
+                    pwr0 = b2fp((data >> 48) & 0xffff)
+                    pwr1 = b2fp((data >> 32) & 0xffff)
+                    pwr2 = b2fp((data >> 16) & 0xffff)
+                    pwr3 = b2fp((data >> 0)  & 0xffff)
 
-                    spectrum_total[0][freq] += (v0 + v2)
+                    # print freq, ':'
+                    # print '\t', pwr0
+                    # print '\t', pwr1
+                    # print '\t', pwr2
+                    # print '\t', pwr3
+                    # print ''
+
+                    if (pwr1 != 0) or (pwr3 != 0):
+                        raise RuntimeError('pol1 isnt zero?')
+
+                    spectrum_total[0][freq] += (pwr0 + pwr2)
                     spectrum_count[0][freq] += 2
 
-                    spectrum_total[1][freq] += (v1 + v3)
+                    spectrum_total[1][freq] += (pwr1 + pwr3)
                     spectrum_count[1][freq] += 2
+
+                    pkt_words += 2
+
+                if pkt_words != 256:
+                    print 'WARNING: packet for freq(%i) had %i words?' % (
+                        freq, pkt_words
+                    )
 
             print_ips()
 
         all_freqs = True
         for ipint in ips_and_freqs:
-            if len(ips_and_freqs[ipint]) != FREQS_PER_X:
+            if len(ips_and_freqs[ipint]) < FREQS_PER_X:
                 all_freqs = False
                 break
         if all_freqs:
@@ -141,14 +165,14 @@ while True:
     except KeyboardInterrupt:
         break
 
-avg_spectrum = [[], []]
-for freq in range(0, NUM_FREQ):
-    for pol in [0, 1]:
+avg_spectrum = [[0] * NUM_FREQ, [0] * NUM_FREQ]
+for pol in [0, 1]:
+    for freq in range(0, NUM_FREQ):
         if spectrum_count[pol][freq] > 0:
-            val = spectrum_total[pol][freq]
+            val = spectrum_total[pol][freq] / spectrum_count[pol][freq]
         else:
             val = 0
-        avg_spectrum[pol].append(val)
+        avg_spectrum[pol][freq] = val
 
 pyplot.subplot(2, 1, 1)
 if args.linear:
