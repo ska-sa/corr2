@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Collect the output of a post-unpack snapshot and do an FFT on it.
+Plot a histogram of the quantiser snapshot.
 
 @author: paulp
 """
@@ -16,19 +16,23 @@ from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Display the output of the quantiser on an f-engine.',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='comma-delimited list of hosts, or a corr2 config file')
+parser = argparse.ArgumentParser(
+    description='Display the output of the quantiser on an f-engine.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    '--hosts', dest='hosts', type=str, action='store', default='',
+    help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument('-p', '--polltime', dest='polltime', action='store',
                     default=1, type=int,
                     help='time at which to poll fengine data, in seconds')
 parser.add_argument('--pol', dest='pol', action='store', default=0, type=int,
                     help='polarisation')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                    help='log level to use, default None, options INFO, DEBUG, ERROR')
+parser.add_argument(
+    '--comms', dest='comms', action='store', default='katcp', type=str,
+    help='katcp (default) or dcp?')
+parser.add_argument(
+    '--loglevel', dest='log_level', action='store', default='',
+    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 if args.log_level != '':
@@ -51,7 +55,7 @@ hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-required_snaps = ['snapquant_ss']
+required_snaps = ['snap_quant0_ss']
 
 # make the FPGA objects
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
@@ -62,7 +66,8 @@ for fpga_ in fpgas:
         if not snap in fpga_.snapshots.names():
             snapshot_missing.append(fpga_.host)
 if len(snapshot_missing) > 0:
-    print 'The following hosts are missing one or more of the post-quantsnapshots. Bailing.'
+    print 'The following hosts are missing one or more of the post-quant ' \
+          'snapshots. Bailing.'
     print snapshot_missing
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
@@ -78,17 +83,17 @@ signal.signal(signal.SIGHUP, exit_gracefully)
 
 while True:
 
-    # arm the snaps
-    for snap in required_snaps:
-        fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots[snap].arm())
-
-    # allow them to trigger
-    fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snapquant_arm='pulse'))
-
     # read the data
-    snapdata = {}
-    for snap in required_snaps:
-        snapdata[snap] = fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.snapshots[snap].read(arm=False))
+    p0data = fpgautils.threaded_fpga_operation(
+        fpgas, 10, lambda fpga_: fpga_.snapshots['snap_quant0_ss'].read())
+    p1data = fpgautils.threaded_fpga_operation(
+        fpgas, 10, lambda fpga_: fpga_.snapshots['snap_quant1_ss'].read())
+
+    # expand it
+    quant_data = snapdata[required_snaps[0]][fpga]['data']
+
+
+
 
     for fpga in snapdata[required_snaps[0]].keys():
         # reorder the data

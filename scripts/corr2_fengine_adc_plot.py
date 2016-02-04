@@ -13,6 +13,7 @@ import signal
 import numpy
 from matplotlib import pyplot
 
+from corr2.fhost_fpga import FpgaFHost
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
@@ -67,7 +68,7 @@ except ValueError:
     hostname = args.host
 
 # process the range argument
-plotrange = args.range.split(',')
+plotrange = [int(a) for a in args.range.split(',')]
 if plotrange[0] == -1:
     plotrange = (0, plotrange[1])
 if (plotrange[1] != -1) and (plotrange[1] <= plotrange[0]):
@@ -80,20 +81,19 @@ def exit_gracefully(_, __):
     sys.exit(0)
 signal.signal(signal.SIGINT, exit_gracefully)
 
-# make the FPGA objects
-from corr2.fhost_fpga import FpgaFHost
+# make the FPGA object
 fpga = FpgaFHost(hostname)
 time.sleep(0.5)
 fpga.get_system_information()
 
 
 def get_data():
-    data = fpga.get_adc_snapshots()
+    _data = fpga.get_adc_snapshots()
     rv = {'p0': [], 'p1': []}
-    for ctr in range(0, len(data['p0']['d0'])):
+    for ctr in range(0, len(_data['p0']['d0'])):
         for ctr2 in range(0, 8):
-            rv['p0'].append(data['p0']['d%i' % ctr2][ctr])
-            rv['p1'].append(data['p1']['d%i' % ctr2][ctr])
+            rv['p0'].append(_data['p0']['d%i' % ctr2][ctr])
+            rv['p1'].append(_data['p1']['d%i' % ctr2][ctr])
     return rv
 
 
@@ -158,7 +158,8 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
         idata = None
         ictr = 0
         pctr += 1
-    fig.canvas.manager.window.after(10, plot_func, figure, sub_plots, idata, ictr, pctr)
+    fig.canvas.manager.window.after(10, plot_func, figure,
+                                    sub_plots, idata, ictr, pctr)
 
 # set up the figure with a subplot to be plotted
 data = get_data()
@@ -171,7 +172,9 @@ for p in range(num_plots):
 integrated_data = None
 integration_counter = 0
 plot_counter = 0
-fig.canvas.manager.window.after(10, plot_func, fig, subplots, integrated_data, integration_counter, plot_counter)
+fig.canvas.manager.window.after(10, plot_func, fig,
+                                subplots, integrated_data,
+                                integration_counter, plot_counter)
 pyplot.show()
 print 'Plot started.'
 
