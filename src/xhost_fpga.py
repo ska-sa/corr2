@@ -66,7 +66,7 @@ class FpgaXHost(FpgaHost):
                 data['etim%i' % ctr] = self.registers['reorderr_timeout%i' % ctr].read()['data']['reg']
                 data['edisc%i' % ctr] = self.registers['reorderr_disc%i' % ctr].read()['data']['reg']
             return data
-        _sleeptime = 1
+        _sleeptime = .01
         rxregs = get_gbe_data()
         time.sleep(_sleeptime)
         rxregs_new = get_gbe_data()
