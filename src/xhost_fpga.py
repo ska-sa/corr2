@@ -52,37 +52,40 @@ class FpgaXHost(FpgaHost):
         LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
 
-    def check_rx_reorder(self):
+    def check_rx_reorder(self, sleeptime=1):
         """
         Is this X host reordering received data correctly?
+        :param sleeptime - time, in seconds, to wait between register reads
         :return:
         """
         def get_gbe_data():
+            _r = self.registers
             data = {}
             for ctr in range(0, self.x_per_fpga):
-                data['miss%i' % ctr] = self.registers['reord_missant%i' % ctr].read()['data']['reg']
-                data['rcvcnt%i' % ctr] = self.registers['reordcnt_recv%i' % ctr].read()['data']['reg']
-                data['ercv%i' % ctr] = self.registers['reorderr_recv%i' % ctr].read()['data']['reg']
-                data['etim%i' % ctr] = self.registers['reorderr_timeout%i' % ctr].read()['data']['reg']
-                data['edisc%i' % ctr] = self.registers['reorderr_disc%i' % ctr].read()['data']['reg']
+                data['miss%i' % ctr] = _r['reord_missant%i' % ctr].read()['data']['reg']
+                data['rcvcnt%i' % ctr] = _r['reordcnt_recv%i' % ctr].read()['data']['reg']
+                data['ercv%i' % ctr] = _r['reorderr_recv%i' % ctr].read()['data']['reg']
+                data['etim%i' % ctr] = _r['reorderr_timeout%i' % ctr].read()['data']['reg']
+                data['edisc%i' % ctr] = _r['reorderr_disc%i' % ctr].read()['data']['reg']
             return data
-        _sleeptime = 1
         rxregs = get_gbe_data()
-        time.sleep(_sleeptime)
+        time.sleep(sleeptime)
         rxregs_new = get_gbe_data()
+        # compare old and new - rx counts must change and may wrap, error
+        # counts must remain the same
         for ctr in range(0, self.x_per_fpga):
-            if rxregs_new['rcvcnt%i' % ctr] <= rxregs['rcvcnt%i' % ctr]:
+            if rxregs_new['rcvcnt%i' % ctr] == rxregs['rcvcnt%i' % ctr]:
                 LOGGER.error('%s: not receiving reordered data.' % self.host)
                 return False
-            if ((rxregs_new['ercv%i' % ctr] > rxregs['ercv%i' % ctr]) or
-                    (rxregs_new['etim%i' % ctr] > rxregs['etim%i' % ctr]) or
-                    (rxregs_new['edisc%i' % ctr] > rxregs['edisc%i' % ctr])):
-                LOGGER.error('%s: reports reorder errors: '
-                             'ercv(%i) etime(%i) edisc(%i)' %
-                             (self.host,
-                              rxregs_new['ercv%i' % ctr] - rxregs['ercv%i' % ctr],
-                              rxregs_new['etim%i' % ctr] - rxregs['etim%i' % ctr],
-                              rxregs_new['edisc%i' % ctr] - rxregs['edisc%i' % ctr]))
+            if ((rxregs_new['ercv%i' % ctr] != rxregs['ercv%i' % ctr]) or
+                    (rxregs_new['etim%i' % ctr] != rxregs['etim%i' % ctr]) or
+                    (rxregs_new['edisc%i' % ctr] != rxregs['edisc%i' % ctr])):
+                LOGGER.error(
+                    '%s: reports reorder errors: ercv(%i) etime(%i) edisc(%i)' %
+                    (self.host,
+                     rxregs_new['ercv%i' % ctr] - rxregs['ercv%i' % ctr],
+                     rxregs_new['etim%i' % ctr] - rxregs['etim%i' % ctr],
+                     rxregs_new['edisc%i' % ctr] - rxregs['edisc%i' % ctr]))
                 return False
         LOGGER.info('%s: reordering data okay.' % self.host)
         return True
@@ -93,16 +96,18 @@ class FpgaXHost(FpgaHost):
         :return:
         """
         rv = []
+        _regs = self.registers
         for core_ctr in range(0, len(self.tengbes)):
-            counter = self.registers['rx_cnt%i' % core_ctr].read()['data']['reg']
-            error = self.registers['rx_err_cnt%i' % core_ctr].read()['data']['reg']
+            counter = _regs['rx_cnt%i' % core_ctr].read()['data']['reg']
+            error = _regs['rx_err_cnt%i' % core_ctr].read()['data']['reg']
             rv.append((counter, error))
         return rv
 
     def vacc_accumulations_per_second(self, xnum=-1):
         """
         Get the number of accumulatons per second.
-        :param xnum: specify an xengine, by index number, otherwise read from all of them
+        :param xnum: specify an xengine, by index number, otherwise read from
+                     all of them
         :return: the vaccs per second for the specified xengines on this host
         """
         def accspersec(_xengnum):
@@ -143,10 +148,12 @@ class FpgaXHost(FpgaHost):
         :return: tuple with errors, count, arm count and load count
         """
         stats = []
+        _regs = self.registers
         for xnum in range(0, self.x_per_fpga):
-            xengdata = {'errors': self.registers['vaccerr%d' % xnum].read()['data']['reg'],
-                        'count': self.registers['vacccnt%d' % xnum].read()['data']['reg']}
-            temp = self.registers['vacc_ld_status%i' % xnum].read()['data']
+            xengdata = {
+                'errors': _regs['vaccerr%d' % xnum].read()['data']['reg'],
+                'count': _regs['vacccnt%d' % xnum].read()['data']['reg']}
+            temp = _regs['vacc_ld_status%i' % xnum].read()['data']
             if 'reg' in temp.keys():
                 xengdata['armcount'] = temp['reg'] >> 16
                 xengdata['loadcount'] = temp['reg'] & 0xffff
