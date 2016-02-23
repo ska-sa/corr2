@@ -41,6 +41,7 @@ class KatcpLogEmitHandler(logging.StreamHandler):
         """
         Replace a regular log emit with sending a katcp
         log message to all connected clients.
+        :param record: the log record to process
         """
         try:
             if record.levelname == 'WARNING':

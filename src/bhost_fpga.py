@@ -90,11 +90,10 @@ class FpgaBHost(FpgaXHost):
                                                 beng=beng_ctr,
                                                 antenna=ant_ctr)
                 self.registers.bf_value_ctrl.write(bw='pulse')
-        LOGGER.info('%s:%i: Beam %i:%s set antenna(%i) '
-                    'stream(%i) weights(%s)' % (self.host, self.index,
-                                                beam.index, beam.name,
-                                                self.index, beam.index,
-                                                beam.source_weights))
+                LOGGER.info('%s:%i: Beam %i:%s set beng(%i) antenna(%i) '
+                            'weight(%.5f)' % (self.host, self.index,
+                                              beam.index, beam.name,
+                                              beng_ctr, ant_ctr, ant_weight))
 
     def beam_partitions_read(self, beam):
         """

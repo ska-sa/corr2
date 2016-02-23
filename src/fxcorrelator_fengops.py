@@ -160,7 +160,7 @@ class FEngineOperations(object):
         # convert delay in time into delay in samples
         delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
 
-        #convert to fractions of a sample
+        # convert to fractions of a sample
         phase_offset_s = float(phase_offset)/float(numpy.pi)
 
         # convert from radians per second to fractions of sample per sample

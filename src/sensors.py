@@ -67,7 +67,8 @@ def _sensor_cb_xlru(sensor, executor, x_host):
 @tornado.gen.coroutine
 def _sensor_feng_tx(sensor, executor, f_host):
     """
-    f-engine tx counters
+    f-engine tx counters - when the correlator or beamformer is running, the
+    f-engines must ALWAYS be transmitting
     :param sensor:
     :return: rv
     """
@@ -101,23 +102,27 @@ def _sensor_feng_rx(sensor, executor, f_host):
     IOLoop.current().call_later(10, _sensor_feng_rx, sensor, executor, f_host)
 
 
-@tornado.gen.coroutine
-def _sensor_xeng_tx(sensor, executor, x_host):
-    """
-    x-engine tx counters
-    :param sensor:
-    :return:
-    """
-    result = False
-    try:
-        for tengbe in x_host.tengbes:
-            result &= yield executor.submit(tengbe.tx_okay)
-    except Exception as e:
-        LOGGER.exception('Exception updating xeng_tx sensor for {} - '
-                         '{}'.format(x_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
-    LOGGER.debug('_sensor_xeng_tx ran on {}'.format(x_host))
-    IOLoop.current().call_later(10, _sensor_xeng_tx, sensor, executor, x_host)
+# @tornado.gen.coroutine
+# def _sensor_xeng_tx(sensor, executor, x_host):
+#     """
+#     x-engine tx counters - this is tricker, because depending on whether the
+#     x-engine or beamformer is running, some cores may not be transmitting.
+#     :param sensor:
+#     :return:
+#     """
+#     # result = False
+#     # try:
+#     #     for tengbe in x_host.tengbes:
+#     #         result &= yield executor.submit(tengbe.tx_okay)
+#     # except Exception as e:
+#     #     LOGGER.exception('Exception updating xeng_tx sensor for {} - '
+#     #                      '{}'.format(x_host, e.message))
+#     # sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+#     # TODO - fix this logic above - do not check cores that shouldn't be sending
+#     # anything
+#     sensor.set(time.time(), Sensor.UNKNOWN, True)
+#     LOGGER.debug('_sensor_xeng_tx ran on {}'.format(x_host))
+#     IOLoop.current().call_later(10, _sensor_xeng_tx, sensor, executor, x_host)
 
 
 @tornado.gen.coroutine
@@ -377,16 +382,16 @@ def setup_sensors(instrument, katcp_server):
         instrument.sensors_add(sensor)
         ioloop.add_callback(_sensor_feng_rx, sensor, executor, _f)
 
-    # x-engine tx counters
-    for _x in instrument.xhosts:
-        executor = host_executors[_x.host]
-        sensor = Sensor.boolean(
-            name='%s_xeng_tx' % _x.host,
-            description='X-engine TX okay - counters incrementing',
-            default=True)
-        katcp_server.add_sensor(sensor)
-        instrument.sensors_add(sensor)
-        ioloop.add_callback(_sensor_xeng_tx, sensor, executor, _x)
+    # # x-engine tx counters
+    # for _x in instrument.xhosts:
+    #     executor = host_executors[_x.host]
+    #     sensor = Sensor.boolean(
+    #         name='%s_xeng_tx' % _x.host,
+    #         description='X-engine TX okay - counters incrementing',
+    #         default=True)
+    #     katcp_server.add_sensor(sensor)
+    #     instrument.sensors_add(sensor)
+    #     ioloop.add_callback(_sensor_xeng_tx, sensor, executor, _x)
 
     # x-engine rx counters
     for _x in instrument.xhosts:

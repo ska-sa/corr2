@@ -63,12 +63,9 @@ class FpgaHost(Host, KatcpFpga):
                                                                 keyname))
                 return True
 
-            # tx counter and error counter registers MUST exist
+            # tx counter registers MUST exist
             if not _checkregs('{}_txctr'.format(_core),
                               required=True, equal=False):
-                return False
-            if not _checkregs('{}_txerrctr'.format(_core),
-                              required=True, equal=True):
                 return False
 
             # certain registers can not exist but absence are noted

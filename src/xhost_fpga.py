@@ -20,18 +20,35 @@ class FpgaXHost(FpgaHost):
         if self.config is not None:
             self.vacc_len = int(self.config['xeng_accumulation_len'])
             self.x_per_fpga = int(self.config['x_per_fpga'])
-
-        # TODO - and if there is no config and this
-        # was made on a running device?
-        # something like set it to -1, if it's accessed when -1
-        # then try and discover it
-        self.x_per_fpga = 4
+        else:
+            # TODO - and if there is no config and this
+            # was made on a running device?
+            # something like set it to -1, if it's accessed when -1
+            # then try and discover it
+            self.x_per_fpga = 4
 
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port, config_source):
         boffile = config_source['bitstream']
         return cls(hostname, index, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
+
+    def _x_per_fpga(self):
+        if self._x_per_fpga == -1:
+            self._x_per_fpga = self._determine_x_per_fpga()
+        return self._x_per_fpga
+
+    def _determine_x_per_fpga(self):
+        """
+        Query registers to find out how many x-engines there are on this host
+        :return:
+        """
+        ctr = 0
+        while ('status%i' % ctr) in self.registers.names():
+            ctr += 1
+            if ctr == 64:
+                break
+        return ctr
 
     def clear_status(self):
         """
