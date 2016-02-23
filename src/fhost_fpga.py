@@ -364,7 +364,8 @@ class FpgaFHost(DigitiserDataReceiver):
             'load_time': load_time, 'load_wait': load_wait,
             'load_check': load_check}
 
-    def _write_delay_delay(self, infostr, bitshift, delay_reg, delta_delay_reg,
+    @staticmethod
+    def _write_delay_delay(infostr, bitshift, delay_reg, delta_delay_reg,
                            delay, delta_delay):
         """
         Do the delta delay portion of write_delay
@@ -373,12 +374,12 @@ class FpgaFHost(DigitiserDataReceiver):
         # TODO check register parameters to get delay range
 
         reg_info = delay_reg.block_info
-        bw = int(reg_info['bitwidths'])
-        b = int(reg_info['bin_pts'])
-        max_delay = 2**(bw - b) - 1/float(2**b)
+        reg_bw = int(reg_info['bitwidths'])
+        reg_bp = int(reg_info['bin_pts'])
+        max_delay = 2**(reg_bw - reg_bp) - 1/float(2**reg_bp)
 
-        LOGGER.info('%s attempting initial delay of %f samples.' % (infostr,
-                                                                    delay))
+        LOGGER.info('%s attempting initial delay of %f samples.' %
+                    (infostr, delay))
         if delay < 0:
             LOGGER.warn('%s smallest delay is 0, setting to zero' % infostr)
             delay = 0
@@ -390,7 +391,7 @@ class FpgaFHost(DigitiserDataReceiver):
         try:
             delay_reg.write(initial=delay)
         except ValueError as e:
-            _err = '%s initial delay range error delay(%f) - %s' % (
+            _err = '%s writing initial delay range delay(%.8e), error - %s' % (
                 infostr, delay, e.message)
             LOGGER.error(_err)
             raise ValueError(_err)
@@ -429,15 +430,15 @@ class FpgaFHost(DigitiserDataReceiver):
         try:
             delta_delay_reg.write(delta=dds)
         except ValueError as e:
-            _err = '%s writing delay delta, error - %s' % (infostr, e.message)
+            _err = '%s writing delay delta (%.8e), error - %s' % \
+                   (infostr, dds, e.message)
             LOGGER.error(_err)
             raise ValueError(_err)
 
-    def _write_delay_phase(self, infostr, bitshift, phase_reg, phase_offset,
+    @staticmethod
+    def _write_delay_phase(infostr, bitshift, phase_reg, phase_offset,
                            delta_phase_offset):
         """
-
-        :param offset:
         :return:
         """
         # multiply by amount shifted down by on FPGA
@@ -466,13 +467,6 @@ class FpgaFHost(DigitiserDataReceiver):
                         '%e pi' % (infostr, phase_offset))
             LOGGER.warn('%s setting phase offset to %e pi' % (
                 infostr, phase_offset))
-        LOGGER.info('%s writing initial phase to %f' % (infostr, phase_offset))
-        try:
-            phase_reg.write(initial=phase_offset)
-        except ValueError as e:
-            _err = '%s writing phase offset, error - %s' % (infostr, e.message)
-            LOGGER.error(_err)
-            raise ValueError(_err)
 
         reg_info = phase_reg.block_info
         # bw_str = reg_info['bitwidths']
@@ -499,12 +493,15 @@ class FpgaFHost(DigitiserDataReceiver):
                         '%expi radians/sample' % (infostr, dp))
             LOGGER.warn('%s setting phase delta to %expiradians/sample '
                         '(%e after shift)' % (infostr, dp, dpos))
+
+        # actually write the values to the register
+        LOGGER.info('%s writing initial phase to %f' % (infostr, phase_offset))
         LOGGER.info('%s writing phase delta to %e' % (infostr, dpos))
         try:
-            phase_reg.write(delta=dpos)
+            phase_reg.write(initial=phase_offset, delta=dpos)
         except ValueError as e:
-            _err = '%s phase offset delta range error - %s' % (infostr,
-                                                               e.message)
+            _err = '%s writing phase(%.8e) dpos(%.8e), error - %s' % \
+                   (infostr, phase_offset, dpos, e.message)
             LOGGER.error(_err)
             raise ValueError(_err)
 
@@ -521,7 +518,7 @@ class FpgaFHost(DigitiserDataReceiver):
         By default, it will load immediately and verify that things worked
         as expected.
 
-        :offset is polarisation's offset within FPGA
+        :param offset is polarisation's offset within FPGA
         :param delay is in samples
         :param delta_delay is in samples per sample
         :param phase_offset is in fractions of a sample
