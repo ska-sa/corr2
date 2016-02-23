@@ -6,6 +6,8 @@ from katcp import Sensor
 from tornado.ioloop import IOLoop
 from concurrent import futures
 
+from fhost_fpga import DelaysUnsetError
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -18,9 +20,12 @@ def _sensor_cb_fdelays(sensor, executor, f_host):
     """
     result = False
     try:
-        result = yield executor.submit(f_host.check_delays)
+        result = yield executor.submit(f_host.delay_check_loadcounts)
+    except DelaysUnsetError:
+        sensor.set(time.time(), Sensor.UNKNOWN, None)
+        return
     except Exception as e:
-        LOGGER.exception('Exception updating delay functionality sensor '
+        LOGGER.exception('Error updating delay functionality sensor '
                          'for {} - {}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_sensor_cb_fdelays ran on {}'.format(f_host))
@@ -39,7 +44,7 @@ def _sensor_cb_flru(sensor, executor, f_host):
     try:
         result = yield executor.submit(f_host.host_okay)
     except Exception as e:
-        LOGGER.exception('Exception updating flru sensor for {} - '
+        LOGGER.exception('Error updating flru sensor for {} - '
                          '{}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_sensor_cb_flru ran on {}'.format(f_host))
@@ -57,7 +62,7 @@ def _sensor_cb_xlru(sensor, executor, x_host):
     try:
         result = yield executor.submit(x_host.host_okay)
     except Exception as e:
-        LOGGER.exception('Exception updating xlru sensor for {} - '
+        LOGGER.exception('Error updating xlru sensor for {} - '
                          '{}'.format(x_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_sensor_cb_xlru ran on {}'.format(x_host))
@@ -77,7 +82,7 @@ def _sensor_feng_tx(sensor, executor, f_host):
         for tengbe in f_host.tengbes:
             result &= yield executor.submit(tengbe.tx_okay)
     except Exception as e:
-        LOGGER.exception('Exception updating feng_tx sensor for {} - '
+        LOGGER.exception('Error updating feng_tx sensor for {} - '
                          '{}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_sensor_feng_tx ran on {}'.format(f_host))
@@ -95,7 +100,7 @@ def _sensor_feng_rx(sensor, executor, f_host):
     try:
         result = yield executor.submit(f_host.check_rx_reorder)
     except Exception as e:
-        LOGGER.exception('Exception updating feng_rx sensor for {} - '
+        LOGGER.exception('Error updating feng_rx sensor for {} - '
                          '{}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_sensor_feng_rx ran on {}'.format(f_host))
@@ -115,7 +120,7 @@ def _sensor_feng_rx(sensor, executor, f_host):
 #     #     for tengbe in x_host.tengbes:
 #     #         result &= yield executor.submit(tengbe.tx_okay)
 #     # except Exception as e:
-#     #     LOGGER.exception('Exception updating xeng_tx sensor for {} - '
+#     #     LOGGER.exception('Error updating xeng_tx sensor for {} - '
 #     #                      '{}'.format(x_host, e.message))
 #     # sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
 #     # TODO - fix this logic above - do not check cores that shouldn't be sending
@@ -136,7 +141,7 @@ def _sensor_xeng_rx(sensor, executor, x_host):
     try:
         result = yield executor.submit(x_host.check_rx_reorder)
     except Exception as e:
-        LOGGER.exception('Exception updating xeng_rx sensor for {} - '
+        LOGGER.exception('Error updating xeng_rx sensor for {} - '
                          '{}'.format(x_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_sensor_xeng_rx ran on {}'.format(x_host))
@@ -154,7 +159,7 @@ def _sensor_feng_phy(sensor, executor, f_host):
     try:
         result = yield executor.submit(f_host.check_phy_counter)
     except Exception as e:
-        LOGGER.exception('Exception updating feng_phy sensor for {} - '
+        LOGGER.exception('Error updating feng_phy sensor for {} - '
                          '{}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_sensor_feng_phy ran on {}'.format(f_host))
@@ -172,7 +177,7 @@ def _sensor_xeng_phy(sensor, executor, x_host):
     try:
         result = yield executor.submit(x_host.check_phy_counter)
     except Exception as e:
-        LOGGER.exception('Exception updating xeng_phy sensor for {} - '
+        LOGGER.exception('Error updating xeng_phy sensor for {} - '
                          '{}'.format(x_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_sensor_xeng_phy ran on {}'.format(x_host))
@@ -190,7 +195,7 @@ def _xeng_qdr_okay(sensor, executor, x_host):
     try:
         result = yield executor.submit(x_host.qdr_okay)
     except Exception as e:
-        LOGGER.exception('Exception updating xeng qdr sensor for {} - '
+        LOGGER.exception('Error updating xeng qdr sensor for {} - '
                          '{}'.format(x_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_xeng_qdr_okay ran on {}'.format(x_host))
@@ -208,7 +213,7 @@ def _feng_qdr_okay(sensor, executor, f_host):
     try:
         result = yield executor.submit(f_host.qdr_okay)
     except Exception as e:
-        LOGGER.exception('Exception updating feng qdr sensor for {} - '
+        LOGGER.exception('Error updating feng qdr sensor for {} - '
                          '{}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_feng_qdr_okay ran on {}'.format(f_host))
@@ -226,7 +231,7 @@ def _feng_pfb_okay(sensor, executor, f_host):
     try:
         result = yield executor.submit(f_host.check_fft_overflow)
     except Exception as e:
-        LOGGER.exception('Exception updating feng pfb sensor for {} - '
+        LOGGER.exception('Error updating feng pfb sensor for {} - '
                          '{}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_feng_pfb_okay ran on {}'.format(f_host))
@@ -245,7 +250,7 @@ def _fhost_check_rx(sensor, executor, f_host):
     try:
         result = yield executor.submit(f_host.check_rx)
     except Exception as e:
-        LOGGER.exception('Exception updating fhost rx sensor for {} - '
+        LOGGER.exception('Error updating fhost rx sensor for {} - '
                          '{}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_fhost_check_rx ran')
@@ -265,7 +270,7 @@ def _fhost_check_tx(sensor, executor, f_host):
     try:
         result = yield executor.submit(f_host.check_tx_raw)
     except Exception as e:
-        LOGGER.exception('Exception updating fhost tx sensor for {} - '
+        LOGGER.exception('Error updating fhost tx sensor for {} - '
                          '{}'.format(f_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_fhost_check_tx ran')
@@ -285,7 +290,7 @@ def _xhost_check_rx(sensor, executor, x_host):
     try:
         result = yield executor.submit(x_host.check_rx)
     except Exception as e:
-        LOGGER.exception('Exception updating xhost rx sensor for {} - '
+        LOGGER.exception('Error updating xhost rx sensor for {} - '
                          '{}'.format(x_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_xhost_check_rx ran')
@@ -305,7 +310,7 @@ def _xhost_check_tx(sensor, executor, x_host):
     try:
         result = yield executor.submit(x_host.check_tx_raw)
     except Exception as e:
-        LOGGER.exception('Exception updating xhost tx sensor for {} - '
+        LOGGER.exception('Error updating xhost tx sensor for {} - '
                          '{}'.format(x_host, e.message))
     sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
     LOGGER.debug('_xhost_check_tx ran')

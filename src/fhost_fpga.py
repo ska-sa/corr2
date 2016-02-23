@@ -8,6 +8,10 @@ from host_fpga import FpgaHost
 LOGGER = logging.getLogger(__name__)
 
 
+class DelaysUnsetError(Exception):
+    pass
+
+
 class DigitiserDataReceiver(FpgaHost):
     """
     The RX section of a fengine and filter engine are
@@ -158,6 +162,7 @@ class FpgaFHost(DigitiserDataReceiver):
         # list of dictionaries containing delay settings for each stream
         self.delays = []
         self.delay_errors = []
+        self.delay_loadcounts = []
 
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
@@ -182,6 +187,7 @@ class FpgaFHost(DigitiserDataReceiver):
                                     'load_time': None, 'load_wait': None,
                                     'load_check': True})
                 self.delay_errors.append(Event())
+                self.delay_loadcounts.append(-1)
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -314,6 +320,35 @@ class FpgaFHost(DigitiserDataReceiver):
         self.write(eq_bram, ss, 0)
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
+
+    def delay_get_status(self):
+        """
+        Get the status registers for the delay operations on this f-host
+        :return:
+        """
+        num_pols = len(self.delays)
+        rv = []
+        for pol in range(num_pols):
+            rv.append(self.registers[''].read()['data'])
+        return rv
+
+    def delay_check_loadcounts(self):
+        """
+        Are new delays being loaded on this fhost?
+        :return: True is the load counts are increasing, false if not
+        """
+        if len(self.delay_loadcounts) == 0:
+            raise DelaysUnsetError('Delays not yet setup')
+        new_status = self.delay_get_status()
+        rv = True
+        for cnt, last_loadcount in enumerate(self.delay_loadcounts):
+            new_val = new_status[cnt]['load_count']
+            old_val = self.delay_loadcounts[cnt]
+            if old_val != -1:
+                if old_val == new_val:
+                    rv = False
+            self.delay_loadcounts[cnt] = new_val
+        return rv
 
     def check_delays(self):
         """
