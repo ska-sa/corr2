@@ -101,11 +101,20 @@ class FxCorrelator(Instrument):
             spead_logger = logging.getLogger('spead')
             spead_logger.setLevel(logging.WARNING)
 
-    def initialise(self, program=True, qdr_cal=True):
+    def initialise(self, program=True, qdr_cal=True, require_epoch=False):
         """
         Set up the correlator using the information in the config file.
+        :param program: program the FPGA boards if True
+        :param qdr_cal: perform QDR cal if True
+        :param require_epoch: the synch epoch MUST be set before init if True
         :return:
         """
+        # check that the instrument's synch epoch has been set
+        if require_epoch:
+            if self.get_synch_time() == -1:
+                raise RuntimeError('System synch epoch has not been set prior'
+                                   ' to initialisation!')
+
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self)
         self.xops = XEngineOperations(self)
@@ -209,6 +218,11 @@ class FxCorrelator(Instrument):
         if not self.fops.check_rx():
             raise RuntimeError('The f-engines RX have a problem.')
 
+        # check that the timestamps received on the f-engines make sense
+        if not self.fops.check_rx_timestamps():
+            raise RuntimeError('The timestamps received by the f-engines '
+                               'are not okay. Check the logs')
+
         # check that the F-engines are transmitting data correctly
         if not self.fops.check_tx():
             raise RuntimeError('The f-engines TX have a problem.')
@@ -247,7 +261,29 @@ class FxCorrelator(Instrument):
             raise KeyError('Sensor {} already exists'.format(sensor.name))
         self._sensors[sensor.name] = sensor
 
-    def est_sync_epoch(self):
+    def set_synch_time(self, new_synch_time):
+        """
+        Set the last sync time for this system
+        :param new_synch_time: UNIX time
+        :return: <nothing>
+        """
+        time_now = time.time()
+        # future?
+        if new_synch_time > time_now:
+            _err = 'Synch time in the future makes no sense? %.3f > %.3f' % (
+                new_synch_time, time_now)
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        # too far in the past?
+        if new_synch_time < time_now - (2**self.timestamp_bits):
+            _err = 'Synch epoch supplied is too far in the past: now(%.3f) ' \
+                   'epoch(%.3f)' % (time_now, new_synch_time)
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        self._synchronisation_epoch = new_synch_time
+        self.logger.info('Set synch epoch to %d' % new_synch_time)
+
+    def est_synch_epoch(self):
         """
         Estimates the synchronisation epoch based on current F-engine
         timestamp, and the system time.
@@ -262,24 +298,18 @@ class FxCorrelator(Instrument):
             self.logger.error(_err)
             raise RuntimeError(_err)
         t_now = time.time()
-        self.synchronisation_epoch = (t_now - feng_mcnt /
-                                      float(self.sample_rate_hz))
-        if self.synchronisation_epoch >= t_now:
-            _err = 'Estimated synch time is the future? time.time(%.3f) ' \
-                   'synch_epoch(%.3f)' % (t_now, self.synchronisation_epoch)
-            self.logger.error(_err)
-            raise RuntimeError(_err)
-        self.logger.info('    new epoch: %.3f' % self.synchronisation_epoch)
+        self.set_synch_time(t_now - feng_mcnt / float(self.sample_rate_hz))
+        self.logger.info('    new epoch: %.3f' % self.get_synch_time())
 
     def time_from_mcnt(self, mcnt):
         """
         Returns the unix time UTC equivalent to the board timestamp. Does
         NOT account for wrapping timestamps.
         """
-        if self.synchronisation_epoch < 0:
+        if self.get_synch_time() < 0:
             self.logger.info('time_from_mcnt: synch epoch unset, estimating')
-            self.est_sync_epoch()
-        return self.synchronisation_epoch + (
+            self.est_synch_epoch()
+        return self.get_synch_time() + (
             float(mcnt) / float(self.sample_rate_hz))
 
     def mcnt_from_time(self, time_seconds):
@@ -287,13 +317,13 @@ class FxCorrelator(Instrument):
         Returns the board timestamp from a given UTC system time
         (seconds since Unix Epoch). Accounts for wrapping timestamps.
         """
-        if self.synchronisation_epoch < 0:
+        if self.get_synch_time() < 0:
             self.logger.info('mcnt_from_time: synch epoch unset, estimating')
-            self.est_sync_epoch()
-        time_diff_from_synch_epoch = time_seconds - self.synchronisation_epoch
+            self.est_synch_epoch()
+        time_diff_from_synch_epoch = time_seconds - self.get_synch_time()
         time_diff_in_samples = int(time_diff_from_synch_epoch *
                                    self.sample_rate_hz)
-        _tmp = 2**int(self.configd['FxCorrelator']['timestamp_bits'])
+        _tmp = 2**self.timestamp_bits
         return time_diff_in_samples % _tmp
 
     def qdr_calibrate(self):
@@ -410,6 +440,9 @@ class FxCorrelator(Instrument):
         self.sensor_poll_time = int(_fxcorr_d['sensor_poll_time'])
         self.katcp_port = int(_fxcorr_d['katcp_port'])
         self.sample_rate_hz = int(_fxcorr_d['sample_rate_hz'])
+        self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
+        self.time_jitter_allowed_ms = int(_fxcorr_d['time_jitter_allowed_ms'])
+        self.time_offset_allowed_s = int(_fxcorr_d['time_offset_allowed_s'])
 
         _feng_d = self.configd['fengine']
         self.adc_demux_factor = int(_feng_d['adc_demux_factor'])

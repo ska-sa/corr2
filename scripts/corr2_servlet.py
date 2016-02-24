@@ -113,16 +113,24 @@ class Corr2Server(katcp.DeviceServer):
         """
         pass
 
-    @request(Bool(default=True), Bool(default=True))
+    @request(Bool(default=True), Bool(default=True), Bool(default=True),
+             Bool(default=True))
     @return_reply()
-    def request_initialise(self, sock, program, monitor_vacc):
+    def request_initialise(self, sock, program, qdr_cal, require_epoch,
+                           monitor_vacc):
         """
         Initialise self.instrument
         :param sock:
+        :param program: program the FPGA boards if True
+        :param qdr_cal: perform QDR cal if True
+        :param require_epoch: the synch epoch MUST be set before init if True
+        :param monitor_vacc: start the VACC monitoring ioloop
         :return:
         """
         try:
-            self.instrument.initialise(program=program)
+            self.instrument.initialise(program=program,
+                                       qdr_cal=qdr_cal,
+                                       require_epoch=require_epoch)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',

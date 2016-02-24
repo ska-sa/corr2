@@ -329,7 +329,7 @@ class FpgaFHost(DigitiserDataReceiver):
         num_pols = len(self.delays)
         rv = []
         for pol in range(num_pols):
-            rv.append(self.registers[''].read()['data'])
+            rv.append(self.registers['tl_cd%i_status' % pol].read()['data'])
         return rv
 
     def delay_check_loadcounts(self):

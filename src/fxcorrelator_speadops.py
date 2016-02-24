@@ -131,7 +131,7 @@ class SpeadOperations(object):
             value=quant_bits)
 
     def item_0x1027(self, sig, stx=None):
-        val = self.corr.synchronisation_epoch
+        val = self.corr.get_synch_time()
         val = 0 if val < 0 else val
         add_item(
             sig=sig, stx=stx,

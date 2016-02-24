@@ -570,7 +570,7 @@ class XEngineOperations(object):
             self.logger.error('    This is wonky - why is the wait_time '
                               'less than zero? %.3f' % wait_time)
             self.logger.error('    corr synch epoch: %i' %
-                              self.corr.synchronisation_epoch)
+                              self.corr.get_synch_time())
             self.logger.error('    time.time(): %.10f' % t_now)
             self.logger.error('    time_from_mcnt: %.10f' % time_from_mcnt)
             self.logger.error('    ldmcnt: %i' % load_mcount)

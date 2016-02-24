@@ -12,6 +12,27 @@ LOGGER = logging.getLogger(__name__)
 
 
 @tornado.gen.coroutine
+def _sensor_cb_feng_rxtime(sensor, executor, instrument):
+    """
+    Sensor call back to check received f-engine times
+    :param sensor:
+    :param executor:
+    :param instrument:
+    :return:
+    """
+    result = False
+    try:
+        result = yield executor.submit(instrument.fops.check_rx_timestamps)
+    except Exception as e:
+        LOGGER.exception('Error updating feng rxtime sensor '
+                         '- {}'.format(e.message))
+    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+    LOGGER.debug('_sensor_cb_feng_rxtime ran')
+    IOLoop.current().call_later(10, _sensor_cb_feng_rxtime, sensor, executor,
+                                instrument)
+
+
+@tornado.gen.coroutine
 def _sensor_cb_fdelays(sensor, executor, f_host):
     """
     Sensor call back function for f-engine delay functionality
@@ -320,6 +341,7 @@ def _xhost_check_tx(sensor, executor, x_host):
 def setup_sensors(instrument, katcp_server):
     """
     Set up compound sensors to be reported to CAM
+    :param instrument: the corr2.Instrument these sensors act upon
     :param katcp_server: the katcp server with which to register the sensors
     :return:
     """
@@ -329,6 +351,7 @@ def setup_sensors(instrument, katcp_server):
         host.host: futures.ThreadPoolExecutor(max_workers=1)
         for host in instrument.fhosts + instrument.xhosts
     }
+    general_executor = futures.ThreadPoolExecutor(max_workers=1)
 
     if not instrument.initialised():
         raise RuntimeError('Cannot set up sensors until instrument is '
@@ -342,6 +365,16 @@ def setup_sensors(instrument, katcp_server):
                            'no further.')
 
     instrument.sensors_clear()
+
+    # f-engine received timestamps
+    sensor = Sensor.boolean(
+        name='feng_rxtime',
+        description='Are the times received by f-engines in the system okay',
+        default=False)
+    katcp_server.add_sensor(sensor)
+    instrument.sensors_add(sensor)
+    ioloop.add_callback(_sensor_cb_feng_rxtime, sensor, general_executor,
+                        instrument)
 
     # f-engine lru
     for _f in instrument.fhosts:

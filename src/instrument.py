@@ -42,7 +42,7 @@ class Instrument(object):
         self.hosts = []
 
         # an instrument was synchronised at some UNIX time - -1 means unset
-        self.synchronisation_epoch = -1
+        self._synchronisation_epoch = -1
 
         # an instrument provides data products, keyed on unique name
         self.data_products = {}
@@ -88,11 +88,11 @@ class Instrument(object):
         """
         time_now = time.time()
         if new_synch_time > time_now:
-            self.logger.error('Synch time in the future makes no '
-                         'sense? %d > %d' % (new_synch_time, time_now))
-            raise RuntimeError('Synch time in the future makes no '
-                               'sense? %d > %d' % (new_synch_time, time_now))
-        self.synchronisation_epoch = new_synch_time
+            _err = 'Synch time in the future makes no sense? %d > %d' % (
+                new_synch_time, time_now)
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        self._synchronisation_epoch = new_synch_time
         self.logger.info('Set synch epoch to %d' % new_synch_time)
 
     def get_synch_time(self):
@@ -100,7 +100,7 @@ class Instrument(object):
         Get the last sync time for this system
         :return: the current UNIX-time synch epoch
         """
-        return self.synchronisation_epoch
+        return self._synchronisation_epoch
 
     def _read_config_file(self):
         """
