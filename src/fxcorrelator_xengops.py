@@ -203,7 +203,7 @@ class XEngineOperations(object):
                                         target_function=get_reorder_data)
             vacc_data = self.vacc_status()
             return {'reorder': reo_data, 'vacc': vacc_data}
-    
+
         def _vacc_data_check(d0, d1):
             # check errors are not incrementing
             for host in self.hosts:
@@ -225,7 +225,7 @@ class XEngineOperations(object):
                                           'incrementing' % (xeng, host.host))
                         return False
             return True
-    
+
         def _reorder_data_check(d0, d1):
             for host in self.hosts:
                 for ctr in range(0, host.x_per_fpga):
@@ -235,10 +235,10 @@ class XEngineOperations(object):
                                           'reg %s error' % (host.host, reg))
                         return False
             return True
-    
+
         new_data = get_data()
         # self.logger.info('new_data: %s' % new_data)
-    
+
         if self.vacc_check_cb_data is not None:
             force_sync = False
             # check the vacc status data first
@@ -744,7 +744,7 @@ class XEngineOperations(object):
     def get_acc_time(self):
         """
         Get the dump time currently being used.
-    
+
         Note: Will only be correct if accumulation time was set using this
         correlator
         object instance since cached values are used for the calculation.
@@ -782,7 +782,7 @@ class XEngineOperations(object):
             target_function=(
                 lambda fpga_:
                 fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
-        self.logger.info('Set vacc accumulation length %d system-wide '
+        self.logger.info('Set vacc accumulation length %.2f system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
         self.corr.speadops.update_metadata([0x1015, 0x1016])
