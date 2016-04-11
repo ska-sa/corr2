@@ -180,6 +180,7 @@ class FxCorrelator(Instrument):
             return
 
         # cal the qdr on all boards
+        # logging.getLogger('casperfpga.qdr').setLevel(logging.INFO + 7)
         if qdr_cal:
             self.qdr_calibrate()
         else:
@@ -326,10 +327,11 @@ class FxCorrelator(Instrument):
         _tmp = 2**self.timestamp_bits
         return time_diff_in_samples % _tmp
 
-    def qdr_calibrate(self):
+    def qdr_calibrate(self, timeout=120):
         """
         Run a software calibration routine on all the FPGA hosts.
         Do it on F- and X-hosts in parallel.
+        :param timeout: how many seconds to wait for it to complete
         :return:
         """
         def _qdr_cal(_fpga):
@@ -342,7 +344,8 @@ class FxCorrelator(Instrument):
         self.logger.info('Calibrating QDR on F- and X-engines, this '
                          'takes a while.')
         qdr_calfail = False
-        results = THREADED_FPGA_OP(self.fhosts + self.xhosts, 30, (_qdr_cal,))
+        results = THREADED_FPGA_OP(
+            self.fhosts + self.xhosts, timeout, (_qdr_cal,))
         for fpga, result in results.items():
             self.logger.info('FPGA %s QDR cal results: start(%.3f) end(%.3f) '
                              'took(%.3f)' %

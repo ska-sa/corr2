@@ -480,6 +480,22 @@ class Corr2Server(katcp.DeviceServer):
             sock.inform('log', logstring)
         return 'ok', len(logstrings)
 
+    @request(Str(default=''), Int(default=-1))
+    @return_reply()
+    def request_set_loglevel_logger(self, logger_name, log_level_int, sock):
+        """
+        Set the log level of one of the internal loggers.
+        :param logger_name: the name of the logger to configure
+        :param log_level_int: the integer level to set (eg. INFO=20, DEBUG=10)
+        :param sock: not sure...
+        """
+        if logger_name != '':
+            logger = logging.getLogger(logger_name)
+        else:
+            logger = logging.getLogger()
+        logger.setLevel(log_level_int)
+        return 'ok',
+
     # @request(Int(default=-1), Int(default=-1))
     # @return_reply(Int(), Int())
     # def request_eq(self, sock, new_real, new_imag):

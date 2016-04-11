@@ -3,6 +3,7 @@ import logging
 import struct
 from threading import Event
 
+import casperfpga.memory as caspermem
 from host_fpga import FpgaHost
 
 LOGGER = logging.getLogger(__name__)
@@ -819,8 +820,25 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Read the ADC snapshots from this Fhost
         """
-        p0 = self.snapshots.snap_adc0_ss.read()['data']
-        p1 = self.snapshots.snap_adc1_ss.read()['data']
+        if 'p1_4' in self.snapshots.snap_adc0_ss.field_names():
+            # new style
+            self.registers.control.write(adc_snap_arm=0)
+            self.snapshots.snap_adc0_ss.arm()
+            self.snapshots.snap_adc1_ss.arm()
+            self.registers.control.write(adc_snap_arm=1)
+            d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
+            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
+            self.registers.control.write(adc_snap_arm=0)
+            p0 = {'d%i' % ctr: d['p0_d%i' % ctr] for ctr in range(8)}
+            p1 = {'d%i' % ctr: d['p1_d%i' % ctr]
+                  for ctr in [0, 1, 2, 4, 5, 6, 7]}
+            p1['d3'] = []
+            for ctr in range(len(d['p1_d3_u8'])):
+                _tmp = (d['p1_d3_u8'][ctr] << 2) | d['p1_d3_l2'][ctr]
+                p1['d3'].append(caspermem.bin2fp(_tmp, 10, 9, True))
+        else:
+            p0 = self.snapshots.snap_adc0_ss.read()['data']
+            p1 = self.snapshots.snap_adc1_ss.read()['data']
         return {'p0': p0, 'p1': p1}
 
 '''

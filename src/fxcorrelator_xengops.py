@@ -193,14 +193,21 @@ class XEngineOperations(object):
             """
             Get the relevant data from the X-engine FPGAs
             """
-            def get_reorder_data(fpga):
+            # older versions had other register names
+            _OLD = 'reorderr_timeout0' in self.hosts[0].registers.names()
+
+            def _get_reorder_data(fpga):
                 rv = {}
                 for _ctr in range(0, fpga.x_per_fpga):
-                    _reg = fpga.registers['reorderr_timeout%i' % _ctr]
-                    rv['etim%i' % _ctr] = _reg.read()['data']['reg']
+                    if _OLD:
+                        _reg = fpga.registers['reorderr_timeout%i' % _ctr]
+                        rv['etim%i' % _ctr] = _reg.read()['data']['reg']
+                    else:
+                        _reg = fpga.registers['reorderr_timedisc%i' % _ctr]
+                        rv['etim%i' % _ctr] = _reg.read()['data']['timeout']
                 return rv
             reo_data = THREADED_FPGA_OP(self.hosts, timeout=5,
-                                        target_function=get_reorder_data)
+                                        target_function=_get_reorder_data)
             vacc_data = self.vacc_status()
             return {'reorder': reo_data, 'vacc': vacc_data}
     
@@ -292,6 +299,7 @@ class XEngineOperations(object):
     def write_data_product_destination(self, data_product):
         """
         Write the x-engine data stream destination to the hosts.
+        :param data_product - the data product on which to act
         :return:
         """
         dprod = data_product or self.data_product
@@ -800,15 +808,15 @@ class XEngineOperations(object):
         assert len(self.corr.fengine_sources)/2 == self.corr.n_antennas
         order1 = []
         order2 = []
-        for ctr1 in range(self.corr.n_antennas):
-            # print 'ctr1(%d)' % ctr1
+        for ant_ctr in range(self.corr.n_antennas):
+            # print 'ant_ctr(%d)' % ant_ctr
             for ctr2 in range(int(self.corr.n_antennas/2), -1, -1):
-                temp = (ctr1 - ctr2) % self.corr.n_antennas
+                temp = (ant_ctr - ctr2) % self.corr.n_antennas
                 # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
-                if ctr1 >= temp:
-                    order1.append((temp, ctr1))
+                if ant_ctr >= temp:
+                    order1.append((temp, ant_ctr))
                 else:
-                    order2.append((ctr1, temp))
+                    order2.append((ant_ctr, temp))
         order2 = [order_ for order_ in order2 if order_ not in order1]
         baseline_order = order1 + order2
         source_names = []
@@ -829,6 +837,7 @@ class XEngineOperations(object):
     def xeng_tx_enable(self, data_product):
         """
         Start transmission of data products from the x-engines
+        :param data_product - the data product on which to act
         :return:
         """
         dprod = data_product or self.data_product
@@ -842,6 +851,7 @@ class XEngineOperations(object):
     def xeng_tx_disable(self, data_product):
         """
         Start transmission of data products from the x-engines
+        :param data_product - the data product on which to act
         :return:
         """
         dprod = data_product or self.data_product
@@ -1025,7 +1035,8 @@ class XEngineOperations(object):
                         'imaginary) unsigned integers.' % n_xengs,
             # dtype=numpy.int32,
             dtype=numpy.dtype('>i4'),
-            shape=[self.corr.n_chans, len(self.get_baseline_order()), 2])
+            # shape=[self.corr.n_chans, len(self.get_baseline_order()), 2])
+            shape=[self.corr.n_chans * len(self.get_baseline_order()), 2])
 
     def spead_meta_issue_all(self, data_product):
         """
