@@ -1035,8 +1035,8 @@ class XEngineOperations(object):
                         'imaginary) unsigned integers.' % n_xengs,
             # dtype=numpy.int32,
             dtype=numpy.dtype('>i4'),
-            # shape=[self.corr.n_chans, len(self.get_baseline_order()), 2])
-            shape=[self.corr.n_chans * len(self.get_baseline_order()), 2])
+            shape=[self.corr.n_chans, len(self.get_baseline_order()), 2])
+            # shape=[self.corr.n_chans * len(self.get_baseline_order()), 2])
 
     def spead_meta_issue_all(self, data_product):
         """
