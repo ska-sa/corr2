@@ -348,7 +348,10 @@ class FxCorrelator(Instrument):
                 all_passed = True
                 for _qdr in _fpga.qdrs:
                     if not _results[_qdr.name]:
-                        _res = _qdr.qdr_cal(fail_hard=False)
+                        try:
+                            _res = _qdr.qdr_cal(fail_hard=False)
+                        except RuntimeError:
+                            _res = False
                         try:
                             _resval = _res[0]
                         except TypeError:
