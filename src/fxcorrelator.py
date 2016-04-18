@@ -32,6 +32,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 LOGGER = logging.getLogger(__name__)
 
 POST_MESS_DELAY = 5
+MAX_QDR_ATTEMPTS = 5
 
 
 class FxCorrelator(Instrument):
@@ -327,7 +328,7 @@ class FxCorrelator(Instrument):
         _tmp = 2**self.timestamp_bits
         return time_diff_in_samples % _tmp
 
-    def qdr_calibrate(self, timeout=120):
+    def qdr_calibrate(self, timeout=120 * MAX_QDR_ATTEMPTS):
         """
         Run a software calibration routine on all the FPGA hosts.
         Do it on F- and X-hosts in parallel.
@@ -335,30 +336,48 @@ class FxCorrelator(Instrument):
         :return:
         """
         def _qdr_cal(_fpga):
+            """
+            Calibrate the QDRs found on a given FPGA.
+            :param _fpga:
+            :return:
+            """
             _tic = time.time()
-            _results = {}
-            for _qdr in _fpga.qdrs:
-                _results[_qdr.name] = _qdr.qdr_cal(fail_hard=False)
+            attempts = 0
+            _results = {_qdr.name: False for _qdr in _fpga.qdrs}
+            while True:
+                all_passed = True
+                for _qdr in _fpga.qdrs:
+                    if not _results[_qdr.name]:
+                        _res = _qdr.qdr_cal(fail_hard=False)
+                        try:
+                            _resval = _res[0]
+                        except TypeError:
+                            _resval = _res
+                        if not _resval:
+                            all_passed = False
+                        _results[_qdr.name] = _resval
+                attempts += 1
+                if all_passed or (attempts >= MAX_QDR_ATTEMPTS):
+                    break
             _toc = time.time()
-            return {'results': _results, 'tic': _tic, 'toc': _toc}
-        self.logger.info('Calibrating QDR on F- and X-engines, this '
-                         'takes a while.')
+            return {'results': _results, 'tic': _tic, 'toc': _toc,
+                    'attempts': attempts}
+
+        self.logger.info('Calibrating QDR on F- and X-engines, this may '
+                         'take a while.')
         qdr_calfail = False
         results = THREADED_FPGA_OP(
             self.fhosts + self.xhosts, timeout, (_qdr_cal,))
         for fpga, result in results.items():
-            self.logger.info('FPGA %s QDR cal results: start(%.3f) end(%.3f) '
-                             'took(%.3f)' %
-                             (fpga, result['tic'], result['toc'],
-                              result['toc'] - result['tic']))
+            _time_taken = result['toc'] - result['tic']
+            self.logger.info('FPGA %s QDR cal: %.3fs, %i attempts' %
+                             (fpga, _time_taken, result['attempts']))
             for qdr, qdrres in result['results'].items():
                 if not qdrres:
                     qdr_calfail = True
                     break
                 self.logger.info('\t%s: cal okay: %s' %
                                  (qdr, 'True' if qdrres else 'False'))
-            if qdr_calfail:
-                break
         if qdr_calfail:
             raise RuntimeError('QDR calibration failure.')
         # for host in self.fhosts:
