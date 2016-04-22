@@ -352,7 +352,7 @@ class Beam(object):
         if (currbw == bandwidth) and (currcf == centerfreq):
             LOGGER.info('Beam %s: bw, cf already set to %.3f, %.3f' % (
                 self.name, bandwidth, centerfreq))
-            return
+            return currbw, currcf
         parts = self._bandwidth_to_partitions(bandwidth, centerfreq)
         LOGGER.info('BW(%.3f) CF(%.3f) translates to partitions: %s' %
                     (bandwidth, centerfreq, parts))
