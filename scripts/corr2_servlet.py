@@ -113,16 +113,24 @@ class Corr2Server(katcp.DeviceServer):
         """
         pass
 
-    @request(Bool(default=True), Bool(default=True))
+    @request(Bool(default=True), Bool(default=True), Bool(default=True),
+             Bool(default=True))
     @return_reply()
-    def request_initialise(self, sock, program, monitor_vacc):
+    def request_initialise(self, sock, program, qdr_cal, require_epoch,
+                           monitor_vacc):
         """
         Initialise self.instrument
         :param sock:
+        :param program: program the FPGA boards if True
+        :param qdr_cal: perform QDR cal if True
+        :param require_epoch: the synch epoch MUST be set before init if True
+        :param monitor_vacc: start the VACC monitoring ioloop
         :return:
         """
         try:
-            self.instrument.initialise(program=program)
+            self.instrument.initialise(program=program,
+                                       qdr_cal=qdr_cal,
+                                       require_epoch=require_epoch)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',
@@ -471,6 +479,22 @@ class Corr2Server(katcp.DeviceServer):
         for logstring in logstrings:
             sock.inform('log', logstring)
         return 'ok', len(logstrings)
+
+    @request(Str(default=''), Int(default=-1))
+    @return_reply()
+    def request_set_loglevel_logger(self, logger_name, log_level_int, sock):
+        """
+        Set the log level of one of the internal loggers.
+        :param logger_name: the name of the logger to configure
+        :param log_level_int: the integer level to set (eg. INFO=20, DEBUG=10)
+        :param sock: not sure...
+        """
+        if logger_name != '':
+            logger = logging.getLogger(logger_name)
+        else:
+            logger = logging.getLogger()
+        logger.setLevel(log_level_int)
+        return 'ok',
 
     # @request(Int(default=-1), Int(default=-1))
     # @return_reply(Int(), Int())

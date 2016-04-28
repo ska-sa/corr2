@@ -155,8 +155,62 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return all_okay
 
-    def _prepare_delay_vals(self, delay=0, delta_delay=0, phase_offset=0, 
-                        delta_phase_offset=0, ld_time=None, ld_check=True):
+    def check_rx_timestamps(self):
+        """
+        Are the timestamps being received by the f-engines okay?
+        :return:
+        """
+        self.logger.info('Checking timestamps on F hosts...')
+        results = THREADED_FPGA_FUNC(
+            self.hosts, timeout=5,
+            target_function='get_local_time')
+        read_time = time.time()
+        synch_epoch = self.corr.get_synch_time()
+        if synch_epoch == -1:
+            self.logger.warning('System synch epoch unset, skipping f-engine '
+                                'future time test.')
+        feng_times = []
+        for host in self.hosts:
+            feng_mcnt = results[host.host]
+            # are the count bits okay?
+            if feng_mcnt & 0xfff != 0:
+                _err = '%s: bottom 12 bits of timestamp from f-engine are ' \
+                       'not zero?! feng_mcnt(%i)' % (host.host, feng_mcnt)
+                self.logger.error(_err)
+                return False
+            # compare the f-engine times to the local UNIX time
+            if synch_epoch != -1:
+                # is the time in the future?
+                feng_time_s = feng_mcnt / float(self.corr.sample_rate_hz)
+                feng_time = synch_epoch + feng_time_s
+                if feng_time > read_time:
+                    _err = '%s: f-engine time cannot be in the future? ' \
+                           'now(%.3f) feng_time(%.3f)' % (host.host, read_time,
+                                                          feng_time)
+                    self.logger.error(_err)
+                    return False
+                # is the time close enough to local time?
+                if abs(read_time - feng_time) > self.corr.time_offset_allowed_s:
+                    _err = '%s: time calculated from board cannot be so far ' \
+                           'from local time: now(%.3f) feng_time(%.3f) ' \
+                           'diff(%.3f)' % (host.host, read_time, feng_time,
+                                           read_time - feng_time)
+                    self.logger.error(_err)
+                    return False
+            feng_times.append(feng_mcnt)
+
+        # are they all within 500ms of one another?
+        diff = max(feng_times) - min(feng_times)
+        diff_ms = diff / float(self.corr.sample_rate_hz) * 1000.0
+        if diff_ms > self.corr.time_jitter_allowed_ms:
+            _err = 'F-engine timestamps are too far apart: %.3fms' % diff_ms
+            self.logger.error(_err)
+            return False
+        self.logger.info('\tdone.')
+        return True
+
+    def _prepare_delay_vals(self, delay=0, delta_delay=0, phase_offset=0,
+                            delta_phase_offset=0, ld_time=None, ld_check=True):
         # convert delay in time into delay in samples
         delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
 
@@ -164,7 +218,8 @@ class FEngineOperations(object):
         phase_offset_s = float(phase_offset)/float(numpy.pi)
 
         # convert from radians per second to fractions of sample per sample
-        delta_phase_offset_s = float(delta_phase_offset)/float(numpy.pi) / (self.corr.sample_rate_hz)
+        delta_phase_offset_s = (float(delta_phase_offset) / float(numpy.pi) /
+                                self.corr.sample_rate_hz)
 
         if ld_time is not None:
             # check that load time is not too soon or in the past

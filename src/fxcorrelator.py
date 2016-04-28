@@ -32,6 +32,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 LOGGER = logging.getLogger(__name__)
 
 POST_MESS_DELAY = 5
+MAX_QDR_ATTEMPTS = 5
 
 
 class FxCorrelator(Instrument):
@@ -101,11 +102,20 @@ class FxCorrelator(Instrument):
             spead_logger = logging.getLogger('spead')
             spead_logger.setLevel(logging.WARNING)
 
-    def initialise(self, program=True, qdr_cal=True):
+    def initialise(self, program=True, qdr_cal=True, require_epoch=False):
         """
         Set up the correlator using the information in the config file.
+        :param program: program the FPGA boards if True
+        :param qdr_cal: perform QDR cal if True
+        :param require_epoch: the synch epoch MUST be set before init if True
         :return:
         """
+        # check that the instrument's synch epoch has been set
+        if require_epoch:
+            if self.get_synch_time() == -1:
+                raise RuntimeError('System synch epoch has not been set prior'
+                                   ' to initialisation!')
+
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self)
         self.xops = XEngineOperations(self)
@@ -171,6 +181,7 @@ class FxCorrelator(Instrument):
             return
 
         # cal the qdr on all boards
+        # logging.getLogger('casperfpga.qdr').setLevel(logging.INFO + 7)
         if qdr_cal:
             self.qdr_calibrate()
         else:
@@ -208,6 +219,11 @@ class FxCorrelator(Instrument):
         # check to see if the f engines are receiving all their data
         if not self.fops.check_rx():
             raise RuntimeError('The f-engines RX have a problem.')
+
+        # check that the timestamps received on the f-engines make sense
+        if not self.fops.check_rx_timestamps():
+            raise RuntimeError('The timestamps received by the f-engines '
+                               'are not okay. Check the logs')
 
         # check that the F-engines are transmitting data correctly
         if not self.fops.check_tx():
@@ -247,7 +263,29 @@ class FxCorrelator(Instrument):
             raise KeyError('Sensor {} already exists'.format(sensor.name))
         self._sensors[sensor.name] = sensor
 
-    def est_sync_epoch(self):
+    def set_synch_time(self, new_synch_time):
+        """
+        Set the last sync time for this system
+        :param new_synch_time: UNIX time
+        :return: <nothing>
+        """
+        time_now = time.time()
+        # future?
+        if new_synch_time > time_now:
+            _err = 'Synch time in the future makes no sense? %.3f > %.3f' % (
+                new_synch_time, time_now)
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        # too far in the past?
+        if new_synch_time < time_now - (2**self.timestamp_bits):
+            _err = 'Synch epoch supplied is too far in the past: now(%.3f) ' \
+                   'epoch(%.3f)' % (time_now, new_synch_time)
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        self._synchronisation_epoch = new_synch_time
+        self.logger.info('Set synch epoch to %d' % new_synch_time)
+
+    def est_synch_epoch(self):
         """
         Estimates the synchronisation epoch based on current F-engine
         timestamp, and the system time.
@@ -262,24 +300,18 @@ class FxCorrelator(Instrument):
             self.logger.error(_err)
             raise RuntimeError(_err)
         t_now = time.time()
-        self.synchronisation_epoch = (t_now - feng_mcnt /
-                                      float(self.sample_rate_hz))
-        if self.synchronisation_epoch >= t_now:
-            _err = 'Estimated synch time is the future? time.time(%.3f) ' \
-                   'synch_epoch(%.3f)' % (t_now, self.synchronisation_epoch)
-            self.logger.error(_err)
-            raise RuntimeError(_err)
-        self.logger.info('    new epoch: %.3f' % self.synchronisation_epoch)
+        self.set_synch_time(t_now - feng_mcnt / float(self.sample_rate_hz))
+        self.logger.info('    new epoch: %.3f' % self.get_synch_time())
 
     def time_from_mcnt(self, mcnt):
         """
         Returns the unix time UTC equivalent to the board timestamp. Does
         NOT account for wrapping timestamps.
         """
-        if self.synchronisation_epoch < 0:
+        if self.get_synch_time() < 0:
             self.logger.info('time_from_mcnt: synch epoch unset, estimating')
-            self.est_sync_epoch()
-        return self.synchronisation_epoch + (
+            self.est_synch_epoch()
+        return self.get_synch_time() + (
             float(mcnt) / float(self.sample_rate_hz))
 
     def mcnt_from_time(self, time_seconds):
@@ -287,45 +319,68 @@ class FxCorrelator(Instrument):
         Returns the board timestamp from a given UTC system time
         (seconds since Unix Epoch). Accounts for wrapping timestamps.
         """
-        if self.synchronisation_epoch < 0:
+        if self.get_synch_time() < 0:
             self.logger.info('mcnt_from_time: synch epoch unset, estimating')
-            self.est_sync_epoch()
-        time_diff_from_synch_epoch = time_seconds - self.synchronisation_epoch
+            self.est_synch_epoch()
+        time_diff_from_synch_epoch = time_seconds - self.get_synch_time()
         time_diff_in_samples = int(time_diff_from_synch_epoch *
                                    self.sample_rate_hz)
-        _tmp = 2**int(self.configd['FxCorrelator']['timestamp_bits'])
+        _tmp = 2**self.timestamp_bits
         return time_diff_in_samples % _tmp
 
-    def qdr_calibrate(self):
+    def qdr_calibrate(self, timeout=120 * MAX_QDR_ATTEMPTS):
         """
         Run a software calibration routine on all the FPGA hosts.
         Do it on F- and X-hosts in parallel.
+        :param timeout: how many seconds to wait for it to complete
         :return:
         """
         def _qdr_cal(_fpga):
+            """
+            Calibrate the QDRs found on a given FPGA.
+            :param _fpga:
+            :return:
+            """
             _tic = time.time()
-            _results = {}
-            for _qdr in _fpga.qdrs:
-                _results[_qdr.name] = _qdr.qdr_cal(fail_hard=False)
+            attempts = 0
+            _results = {_qdr.name: False for _qdr in _fpga.qdrs}
+            while True:
+                all_passed = True
+                for _qdr in _fpga.qdrs:
+                    if not _results[_qdr.name]:
+                        try:
+                            _res = _qdr.qdr_cal(fail_hard=False)
+                        except RuntimeError:
+                            _res = False
+                        try:
+                            _resval = _res[0]
+                        except TypeError:
+                            _resval = _res
+                        if not _resval:
+                            all_passed = False
+                        _results[_qdr.name] = _resval
+                attempts += 1
+                if all_passed or (attempts >= MAX_QDR_ATTEMPTS):
+                    break
             _toc = time.time()
-            return {'results': _results, 'tic': _tic, 'toc': _toc}
-        self.logger.info('Calibrating QDR on F- and X-engines, this '
-                         'takes a while.')
+            return {'results': _results, 'tic': _tic, 'toc': _toc,
+                    'attempts': attempts}
+
+        self.logger.info('Calibrating QDR on F- and X-engines, this may '
+                         'take a while.')
         qdr_calfail = False
-        results = THREADED_FPGA_OP(self.fhosts + self.xhosts, 30, (_qdr_cal,))
+        results = THREADED_FPGA_OP(
+            self.fhosts + self.xhosts, timeout, (_qdr_cal,))
         for fpga, result in results.items():
-            self.logger.info('FPGA %s QDR cal results: start(%.3f) end(%.3f) '
-                             'took(%.3f)' %
-                             (fpga, result['tic'], result['toc'],
-                              result['toc'] - result['tic']))
+            _time_taken = result['toc'] - result['tic']
+            self.logger.info('FPGA %s QDR cal: %.3fs, %i attempts' %
+                             (fpga, _time_taken, result['attempts']))
             for qdr, qdrres in result['results'].items():
                 if not qdrres:
                     qdr_calfail = True
                     break
                 self.logger.info('\t%s: cal okay: %s' %
                                  (qdr, 'True' if qdrres else 'False'))
-            if qdr_calfail:
-                break
         if qdr_calfail:
             raise RuntimeError('QDR calibration failure.')
         # for host in self.fhosts:
@@ -410,6 +465,9 @@ class FxCorrelator(Instrument):
         self.sensor_poll_time = int(_fxcorr_d['sensor_poll_time'])
         self.katcp_port = int(_fxcorr_d['katcp_port'])
         self.sample_rate_hz = int(_fxcorr_d['sample_rate_hz'])
+        self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
+        self.time_jitter_allowed_ms = int(_fxcorr_d['time_jitter_allowed_ms'])
+        self.time_offset_allowed_s = int(_fxcorr_d['time_offset_allowed_s'])
 
         _feng_d = self.configd['fengine']
         self.adc_demux_factor = int(_feng_d['adc_demux_factor'])
