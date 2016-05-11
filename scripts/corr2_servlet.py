@@ -445,7 +445,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument.xops.vacc_sync()
         except Exception as e:
-            return 'fail', 'Error syncing vaccs: ' % e.message
+            return 'fail', 'Error syncing vaccs: %s' % e.message
         return 'ok',
 
     @request(Int(default=-1))
