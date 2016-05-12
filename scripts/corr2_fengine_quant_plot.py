@@ -36,9 +36,6 @@ parser.add_argument(
     '--hist', dest='hist', action='store_true', default=False,
     help='plot a histogram of the incoming data')
 parser.add_argument(
-    '--fft', dest='fft', action='store_true', default=False,
-    help='perform a soft FFT on the data before plotting')
-parser.add_argument(
     '--integrate', dest='integrate', type=int, action='store', default=0,
     help='fft option - how many spectra should be integrated')
 parser.add_argument(
@@ -120,8 +117,9 @@ def get_data():
     for loop_ctr in range(0, loops_necessary):
         temp_snapdata = {}
         for snap in required_snaps:
-            offset = 8 * snapshot_bytes * loop_ctr
+            offset = snapshot_bytes * loop_ctr
             print 'reading %s at offset %i' % (snap, offset)
+            sys.stdout.flush()
             temp_snapdata[snap] = fpga.snapshots[snap].read(offset=offset)
         snapdata.append(temp_snapdata)
 
@@ -129,8 +127,10 @@ def get_data():
     pol_data = [[], []]
     # reorder the data
     for loop_ctr in range(0, loops_necessary):
+        print 'calculating quant data for loop %i' % loop_ctr
         quant_data = [snapdata[loop_ctr][required_snaps[0]]['data'],
                       snapdata[loop_ctr][required_snaps[1]]['data']]
+        print '\tsnap was %i long' % len(quant_data[0]['real0'])
         for polctr in range(0, 2):
             for data_ctr in range(0, len(quant_data[0]['real0'])):
                 for valctr in range(0, 4):
@@ -138,14 +138,15 @@ def get_data():
                     ival = quant_data[polctr]['imag%i' % valctr][data_ctr]
                     cplx = numpy.complex(rval, ival)
                     pol_data[polctr].append(cplx)
+        print '\tpol_data is now %i long' % len(pol_data[0])
 
-        if len(pol_data[0]) != len(pol_data[1]):
-            raise RuntimeError('Unequal length data for p0 and p1?!')
-        print '%s data is %d points long.' % (fpga.host, len(pol_data[0]))
-        assert len(pol_data[0]) == EXPECTED_FREQS, 'Not enough snap data for ' \
+    if len(pol_data[0]) != len(pol_data[1]):
+        raise RuntimeError('Unequal length data for p0 and p1?!')
+    print '%s data is %d points long.' % (fpga.host, len(pol_data[0]))
+    assert len(pol_data[0]) == EXPECTED_FREQS, 'Not enough snap data for ' \
                                                    'the number of channels!'
-        fpga_data['p0'] = pol_data[0]
-        fpga_data['p1'] = pol_data[1]
+    fpga_data['p0'] = pol_data[0]
+    fpga_data['p1'] = pol_data[1]
     return fpga_data
 
 
@@ -193,7 +194,7 @@ for p in range(2):
 integrated_data = None
 integration_counter = 0
 plot_counter = 0
-fig.canvas.manager.window.after(10, plot_func, fig, subplots,
+fig.canvas.manager.window.after(1, plot_func, fig, subplots,
                                 integrated_data,
                                 integration_counter, plot_counter)
 pyplot.show()
