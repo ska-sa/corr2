@@ -16,6 +16,12 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 use_xeng_sim = False
 
+MAX_VACC_SYNCH_ATTEMPTS = 5
+
+
+class VaccSynchAttemptsMaxedOut(RuntimeError):
+    pass
+
 
 class XEngineOperations(object):
 
@@ -354,7 +360,11 @@ class XEngineOperations(object):
                     rxaddress = '%s%d' % (source_prefix,
                                           source_base + source_ctr)
                     gbe.multicast_receive(rxaddress, 0)
+
+                    # CLUDGE
                     source_ctr += 1
+                    # source_ctr += 4
+
                     self.logger.info('\txhost %s %s subscribing to address %s' %
                                      (host.host, gbe.name, rxaddress))
         else:
@@ -643,8 +653,15 @@ class XEngineOperations(object):
         self.vacc_synch_running.set()
         min_load_time = 2
 
+        attempts = 0
         try:
             while True:
+                attempts += 1
+
+                if attempts > MAX_VACC_SYNCH_ATTEMPTS:
+                    raise VaccSynchAttemptsMaxedOut(
+                        'Reached maximum vacc synch attempts, aborting')
+
                 # check if the vaccs need resetting
                 self._vacc_sync_check_reset()
 
@@ -664,7 +681,8 @@ class XEngineOperations(object):
                     target_function=('vacc_set_loadtime', (load_mcount,),))
 
                 # check the current counts
-                (arm_count0, load_count0) = self._vacc_sync_check_counts_initial()
+                (arm_count0,
+                 load_count0) = self._vacc_sync_check_counts_initial()
 
                 # arm the xhosts
                 THREADED_FPGA_FUNC(
@@ -711,6 +729,10 @@ class XEngineOperations(object):
                 return synch_time
         except KeyboardInterrupt:
             self.vacc_synch_running.clear()
+        except VaccSynchAttemptsMaxedOut as e:
+            self.vacc_synch_running.clear()
+            self.logger.error(e.message)
+            raise e
 
     def vacc_check_okay_initial(self):
         """
