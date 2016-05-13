@@ -487,14 +487,14 @@ class FpgaDsimHost(FpgaHost):
         mac_bits = start_mac.split(':')
         macbase = int(mac_bits[5])
         for ctr in range(num_tengbes):
-            mac = '%s:%d' % (':'.join(mac_bits[0:5]), macbase + ctr)
+            this_mac = tengbe.Mac.from_roach_hostname(self.host, ctr)
             ip = '0.0.0.0'
-            self.tengbes['gbe%d' % ctr].setup(mac=mac, ipaddress=ip, port=port)
+            self.tengbes['gbe%d' % ctr].setup(mac=this_mac, ipaddress=ip, port=port)
         for gbe in self.tengbes:
             gbe.dhcp_start()
 
         # set the destination IP and port for the tx
-        gbe_ctr = 0             # pol-global counter for gbe's
+        gbe_ctr = 0             # pol-global counter for gbes
         for pol in range(0, num_pols):
             # Get address configuration for current polarisation
             single_destination = int(self.config.get(
@@ -504,7 +504,7 @@ class FpgaDsimHost(FpgaHost):
             txaddr_base = int(txaddr_bits[3])
             txaddr_prefix = '.'.join(txaddr_bits[0:3])
 
-            # Set the gbe destination addres for each gbe used by this pol
+            # Set the gbe destination address for each gbe used by this pol
             addr_offset = 0
             for pol_gbe_ctr in range(0, gbes_per_pol):
                 txip = txaddr_base + addr_offset
