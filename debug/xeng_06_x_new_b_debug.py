@@ -63,12 +63,19 @@ max_hostname = -1
 for fpga_ in fpgas:
     max_hostname = max(len(fpga_.host), max_hostname)
     freg_error = False
+    #for necreg in ['reordcnt_spec0', 'reordcnt_spec1', 'reordcnt_spec2', 'reordcnt_spec3',
+    #               'reord_missant0', 'reord_missant1', 'reord_missant2', 'reord_missant3',
+    #               'reordcnt_recv0', 'reordcnt_recv1', 'reordcnt_recv2', 'reordcnt_recv3',
+    #               'reorderr_recv0', 'reorderr_recv1', 'reorderr_recv2', 'reorderr_recv3',
+    #               'reorderr_timeout0', 'reorderr_timeout1', 'reorderr_timeout2', 'reorderr_timeout3',
+    #               'reorderr_disc0', 'reorderr_disc1', 'reorderr_disc2', 'reorderr_disc3', ]:
     for necreg in ['reordcnt_spec0', 'reordcnt_spec1', 'reordcnt_spec2', 'reordcnt_spec3',
-                   'reord_missant0', 'reord_missant1', 'reord_missant2', 'reord_missant3',
+    #               'reord_missant0', 'reord_missant1', 'reord_missant2', 'reord_missant3',
                    'reordcnt_recv0', 'reordcnt_recv1', 'reordcnt_recv2', 'reordcnt_recv3',
                    'reorderr_recv0', 'reorderr_recv1', 'reorderr_recv2', 'reorderr_recv3',
-                   'reorderr_timeout0', 'reorderr_timeout1', 'reorderr_timeout2', 'reorderr_timeout3',
-                   'reorderr_disc0', 'reorderr_disc1', 'reorderr_disc2', 'reorderr_disc3', ]:
+                   'reorderr_timedisc0', 'reorderr_timedisc1', 'reorderr_timedisc2', 'reorderr_timedisc3',]:
+    #               'reorderr_timeout0', 'reorderr_timeout1', 'reorderr_timeout2', 'reorderr_timeout3',
+    #               'reorderr_disc0', 'reorderr_disc1', 'reorderr_disc2', 'reorderr_disc3', ]:
         if necreg not in fpga_.registers.names():
             freg_error = True
             continue
@@ -88,12 +95,14 @@ if args.rstcnt:
 def get_fpga_data(fpga):
     data = {}
     for ctr in range(0, 4):
-        # data['reocnt%i' % ctr] = fpga.registers['reordcnt_spec%i' % ctr].read()['data']['reg']
-        data['miss%i' % ctr] = fpga.registers['reord_missant%i' % ctr].read()['data']['reg']
+        tmp = fpga.registers['reordcnt_spec%i' % ctr].read()['data']
+        data['reocnt%i' % ctr] = tmp['spec_cnt']
+        data['miss%i' % ctr] = tmp['missed_ant']
         data['rcvcnt%i' % ctr] = fpga.registers['reordcnt_recv%i' % ctr].read()['data']['reg']
-        data['ercv%i' % ctr] = fpga.registers['reorderr_recv%i' % ctr].read()['data']['reg']
-        data['etim%i' % ctr] = fpga.registers['reorderr_timeout%i' % ctr].read()['data']['reg']
-        data['edisc%i' % ctr] = fpga.registers['reorderr_disc%i' % ctr].read()['data']['reg']
+        #data['ercv%i' % ctr] = fpga.registers['reorderr_recv%i' % ctr].read()['data']['reg']
+        tmp = fpga.registers['reorderr_timedisc%i' % ctr].read()['data']
+        #data['etim%i' % ctr] = tmp['timeout']
+        #data['edisc%i' % ctr] = tmp['disc']
     return data
 
 data = get_fpga_data(fpgas[0])
