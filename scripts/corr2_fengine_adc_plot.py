@@ -42,6 +42,9 @@ parser.add_argument(
     '--linear', dest='linear', action='store_true', default=False,
     help='plot linear, not log')
 parser.add_argument(
+    '--noplot', dest='noplot', action='store_true', default=False,
+    help='do not plot, dump values to screen')
+parser.add_argument(
     '--loglevel', dest='log_level', action='store', default='INFO',
     help='log level to use, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -163,23 +166,31 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
 
 # set up the figure with a subplot to be plotted
 data = get_data()
-fig = pyplot.figure()
-subplots = []
-num_plots = len(data.keys())
-for p in range(num_plots):
-    sub_plot = fig.add_subplot(num_plots, 1, p+1)
-    subplots.append(sub_plot)
-integrated_data = None
-integration_counter = 0
-plot_counter = 0
-fig.canvas.manager.window.after(10, plot_func, fig,
-                                subplots, integrated_data,
-                                integration_counter, plot_counter)
-pyplot.show()
-print 'Plot started.'
 
-# wait here so that the plot can be viewed
-print 'Press Ctrl-C to exit...'
-sys.stdout.flush()
-while True:
-    time.sleep(1)
+if args.noplot:
+    while True:
+        print data
+        time.sleep(1)
+        data = get_data()
+else:
+    fig = pyplot.figure()
+    subplots = []
+    num_plots = len(data.keys())
+    for p in range(num_plots):
+        sub_plot = fig.add_subplot(num_plots, 1, p+1)
+        subplots.append(sub_plot)
+    integrated_data = None
+    integration_counter = 0
+    plot_counter = 0
+    fig.canvas.manager.window.after(10, plot_func, fig,
+                                    subplots, integrated_data,
+                                    integration_counter, plot_counter)
+    pyplot.show()
+    print 'Plot started.'
+
+    # wait here so that the plot can be viewed
+    print 'Press Ctrl-C to exit...'
+    sys.stdout.flush()
+    while True:
+        time.sleep(1)
+
