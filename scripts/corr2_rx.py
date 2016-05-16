@@ -20,7 +20,7 @@ import spead2
 import spead2.recv as s2rx
 import numpy as np
 import time
-import h5py
+# import h5py
 import threading
 import os
 import logging
@@ -139,168 +139,168 @@ def do_things_first(ig, logger):
             logger.info('(%s) %s => %s' % (time.ctime(), name, str(ig[name])))
 
 
-def do_h5_things(ig, h5_file, logger):
-    datasets = {}
-    datasets_index = {}
-    # we need these bits of meta data before being able to assemble and
-    # transmit signal display data
-    meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
-                     'center_freq', 'bls_ordering', 'n_accs']
-    meta = {}
-    for name in ig.keys():
-        logger.debug('\tkey name %s' % name)
-        item = ig.get_item(name)
-        if (not item.has_changed()) and (name in datasets.keys()):
-            # the item is not marked as changed, and we have a
-            # record for it, skip ahead
-            continue
-        if name in meta_required:
-            meta[name] = ig[name]
-            meta_required.pop(meta_required.index(name))
-            if len(meta_required) == 0:
-                logger.info('Got all required metadata. Expecting data frame shape of %i %i %i' % (meta['n_chans'], meta['n_bls'], 2))
-                meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs', 'center_freq', 'bls_ordering', 'n_accs']
+# def do_h5_things(ig, h5_file, logger):
+#     datasets = {}
+#     datasets_index = {}
+#     # we need these bits of meta data before being able to assemble and
+#     # transmit signal display data
+#     meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
+#                      'center_freq', 'bls_ordering', 'n_accs']
+#     meta = {}
+#     for name in ig.keys():
+#         logger.debug('\tkey name %s' % name)
+#         item = ig.get_item(name)
+#         if (not item.has_changed()) and (name in datasets.keys()):
+#             # the item is not marked as changed, and we have a
+#             # record for it, skip ahead
+#             continue
+#         if name in meta_required:
+#             meta[name] = ig[name]
+#             meta_required.pop(meta_required.index(name))
+#             if len(meta_required) == 0:
+#                 logger.info('Got all required metadata. Expecting data frame shape of %i %i %i' % (meta['n_chans'], meta['n_bls'], 2))
+#                 meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs', 'center_freq', 'bls_ordering', 'n_accs']
+#
+#         # check to see if we have encountered this type before
+#         if name not in datasets.keys():
+#             datasets[name] = ig[name]
+#             datasets_index[name] = 0
+#
+#         # check to see if we have stored this type before
+#         if name not in h5_file.keys():
+#             shape = ig[name].shape if item.shape == -1 else item.shape
+#             dtype = np.dtype(type(ig[name])) if shape == [] else item.dtype
+#             if dtype is None:
+#                 dtype = ig[name].dtype
+#             # if we can't get a dtype from the descriptor try and get one from the value
+#             if dtype != 'object':
+#                 logger.info('Creating dataset for %s (%s,%s).' % (str(name), str(shape), str(dtype)))
+#                 if h5_file is not None:
+#                     h5_file.create_dataset(
+#                         name, [1] + ([] if list(shape) == [1] else list(shape)),
+#                         maxshape=[None] + ([] if list(shape) == [1] else list(shape)), dtype=dtype)
+#             if not item.has_changed():
+#                 continue
+#                 # if we built from an empty descriptor
+#         else:
+#             logger.info('Adding %s to dataset. New size is %i.' % (name, datasets_index[name]+1))
+#             if h5_file is not None:
+#                 h5_file[name].resize(datasets_index[name]+1, axis=0)
+#
+#         if name.startswith('xeng_raw'):
+#             sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
+#             logger.info("SD Timestamp: %f (%s)." % (sd_timestamp, time.ctime(sd_timestamp)))
+#             scale_factor = float(meta['n_accs'] if ('n_accs' in meta.keys() and acc_scale) else 1)
+#             scaled_data = (ig[name] / scale_factor).astype(np.float32)
+#             logger.info("Sending signal display frame with timestamp %i (%s). %s. Max: %i, Mean: %i" % (
+#                 sd_timestamp,
+#                 time.ctime(sd_timestamp),
+#                 "Unscaled" if not acc_scale else "Scaled by %i" % scale_factor,
+#                 np.max(scaled_data),
+#                 np.mean(scaled_data)))
+#
+#         if h5_file is not None:
+#             h5_file[name][datasets_index[name]] = ig[name]
+#         datasets_index[name] += 1
+#         # we have dealt with this item so continue...
+#         item.unset_changed()
 
-        # check to see if we have encountered this type before
-        if name not in datasets.keys():
-            datasets[name] = ig[name]
-            datasets_index[name] = 0
 
-        # check to see if we have stored this type before
-        if name not in h5_file.keys():
-            shape = ig[name].shape if item.shape == -1 else item.shape
-            dtype = np.dtype(type(ig[name])) if shape == [] else item.dtype
-            if dtype is None:
-                dtype = ig[name].dtype
-            # if we can't get a dtype from the descriptor try and get one from the value
-            if dtype != 'object':
-                logger.info('Creating dataset for %s (%s,%s).' % (str(name), str(shape), str(dtype)))
-                if h5_file is not None:
-                    h5_file.create_dataset(
-                        name, [1] + ([] if list(shape) == [1] else list(shape)),
-                        maxshape=[None] + ([] if list(shape) == [1] else list(shape)), dtype=dtype)
-            if not item.has_changed():
-                continue
-                # if we built from an empty descriptor
-        else:
-            logger.info('Adding %s to dataset. New size is %i.' % (name, datasets_index[name]+1))
-            if h5_file is not None:
-                h5_file[name].resize(datasets_index[name]+1, axis=0)
-
-        if name.startswith('xeng_raw'):
-            sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
-            logger.info("SD Timestamp: %f (%s)." % (sd_timestamp, time.ctime(sd_timestamp)))
-            scale_factor = float(meta['n_accs'] if ('n_accs' in meta.keys() and acc_scale) else 1)
-            scaled_data = (ig[name] / scale_factor).astype(np.float32)
-            logger.info("Sending signal display frame with timestamp %i (%s). %s. Max: %i, Mean: %i" % (
-                sd_timestamp,
-                time.ctime(sd_timestamp),
-                "Unscaled" if not acc_scale else "Scaled by %i" % scale_factor,
-                np.max(scaled_data),
-                np.mean(scaled_data)))
-
-        if h5_file is not None:
-            h5_file[name][datasets_index[name]] = ig[name]
-        datasets_index[name] += 1
-        # we have dealt with this item so continue...
-        item.unset_changed()
-
-
-def check_data_things(ig):
-    if 'xeng_raw' not in ig.keys():
-        return
-    if ig['xeng_raw'] is None:
-        return
-    xeng_raw = ig['xeng_raw'].value
-    if xeng_raw is None:
-        return
-
-    # TARGET_VAL = 2631720 * 816  # 2147483520
-    # TARGET_VAL = 1631720 * 816  # 2147483520
-    # TARGET_VAL = 777777 * 816  # 2147483520
-    TARGET_VAL = 320000 * 816  # 261120000
-    TARGET_VAL = 620000 * 816  # 505920000
-    TARGET_VAL = 1 * 816  # 816
-    # TARGET_VAL = 3 * 816  # 2448
-
-    errors = {}
-    error_ints = []
-
-    # for baseline in range(40):
-    #     for freq in range(4096):
-    #         idx = (baseline * 4096) + freq
-
-    zero_ctr = []
-    unique_vals = []
-
-    wrong_ctr = {0: {}, 1: {}}
-    main_ctr = 0
-
-    for ctr in range(40 * 4096):
-        dtup = xeng_raw[ctr]
-        main_ctr += 2
-        if dtup[0] != TARGET_VAL:
-            if dtup[0] not in wrong_ctr[0]:
-                wrong_ctr[0][dtup[0]] = [ctr]
-            else:
-                wrong_ctr[0][dtup[0]].append(ctr)
-        if dtup[1] != TARGET_VAL:
-            if dtup[1] not in wrong_ctr[1]:
-                wrong_ctr[1][dtup[1]] = [ctr]
-            else:
-                wrong_ctr[1][dtup[1]].append(ctr)
-
-        if (dtup[0] == 0) or (dtup[1] == 0):
-            # print '%i(%i,%i) ' % (ctr, dtup[0], dtup[1]),
-            zero_ctr.append(ctr)
-
-        if dtup[0] not in unique_vals:
-            unique_vals.append(dtup[0])
-
-    #     if dtup[0] != dtup[1]:
-    #         print ctr, dtup[0], dtup[1]
-    #         #raise RuntimeError
-    #     if dtup[0] != TARGET_VAL:
-    #         v = int(dtup[0])
-    #         errors[ctr] = v
-    #         if v not in error_ints:
-    #             error_ints.append(v)
-    #         print ctr, v
-    #
-    # if len(error_ints) > 0:
-    #     for err in error_ints:
-    #         biterrorpos = []
-    #         for bctr in range(32):
-    #             bit0 = (TARGET_VAL >> bctr) & 0x01
-    #             bit1 = (err >> bctr) & 0x01
-    #             if bit0 != bit1:
-    #                 biterrorpos.append(bctr)
-    #         print TARGET_VAL, err, biterrorpos
-
-    print main_ctr
-    for pol in [0, 1]:
-        for wrong_val in wrong_ctr[pol]:
-            print wrong_val, ':', wrong_ctr[pol][wrong_val]
-    print len(zero_ctr)
-    print unique_vals
-    if len(zero_ctr) > 0:
-        rst = True
-        last = 0
-        for val in zero_ctr[0:]:
-            if rst:
-                last = val - 1
-                print '(%i-' % val,
-                rst = False
-            if val == last + 1:
-                pass
-            else:
-                print '%i)' % last
-                rst = True
-            last = val
-        print '%i)' % val
-    print ''
-    print '%$' * 50
-    # raise RuntimeError
+# def check_data_things(ig):
+#     if 'xeng_raw' not in ig.keys():
+#         return
+#     if ig['xeng_raw'] is None:
+#         return
+#     xeng_raw = ig['xeng_raw'].value
+#     if xeng_raw is None:
+#         return
+#
+#     # TARGET_VAL = 2631720 * 816  # 2147483520
+#     # TARGET_VAL = 1631720 * 816  # 2147483520
+#     # TARGET_VAL = 777777 * 816  # 2147483520
+#     TARGET_VAL = 320000 * 816  # 261120000
+#     TARGET_VAL = 620000 * 816  # 505920000
+#     TARGET_VAL = 1 * 816  # 816
+#     # TARGET_VAL = 3 * 816  # 2448
+#
+#     errors = {}
+#     error_ints = []
+#
+#     # for baseline in range(40):
+#     #     for freq in range(4096):
+#     #         idx = (baseline * 4096) + freq
+#
+#     zero_ctr = []
+#     unique_vals = []
+#
+#     wrong_ctr = {0: {}, 1: {}}
+#     main_ctr = 0
+#
+#     for ctr in range(40 * 4096):
+#         dtup = xeng_raw[ctr]
+#         main_ctr += 2
+#         if dtup[0] != TARGET_VAL:
+#             if dtup[0] not in wrong_ctr[0]:
+#                 wrong_ctr[0][dtup[0]] = [ctr]
+#             else:
+#                 wrong_ctr[0][dtup[0]].append(ctr)
+#         if dtup[1] != TARGET_VAL:
+#             if dtup[1] not in wrong_ctr[1]:
+#                 wrong_ctr[1][dtup[1]] = [ctr]
+#             else:
+#                 wrong_ctr[1][dtup[1]].append(ctr)
+#
+#         if (dtup[0] == 0) or (dtup[1] == 0):
+#             # print '%i(%i,%i) ' % (ctr, dtup[0], dtup[1]),
+#             zero_ctr.append(ctr)
+#
+#         if dtup[0] not in unique_vals:
+#             unique_vals.append(dtup[0])
+#
+#     #     if dtup[0] != dtup[1]:
+#     #         print ctr, dtup[0], dtup[1]
+#     #         #raise RuntimeError
+#     #     if dtup[0] != TARGET_VAL:
+#     #         v = int(dtup[0])
+#     #         errors[ctr] = v
+#     #         if v not in error_ints:
+#     #             error_ints.append(v)
+#     #         print ctr, v
+#     #
+#     # if len(error_ints) > 0:
+#     #     for err in error_ints:
+#     #         biterrorpos = []
+#     #         for bctr in range(32):
+#     #             bit0 = (TARGET_VAL >> bctr) & 0x01
+#     #             bit1 = (err >> bctr) & 0x01
+#     #             if bit0 != bit1:
+#     #                 biterrorpos.append(bctr)
+#     #         print TARGET_VAL, err, biterrorpos
+#
+#     print main_ctr
+#     for pol in [0, 1]:
+#         for wrong_val in wrong_ctr[pol]:
+#             print wrong_val, ':', wrong_ctr[pol][wrong_val]
+#     print len(zero_ctr)
+#     print unique_vals
+#     if len(zero_ctr) > 0:
+#         rst = True
+#         last = 0
+#         for val in zero_ctr[0:]:
+#             if rst:
+#                 last = val - 1
+#                 print '(%i-' % val,
+#                 rst = False
+#             if val == last + 1:
+#                 pass
+#             else:
+#                 print '%i)' % last
+#                 rst = True
+#             last = val
+#         print '%i)' % val
+#     print ''
+#     print '%$' * 50
+#     # raise RuntimeError
 
 
 def do_plotting_things(ig):
@@ -312,7 +312,7 @@ def do_plotting_things(ig):
     if xeng_raw is None:
         return
 
-    # print np.shape(xeng_raw)
+    print np.shape(xeng_raw)
     baseline_data = []
     baseline_phase = []
 
@@ -335,10 +335,6 @@ def do_plotting_things(ig):
                 phase = np.angle(cplx)
                 # phase = np.unwrap(phase)
                 phasedata.append(phase)
-
-                # powerdata.append(complex_tuple[0])
-                # phasedata.append(complex_tuple[1])
-
             baseline_data.append((baseline, powerdata[:]))
             baseline_phase.append((baseline, phasedata[:]))
             # break
@@ -379,12 +375,12 @@ class CorrRx(threading.Thread):
         strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
                            max_heaps=8, ring_heaps=8)
         strm.add_udp_reader(port=data_port, max_size=9200,
-                            buffer_size=51200000)
+                            buffer_size=5120000)
 
-        h5_file = None
-        if filename is not None:
-            logger.info('Starting file %s.' % filename)
-            h5_file = h5py.File(filename, mode='w')
+        # h5_file = None
+        # if filename is not None:
+        #     logger.info('Starting file %s.' % filename)
+        #     h5_file = h5py.File(filename, mode='w')
 
         ig = spead2.ItemGroup()
         idx = 0
@@ -402,8 +398,8 @@ class CorrRx(threading.Thread):
 
             do_things_first(ig, logger)
 
-            if h5_file is not None:
-                do_h5_things(ig, h5_file, logger)
+            # if h5_file is not None:
+            #     do_h5_things(ig, h5_file, logger)
 
             if len(plot_baselines) > 0:
                 do_plotting_things(ig)
@@ -422,10 +418,10 @@ class CorrRx(threading.Thread):
 #                self.logger.info("Repacking dataset %s as an attribute as it is singular."%name)
 #                h5_file['/'].attrs[name] = h5_file[name].value[0]
 #                h5_file.__delitem__(name)
-        if h5_file is not None:
-            logger.info("Got a SPEAD end-of-stream marker. Closing File.")
-            h5_file.flush()
-            h5_file.close()
+#         if h5_file is not None:
+#             logger.info("Got a SPEAD end-of-stream marker. Closing File.")
+#             h5_file.flush()
+#             h5_file.close()
         strm.stop()
         logger.info("Files and sockets closed.")
         self.quit_event.clear()
@@ -473,15 +469,22 @@ if __name__ == '__main__':
     config = utils.parse_ini_file(args.config)
     data_port = int(config['xengine']['output_destination_port'])
     n_chans = int(config['fengine']['n_chans'])
+
+    fhosts = config['fengine']['hosts'].split(',')
+
+    n_ants = len(fhosts)
+
+    n_bls = n_ants * (n_ants+1) / 2 * 4
+
     print 'Loaded instrument info from config file:\n\t%s' % args.config
 
-    if args.items:
-        items = args.items
-        print 'Tracking:'
-        for item in items:
-            print '\t  * %s' % item
-    else:
-        print 'Not tracking any items.'
+    # if args.items:
+    #     items = args.items
+    #     print 'Tracking:'
+    #     for item in items:
+    #         print '\t  * %s' % item
+    # else:
+    #     print 'Not tracking any items.'
 
     if args.log_level:
         import logging
@@ -516,7 +519,7 @@ if __name__ == '__main__':
             plot_baselines.append(int(bls.strip()))
     if len(plot_baselines) == 1:
         if plot_baselines[0] == -1:
-            plot_baselines = range(0, 40)
+            plot_baselines = range(0, n_bls)
 
     temp = args.plotchannels.split(',')
     plot_startchan = int(temp[0].strip())
@@ -532,6 +535,7 @@ if filename is not None:
     print '\tStoring to file %s' % filename
 else:
     print '\tNot saving to disk.'
+
 if len(plot_baselines) > 0:
     import matplotlib.pyplot as pyplot
     import Queue
@@ -554,47 +558,50 @@ if len(plot_baselines) > 0:
                 ymin = 2**32
                 for pltctr, plot in enumerate(powerdata):
 
-
                     baseline = plot[0]
                     plotdata = plot[1]
+
+                    phaseplot = phasedata[pltctr][1]
+
                     if args.log:
                         pyplot.subplot(2, 1, 1)
-                        pyplot.semilogy(plotdata, label='%i' % baseline)
+                        pyplot.semilogy(plotdata) #, label='%i' % baseline)
                         pyplot.subplot(2, 1, 2)
-                        pyplot.semilogy(phasedata[pltctr][1], label='phase_%i' % baseline)
+                        pyplot.semilogy(phaseplot) #, label='phase_%i' % baseline)
                     else:
                         pyplot.subplot(2, 1, 1)
-                        pyplot.plot(plotdata, label='%i' % baseline)
+                        pyplot.plot(plotdata) #, label='%i' % baseline)
                         pyplot.subplot(2, 1, 2)
-                        pyplot.plot(phasedata[pltctr][1], label='phase_%i' % baseline)
-                    ymax = max(ymax, max(plotdata))
-                    ymin = min(ymin, min(plotdata))
+                        pyplot.plot(phaseplot) #, label='phase_%i' % baseline)
+                    ymax0 = max(ymax, max(plotdata))
+                    ymin0 = min(ymin, min(plotdata))
 
-                    ymax = max(plotdata)
-                    ymin = min(plotdata)
+                    ymax0 = max(plotdata)
+                    ymin0 = min(plotdata)
+
+                    ymax1 = max(phaseplot)
+                    ymin1 = min(phaseplot)
 
                     pyplot.subplot(2, 1, 1)
-                    pyplot.ylim([ymin*0.99, ymax*1.01])
+                    pyplot.ylim([ymin0*0.99, ymax0*1.01])
                     pyplot.subplot(2, 1, 2)
-                    pyplot.ylim([ymin*0.99, ymax*1.01])
+                    pyplot.ylim([ymin1*0.99, ymax1*1.01])
                     pyplot.legend(loc='upper left')
                     pyplot.draw()
                     pyplot.show()
 
-                    time.sleep(0.5)
+                    # time.sleep(0.5)
+                    #
+                    # pyplot.subplot(2, 1, 1)
+                    # pyplot.cla()
+                    # pyplot.subplot(2, 1, 2)
+                    # pyplot.cla()
 
-                    pyplot.subplot(2, 1, 1)
-                    pyplot.cla()
-                    pyplot.subplot(2, 1, 2)
-                    pyplot.cla()
-
-
-
-                pyplot.subplot(2, 1, 1)
-                pyplot.ylim([ymin*0.99, ymax*1.01])
-                pyplot.legend(loc='upper left')
-                pyplot.draw()
-                pyplot.show()
+                # pyplot.subplot(2, 1, 1)
+                # pyplot.ylim([ymin*0.99, ymax*1.01])
+                # pyplot.legend(loc='upper left')
+                # pyplot.draw()
+                # pyplot.show()
             except Queue.Empty:
                 pass
             got_data_event.clear()
