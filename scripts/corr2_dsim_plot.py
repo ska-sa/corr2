@@ -59,7 +59,7 @@ if args.log_level != '':
 if 'CORR2INI' in os.environ.keys() and args.config == '':
     args.config = os.environ['CORR2INI']
 if args.config != '':
-    host_list = utils.parse_hosts(args.config, section='fengine')
+    host_list = utils.parse_hosts(args.config, section='dsimengine')
 else:
     host_list = []
 
