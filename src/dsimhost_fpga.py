@@ -520,3 +520,19 @@ class FpgaDsimHost(FpgaHost):
 
         self.write_int('gbe_porttx', port)
         self.registers.control.write(gbe_rst=False)
+
+    def get_output_snapshot(self, pol=0):
+        """
+        Read the raw 80-bit output data from the dsim FPGA design
+        :param pol:
+        :return:
+        """
+        _snapname = 'ss_cwg0_ss'
+        if _snapname not in self.snapshots.names():
+            LOGGER.error('No output snapshot in this DSIM FPGA design.')
+        d = self.snapshots[_snapname].read(man_trig=True, man_valid=True)
+        od = []
+        for ctr in range(len(d['d0'])):
+            for dctr in range(8):
+                od.append(d['d%i' % dctr][ctr])
+        return od
