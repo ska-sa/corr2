@@ -13,7 +13,8 @@ import signal
 import numpy
 from matplotlib import pyplot
 
-from corr2.dsimhost_fpga import FpgaDsimHost
+from casperfpga import KatcpFpga
+
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
@@ -84,14 +85,27 @@ def exit_gracefully(_, __):
 signal.signal(signal.SIGINT, exit_gracefully)
 
 # make the FPGA object
-fpga = FpgaDsimHost(hostname)
+fpga = KatcpFpga(hostname)
 time.sleep(0.5)
 fpga.get_system_information()
 
 
 def get_data():
-    _data = fpga.get_output_snapshot()
-    return {'p0': _data}
+    """
+    Read the raw 80-bit output data from the dsim FPGA design
+    :param pol:
+    :return:
+    """
+    _snapname = 'ss_cwg_ss'
+    if _snapname not in fpga.snapshots.names():
+        logging.error('No output snapshot in this DSIM FPGA design.')
+        raise RuntimeError('No output snapshot found in FPGA design.')
+    d = fpga.snapshots[_snapname].read(man_trig=True, man_valid=True)['data']
+    od = []
+    for ctr in range(len(d['d0'])):
+        for dctr in range(8):
+            od.append(d['d%i' % dctr][ctr])
+    return {'p0': od}
 
 
 def plot_func(figure, sub_plots, idata, ictr, pctr):
