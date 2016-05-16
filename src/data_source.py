@@ -1,5 +1,3 @@
-__author__ = 'paulp'
-
 from casperfpga.tengbe import IpAddress
 import logging
 

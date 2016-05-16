@@ -150,7 +150,7 @@ try:
                                'second' if polltime == 1 else ('%i seconds' % polltime),
                                time.time() - STARTTIME), 0, 0, absolute=True)
             start_pos = 30
-            pos_increment = 20
+            pos_increment = 13
             if len(fpga_headers) == 1:
                 scroller.add_line('Host', 0, 1, absolute=True)
                 for reg in fpga_headers[0]:
@@ -168,7 +168,7 @@ try:
                 scroller.add_line(fpga_.host + (' - %12d' % fpga_data['rxtime']) + (', %12d' % fpga_data['mcnt_nolock']))
                 for core, core_data in fpga_data['gbe'].items():
                     start_pos = 30
-                    pos_increment = 20
+                    pos_increment = 13
                     scroller.add_line(core, 5)
                     for header_register in fpga_headers[0]:
                         core_register_name = header_register.replace('gbe', core)

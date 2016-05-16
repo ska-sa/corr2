@@ -1,20 +1,29 @@
 import time
 import logging
 import struct
+from threading import Event
 
+import casperfpga.memory as caspermem
 from host_fpga import FpgaHost
 
 LOGGER = logging.getLogger(__name__)
 
 
+class DelaysUnsetError(Exception):
+    pass
+
+
 class DigitiserDataReceiver(FpgaHost):
     """
-    The RX section of a fengine and filter engine are the same - receive the digitiser data
+    The RX section of a fengine and filter engine are
+    the same - receive the digitiser data
     """
 
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True):
-        super(DigitiserDataReceiver, self).__init__(host, katcp_port=katcp_port,
-                                                    boffile=boffile, connect=connect)
+        super(DigitiserDataReceiver, self).__init__(host,
+                                                    katcp_port=katcp_port,
+                                                    boffile=boffile,
+                                                    connect=connect)
 
     def _get_rxreg_data(self):
         """
@@ -57,28 +66,35 @@ class DigitiserDataReceiver(FpgaHost):
         got_errors = False
         for _ctr in range(1, _required_repetitions):
             for gbe in range(num_tengbes):
-                if test_data[_ctr]['pktof_ctr%i' % gbe] != test_data[0]['pktof_ctr%i' % gbe]:
-                    LOGGER.error('F host %s packet overflow on interface gbe%i. %i -> %i' % (
-                        self.host, gbe, test_data[_ctr]['pktof_ctr%i' % gbe],
-                        test_data[0]['pktof_ctr%i' % gbe]))
+                _key = 'pktof_ctr%i' % gbe
+                if test_data[_ctr][_key] != test_data[0][_key]:
+                    LOGGER.error(
+                        'F host %s packet overflow on interface gbe%i. '
+                        '%i -> %i' % (self.host, gbe, test_data[_ctr][_key],
+                                      test_data[0][_key]))
                     got_errors = True
             for pol in range(0, 2):
-                if test_data[_ctr]['recverr_ctr%i' % pol] != test_data[0]['recverr_ctr%i' % pol]:
-                    LOGGER.error('F host %s pol %i reorder count error. %i -> %i' % (
-                        self.host, pol, test_data[_ctr]['recverr_ctr%i' % pol],
-                        test_data[0]['recverr_ctr%i' % pol]))
+                _key = 'recverr_ctr%i' % pol
+                if test_data[_ctr][_key] != test_data[0][_key]:
+                    LOGGER.error('F host %s pol %i reorder count error. %i '
+                                 '-> %i' % (self.host, pol,
+                                            test_data[_ctr][_key],
+                                            test_data[0][_key]))
                     got_errors = True
             if test_data[_ctr]['mcnt_relock'] != test_data[0]['mcnt_relock']:
                 LOGGER.error('F host %s mcnt_relock is changing. %i -> %i' % (
-                    self.host, test_data[_ctr]['mcnt_relock'], test_data[0]['mcnt_relock']))
+                    self.host, test_data[_ctr]['mcnt_relock'],
+                    test_data[0]['mcnt_relock']))
                 got_errors = True
             if test_data[_ctr]['timerror'] != test_data[0]['timerror']:
-                LOGGER.error('F host %s timestep error is changing. %i -> %i' % (
-                    self.host, test_data[_ctr]['timerror'], test_data[0]['timerror']))
+                LOGGER.error('F host %s timestep error is changing. %i -> %i' %
+                             (self.host, test_data[_ctr]['timerror'],
+                              test_data[0]['timerror']))
                 got_errors = True
             if test_data[_ctr]['discard'] != test_data[0]['discard']:
                 LOGGER.error('F host %s discarding packets. %i -> %i' % (
-                    self.host, test_data[_ctr]['discard'], test_data[0]['discard']))
+                    self.host, test_data[_ctr]['discard'],
+                    test_data[0]['discard']))
                 got_errors = True
         if got_errors:
             LOGGER.error('One or more errors detected, check logs.')
@@ -104,12 +120,14 @@ class DigitiserDataReceiver(FpgaHost):
         Get the local timestamp of this board, received from the digitiser
         :return: time in samples since the digitiser epoch
         """
-        first_msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
-        while self.registers.local_time_msw.read()['data']['timestamp_msw'] == first_msw:
+        _msw = self.registers.local_time_msw
+        _lsw = self.registers.local_time_lsw
+        first_msw = _msw.read()['data']['timestamp_msw']
+        while _msw.read()['data']['timestamp_msw'] == first_msw:
             time.sleep(0.01)
-        lsw = self.registers.local_time_lsw.read()['data']['timestamp_lsw']
-        msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
-        assert msw == first_msw + 1  # if this fails the network is waaaaaaaay slow
+        lsw = _lsw.read()['data']['timestamp_lsw']
+        msw = _msw.read()['data']['timestamp_msw']
+        assert msw == first_msw + 1  # if this fails the network is waaaaay slow
         return (msw << 32) | lsw
 
     def clear_status(self):
@@ -144,6 +162,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
         # list of dictionaries containing delay settings for each stream
         self.delays = []
+        self.delay_errors = []
+        self.delay_loadcounts = []
 
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
@@ -151,7 +171,8 @@ class FpgaFHost(DigitiserDataReceiver):
             self.fft_shift = int(config['fft_shift'])
             self.n_chans = int(config['n_chans'])
             self.min_load_time = float(config['min_load_time'])
-            self.network_latency_adjust = float(config['network_latency_adjust'])
+            self.network_latency_adjust = \
+                float(config['network_latency_adjust'])
         else:
             self.num_fengines = None
             self.ports_per_fengine = None
@@ -160,11 +181,14 @@ class FpgaFHost(DigitiserDataReceiver):
             self.min_load_time = None
             self.network_latency_adjust = None
 
-        for offset in range(self.num_fengines):
-            self.delays.append({'delay': 0, 'delta_delay': 0, 
-                                'phase_offset': 0, 'delta_phase_offset': 0, 
-                                'load_time': None, 'load_wait': None,
-                                'load_check': True})
+        if self.num_fengines:
+            for offset in range(self.num_fengines):
+                self.delays.append({'delay': 0, 'delta_delay': 0,
+                                    'phase_offset': 0, 'delta_phase_offset': 0,
+                                    'load_time': None, 'load_wait': None,
+                                    'load_check': True})
+                self.delay_errors.append(Event())
+                self.delay_loadcounts.append(-1)
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
@@ -298,6 +322,45 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
+    def delay_get_status(self):
+        """
+        Get the status registers for the delay operations on this f-host
+        :return:
+        """
+        num_pols = len(self.delays)
+        rv = []
+        for pol in range(num_pols):
+            rv.append(self.registers['tl_cd%i_status' % pol].read()['data'])
+        return rv
+
+    def delay_check_loadcounts(self):
+        """
+        Are new delays being loaded on this fhost?
+        :return: True is the load counts are increasing, false if not
+        """
+        if len(self.delay_loadcounts) == 0:
+            raise DelaysUnsetError('Delays not yet setup')
+        new_status = self.delay_get_status()
+        rv = True
+        for cnt, last_loadcount in enumerate(self.delay_loadcounts):
+            new_val = new_status[cnt]['load_count']
+            old_val = self.delay_loadcounts[cnt]
+            if old_val != -1:
+                if old_val == new_val:
+                    rv = False
+            self.delay_loadcounts[cnt] = new_val
+        return rv
+
+    def check_delays(self):
+        """
+        Check the delay error events
+        :return: True for all okay, False for errors present
+        """
+        okay = True
+        for delay_err in self.delay_errors:
+            okay = okay and (not delay_err.is_set())
+        return okay
+
     def write_delays_all(self):
         """
         Goes through all offsets and writes delays with stored delay settings
@@ -305,31 +368,178 @@ class FpgaFHost(DigitiserDataReceiver):
         act_vals = []
         for offset in range(len(self.delays)):
             coeffs = self.delays[offset]
-            act_val = self.write_delay(offset, coeffs['delay'], coeffs['delta_delay'],
-                            coeffs['phase_offset'], coeffs['delta_phase_offset'],
-                            coeffs['load_time'], coeffs['load_wait'], coeffs['load_check'])
-               
+            act_val = self.write_delay(
+                offset,
+                coeffs['delay'],
+                coeffs['delta_delay'],
+                coeffs['phase_offset'],
+                coeffs['delta_phase_offset'],
+                coeffs['load_time'],
+                coeffs['load_wait'],
+                coeffs['load_check'])
             act_vals.append(act_val)
-
         return act_vals
 
-    def set_delay(self, offset, delay=0.0, delta_delay=0.0, 
-                    phase_offset=0.0, delta_phase_offset=0.0, 
-                    load_time=None, load_wait=None, load_check=True):
+    def set_delay(self, offset, delay=0.0, delta_delay=0.0,
+                  phase_offset=0.0, delta_phase_offset=0.0,
+                  load_time=None, load_wait=None, load_check=True):
         """
-        Update delay settings for data stream at offset specified ready for writing
+        Update delay settings for data stream at offset specified
+        ready for writing
 
         :param delay is in samples
-        :param delta delay is in samples per sample
-        :param phase offset is in fractions of a sample
-        :param delta phase offset is in samples per sample
+        :param delta_delay is in samples per sample
+        :param phase_offset is in fractions of a sample
+        :param delta_phase_offset is in samples per sample
         :return 
         """
-        self.delays[offset] = {'delay': delay, 'delta_delay': delta_delay, 
-                            'phase_offset': phase_offset, 
-                            'delta_phase_offset': delta_phase_offset,
-                            'load_time': load_time, 'load_wait': load_wait,
-                            'load_check': load_check}
+        self.delays[offset] = {
+            'delay': delay, 'delta_delay': delta_delay,
+            'phase_offset': phase_offset,
+            'delta_phase_offset': delta_phase_offset,
+            'load_time': load_time, 'load_wait': load_wait,
+            'load_check': load_check}
+
+    @staticmethod
+    def _write_delay_delay(infostr, bitshift, delay_reg, delta_delay_reg,
+                           delay, delta_delay):
+        """
+        Do the delta delay portion of write_delay
+        :return:
+        """
+        # TODO check register parameters to get delay range
+
+        reg_info = delay_reg.block_info
+        reg_bw = int(reg_info['bitwidths'])
+        reg_bp = int(reg_info['bin_pts'])
+        max_delay = 2**(reg_bw - reg_bp) - 1/float(2**reg_bp)
+
+        LOGGER.info('%s attempting initial delay of %f samples.' %
+                    (infostr, delay))
+        if delay < 0:
+            LOGGER.warn('%s smallest delay is 0, setting to zero' % infostr)
+            delay = 0
+        elif delay > max_delay:
+            LOGGER.warn('%s largest possible delay is %f data samples' % (
+                infostr, max_delay))
+            delay = max_delay
+        LOGGER.info('%s setting delay to %f data samples' % (infostr, delay))
+        try:
+            delay_reg.write(initial=delay)
+        except ValueError as e:
+            _err = '%s writing initial delay range delay(%.8e), error - %s' % (
+                infostr, delay, e.message)
+            LOGGER.error(_err)
+            raise ValueError(_err)
+
+        # shift up by amount shifted down by on fpga
+        delta_delay_shifted = float(delta_delay) * bitshift
+        dds = delta_delay_shifted
+        dd = dds / bitshift
+
+        LOGGER.info('%s attempting delay delta to %e (%e after shift)' %
+                    (infostr, delta_delay, delta_delay_shifted))
+        reg_info = delta_delay_reg.block_info
+        # bw_str = reg_info['bitwidths']
+        # bw = int(bw_str[1:len(bw_str)-1])
+        b_str = reg_info['bin_pts']
+        b = int(b_str[1:len(b_str)-1])
+        max_positive_delta_delay = 1 - 1/float(2**b)
+        max_negative_delta_delay = -1 + 1/float(2**b)
+        if delta_delay_shifted > max_positive_delta_delay:
+            dds = max_positive_delta_delay
+            dd = dds / bitshift
+            LOGGER.warn('%s largest possible positive delay delta '
+                        'is %e data samples/sample' % (infostr, dd))
+            LOGGER.warn('%s setting delay delta to %e data '
+                        'samples/sample (%e after shift)' %
+                        (infostr, dd, dds))
+        elif delta_delay_shifted < max_negative_delta_delay:
+            dds = max_negative_delta_delay
+            dd = dds / bitshift
+            LOGGER.warn('%s largest possible negative delay delta is %e '
+                        'data samples/sample' % (infostr, dd))
+            LOGGER.warn('%s setting delay delta to %e data samples/sample '
+                        '(%e after shift)' % (infostr, dd, dds))
+        LOGGER.info('%s writing delay delta to %e (%e after shift)' %
+                    (infostr, dd, dds))
+        try:
+            delta_delay_reg.write(delta=dds)
+        except ValueError as e:
+            _err = '%s writing delay delta (%.8e), error - %s' % \
+                   (infostr, dds, e.message)
+            LOGGER.error(_err)
+            raise ValueError(_err)
+
+    @staticmethod
+    def _write_delay_phase(infostr, bitshift, phase_reg, phase_offset,
+                           delta_phase_offset):
+        """
+        :return:
+        """
+        # multiply by amount shifted down by on FPGA
+        delta_phase_offset_shifted = float(delta_phase_offset) * bitshift
+
+        LOGGER.info('%s attempting to set initial phase to %f and phase '
+                    'delta to %e' % (infostr, phase_offset,
+                                     delta_phase_offset_shifted))
+        # setup the phase offset
+        reg_info = phase_reg.block_info
+        # bw_str = reg_info['bitwidths']
+        # bw = int(bw_str[1:len(bw_str)-1].rsplit(' ')[0])
+        b_str = reg_info['bin_pts']
+        b = int(b_str[1:len(b_str)-1].rsplit(' ')[0])
+        max_positive_phase_offset = 1 - 1/float(2**b)
+        max_negative_phase_offset = -1 + 1/float(2**b)
+        if phase_offset > max_positive_phase_offset:
+            phase_offset = max_positive_phase_offset
+            LOGGER.warn('%s largest possible positive phase offset is '
+                        '%e pi' % (infostr, phase_offset))
+            LOGGER.warn('%s setting phase offset to %e pi' % (
+                infostr, phase_offset))
+        elif phase_offset < max_negative_phase_offset:
+            phase_offset = max_negative_phase_offset
+            LOGGER.warn('%s largest possible negative phase_offset is '
+                        '%e pi' % (infostr, phase_offset))
+            LOGGER.warn('%s setting phase offset to %e pi' % (
+                infostr, phase_offset))
+
+        reg_info = phase_reg.block_info
+        # bw_str = reg_info['bitwidths']
+        # bw = int(bw_str[1:len(bw_str)-1].rsplit(' ')[1])
+        b_str = reg_info['bin_pts']
+        b = int(b_str[1:len(b_str)-1].rsplit(' ')[1])
+        max_positive_delta_phase = 1 - 1/float(2**b)
+        max_negative_delta_phase = -1 + 1/float(2**b)
+
+        dpos = delta_phase_offset_shifted
+        dp = dpos / bitshift
+
+        if dpos > max_positive_delta_phase:
+            dpos = max_positive_delta_phase
+            dp = dpos / bitshift
+            LOGGER.warn('%s largest possible positive phase delta is '
+                        '%expi radians/sample' % (infostr, dp))
+            LOGGER.warn('%s setting phase delta to %expi radians/sample '
+                        '(%e after shift)' % (infostr, dp, dpos))
+        elif dpos < max_negative_delta_phase:
+            dpos = max_negative_delta_phase
+            dp = dpos / bitshift
+            LOGGER.warn('%s largest possible negative phase delta is '
+                        '%expi radians/sample' % (infostr, dp))
+            LOGGER.warn('%s setting phase delta to %expiradians/sample '
+                        '(%e after shift)' % (infostr, dp, dpos))
+
+        # actually write the values to the register
+        LOGGER.info('%s writing initial phase to %f' % (infostr, phase_offset))
+        LOGGER.info('%s writing phase delta to %e' % (infostr, dpos))
+        try:
+            phase_reg.write(initial=phase_offset, delta=dpos)
+        except ValueError as e:
+            _err = '%s writing phase(%.8e) dpos(%.8e), error - %s' % \
+                   (infostr, phase_offset, dpos, e.message)
+            LOGGER.error(_err)
+            raise ValueError(_err)
 
     def write_delay(self, offset, delay=0.0, delta_delay=0.0, 
                     phase_offset=0.0, delta_phase_offset=0.0, 
@@ -344,11 +554,11 @@ class FpgaFHost(DigitiserDataReceiver):
         By default, it will load immediately and verify that things worked
         as expected.
 
-        :offset is polarisation's offset within FPGA
+        :param offset is polarisation's offset within FPGA
         :param delay is in samples
-        :param delta delay is in samples per sample
-        :param phase offset is in fractions of a sample
-        :param delta phase offset is in samples per sample
+        :param delta_delay is in samples per sample
+        :param phase_offset is in fractions of a sample
+        :param delta_phase_offset is in samples per sample
         :param load_mcnt is in samples since epoch
         :param load_wait_delay is seconds to wait for delay values to load
         :param load_check whether to check if load happened
@@ -357,71 +567,25 @@ class FpgaFHost(DigitiserDataReceiver):
 
         # TODO should this be in config file?
         bitshift_schedule = 23
-        _bshift_val = (2**bitshift_schedule)
-
-        #########
-        # delay #
-        #########
-
-        #TODO check register parameters to get delay range
-
-        # shift up by amount shifted down by on fpga
-        delta_delay_shifted = float(delta_delay) * _bshift_val
+        bitshift = (2**bitshift_schedule)
 
         # delay registers
         delay_reg = self.registers['delay%i' % offset]
         delta_delay_reg = self.registers['delta_delay%i' % offset]
-
-        LOGGER.info('%s:%d setting an intial delay of %f samples.' %
-                    (self.host, offset, delay))
-
-        # setup the delays
-        try:
-            delay_reg.write(initial=delay)
-        except ValueError as e:
-            LOGGER.error('%s:%d initial delay range error - %s' %
-                         (self.host, offset, e.message))
-
-        LOGGER.info('%s:%d %f to delta in delta_delay register' %
-                    (self.host, offset, delta_delay_shifted))
-
-        try:
-            delta_delay_reg.write(delta=delta_delay_shifted)
-        except ValueError as e:
-            LOGGER.error('%s:%d delay change range error - %s' %
-                         (self.host, offset, e.message))
-
-        ################
-        # phase offset #
-        ################
-
         phase_reg = self.registers['phase%i' % offset]
 
-        # multiply by amount shifted down by on FPGA
-        delta_phase_offset_shifted = float(delta_phase_offset) * _bshift_val
-
-        LOGGER.info('%s:%d writing %f to initial and %f to delta in phase '
-                    'register' %
-                    (self.host, offset,
-                     phase_offset, delta_phase_offset_shifted))
-
-        # setup the phase offset
-        try:
-            phase_reg.write(initial=phase_offset)
-        except ValueError as e:
-            LOGGER.error('%s: phase offset range error - %s' %
-                         (self.host, e.message))
-        try:
-            phase_reg.write(delta=delta_phase_offset_shifted)
-        except ValueError as e:
-            LOGGER.error('%s: phase offset change range error - %s' %
-                         (self.host, e.message))
+        _infstr = '%s:%i:%i:' % (self.host, offset, load_mcnt)
+        self._write_delay_delay(_infstr, bitshift, delay_reg, delta_delay_reg,
+                                delay, delta_delay)
+        self._write_delay_phase(_infstr, bitshift, phase_reg, phase_offset,
+                                delta_phase_offset)
 
         cd_tl_name = 'tl_cd%i' % offset
         fd_tl_name = 'tl_fd%i' % offset
-        status = self.arm_timed_latches([cd_tl_name, fd_tl_name],
-                                        mcnt=load_mcnt,
-                                        check_time_delay=load_wait_delay)
+        status = self.arm_timed_latches(
+            [cd_tl_name, fd_tl_name],
+            mcnt=load_mcnt,
+            check_time_delay=load_wait_delay)
         cd_status_before = status['status_before'][cd_tl_name]
         cd_status_after = status['status_after'][cd_tl_name]
         fd_status_before = status['status_before'][fd_tl_name]
@@ -441,51 +605,53 @@ class FpgaFHost(DigitiserDataReceiver):
         fd_ld_count_after = fd_status_after['load_count']
 
         # was the system already armed?
-        if cd_armed_before == True:
-            LOGGER.error('%s:%d coarse delay timed latch was already armed. '
-                         'Previous load failed'% (self.host, offset))
+        if cd_armed_before:
+            LOGGER.error('%s coarse delay timed latch was already armed. '
+                         'Previous load failed.' % _infstr)
+            self.delay_errors[offset].set()
 
-        if fd_armed_before == True:
-            LOGGER.error('%s:%d phase correction timed latch was already armed. '
-                         'Previous load failed'% (self.host, offset))
+        if fd_armed_before:
+            LOGGER.error('%s phase correction timed latch was already '
+                         'armed. Previous load failed.' % _infstr)
+            self.delay_errors[offset].set()
 
         # did the system arm correctly
-        if cd_arm_count_before == cd_arm_count_after:
-            # don't report error if it was already armed as count won't increase
-            if cd_armed_before == False:
-                LOGGER.error('%s:%d coarse delay arm count did not change.'
-                    % (self.host, offset))
-                LOGGER.error('%s:%d BEFORE: coarse arm_count(%i) ld_count(%i)'
-                    % (self.host, offset, cd_arm_count_before, cd_ld_count_before))
-                LOGGER.error('%s:%d AFTER:  coarse arm_count(%i) ld_count(%i)'
-                    % (self.host, offset, cd_arm_count_after, cd_ld_count_after))
+        if (not cd_armed_before) and (cd_arm_count_before == cd_arm_count_after):
+            LOGGER.error('%s coarse delay arm count did not change.' % _infstr)
+            LOGGER.error('%s BEFORE: coarse arm_count(%i) ld_count(%i)' %
+                         (_infstr, cd_arm_count_before, cd_ld_count_before))
+            LOGGER.error('%s AFTER:  coarse arm_count(%i) ld_count(%i)' %
+                         (_infstr, cd_arm_count_after, cd_ld_count_after))
+            self.delay_errors[offset].set()
 
-        if fd_arm_count_before == fd_arm_count_after:
-            if fd_armed_before == False:
-                LOGGER.error('%s:%d phase correction arm count did not '
-                            'change.' % (self.host, offset))
-                LOGGER.error('%s:%d BEFORE: phase correction arm_count(%i) ld_count(%i)'
-                            % (self.host, offset, fd_arm_count_before, fd_ld_count_before))
-                LOGGER.error('%s:%d AFTER: phase correction arm_count(%i) ld_count(%i)'
-                            % (self.host, offset, fd_arm_count_after, fd_ld_count_after))
+        if (not fd_armed_before) and (fd_arm_count_before == fd_arm_count_after):
+            LOGGER.error('%s phase correction arm count did not change.' %
+                         _infstr)
+            LOGGER.error('%s BEFORE: phase correction arm_count(%i) '
+                         'ld_count(%i)' %
+                         (_infstr, fd_arm_count_before, fd_ld_count_before))
+            LOGGER.error('%s AFTER:  phase correction arm_count(%i) '
+                         'ld_count(%i)' %
+                         (_infstr, fd_arm_count_after, fd_ld_count_after))
+            self.delay_errors[offset].set()
 
         # did the system load?
-        if load_check == True:
+        if load_check:
             if cd_ld_count_before == cd_ld_count_after:
-                LOGGER.error('%s:%d coarse delay load count did not change. '
-                             'Load failed.' % (self.host, offset))
+                LOGGER.error('%s coarse delay load count did not change. '
+                             'Load failed.' % _infstr)
+                self.delay_errors[offset].set()
 
             if fd_ld_count_before == fd_ld_count_after:
-                LOGGER.error('%s:%d phase correction load count did not '
-                             'change. Load failed.' % (self.host, offset))
+                LOGGER.error('%s phase correction load count did not '
+                             'change. Load failed.' % _infstr)
+                self.delay_errors[offset].set()
 
-        #read values back to see what actual values were loaded
-
+        # read values back to see what actual values were loaded
         act_delay = delay_reg.read()['data']['initial']
-        act_delta_delay = delta_delay_reg.read()['data']['delta'] / _bshift_val
+        act_delta_delay = delta_delay_reg.read()['data']['delta'] / bitshift
         act_phase_offset = phase_reg.read()['data']['initial']
-        act_delta_phase_offset = phase_reg.read()['data']['delta'] / _bshift_val
-
+        act_delta_phase_offset = phase_reg.read()['data']['delta'] / bitshift
         return {
             'act_delay': act_delay,
             'act_delta_delay': act_delta_delay,
@@ -537,9 +703,11 @@ class FpgaFHost(DigitiserDataReceiver):
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
         Set the FFT shift schedule.
-        :param shift_schedule: int representing bit mask. '1' represents a shift for that stage. First stage is MSB.
+        :param shift_schedule: int representing bit mask. '1' represents a
+        shift for that stage. First stage is MSB.
         Use default if None provided
-        :param issue_meta: Should SPEAD meta data be sent after the value is changed?
+        :param issue_meta: Should SPEAD meta data be sent after the value is
+        changed?
         :return: <nothing>
         """
         if shift_schedule is None:
@@ -549,7 +717,8 @@ class FpgaFHost(DigitiserDataReceiver):
     def get_fft_shift(self):
         """
         Get the current FFT shift schedule from the FPGA.
-        :return: integer representing the FFT shift schedule for all the FFTs on this engine.
+        :return: integer representing the FFT shift schedule for all the FFTs
+        on this engine.
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 
@@ -651,8 +820,41 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Read the ADC snapshots from this Fhost
         """
-        p0 = self.snapshots.snap_adc0_ss.read()['data']
-        p1 = self.snapshots.snap_adc1_ss.read()['data']
+        if 'p1_4' in self.snapshots.snap_adc0_ss.field_names():
+            # temp new style
+            self.registers.control.write(adc_snap_arm=0)
+            self.snapshots.snap_adc0_ss.arm()
+            self.snapshots.snap_adc1_ss.arm()
+            self.registers.control.write(adc_snap_arm=1)
+            d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
+            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
+            self.registers.control.write(adc_snap_arm=0)
+            p0 = {'d%i' % ctr: d['p0_d%i' % ctr] for ctr in range(8)}
+            p1 = {'d%i' % ctr: d['p1_%i' % ctr]
+                  for ctr in [0, 1, 2, 4, 5, 6, 7]}
+            p1['d3'] = []
+            for ctr in range(len(d['p1_3_u8'])):
+                _tmp = (d['p1_3_u8'][ctr] << 2) | d['p1_3_l2'][ctr]
+                p1['d3'].append(caspermem.bin2fp(_tmp, 10, 9, True))
+        elif 'p1_d3' in self.snapshots.snap_adc0_ss.field_names():
+            # new style - should be default
+            self.registers.control.write(adc_snap_arm=0)
+            self.snapshots.snap_adc0_ss.arm()
+            self.snapshots.snap_adc1_ss.arm()
+            self.registers.control.write(adc_snap_arm=1)
+            d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
+            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
+            self.registers.control.write(adc_snap_arm=0)
+            p0 = {'d%i' % ctr: d['p0_d%i' % ctr] for ctr in range(8)}
+            p1 = {'d%i' % ctr: d['p1_d%i' % ctr]
+                  for ctr in [0, 1, 2, 3, 5, 6, 7]}
+            p1['d4'] = []
+            for ctr in range(len(d['p1_d4_u8'])):
+                _tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
+                p1['d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
+        else:
+            p0 = self.snapshots.snap_adc0_ss.read()['data']
+            p1 = self.snapshots.snap_adc1_ss.read()['data']
         return {'p0': p0, 'p1': p1}
 
 '''

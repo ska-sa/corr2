@@ -1,5 +1,4 @@
 import numpy
-import spead64_48 as spead
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
@@ -10,11 +9,13 @@ import time
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
+
 class FEngineOperations(object):
 
     def __init__(self, corr_obj):
         """
-        A collection of f-engine operations that act on/with a correlator instance.
+        A collection of f-engine operations that act on/with a
+        correlator instance.
         :param corr_obj:
         :return:
         """
@@ -25,18 +26,39 @@ class FEngineOperations(object):
 
     def initialise(self):
         """
-        Set up f-engines on this device.
+        Set up f-engines on this device. This is done after programming the
+        devices in the instrument.
         :return:
         """
+
+        if 'x_setup' in self.hosts[0].registers.names():
+            self.logger.info('Found num_x independent f-engines')
+            # set up the x-engine information in the f-engine hosts
+            num_x_hosts = len(self.corr.xhosts)
+            num_x = num_x_hosts * int(self.corr.configd['xengine']['x_per_fpga'])
+            f_per_x = self.corr.n_chans / num_x
+            ip_per_x = 1.0
+            THREADED_FPGA_OP(
+                self.hosts, timeout=10,
+                target_function=(
+                    lambda fpga_:
+                    fpga_.registers.x_setup.write(f_per_x=f_per_x,
+                                                  ip_per_x=ip_per_x,
+                                                  num_x=num_x,),))
+            time.sleep(1)
+        else:
+            self.logger.info('Found FIXED num_x f-engines')
+
         # set eq and shift
         self.eq_write_all()
         self.set_fft_shift_all()
 
         # set up the fpga comms
-        THREADED_FPGA_OP(self.hosts, timeout=10,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
-        THREADED_FPGA_OP(self.hosts, timeout=10,
-                         target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
+        self.tx_disable()
+        THREADED_FPGA_OP(
+            self.hosts, timeout=10,
+            target_function=(
+                lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
         self.clear_status_all()
 
         # where does the f-engine data go?
@@ -47,6 +69,25 @@ class FEngineOperations(object):
         THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
             lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),) )
 
+        # set up the 10gbe cores
+        self._setup_gbes()
+
+        # release from reset
+        THREADED_FPGA_OP(self.hosts, timeout=10, target_function=(
+            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+
+    def configure(self):
+        """
+        Configure the fengine operations - this is done whenever a correlator
+        is instantiated.
+        :return:
+        """
+
+    def _setup_gbes(self):
+        """
+        Set up the 10gbe cores on the f hosts
+        :return:
+        """
         # set up the 10gbe cores
         feng_port = int(self.corr.configd['fengine']['10gbe_port'])
         mac_start = tengbe.Mac(self.corr.configd['fengine']['10gbe_start_mac'])
@@ -72,19 +113,18 @@ class FEngineOperations(object):
                 this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
                 gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
                 self.logger.info(
-                    'fhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i) tx(%s:%i)' %
-                    (f.host, gbe.name, str(gbe.mac), feng_port, board_id,
-                     self.corr.fengine_output.ip_address, self.corr.fengine_output.port))
+                    'fhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i) '
+                    'tx(%s:%i)' % (f.host, gbe.name, str(gbe.mac), feng_port,
+                                   board_id,
+                                   self.corr.fengine_output.ip_address,
+                                   self.corr.fengine_output.port))
                 # gbe.tap_start(restart=True)
                 gbe.dhcp_start()
                 mac_ctr += 1
 
         timeout = len(self.hosts[0].tengbes) * 30 * 1.1
-        THREADED_FPGA_OP(self.hosts, timeout=timeout, target_function=(setup_gbes,))
-
-        # release from reset
-        THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
-            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+        THREADED_FPGA_OP(
+            self.hosts, timeout=timeout, target_function=(setup_gbes,))
 
     def sys_reset(self, sleeptime=0):
         """
@@ -104,8 +144,9 @@ class FEngineOperations(object):
         :return:
         """
         self.logger.info('Checking F hosts are receiving data...')
-        results = THREADED_FPGA_FUNC(self.hosts, timeout=max_waittime+1,
-                                     target_function=('check_rx', (max_waittime,),))
+        results = THREADED_FPGA_FUNC(
+            self.hosts, timeout=max_waittime+1,
+            target_function=('check_rx', (max_waittime,),))
         all_okay = True
         for _v in results.values():
             all_okay = all_okay and _v
@@ -114,16 +155,71 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return all_okay
 
-    def _prepare_delay_vals(self, delay=0, delta_delay=0, phase_offset=0, 
-                        delta_phase_offset=0, ld_time=None, ld_check=True):
+    def check_rx_timestamps(self):
+        """
+        Are the timestamps being received by the f-engines okay?
+        :return:
+        """
+        self.logger.info('Checking timestamps on F hosts...')
+        results = THREADED_FPGA_FUNC(
+            self.hosts, timeout=5,
+            target_function='get_local_time')
+        read_time = time.time()
+        synch_epoch = self.corr.get_synch_time()
+        if synch_epoch == -1:
+            self.logger.warning('System synch epoch unset, skipping f-engine '
+                                'future time test.')
+        feng_times = []
+        for host in self.hosts:
+            feng_mcnt = results[host.host]
+            # are the count bits okay?
+            if feng_mcnt & 0xfff != 0:
+                _err = '%s: bottom 12 bits of timestamp from f-engine are ' \
+                       'not zero?! feng_mcnt(%i)' % (host.host, feng_mcnt)
+                self.logger.error(_err)
+                return False
+            # compare the f-engine times to the local UNIX time
+            if synch_epoch != -1:
+                # is the time in the future?
+                feng_time_s = feng_mcnt / float(self.corr.sample_rate_hz)
+                feng_time = synch_epoch + feng_time_s
+                if feng_time > read_time:
+                    _err = '%s: f-engine time cannot be in the future? ' \
+                           'now(%.3f) feng_time(%.3f)' % (host.host, read_time,
+                                                          feng_time)
+                    self.logger.error(_err)
+                    return False
+                # is the time close enough to local time?
+                if abs(read_time - feng_time) > self.corr.time_offset_allowed_s:
+                    _err = '%s: time calculated from board cannot be so far ' \
+                           'from local time: now(%.3f) feng_time(%.3f) ' \
+                           'diff(%.3f)' % (host.host, read_time, feng_time,
+                                           read_time - feng_time)
+                    self.logger.error(_err)
+                    return False
+            feng_times.append(feng_mcnt)
+
+        # are they all within 500ms of one another?
+        diff = max(feng_times) - min(feng_times)
+        diff_ms = diff / float(self.corr.sample_rate_hz) * 1000.0
+        if diff_ms > self.corr.time_jitter_allowed_ms:
+            _err = 'F-engine timestamps are too far apart: %.3fms' % diff_ms
+            self.logger.error(_err)
+            return False
+        self.logger.info('\tdone.')
+        return True
+
+    def _prepare_delay_vals(self, delay=0, delta_delay=0, phase_offset=0,
+                            delta_phase_offset=0, ld_time=None, ld_check=True):
         # convert delay in time into delay in samples
         delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
 
-        #convert to fractions of a sample
+        # convert to fractions of a sample
         phase_offset_s = float(phase_offset)/float(numpy.pi)
 
         # convert from radians per second to fractions of sample per sample
-        delta_phase_offset_s = float(delta_phase_offset)/float(numpy.pi) / (self.corr.sample_rate_hz)
+        delta_phase_offset_s = (float(delta_phase_offset) / float(numpy.pi) /
+                                self.corr.sample_rate_hz)
 
         if ld_time is not None:
             # check that load time is not too soon or in the past
@@ -157,7 +253,51 @@ class FEngineOperations(object):
                                       numpy.pi * self.corr.sample_rate_hz
         }
 
-    def delays_process(self, loadtime, delays):
+    # def delays_process(self, loadtime, delays):
+    #     """
+    #
+    #     :param loadtime:
+    #     :param delays:
+    #     :return:
+    #     """
+    #     if loadtime <= time.time():
+    #         raise ValueError('Loadtime %.3f is in the past?' % loadtime)
+    #     # This was causing an error
+    #     dlist = delays#.split(' ')
+    #     ant_delay = []
+    #     for delay in dlist:
+    #         bits = delay.strip().split(':')
+    #         if len(bits) != 2:
+    #             raise ValueError('%s is not a valid delay setting' % delay)
+    #         delay = bits[0]
+    #         delay = delay.split(',')
+    #         delay = (float(delay[0]), float(delay[1]))
+    #         fringe = bits[1]
+    #         fringe = fringe.split(',')
+    #         fringe = (float(fringe[0]), float(fringe[1]))
+    #         ant_delay.append((delay, fringe))
+    #
+    #     labels = []
+    #     for src in self.corr.fengine_sources:
+    #         labels.append(src['source'].name)
+    #     if len(ant_delay) != len(labels):
+    #         raise ValueError(
+    #             'Too few values provided: expected(%i) got(%i)' %
+    #             (len(labels), len(ant_delay)))
+    #
+    #     rv = ''
+    #     for ctr in range(0, len(labels)):
+    #         res = self.set_delay(labels[ctr],
+    #                              ant_delay[ctr][0][0], ant_delay[ctr][0][1],
+    #                              ant_delay[ctr][1][0], ant_delay[ctr][1][1],
+    #                              loadtime, False)
+    #         res_str = '%.3f,%.3f:%.3f,%.3f' % \
+    #                   (res['act_delay'], res['act_delta_delay'],
+    #                    res['act_phase_offset'], res['act_delta_phase_offset'])
+    #         rv = '%s %s' % (rv, res_str)
+    #     return rv
+
+    def delays_process_parallel(self, loadtime, delays):
         """
 
         :param loadtime:
@@ -165,52 +305,25 @@ class FEngineOperations(object):
         :return:
         """
         if loadtime <= time.time():
-            raise ValueError('Loadtime %.3f is in the past?' % loadtime)
-        # This was causing an error
-        dlist = delays#.split(' ')
+            _err = 'Loadtime %.3f is in the past?' % loadtime
+            self.logger.error(_err)
+            raise ValueError(_err)
+
+        dlist = delays
+        _n_fsource = len(self.corr.fengine_sources)
+        if len(dlist) != _n_fsource:
+            _err = 'Too few delay setup parameters given. Need as' \
+                   ' many as there are f-sources = %i' % _n_fsource
+            self.logger.error(_err)
+            raise ValueError(_err)
+
         ant_delay = []
         for delay in dlist:
             bits = delay.strip().split(':')
             if len(bits) != 2:
-                raise ValueError('%s is not a valid delay setting' % delay)
-            delay = bits[0]
-            delay = delay.split(',')
-            delay = (float(delay[0]), float(delay[1]))
-            fringe = bits[1]
-            fringe = fringe.split(',')
-            fringe = (float(fringe[0]), float(fringe[1]))
-            ant_delay.append((delay, fringe))
-
-        labels = []
-        for src in self.corr.fengine_sources:
-            labels.append(src['source'].name)
-        if len(ant_delay) != len(labels):
-            raise ValueError(
-                'Too few values provided: expected(%i) got(%i)' %
-                (len(labels), len(ant_delay)))
-
-        rv = ''
-        for ctr in range(0, len(labels)):
-            res = self.set_delay(labels[ctr],
-                                 ant_delay[ctr][0][0], ant_delay[ctr][0][1],
-                                 ant_delay[ctr][1][0], ant_delay[ctr][1][1],
-                                 loadtime, False)
-            res_str = '%.3f,%.3f:%.3f,%.3f' % \
-                      (res['act_delay'], res['act_delta_delay'],
-                       res['act_phase_offset'], res['act_delta_phase_offset'])
-            rv = '%s %s' % (rv, res_str)
-        return rv
-
-    def delays_process_parallel(self, loadtime, delays):
-        if loadtime <= time.time():
-            self.logger.error('Loadtime %.3f is in the past?' % loadtime)
-        # This was causing an error
-        dlist = delays#.split(' ')
-        ant_delay = []
-        for delay in dlist:
-            bits = delay.strip().split(':')
-            if len(bits) != 2:
-                self.logger.error('%s is not a valid delay setting' % delay)
+                _err = '%s is not a valid delay setting' % delay
+                self.logger.error(_err)
+                raise ValueError(_err)
             delay = bits[0]
             delay = delay.split(',')
             delay = (float(delay[0]), float(delay[1]))
@@ -220,7 +333,6 @@ class FEngineOperations(object):
             ant_delay.append((delay, fringe))
 
         actual_vals = self.set_delays_all(loadtime, ant_delay)
-
         rv = []
         for val in actual_vals:
             res_str = '{},{}:{},{}'.format(
@@ -230,105 +342,116 @@ class FEngineOperations(object):
         return rv
     
     def set_delays_all(self, loadtime, coeffs):
-       
-        load_check = False
-        load_wait_time = None  
-        for count,src in enumerate(self.corr.fengine_sources):
+        """
+        Set delays on all fhosts
+        :param loadtime:
+        :param coeffs:
+        :return:
+        """
+        for count, src in enumerate(self.corr.fengine_sources):
             vals = self._prepare_delay_vals(coeffs[count][0][0], 
                                             coeffs[count][0][1],
                                             coeffs[count][1][0],
                                             coeffs[count][1][1],
-                                            loadtime, False)           
-            
+                                            loadtime, False)
             host = src['host']
             offset = src['numonhost']
             host.set_delay(offset, vals['delay'], vals['delta_delay'],
                            vals['phase_offset'], vals['delta_phase_offset'],
                            vals['load_time'], None, False)
 
-        # spawn threads to write values out, giving a maximum time of 0.75 seconds to do them all
-        actual_vals = THREADED_FPGA_FUNC(self.corr.fhosts, timeout=0.75, target_function='write_delays_all')
-
+        # spawn threads to write values out, giving a maximum time of 0.75
+        # seconds to do them all
+        actual_vals = THREADED_FPGA_FUNC(self.corr.fhosts, timeout=0.75,
+                                         target_function='write_delays_all')
         if len(actual_vals) != len(self.corr.fhosts):
-            self.logger.error('Number of delay values returned does not match number of sources')
+            _err = 'Number of delay values returned (%i) does not match ' \
+                   'number of sources (%i)' % \
+                   (len(actual_vals), len(self.corr.fhosts))
+            self.logger.error(_err)
+            raise ValueError(_err)
 
         act_vals = []
-        for count,src in enumerate(self.corr.fengine_sources):
+        for count, src in enumerate(self.corr.fengine_sources):
             host = src['host'].host
             offset = src['numonhost']
-            act_vals.append(self._prepare_actual_delay_vals(actual_vals[host][offset]))
+            vals = self._prepare_actual_delay_vals(actual_vals[host][offset])
+            act_vals.append(vals)
             self.logger.info(
-                '[%s] Phase offset actually set to %6.3f rad with rate %e rad/s.' %
-                (src['source'].name,actual_vals[host][offset]['phase_offset'],
-                actual_values[host][offset]['delta_phase_offset']))
+                '[%s] Phase offset actually set to %6.3f rad with rate %e '
+                'rad/s.' %
+                (src['source'].name,
+                 actual_vals[host][offset]['act_phase_offset'],
+                 actual_vals[host][offset]['act_delta_phase_offset']))
             self.logger.info(
                 '[%s] Delay actually set to %e samples with rate %e.' %
-                (src['source'].name,actual_values[host][offset]['delay'],
-                actual_values[host][offset]['delta_delay']))
+                (src['source'].name,
+                 actual_vals[host][offset]['act_delay'],
+                 actual_vals[host][offset]['act_delta_delay']))
         return act_vals
 
-    def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
-                  delta_phase_offset=0, ld_time=None, ld_check=True):
-        """
-        Set delay correction values for specified source.
-        This is a blocking call.
-        By default, it will wait until load time and verify that things
-        worked as expected.
-        This check can be disabled by setting ld_check param to False.
-        Load time is optional; if not specified, load immediately.
-        :return
-        """
-        self.logger.info('Setting delay correction values for '
-                         'source %s' % source_name)
-        
-        vals = self._prepare_delay_vals(delay, delta_delay, phase_offset, delta_phase_offset,
-                                    ld_time, ld_check)
-        f_delay = vals['delay']
-        f_delta_delay = vals['delta_delay']
-        f_phase_offset = vals['phase_offset']
-        f_delta_phase_offset = vals['delta_phase_offset']
-        f_load_time = vals['load_time']
-        f_load_wait = vals['load_wait']
-
-        # determine fhost to write to
-        write_hosts = []
-        for src in self.corr.fengine_sources:
-            if source_name in src['source'].name:
-                offset = src['numonhost']
-                write_hosts.append(src['host'])
-        if len(write_hosts) == 0:
-            raise ValueError('Unknown source name %s' % source_name)
-        elif len(write_hosts) > 1:
-            raise RuntimeError('Found more than one fhost handling source {!r}: {}'
-                .format(source_name, [h.host for h in write_hosts]))
-
-        fhost = write_hosts[0]
-        try:
-            actual_vals = fhost.write_delay(
-                offset,
-                f_delay, f_delta_delay,
-                f_phase_offset, f_delta_phase_offset,
-                f_load_time, f_load_wait, ld_check)
-        except Exception as e:
-            self.logger.error('New delay error - %s' % e.message)
-            raise
-
-        actual_values = self._prepare_actual_delay_vals(actual_vals)
-
-        self.logger.info(
-            'Phase offset actually set to %6.3f radians.' %
-            (actual_values['act_phase_offset']))
-        self.logger.info(
-            'Phase offset change actually set to %e radians per second.' %
-            (actual_values['act_delta_phase_offset']))
-        self.logger.info(
-            'Delay actually set to %e samples.' %
-            (actual_values['act_delay']))
-        self.logger.info(
-            'Delay rate actually set to %e seconds per second.' %
-            (actual_values['act_delta_delay']))
-
-        return actual_values
+    # def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
+    #               delta_phase_offset=0, ld_time=None, ld_check=True):
+    #     """
+    #     Set delay correction values for specified source.
+    #     This is a blocking call.
+    #     By default, it will wait until load time and verify that things
+    #     worked as expected.
+    #     This check can be disabled by setting ld_check param to False.
+    #     Load time is optional; if not specified, load immediately.
+    #     :return
+    #     """
+    #     self.logger.info('Setting delay correction values for '
+    #                      'source %s' % source_name)
+    #
+    #     vals = self._prepare_delay_vals(delay, delta_delay, phase_offset, delta_phase_offset,
+    #                                 ld_time, ld_check)
+    #     f_delay = vals['delay']
+    #     f_delta_delay = vals['delta_delay']
+    #     f_phase_offset = vals['phase_offset']
+    #     f_delta_phase_offset = vals['delta_phase_offset']
+    #     f_load_time = vals['load_time']
+    #     f_load_wait = vals['load_wait']
+    #
+    #     # determine fhost to write to
+    #     write_hosts = []
+    #     for src in self.corr.fengine_sources:
+    #         if source_name in src['source'].name:
+    #             offset = src['numonhost']
+    #             write_hosts.append(src['host'])
+    #     if len(write_hosts) == 0:
+    #         raise ValueError('Unknown source name %s' % source_name)
+    #     elif len(write_hosts) > 1:
+    #         raise RuntimeError('Found more than one fhost handling source {!r}: {}'
+    #             .format(source_name, [h.host for h in write_hosts]))
+    #
+    #     fhost = write_hosts[0]
+    #     try:
+    #         actual_vals = fhost.write_delay(
+    #             offset,
+    #             f_delay, f_delta_delay,
+    #             f_phase_offset, f_delta_phase_offset,
+    #             f_load_time, f_load_wait, ld_check)
+    #     except Exception as e:
+    #         self.logger.error('New delay error - %s' % e.message)
+    #         raise
+    #
+    #     actual_values = self._prepare_actual_delay_vals(actual_vals)
+    #
+    #     self.logger.info(
+    #         'Phase offset actually set to %6.3f radians.' %
+    #         (actual_values['act_phase_offset']))
+    #     self.logger.info(
+    #         'Phase offset change actually set to %e radians per second.' %
+    #         (actual_values['act_delta_phase_offset']))
+    #     self.logger.info(
+    #         'Delay actually set to %e samples.' %
+    #         (actual_values['act_delay']))
+    #     self.logger.info(
+    #         'Delay rate actually set to %e seconds per second.' %
+    #         (actual_values['act_delta_delay']))
+    #
+    #     return actual_values
 
     def check_tx(self):
         """
@@ -428,31 +551,8 @@ class FEngineOperations(object):
         self.logger.info('Writing EQ on all fhosts based on stored '
                          'per-source EQ values...')
         THREADED_FPGA_FUNC(self.hosts, 10, 'write_eq_all')
-        if self.corr.spead_meta_ig is not None:
-            self.eq_update_metadata()
-            self.corr.spead_tx.send_heap(self.corr.spead_meta_ig.get_heap())
+        self.corr.speadops.update_metadata([0x1400])
         self.logger.info('done.')
-
-    def eq_update_metadata(self):
-        """
-        Update the EQ metadata for this correlator.
-        :return:
-        """
-        all_eqs = self.eq_get()
-        for source in self.corr.fengine_sources:
-            _srcname = source['source'].name
-            _srcnum = source['source_num']
-            eqlen = len(all_eqs[_srcname]['eq'])
-            self.corr.spead_meta_ig.add_item(
-                name='eq_coef_%s' % _srcname, id=0x1400 + _srcnum,
-                description='The unitless per-channel digital scaling '
-                            'factors implemented prior to requantisation, '
-                            'post-FFT, for input %s. Complex number '
-                            'real,imag 32 bit integers.' % _srcname,
-                shape=[eqlen, 2],
-                fmt=spead.mkfmt(('u', 32)),
-                init_val=[[numpy.real(eq_coeff), numpy.imag(eq_coeff)] for
-                          eq_coeff in all_eqs[_srcname]['eq']])
 
     def set_fft_shift_all(self, shift_value=None):
         """
@@ -468,10 +568,7 @@ class FEngineOperations(object):
                          'boards...' % shift_value)
         THREADED_FPGA_FUNC(self.hosts, 10, ('set_fft_shift', (shift_value,),))
         self.logger.info('done.')
-        if self.corr.spead_meta_ig is not None:
-            _fftshift = self.corr.configd['fengine']['fft_shift']
-            self.corr.spead_meta_ig['fft_shift'] = int(_fftshift)
-            self.corr.spead_tx.send_heap(self.corr.spead_meta_ig.get_heap())
+        self.corr.speadops.update_metadata([0x101e])
         return shift_value
 
     def get_fft_shift_all(self):

@@ -4,8 +4,6 @@
 # pylint: disable-msg=C0301
 """
 Plot the ADC data on one or more f-engines
-
-@author: paulp
 """
 import time
 import argparse
@@ -15,26 +13,40 @@ import signal
 import numpy
 from matplotlib import pyplot
 
+from corr2.fhost_fpga import FpgaFHost
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Plot a histogram of the incoming ADC '
-                                             'data for a fengine host.',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='host', type=str, action='store', default='',
-                    help='the f-engine host to query, if an int, will be taken '
-                         'positionally from the config file list of f-hosts')
-parser.add_argument('--config', dest='config', type=str, action='store', default='',
-                    help='a corr2 config file, will use $CORR2INI if none given')
-parser.add_argument('--hist', dest='hist', action='store_true', default=False,
-                    help='plot a histogram of the incoming data')
-parser.add_argument('--fft', dest='fft', action='store_true', default=False,
-                    help='perform a soft FFT on the data before plotting')
-parser.add_argument('--integrate', dest='integrate', type=int, action='store', default='0',
-                    help='fft option - how many spectra should be integrated')
-parser.add_argument('--linear', dest='linear', action='store_true', default=False,
-                    help='plot linear, not log')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
-                    help='log level to use, options INFO, DEBUG, ERROR')
+parser = argparse.ArgumentParser(
+    description='Plot a histogram of the incoming ADC data for a fengine host.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    dest='host', type=str, action='store', default='',
+    help='the f-engine host to query, if an int, will be taken positionally '
+         'from the config file list of f-hosts')
+parser.add_argument(
+    '--config', dest='config', type=str, action='store', default='',
+    help='a corr2 config file, will use $CORR2INI if none given')
+parser.add_argument(
+    '--range', dest='range', action='store', default='-1,-1',
+    help='range to plot, -1 means start/end')
+parser.add_argument(
+    '--hist', dest='hist', action='store_true', default=False,
+    help='plot a histogram of the incoming data')
+parser.add_argument(
+    '--fft', dest='fft', action='store_true', default=False,
+    help='perform a soft FFT on the data before plotting')
+parser.add_argument(
+    '--integrate', dest='integrate', type=int, action='store', default=0,
+    help='fft option - how many spectra should be integrated')
+parser.add_argument(
+    '--linear', dest='linear', action='store_true', default=False,
+    help='plot linear, not log')
+parser.add_argument(
+    '--noplot', dest='noplot', action='store_true', default=False,
+    help='do not plot, dump values to screen')
+parser.add_argument(
+    '--loglevel', dest='log_level', action='store', default='INFO',
+    help='log level to use, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 if args.log_level != '':
@@ -58,34 +70,44 @@ try:
 except ValueError:
     hostname = args.host
 
+# process the range argument
+plotrange = [int(a) for a in args.range.split(',')]
+if plotrange[0] == -1:
+    plotrange = (0, plotrange[1])
+if (plotrange[1] != -1) and (plotrange[1] <= plotrange[0]):
+    raise RuntimeError('Plot range of %s is incorrect.' % str(plotrange))
+plotrange = (int(plotrange[0]), int(plotrange[1]))
+
 
 def exit_gracefully(_, __):
     fpga.disconnect()
     sys.exit(0)
 signal.signal(signal.SIGINT, exit_gracefully)
 
-# make the FPGA objects
-from corr2.fhost_fpga import FpgaFHost
+# make the FPGA object
 fpga = FpgaFHost(hostname)
 time.sleep(0.5)
 fpga.get_system_information()
 
 
 def get_data():
-    data = fpga.get_adc_snapshots()
+    _data = fpga.get_adc_snapshots()
     rv = {'p0': [], 'p1': []}
-    for ctr in range(0, len(data['p0']['d0'])):
+    for ctr in range(0, len(_data['p0']['d0'])):
         for ctr2 in range(0, 8):
-            rv['p0'].append(data['p0']['d%i' % ctr2][ctr])
-            rv['p1'].append(data['p1']['d%i' % ctr2][ctr])
+            rv['p0'].append(_data['p0']['d%i' % ctr2][ctr])
+            rv['p1'].append(_data['p1']['d%i' % ctr2][ctr])
     return rv
 
 
 def plot_func(figure, sub_plots, idata, ictr, pctr):
     data = get_data()
     ictr += 1
-    p0_data = data['p0']
-    p1_data = data['p1']
+
+    topstop = plotrange[1] if plotrange[1] != -1 else len(data['p0'])
+
+    p0_data = data['p0'][plotrange[0]:topstop]
+    p1_data = data['p1'][plotrange[0]:topstop]
 
     # print '\tMean:   %.10f' % numpy.mean(p0_data[1000:3000])
     # print '\tStddev: %.10f' % numpy.std(p0_data[1000:3000])
@@ -139,26 +161,36 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
         idata = None
         ictr = 0
         pctr += 1
-    fig.canvas.manager.window.after(10, plot_func, figure, sub_plots, idata, ictr, pctr)
+    fig.canvas.manager.window.after(10, plot_func, figure,
+                                    sub_plots, idata, ictr, pctr)
 
 # set up the figure with a subplot to be plotted
 data = get_data()
-fig = pyplot.figure()
-subplots = []
-num_plots = len(data.keys())
-for p in range(num_plots):
-    sub_plot = fig.add_subplot(num_plots, 1, p+1)
-    subplots.append(sub_plot)
-integrated_data = None
-integration_counter = 0
-plot_counter = 0
-fig.canvas.manager.window.after(10, plot_func, fig, subplots, integrated_data, integration_counter, plot_counter)
-pyplot.show()
-print 'Plot started.'
 
-# wait here so that the plot can be viewed
-print 'Press Ctrl-C to exit...'
-sys.stdout.flush()
-import time
-while True:
-    time.sleep(1)
+if args.noplot:
+    while True:
+        print data
+        time.sleep(1)
+        data = get_data()
+else:
+    fig = pyplot.figure()
+    subplots = []
+    num_plots = len(data.keys())
+    for p in range(num_plots):
+        sub_plot = fig.add_subplot(num_plots, 1, p+1)
+        subplots.append(sub_plot)
+    integrated_data = None
+    integration_counter = 0
+    plot_counter = 0
+    fig.canvas.manager.window.after(10, plot_func, fig,
+                                    subplots, integrated_data,
+                                    integration_counter, plot_counter)
+    pyplot.show()
+    print 'Plot started.'
+
+    # wait here so that the plot can be viewed
+    print 'Press Ctrl-C to exit...'
+    sys.stdout.flush()
+    while True:
+        time.sleep(1)
+

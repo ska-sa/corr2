@@ -1,24 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Issue spead metadata for a data product
+Control the 10gbe cores on the hosts in the instrument
 
 @author: paulp
 """
 import argparse
 import os
 
+from casperfpga import utils as fpgautils
+
 from corr2 import fxcorrelator
 
+THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
+THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+
+
 parser = argparse.ArgumentParser(
-    description='Issue SPEAD metadata for a data product on this instrument.',
+    description='Control the 10Gbe interfaces on the hosts in the instrument.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(
-    '-product', dest='product', action='store', default='',
-    help='the name of the product on which to act')
-parser.add_argument(
-    '--listproducts', dest='listproducts', action='store_true', default=False,
-    help='list available products and exit')
 parser.add_argument(
     '--config', dest='config', type=str, action='store',
     default='', help='corr2 config file')
@@ -45,28 +45,20 @@ if 'CORR2INI' in os.environ.keys() and args.config == '':
 # make the correlator object and send the metadata
 c = fxcorrelator.FxCorrelator('corr', config_source=args.config)
 c.standard_log_config()
-c.initialise(program=False)
 
-prod_list = []
+hosts = c.fhosts[:]
+hosts.extend(c.xhosts[:])
 
-if args.product == '':
-    prod_list = c.data_products.values()
-else:
-    if args.product not in c.data_products:
-        print 'ERROR: %s not in data products for this ' \
-              'instrument.' % args.product
-    else:
-        prod_list = [c.data_products[args.product]]
+hosts = c.xhosts[:]
 
-if args.listproducts or (len(prod_list) == 0):
-    print 'Available products:'
-    for prod in c.data_products.values():
-        print '\t', prod
-    import sys
-    sys.exit()
+THREADED_FPGA_FUNC(hosts, 10, 'get_system_information')
 
-for prod in prod_list:
-    prod.meta_issue()
+THREADED_FPGA_FUNC(hosts, 10, 'gbe_tx_disable')
+
+# for h in hosts:
+#     print h.host, '-', h.tengbes
+#
+#     h.gbe_tx_disable()
 
 if args.ipython:
     import IPython

@@ -14,10 +14,10 @@ from corr2 import sensors, fxcorrelator
 
 class KatcpLogFormatter(logging.Formatter):
     def format(self, record):
-        translate_levels = {'INFO': 'info',
-                            'DEBUG': 'debug',
-                            'WARNING': 'warn',
-                            }
+        translate_levels = {
+            'WARNING': 'warn',
+            'warning': 'warn'
+        }
         if record.levelname in translate_levels:
             record.levelname = translate_levels[record.levelname]
         else:
@@ -36,11 +36,15 @@ class KatcpLogEmitHandler(logging.StreamHandler):
         """
         Replace a regular log emit with sending a katcp
         log message to all connected clients.
+        :param record: the log record to process
         """
         try:
-            inform_msg = self.katcp_server.create_log_inform(record.levelname.lower(),
-                                                             record.msg,
-                                                             record.filename)
+            if record.levelname == 'WARNING':
+                record.levelname = 'WARN'
+            inform_msg = self.katcp_server.create_log_inform(
+                record.levelname.lower(),
+                record.msg,
+                record.filename)
             self.katcp_server.mass_inform(inform_msg)
             self.flush()
         except (KeyboardInterrupt, SystemExit):
@@ -82,20 +86,22 @@ def on_shutdown(ioloop, server):
     ioloop.stop()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Start a corr2 sensor server.',
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-p', '--port', dest='port', action='store', default=1235, type=int,
+    parser = argparse.ArgumentParser(
+        description='Start a corr2 sensor server.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-p', '--port', dest='port', action='store',
+                        default=1235, type=int,
                         help='bind to this port to receive KATCP messages')
-    parser.add_argument('--log_level', dest='loglevel', action='store', default='INFO',
-                        help='log level to set')
-    parser.add_argument('--log_format_katcp', dest='lfm', action='store_true', default=False,
-                        help='format log messsages for katcp')
-    parser.add_argument('--config', dest='config', type=str, action='store', default='',
-                        help='a corr2 config file')
+    parser.add_argument('--log_level', dest='loglevel', action='store',
+                        default='INFO', help='log level to set')
+    parser.add_argument('--log_format_katcp', dest='lfm', action='store_true',
+                        default=False, help='format log messsages for katcp')
+    parser.add_argument('--config', dest='config', type=str, action='store',
+                        default='', help='a corr2 config file')
     args = parser.parse_args()
 
     try:
-        log_level = eval('logging.%s' % args.loglevel)
+        log_level = getattr(logging, args.loglevel)
     except:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 
@@ -126,6 +132,7 @@ if __name__ == '__main__':
     print 'Sensor Server listening on port %d, ' % args.port
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
-    instrument = fxcorrelator.FxCorrelator('RTS correlator', config_source=args.config)
+    instrument = fxcorrelator.FxCorrelator('RTS correlator',
+                                           config_source=args.config)
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()
