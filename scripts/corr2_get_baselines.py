@@ -8,7 +8,7 @@ Get the list of baselines for a given configuration
 import argparse
 import os
 
-import corr2
+from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Print out the list of baselines for this correlator config.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -32,9 +32,6 @@ if 'CORR2INI' in os.environ.keys() and configfile == '':
 if configfile == '':
     raise RuntimeError('No good carrying on without a config file')
 
-c = corr2.fxcorrelator.FxCorrelator('script_corr', config_source=configfile)
-c.standard_log_config()
-c.initialise(program=False)
-baselines = c.xops.get_baseline_order()
+baselines = utils.baselines_from_config(config_file=configfile)
 for ctr, baseline in enumerate(baselines):
     print ctr, ':', baseline

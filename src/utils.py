@@ -105,6 +105,53 @@ def hosts_from_config_file(config_file, section=None):
     return hosts_from_config_dict(config, section=section)
 
 
+def baselines_from_config(config_file=None, config=None):
+    """
+    Get a list of the baselines from a config file.
+    :param config_file:
+    :return:
+    """
+    config = config or parse_ini_file(config_file)
+
+    sources = config['fengine']['source_names'].split(',')
+    for ctr, src in enumerate(sources):
+        sources[ctr] = src.strip()
+
+    fhosts = config['fengine']['hosts'].split(',')
+    for ctr, hst in enumerate(fhosts):
+        fhosts[ctr] = hst.strip()
+    n_antennas = len(fhosts)
+
+    assert len(sources) / 2 == n_antennas
+    order1 = []
+    order2 = []
+    for ant_ctr in range(n_antennas):
+        # print 'ant_ctr(%d)' % ant_ctr
+        for ctr2 in range(int(n_antennas / 2), -1, -1):
+            temp = (ant_ctr - ctr2) % n_antennas
+            # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
+            if ant_ctr >= temp:
+                order1.append((temp, ant_ctr))
+            else:
+                order2.append((ant_ctr, temp))
+    order2 = [order_ for order_ in order2 if order_ not in order1]
+    baseline_order = order1 + order2
+    source_names = []
+    for source in sources:
+        source_names.append(source)
+    rv = []
+    for baseline in baseline_order:
+        rv.append((source_names[baseline[0] * 2],
+                   source_names[baseline[1] * 2]))
+        rv.append((source_names[baseline[0] * 2 + 1],
+                   source_names[baseline[1] * 2 + 1]))
+        rv.append((source_names[baseline[0] * 2],
+                   source_names[baseline[1] * 2 + 1]))
+        rv.append((source_names[baseline[0] * 2 + 1],
+                   source_names[baseline[1] * 2]))
+    return rv
+
+
 def parse_hosts(str_file_dict, section=None):
     """
     Make a list of hosts from the argument given to a script.

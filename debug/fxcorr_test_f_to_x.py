@@ -31,54 +31,13 @@ ANTS_UNDER_TEST = ['ant0_x']
 
 BLS_UNDER_TEST = []
 
-BASELINES = {
-    0: ('ant0_x', 'ant0_x'),
-    1: ('ant0_y', 'ant0_y'),
-    2: ('ant0_x', 'ant0_y'),
-    3: ('ant0_y', 'ant0_x'),
-    4: ('ant0_x', 'ant1_x'),
-    5: ('ant0_y', 'ant1_y'),
-    6: ('ant0_x', 'ant1_y'),
-    7: ('ant0_y', 'ant1_x'),
-    8: ('ant1_x', 'ant1_x'),
-    9: ('ant1_y', 'ant1_y'),
-    10: ('ant1_x', 'ant1_y'),
-    11: ('ant1_y', 'ant1_x'),
-    12: ('ant0_x', 'ant2_x'),
-    13: ('ant0_y', 'ant2_y'),
-    14: ('ant0_x', 'ant2_y'),
-    15: ('ant0_y', 'ant2_x'),
-    16: ('ant1_x', 'ant2_x'),
-    17: ('ant1_y', 'ant2_y'),
-    18: ('ant1_x', 'ant2_y'),
-    19: ('ant1_y', 'ant2_x'),
-    20: ('ant2_x', 'ant2_x'),
-    21: ('ant2_y', 'ant2_y'),
-    22: ('ant2_x', 'ant2_y'),
-    23: ('ant2_y', 'ant2_x'),
-    24: ('ant1_x', 'ant3_x'),
-    25: ('ant1_y', 'ant3_y'),
-    26: ('ant1_x', 'ant3_y'),
-    27: ('ant1_y', 'ant3_x'),
-    28: ('ant2_x', 'ant3_x'),
-    29: ('ant2_y', 'ant3_y'),
-    30: ('ant2_x', 'ant3_y'),
-    31: ('ant2_y', 'ant3_x'),
-    32: ('ant3_x', 'ant3_x'),
-    33: ('ant3_y', 'ant3_y'),
-    34: ('ant3_x', 'ant3_y'),
-    35: ('ant3_y', 'ant3_x'),
-    36: ('ant0_x', 'ant3_x'),
-    37: ('ant0_y', 'ant3_y'),
-    38: ('ant0_x', 'ant3_y'),
-    39: ('ant0_y', 'ant3_x')
-}
+BASELINES = []
 
 def ants_to_baselines(ants):
     bls = []
     for ant in ants:
         for other_ant in ants:
-            for bls_ctr, baseline in BASELINES.items():
+            for bls_ctr, baseline in enumerate(BASELINES):
                 if baseline[0] == ant and baseline[1] == other_ant:
                     bls.append(bls_ctr)
     baselines = []
@@ -233,6 +192,8 @@ if __name__ == '__main__':
     config = utils.parse_ini_file(args.config)
     data_port = int(config['xengine']['output_destination_port'])
     n_chans = int(config['fengine']['n_chans'])
+
+    BASELINES = utils.baselines_from_config(config=config)
 
     ANTS_UNDER_TEST = args.inputlist.split(',')
     freqs = args.freqlist.split(',')
