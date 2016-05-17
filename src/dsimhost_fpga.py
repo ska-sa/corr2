@@ -486,10 +486,12 @@ class FpgaDsimHost(FpgaHost):
 
         mac_bits = start_mac.split(':')
         macbase = int(mac_bits[5])
+        mac_ctr = 1
         for ctr in range(num_tengbes):
-            this_mac = tengbe.Mac.from_roach_hostname(self.host, ctr)
+            this_mac = tengbe.Mac.from_roach_hostname(self.host, mac_ctr)
             ip = '0.0.0.0'
             self.tengbes['gbe%d' % ctr].setup(mac=this_mac, ipaddress=ip, port=port)
+            mac_ctr += 1
         for gbe in self.tengbes:
             gbe.dhcp_start()
 
