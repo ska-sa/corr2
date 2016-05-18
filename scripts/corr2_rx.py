@@ -27,6 +27,7 @@ import logging
 
 FIRST_ONE = None
 
+N_BLS = 0
 
 def do_things_first(ig, logger):
     if items is None:
@@ -272,7 +273,7 @@ def do_plotting_things(ig):
     baseline_data = []
     baseline_phase = []
 
-    for baseline in range(0, 40):
+    for baseline in range(0, N_BLS):
         # print 'baseline %i:' % baseline, \
         #     ig['xeng_raw'][:, baseline]
         # FREQ_TO_PLOT = 2000
@@ -431,6 +432,7 @@ if __name__ == '__main__':
     n_ants = len(fhosts)
 
     n_bls = n_ants * (n_ants+1) / 2 * 4
+    N_BLS = n_bls
 
     print 'Loaded instrument info from config file:\n\t%s' % args.config
 
