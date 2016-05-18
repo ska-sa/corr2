@@ -332,39 +332,6 @@ class Corr2Server(katcp.DeviceServer):
         eqstring = eqstring.replace(',', '')
         return tuple(['ok'] + eqstring.split(' '))
 
-    @request(Str(), Int(), Int(), Int())
-    @return_reply(Str(multiple=True))
-    def request_gain_range(self, sock, source_name, value, fstart, fstop):
-        """
-        Apply and/or get the gain settings for an input
-        :param sock:
-        :param source_name: the source on which to act
-        :param eq_vals: the equaliser values
-        :return:
-        """
-        if source_name == '':
-            return 'fail', 'no source name given'
-
-        n_chans = self.instrument.n_chans
-
-        eq_vals = [0] * fstart
-        eq_vals.extend([value] * (fstop - fstart))
-        eq_vals.extend([0] * (n_chans - fstop))
-
-        assert len(eq_vals) == n_chans
-
-        if len(eq_vals) > 0 and eq_vals[0] != '':
-            try:
-                self.instrument.fops.eq_set(True, source_name, list(eq_vals))
-            except Exception as e:
-                return 'fail', 'unknown exception: %s' % e.message
-        _src = self.instrument.fops.eq_get(source_name)
-        eqstring = str(_src[source_name]['eq'])
-        eqstring = eqstring.replace('(', '').replace(')', '')
-        eqstring = eqstring.replace('[', '').replace(']', '')
-        eqstring = eqstring.replace(',', '')
-        return tuple(['ok'] + eqstring.split(' '))
-
     @request(Float(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):
@@ -529,6 +496,65 @@ class Corr2Server(katcp.DeviceServer):
         logger.setLevel(log_level_int)
         return 'ok',
 
+    @request()
+    @return_reply()
+    def request_debug_deprogram_all(self, sock):
+        try:
+            from casperfpga import utils as fpgautils
+            fhosts = self.instrument.fhosts
+            xhosts = self.instrument.xhosts
+            fpgautils.threaded_fpga_function(fhosts, 10, 'deprogram')
+            fpgautils.threaded_fpga_function(xhosts, 10, 'deprogram')
+        except Exception as e:
+            return 'fail', 'unknown exception: %s' % e.message
+        return 'ok',
+
+    @request(Str(), Int(), Int(), Int())
+    @return_reply(Str(multiple=True))
+    def request_debug_gain_range(self, sock, source_name, value, fstart, fstop):
+        """
+        Apply and/or get the gain settings for an input
+        :param sock:
+        :param source_name: the source on which to act
+        :param eq_vals: the equaliser values
+        :return:
+        """
+        if source_name == '':
+            return 'fail', 'no source name given'
+        n_chans = self.instrument.n_chans
+        eq_vals = [0] * fstart
+        eq_vals.extend([value] * (fstop - fstart))
+        eq_vals.extend([0] * (n_chans - fstop))
+        assert len(eq_vals) == n_chans
+        if len(eq_vals) > 0 and eq_vals[0] != '':
+            try:
+                self.instrument.fops.eq_set(True, source_name, list(eq_vals))
+            except Exception as e:
+                return 'fail', 'unknown exception: %s' % e.message
+        _src = self.instrument.fops.eq_get(source_name)
+        eqstring = str(_src[source_name]['eq'])
+        eqstring = eqstring.replace('(', '').replace(')', '')
+        eqstring = eqstring.replace('[', '').replace(']', '')
+        eqstring = eqstring.replace(',', '')
+        return tuple(['ok'] + eqstring.split(' '))
+
+    @request(Str(default='', multiple=True))
+    def request_debug_gain_all(self, sock, *eq_vals):
+        """
+        Apply and/or get the gain settings for an input
+        :param sock:
+        :param eq_vals: the equaliser values
+        :return:
+        """
+        if len(eq_vals) > 0 and eq_vals[0] != '':
+            try:
+                self.instrument.fops.eq_set(True, None, list(eq_vals))
+            except Exception as e:
+                return 'fail', 'unknown exception: %s' % e.message
+        else:
+            return 'fail', 'did not give new eq values?'
+        return 'ok',
+
     # @request(Int(default=-1), Int(default=-1))
     # @return_reply(Int(), Int())
     # def request_eq(self, sock, new_real, new_imag):
@@ -543,16 +569,16 @@ class Corr2Server(katcp.DeviceServer):
     #         current_shift_value = fengops.feng_get_fft_shift_all(self.instrument)
     #         current_shift_value = current_shift_value[current_shift_value.keys()[0]]
     #     return 'ok', current_shift_value
-
-    @request(Str(default='a string woohoo'), Int(default=777))
-    @return_reply()
-    def request_pang(self, sock, astring, anint):
-        """
-        ping-pong
-        :return:
-        """
-        print 'pong', astring, anint
-        return 'ok'
+    #
+    # @request(Str(default='a string woohoo'), Int(default=777))
+    # @return_reply()
+    # def request_pang(self, sock, astring, anint):
+    #     """
+    #     ping-pong
+    #     :return:
+    #     """
+    #     print 'pong', astring, anint
+    #     return 'ok'
 
 if USE_TORNADO:
     @gen.coroutine
