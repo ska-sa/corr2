@@ -499,6 +499,11 @@ class Corr2Server(katcp.DeviceServer):
     @request()
     @return_reply()
     def request_debug_deprogram_all(self, sock):
+        """
+        Deprogram all the f and x roaches
+        :param sock:
+        :return:
+        """
         try:
             from casperfpga import utils as fpgautils
             fhosts = self.instrument.fhosts
