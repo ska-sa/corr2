@@ -25,13 +25,12 @@ import os
 import logging
 
 
-FREQS_UNDER_TEST = range(256, 512)
-
-ANTS_UNDER_TEST = ['ant0_x']
-
+FREQS_UNDER_TEST = []
+ANTS_UNDER_TEST = []
 BLS_UNDER_TEST = []
-
 BASELINES = []
+NUM_HEAPS = -1
+N_CHANS = 0
 
 def ants_to_baselines(ants):
     bls = []
@@ -68,7 +67,7 @@ def check_data_things(ig):
     if xeng_raw is None:
         return
 
-    print np.shape(xeng_raw)
+    print 'rx\'d heap:', np.shape(xeng_raw)
 
     for baseline in range(0, len(BASELINES)):
         bdata = xeng_raw[:, baseline]
@@ -76,10 +75,10 @@ def check_data_things(ig):
         if baseline in BLS_UNDER_TEST:
             non_zero_range = FREQS_UNDER_TEST
             zero_range = range(0, min(FREQS_UNDER_TEST))
-            zero_range.extend(range(max(FREQS_UNDER_TEST)+1, 4096))
+            zero_range.extend(range(max(FREQS_UNDER_TEST)+1, N_CHANS))
         else:
             non_zero_range = []
-            zero_range = range(4096)
+            zero_range = range(N_CHANS)
 
         for ctr in zero_range:
             complex_tuple = bdata[ctr]
@@ -96,6 +95,7 @@ def check_data_things(ig):
             #    pwr_bef = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
             #    pwr_aft = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
             #assert pwr != 0.0
+
 
 class CorrRx(threading.Thread):
     def __init__(self, port=7148,
@@ -135,6 +135,7 @@ class CorrRx(threading.Thread):
         idx = 0
 
         last_cnt = -1
+        heap_ctr = 0
 
         for heap in strm:
             ig.update(heap)
@@ -149,8 +150,14 @@ class CorrRx(threading.Thread):
 
             check_data_things(ig)
 
+            heap_ctr += 1
+
+            if NUM_HEAPS > -1:
+                if heap_ctr >= NUM_HEAPS:
+                    self.quit_event.set()
+
             if self.quit_event.is_set():
-                logger.info('Got a signal from main(), exiting rx loop...')
+                logger.info('Got a quit signal from somewhere, exiting rx loop...')
                 break
 
             idx += 1
@@ -177,6 +184,8 @@ if __name__ == '__main__':
                         help='Comma-seperated list of inputs to check.')
     parser.add_argument('--freqs', dest='freqlist', action='store', default='', type=str,
                         help='Comma-seperated tuple for start and stop freq chans to check.')
+    parser.add_argument('--numheaps', dest='numheaps', action='store', default=-1, type=int,
+                        help='How many heaps should be checked?')
     parser.add_argument('--log', dest='log', action='store_true', default=False,
                         help='Logarithmic y axis.')
     parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
@@ -193,6 +202,11 @@ if __name__ == '__main__':
     data_port = int(config['xengine']['output_destination_port'])
     n_chans = int(config['fengine']['n_chans'])
 
+    N_CHANS = n_chans
+
+    NUM_HEAPS = args.numheaps
+    HEAP_CTR = 0
+
     BASELINES = utils.baselines_from_config(config=config)
 
     ANTS_UNDER_TEST = args.inputlist.split(',')
@@ -205,6 +219,7 @@ if __name__ == '__main__':
     print 'testing frequencies:', min(FREQS_UNDER_TEST), '-', max(FREQS_UNDER_TEST)
     print 'testing ants:', ANTS_UNDER_TEST
     print 'testing baselines:', BLS_UNDER_TEST
+    print 'checking %i heaps' % NUM_HEAPS
 
     fhosts = config['fengine']['hosts'].split(',')
 
