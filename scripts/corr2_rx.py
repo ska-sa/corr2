@@ -124,14 +124,23 @@ def do_h5_file(ig, logger, h5_file):
         item.unset_changed()
 
 
-def print_xeng_data(data):
+def print_xeng_data(logger, data):
     """
 
     :param data:
     :return:
     """
-    print 'we\'ll log the data here'
-    print data
+    if data is None:
+        return
+
+    powerdata = data[0]
+    phasedata = data[1]
+
+    for blsctr in range(len(powerdata)):
+        bls = powerdata[blsctr][0]
+        pwr = powerdata[blsctr][1]
+        phs = phasedata[blsctr][1]
+        logger.info('%i-%s:\n\tpwr: %s\n\tphs: %s' % (bls, BASELINES[bls], pwr, phs))
 
 
 def process_xeng_data(ig, logger, get_data, baselines, channels):
@@ -151,7 +160,7 @@ def process_xeng_data(ig, logger, get_data, baselines, channels):
         return
 
     logger.info('Generating plot data...')
-    logger.info('\tprocessing heap with shape: ', np.shape(xeng_raw))
+    logger.info('\tprocessing heap with shape: %s' % str(np.shape(xeng_raw)))
 
     if not get_data:
         logger.info('\talready got data, skipping this heap.')
@@ -310,8 +319,11 @@ class CorrReceiver(threading.Thread):
             if h5_file:
                 do_h5_file(ig, logger, h5_file)
 
-            get_data = (not self.plot_data_event.is_set()) or self.print_data
-            data = process_xeng_data(ig, get_data, self.baselines, self.channels)
+            get_data = False
+            if self.plot_data_event is not None:
+                get_data = not self.plot_data_event.is_set()
+            get_data = get_data or self.print_data
+            data = process_xeng_data(ig, logger, get_data, self.baselines, self.channels)
 
             if self.plot_queue:
                 if not self.plot_data_event.is_set():
@@ -321,7 +333,7 @@ class CorrReceiver(threading.Thread):
                     self.plot_data_event.set()
 
             if self.print_data:
-                print_xeng_data(data)
+                print_xeng_data(logger, data)
 
             # should we quit?
             if self.quit_event.is_set():
@@ -449,8 +461,6 @@ if args.printdata or args.plot:
         print 'Given channel range:', channels
     if (not baselines) or (not channels):
         print 'Print or plot requested, but no baselines and/or channels specified.'
-
-raise RuntimeError
 
 # if there are baselines to plot, set up a plotter that will pull
 # data from a data queue
