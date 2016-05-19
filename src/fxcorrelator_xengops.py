@@ -743,15 +743,22 @@ class XEngineOperations(object):
         """
         self.logger.info('\tChecking for errors & accumulations...')
         vacc_status = self.vacc_status()
+        note_errors = False
         for host in self.hosts:
             for status in vacc_status[host.host]:
-                if status['errors'] > 0:
+                if status['errors'] > 0 and status['errors'] < 100:
+                    self.logger.warn('\t\tvacc errors > 0. Que pasa?')
+                    note_errors = True
+                elif status['errors'] >= 100:
                     self.logger.error('\t\tvacc errors > 0. Que pasa?')
                     return False
                 if status['count'] <= 0:
                     self.logger.error('\t\tvacc counts <= 0. Que pasa?')
                     return False
-        self.logger.debug('\t\txeng_vacc_check_status: all okay')
+        if note_errors:
+            self.logger.debug('\t\txeng_vacc_check_status: mostly okay, some reorder errors')
+        else:
+            self.logger.debug('\t\txeng_vacc_check_status: all okay')
         return True
 
     def set_acc_time(self, acc_time_s, vacc_resync=True):
