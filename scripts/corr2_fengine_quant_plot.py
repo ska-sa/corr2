@@ -212,8 +212,8 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
         idata = None
         ictr = 0
         pctr += 1
-    fig.canvas.manager.window.after(10, plot_func, figure, sub_plots,
-                                    idata, ictr, pctr)
+    figure.canvas.manager.window.after(10, plot_func, figure, sub_plots,
+                                       idata, ictr, pctr)
 # print, no plot
 if args.printvals and args.noplot:
     import sys
