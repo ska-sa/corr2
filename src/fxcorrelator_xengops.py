@@ -747,10 +747,10 @@ class XEngineOperations(object):
         for host in self.hosts:
             for status in vacc_status[host.host]:
                 if status['errors'] > 0 and status['errors'] < 100:
-                    self.logger.warn('\t\tvacc errors > 0. Que pasa?')
+                    self.logger.warn('\t\t100 > vacc errors > 0. Que pasa?')
                     note_errors = True
                 elif status['errors'] >= 100:
-                    self.logger.error('\t\tvacc errors > 0. Que pasa?')
+                    self.logger.error('\t\tvacc errors > 100. Que pasa?')
                     return False
                 if status['count'] <= 0:
                     self.logger.error('\t\tvacc counts <= 0. Que pasa?')
