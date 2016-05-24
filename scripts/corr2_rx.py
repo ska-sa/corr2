@@ -42,10 +42,10 @@ def do_track_items(ig, logger, track_list):
     for name in ig.keys():
         if name not in track_list:
             continue
-        item = ig.get_item(name)
+        item = ig[name]
         if not item.has_changed():
             continue
-            logger.info('(%s) %s => %s' % (time.ctime(), name, str(ig[name])))
+            logger.info('(%s) %s => %s' % (time.ctime(), name, str(item)))
 
 
 def do_h5_file(ig, logger, h5_file):
@@ -63,25 +63,25 @@ def do_h5_file(ig, logger, h5_file):
     datasets_index = {}
     # we need these bits of meta data before being able to assemble and
     # transmit signal display data
-    meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs', 'center_freq', 'bls_ordering', 'n_accs']
+    meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs', 'center_freq',
+                     'bls_ordering', 'n_accs']
     meta = {}
     for name in ig.keys():
         logger.debug('\tkey name %s' % name)
-        item = ig.get_item(name)
-        if (not item.has_changed()) and (name in datasets.keys()):
-            # the item is not marked as changed, and we have a
-            # record for it, skip ahead
-            continue
+        item = ig[name]
         if name in meta_required:
-            meta[name] = ig[name]
+            meta[name] = item
             meta_required.pop(meta_required.index(name))
             if len(meta_required) == 0:
-                logger.info('Got all required metadata. Expecting data frame shape of %i %i %i' % (meta['n_chans'], meta['n_bls'], 2))
-                meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs', 'center_freq', 'bls_ordering', 'n_accs']
+                logger.info(
+                    'Got all required metadata. Expecting data frame shape of '
+                    '%i %i %i' % (meta['n_chans'], meta['n_bls'], 2))
+                meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
+                                 'center_freq', 'bls_ordering', 'n_accs']
 
         # check to see if we have encountered this type before
         if name not in datasets.keys():
-            datasets[name] = ig[name]
+            datasets[name] = item
             datasets_index[name] = 0
 
         # check to see if we have stored this type before
@@ -97,9 +97,6 @@ def do_h5_file(ig, logger, h5_file):
                     h5_file.create_dataset(
                         name, [1] + ([] if list(shape) == [1] else list(shape)),
                         maxshape=[None] + ([] if list(shape) == [1] else list(shape)), dtype=dtype)
-            if not item.has_changed():
-                continue
-                # if we built from an empty descriptor
         else:
             logger.info('Adding %s to dataset. New size is %i.' % (name, datasets_index[name]+1))
             if h5_file is not None:
@@ -132,39 +129,31 @@ def print_xeng_data(logger, data):
     """
     if data is None:
         return
-
     powerdata = data[0]
     phasedata = data[1]
-
     for blsctr in range(len(powerdata)):
         bls = powerdata[blsctr][0]
         pwr = powerdata[blsctr][1]
         phs = phasedata[blsctr][1]
-        logger.info('%i-%s:\n\tpwr: %s\n\tphs: %s' % (bls, BASELINES[bls], pwr, phs))
+        logger.info('%i-%s:\n\tpwr: %s\n\tphs: %s' % (bls, BASELINES[bls],
+                                                      pwr, phs))
 
 
-def process_xeng_data(ig, logger, get_data, baselines, channels):
+def process_xeng_data(ig, logger, baselines, channels):
     """
     Assemble plotting data for the the plotting thread to deal with.
     :param ig:
     :return:
     """
-    if (not baselines) or (not channels):
-        return
     if 'xeng_raw' not in ig.keys():
-        return
+        return None
     if ig['xeng_raw'] is None:
-        return
+        return None
     xeng_raw = ig['xeng_raw'].value
     if xeng_raw is None:
-        return
-
+        return None
     logger.info('Generating plot data...')
     logger.info('\tprocessing heap with shape: %s' % str(np.shape(xeng_raw)))
-
-    if not get_data:
-        logger.info('\talready got data, skipping this heap.')
-        return None
     baseline_data = []
     baseline_phase = []
     for baseline in baselines:
@@ -181,56 +170,71 @@ def process_xeng_data(ig, logger, get_data, baselines, channels):
             phasedata.append(phase)
         baseline_data.append((baseline, powerdata[:]))
         baseline_phase.append((baseline, phasedata[:]))
-    return (baseline_data, baseline_phase)
+    return baseline_data, baseline_phase
 
 
-def plot_func(figure, subplots, plot_data_event, plot_queue, plot_counter, acc_scale):
-    """
-    The function to do the plotting of data put into the plotting Queue
-    :return:
-    """
-    if plot_data_event.is_set():
+class CorrPlotter(threading.Thread):
+    def __init__(self, quit_event, plot_queue,
+                 plot_data_event, plot_update_event,
+                 subplots, acc_scale,
+                 baselines, channels):
+        self.quit_event = quit_event
+        self.plot_queue = plot_queue
+        self.plot_data_event = plot_data_event
+        self.plot_update_event = plot_update_event
+        self.baselines = baselines
+        self.channels = channels
+        self.subplots = subplots
+        self.plot_counter = 0
+        self.acc_scale = acc_scale
+        threading.Thread.__init__(self)
+
+    def run(self):
+        self.plot_data()
+
+    def plot_data(self):
+        while True:
+            if self.plot_data_event.is_set():
+                self.actually_plot()
+                plot_data_event.clear()
+            if self.quit_event.is_set():
+                logging.debug('exiting plotting thread')
+                break
+            time.sleep(1)
+
+    def actually_plot(self):
         try:
-            powerdata, phasedata = plot_queue.get_nowait()
-            for polctr, plt in enumerate(subplots):
-                plt.cla()
-                plt.set_title('p%i - %i' % (polctr, plot_counter))
-                plt.grid(True)
-
-            ymax = -1
-            ymin = 2 ** 32
+            plotdata = self.plot_queue.get_nowait()
+            if plotdata is None:
+                return
+            self.subplots[0].cla()
+            self.subplots[0].set_title('pwr - %i' % self.plot_counter)
+            self.subplots[0].grid(True)
+            self.subplots[1].cla()
+            self.subplots[1].set_title('phs - %i' % self.plot_counter)
+            self.subplots[1].grid(True)
+            powerdata = plotdata[0]
+            phasedata = plotdata[1]
+            lines = []
+            names = []
             for pltctr, plot in enumerate(powerdata):
-
                 baseline = plot[0]
                 plotdata = plot[1]
-
                 phaseplot = phasedata[pltctr][1]
-
+                bls_name = BASELINES[baseline]
+                names.append(bls_name)
                 if args.log:
-                    subplots[0].semilogy(plotdata)  # , label='%i' % baseline)
-                    subplots[1].semilogy(phaseplot)  # , label='phase_%i' % baseline)
+                    l, = self.subplots[0].semilogy(plotdata)
+                    self.subplots[1].semilogy(phaseplot)
                 else:
-                    subplots[0].plot(plotdata)  # , label='%i' % baseline)
-                    subplots[1].plot(phaseplot)  # , label='phase_%i' % baseline)
-                ymax0 = max(ymax, max(plotdata))
-                ymin0 = min(ymin, min(plotdata))
-
-                ymax0 = max(plotdata)
-                ymin0 = min(plotdata)
-
-                ymax1 = max(phaseplot)
-                ymin1 = min(phaseplot)
-
-                subplots[0].ylim([ymin0 * 0.99, ymax0 * 1.01])
-                subplots[1].ylim([ymin1 * 0.99, ymax1 * 1.01])
-                # pyplot.legend(loc='upper left')
-                figure.canvas.draw()
+                    l, = self.subplots[0].plot(plotdata)
+                    self.subplots[1].plot(phaseplot)
+                lines.append(l)
+            self.subplots[0].legend(lines, names)
+            self.plot_counter += 1
+            plot_update_event.set()
         except Queue.Empty:
             pass
-        plot_data_event.clear()
-        fig.canvas.manager.window.after(1, plot_func, figure, subplots,
-                                        plot_data_event, plot_queue, plot_counter + 1,
-                                        acc_scale)
 
 
 class CorrReceiver(threading.Thread):
@@ -323,14 +327,20 @@ class CorrReceiver(threading.Thread):
             if self.plot_data_event is not None:
                 get_data = not self.plot_data_event.is_set()
             get_data = get_data or self.print_data
-            data = process_xeng_data(ig, logger, get_data, self.baselines, self.channels)
+            if get_data:
+                data = process_xeng_data(ig, logger,
+                                         self.baselines, self.channels)
+            else:
+                logger.info('\talready got data, skipping this heap.')
+                data = None
 
             if self.plot_queue:
                 if not self.plot_data_event.is_set():
                     if not data:
                         logger.error('Plot queue is not set, but NO data?')
-                    self.plot_queue.put(data)
-                    self.plot_data_event.set()
+                    else:
+                        self.plot_queue.put(data)
+                        self.plot_data_event.set()
 
             if self.print_data:
                 print_xeng_data(logger, data)
@@ -438,7 +448,7 @@ if args.noauto:
 else:
     acc_scale = True
 
-baselines= []
+baselines = []
 channels = []
 if args.printdata or args.plot:
     if args.baselines != '':
@@ -460,35 +470,44 @@ if args.printdata or args.plot:
         channels = (plot_startchan, plot_endchan)
         print 'Given channel range:', channels
     if (not baselines) or (not channels):
-        print 'Print or plot requested, but no baselines and/or channels specified.'
+        print 'Print or plot requested, but no baselines and/or ' \
+              'channels specified.'
+
+quit_event = threading.Event()
 
 # if there are baselines to plot, set up a plotter that will pull
 # data from a data queue
 plot_queue = None
 plot_data_event = None
+plot_thread = None
+plot_update_event = threading.Event()
 if args.plot:
     if not len(baselines):
         raise RuntimeError('plot requested, but no baselines specified.')
     import matplotlib.pyplot as pyplot
     import Queue
-
     plot_queue = Queue.Queue()
     plot_data_event = threading.Event()
-    fig = pyplot.figure()
+    # figure_manager = pyplot.get_current_fig_manager()
+    # figure_manager.resize(*figure_manager.window.maxsize())
     subplots = []
     for p in range(2):
-        sub_plot = fig.add_subplot(2, 1, p + 1)
+        sub_plot = pyplot.subplot(2, 1, p + 1)
         subplots.append(sub_plot)
     plot_counter = 0
-    fig.canvas.manager.window.after(1, plot_func, fig, subplots, plot_data_event, plot_queue, plot_counter, acc_scale)
-    pyplot.show()
+    # pyplot.ion()
+    pyplot.show(block=False)
+    plot_thread = CorrPlotter(quit_event, plot_queue,
+                              plot_data_event, plot_update_event,
+                              subplots, acc_scale,
+                              baselines, channels)
+    plot_thread.daemon = True
+    plot_thread.start()
     print 'Plot started, waiting for data.'
 
 # start the receiver thread
 print 'Initialising SPEAD transports for data:'
 print '\tData reception on port', data_port
-
-quit_event = threading.Event()
 
 corr_rx = CorrReceiver(
     port=data_port,
@@ -506,15 +525,23 @@ try:
     corr_rx.daemon = True
     corr_rx.start()
     while corr_rx.isAlive():
-        time.sleep(0.1)
+        if plot_update_event.is_set():
+            pyplot.draw()
+        else:
+            time.sleep(0.05)
     print 'RX process ended.'
+    quit_event.set()
     corr_rx.join()
+    if plot_thread is not None:
+        plot_thread.join()
 except KeyboardInterrupt:
     import sys
     quit_event.set()
     print 'Stopping, waiting for thread to exit...',
     sys.stdout.flush()
     while quit_event.is_set():
+        print '.',
+        sys.stdout.flush()
         time.sleep(0.1)
     print 'all done.'
 
