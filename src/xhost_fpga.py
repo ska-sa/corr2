@@ -27,6 +27,9 @@ class FpgaXHost(FpgaHost):
             # then try and discover it
             self.x_per_fpga = 4
 
+        # CLUDGE
+        # self.x_per_fpga = 1
+
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port, config_source):
         boffile = config_source['bitstream']

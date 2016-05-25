@@ -97,7 +97,7 @@ class FpgaHost(Host, KatcpFpga):
 
     def check_rx(self, max_waittime=30):
         """
-        Check the receive path on this X host
+        Check the receive path on this FPGA host
         :param max_waittime: the maximum time to wait for raw 10gbe data
         :return:
         """
@@ -141,8 +141,8 @@ class FpgaHost(Host, KatcpFpga):
         rxregs = self.get_tengbe_counters()
         start_time = time.time()
         still_the_same = self.tengbes.names()[:]
-        while ((time.time() < start_time + max_waittime) and
-              (len(still_the_same) > 0)):
+        while ((time.time() < start_time + max_waittime) and (
+                    len(still_the_same) > 0)):
 
             time.sleep(0.1)
             core = still_the_same[0]

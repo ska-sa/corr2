@@ -1,5 +1,14 @@
 #!/usr/bin/env python
 
+"""
+Start and stop data products.
+
+It is recommended that you use ?capture-[start/stop] against your
+running instrument!
+
+@author: paulp
+"""
+
 import argparse
 import os
 

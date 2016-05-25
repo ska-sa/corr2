@@ -2,121 +2,87 @@
 # -*- coding: utf-8 -*-
 """
 """
-import sys
-import signal
-import time
 import argparse
 import os
-import logging
 
 from casperfpga import utils as fpgautils
-import casperfpga.scroll as scroll
+from casperfpga import katcp_fpga
+from casperfpga import memory
 from corr2 import utils
-from corr2 import xhost_fpga
-from corr2 import fxcorrelator
 
-logging.basicConfig(level=logging.INFO)
+parser = argparse.ArgumentParser(
+    description='Set up the x-engine VACCs.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--hosts', dest='hosts', type=str, action='store',
+                    default='', help='comma-delimited list of x-engine hosts')
+parser.add_argument('-p', '--polltime', dest='polltime', action='store',
+                    default=1, type=int,
+                    help='time at which to poll fengine data, in seconds')
+parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
+                    default=False,
+                    help='reset all counters at script startup')
+parser.add_argument('--comms', dest='comms', action='store', default='katcp',
+                    type=str, help='katcp (default) or dcp?')
+parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                    help='log level to use, default None, options INFO, '
+                         'DEBUG, ERROR')
+args = parser.parse_args()
 
-c = fxcorrelator.FxCorrelator('vacctest', config_source='/home/paulp/code/corr2.ska.github/debug/fxcorr_labrts.ini')
+polltime = args.polltime
 
-c.initialise(program=False)
+if args.log_level != '':
+    import logging
+    log_level = args.log_level.strip()
+    try:
+        logging.basicConfig(level=eval('logging.%s' % log_level))
+    except AttributeError:
+        raise RuntimeError('No such log level: %s' % log_level)
 
-# vacc sel is 6-bits wide
-# vacc_status = c.xhosts[0].registers.tvg_control.read()['data']['vacc']
+if 'CORR2INI' in os.environ.keys() and args.hosts == '':
+    args.hosts = os.environ['CORR2INI']
+hosts = utils.parse_hosts(args.hosts, section='xengine')
+if len(hosts) == 0:
+    raise RuntimeError('No good carrying on without hosts.')
 
+# create the devices and connect to them
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 
-def decode_vacc_ctrl(vacc_ctrl):
-    return {
-        'rst':          (vacc_ctrl >> 5) & 0x01,
-        'inj_ctr':      (vacc_ctrl >> 4) & 0x01,
-        'inj_vector':   (vacc_ctrl >> 3) & 0x01,
-        'valid_sel':    (vacc_ctrl >> 2) & 0x01,
-        'data_sel':     (vacc_ctrl >> 1) & 0x01,
-        'enable':       (vacc_ctrl >> 0) & 0x01,
-    }
+print fpgautils.threaded_fpga_operation(
+    fpgas, 10,
+    lambda fpga_:
+        fpga_.registers.vacctvg_control.read()['data'], )
 
+# write nothing to the tvg control reg
+fpgautils.threaded_fpga_operation(
+    fpgas, 10,
+    lambda fpga_:
+        fpga_.registers.vacctvg_control.write_int(0), )
 
-def reset(fpga, highlow):
-    old_val = fpga.registers.tvg_control.read()['data']['vacc']
-    if highlow == 0:
-        old_val &= int('011111', 2)
-    else:
-        old_val |= (0x01 << 5)
-    fpga.registers.tvg_control.write(vacc=old_val)
+# reset all the TVGs
+fpgautils.threaded_fpga_operation(
+    fpgas, 10,
+    lambda fpga_:
+        fpga_.registers.vacctvg_control.write(ctr_en=False, sync_sel=False,
+                                              valid_sel=False, data_sel=False,
+                                              reset='pulse'), )
 
+# write the constant to the data reg
+# CLUDGE
+# for ctr in range(1):
+for ctr in range(4):
+    regname = 'sys%i_vacc_tvg0_write' % ctr
+    fpgautils.threaded_fpga_operation(
+        fpgas, 10,
+        lambda fpga_: fpga_.registers[regname].write_int(1), )
 
-def enable_pulses(fpga, enable):
-    old_val = fpga.registers.tvg_control.read()['data']['vacc']
-    if enable == 0:
-        old_val &= int('111110', 2)
-    else:
-        old_val |= (0x01 << 0)
-    fpga.registers.tvg_control.write(vacc=old_val)
+# and enable the constant instead of the real data
+fpgautils.threaded_fpga_operation(
+    fpgas, 10,
+    lambda fpga_:
+        fpga_.registers.vacctvg_control.write(data_sel=True), )
 
-
-def enable_counter(fpga):
-    old_val = fpga.registers.tvg_control.read()['data']['vacc']
-    old_val |= (0x01 << 4)
-    fpga.registers.tvg_control.write(vacc=old_val)
-
-
-def disable_counter(fpga):
-    old_val = fpga.registers.tvg_control.read()['data']['vacc']
-    old_val &= int('101111', 2)
-    fpga.registers.tvg_control.write(vacc=old_val)
-
-
-def enable_vector(fpga):
-    old_val = fpga.registers.tvg_control.read()['data']['vacc']
-    old_val |= (0x01 << 3)
-    fpga.registers.tvg_control.write(vacc=old_val)
-
-
-def disable_vector(fpga):
-    old_val = fpga.registers.tvg_control.read()['data']['vacc']
-    old_val &= int('110111', 2)
-    fpga.registers.tvg_control.write(vacc=old_val)
-
-
-def valid_select(fpga, valid_sel):
-    old_val = fpga.registers.tvg_control.read()['data']['vacc']
-    if valid_sel == 0:
-        old_val &= int('111011', 2)
-    else:
-        old_val |= (0x01 << 2)
-    fpga.registers.tvg_control.write(vacc=old_val)
-
-N_PULSES = (128 * 40)-1
-
-N_PULSES = (2**32)-1
-
-N_PER_GROUP = 40
-GROUP_PERIOD = 100
-
-# fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers.acc_len.write_int(1))
-
-for ctr in range(0, 4):
-    fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers['sys%i_vacc_tvg0_n_pulses' % ctr].write_int(N_PULSES))
-    fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers['sys%i_vacc_tvg0_n_per_group' % ctr].write_int(N_PER_GROUP))
-    fpgautils.threaded_fpga_operation(c.xhosts, 10, lambda fpga_: fpga_.registers['sys%i_vacc_tvg0_group_period' % ctr].write_int(GROUP_PERIOD))
-
-fpgautils.threaded_fpga_operation(c.xhosts, 10, valid_select, 0)
-fpgautils.threaded_fpga_operation(c.xhosts, 10, enable_pulses, 0)
-fpgautils.threaded_fpga_operation(c.xhosts, 10, reset, 0)
-fpgautils.threaded_fpga_operation(c.xhosts, 10, reset, 1)
-fpgautils.threaded_fpga_operation(c.xhosts, 10, reset, 0)
-fpgautils.threaded_fpga_operation(c.xhosts, 10, enable_counter)
-
-print fpgautils.threaded_fpga_operation(c.xhosts, 10,
-                                        lambda fpga_:
-                                        decode_vacc_ctrl(fpga_.registers.tvg_control.read()['data']['vacc']))
-
-# fpgautils.threaded_fpga_operation(c.xhosts, 10, enable_pulses, 1)
-
-# print ''
-# print fpgautils.threaded_fpga_operation(c.xhosts, 10,
-#                                         lambda fpga_:
-#                                         decode_vacc_ctrl(fpga_.registers.tvg_control.read()['data']['vacc']))
-#
-# fpgautils.threaded_fpga_operation(c.xhosts, 10, valid_select, 0)
-# fpgautils.threaded_fpga_operation(c.xhosts, 10, disable_counter)
+# fpgautils.threaded_fpga_operation(
+#     fpgas, 10,
+#     lambda fpga_:
+#         fpga_.registers.vacc_pretvg_ctrl.write(en_gating=False), )

@@ -8,18 +8,18 @@ import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 from corr2 import utils
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Ping a list of hosts by connecting to them.',
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                        help='comma-delimited list of hosts, or a corr2 config file')
-    parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                        help='katcp (default) or dcp?')
-    parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                        help='log level to use, default None, options INFO, DEBUG, ERROR')
+    parser = argparse.ArgumentParser(
+        description='Ping a list of hosts by connecting to them.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        '--hosts', dest='hosts', type=str, action='store', default='',
+        help='comma-delimited list of hosts, or a corr2 config file')
+    parser.add_argument(
+        '--loglevel', dest='log_level', action='store', default='',
+        help='log level to use, default None, options INFO, DEBUG, ERROR')
     args = parser.parse_args()
 
     if args.log_level != '':
@@ -30,20 +30,16 @@ if __name__ == '__main__':
         except AttributeError:
             raise RuntimeError('No such log level: %s' % log_level)
 
-    if args.comms == 'katcp':
-        HOSTCLASS = katcp_fpga.KatcpFpga
-    else:
-        HOSTCLASS = dcp_fpga.DcpFpga
-
     if 'CORR2INI' in os.environ.keys() and args.hosts == '':
         args.hosts = os.environ['CORR2INI']
     hosts = utils.parse_hosts(args.hosts)
-    if len(hosts) == 0:
+    if (not hosts) or (len(hosts) == 0):
         raise RuntimeError('No good carrying on without hosts.')
 try:
     print 'Connecting...',
     sys.stdout.flush()
-    fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+    fpgas = fpgautils.threaded_create_fpgas_from_hosts(
+        katcp_fpga.KatcpFpga, hosts)
     print 'done.'
 
     print('Calculating all clocks...'),
@@ -55,14 +51,8 @@ try:
         print '%s: %.0f Mhz' % (fpga_.host, results[fpga_.host])
 
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
-
 except:
-    raise
-# except KeyboardInterrupt:
-#     exit_clean()
-# except:
-#     exit_fail()
-#
-# exit_clean()
+    import IPython
+    IPython.embed()
 
-
+# end

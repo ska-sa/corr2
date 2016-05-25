@@ -17,7 +17,6 @@ import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
@@ -40,6 +39,7 @@ parser.add_argument('--loglevel', dest='log_level',
                          'DEBUG, ERROR')
 args = parser.parse_args()
 
+
 def signal_handler(signal_, frame):
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
@@ -57,11 +57,6 @@ if args.log_level:
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
-
 if 'CORR2INI' in os.environ.keys() and args.hosts == '':
     args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='xengine')
@@ -69,7 +64,7 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
 fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 
 # check for 10gbe cores
