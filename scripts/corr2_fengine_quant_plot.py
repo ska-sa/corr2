@@ -199,7 +199,7 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
         plt.set_title('%s:%i, %i, %i' % (fpga.host, ctr, ictr, pctr))
         plt.grid(True)
         if args.hist:
-            plt.hist(integd, bins=64, range=(-1.0, 1.0))
+            plt.hist(integd, bins=64, range=(0.0, 1.5))
             idata = None
             ictr = 0
             pctr += 1

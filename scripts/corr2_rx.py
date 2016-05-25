@@ -48,7 +48,7 @@ def do_track_items(ig, logger, track_list):
             logger.info('(%s) %s => %s' % (time.ctime(), name, str(item)))
 
 
-def do_h5_file(ig, logger, h5_file):
+def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
     """
 
     :param ig:
@@ -58,67 +58,70 @@ def do_h5_file(ig, logger, h5_file):
     """
     if h5_file is None:
         return
-
-    datasets = {}
-    datasets_index = {}
     # we need these bits of meta data before being able to assemble and
     # transmit signal display data
     meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs', 'center_freq',
                      'bls_ordering', 'n_accs']
-    meta = {}
     for name in ig.keys():
-        logger.debug('\tkey name %s' % name)
-        item = ig[name]
-        if name in meta_required:
-            meta[name] = item
-            meta_required.pop(meta_required.index(name))
-            if len(meta_required) == 0:
-                logger.info(
-                    'Got all required metadata. Expecting data frame shape of '
-                    '%i %i %i' % (meta['n_chans'], meta['n_bls'], 2))
-                meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
-                                 'center_freq', 'bls_ordering', 'n_accs']
+        try:
+            logger.debug('\tkey name %s' % name)
+            item = ig[name]
+            if item.value is None:
+                continue
+            if name in meta_required:
+                meta_required.pop(meta_required.index(name))
+                if len(meta_required) == 0:
+                    n_chans = h5_file['n_chans'][0]
+                    n_bls = h5_file['n_bls'][0]
+                    logger.info('Got all required metadata. Expecting data '
+                                'frame shape of %i %i %i' % (
+                        n_chans, n_bls, 2))
+                    meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
+                                     'center_freq', 'bls_ordering', 'n_accs']
 
-        # check to see if we have encountered this type before
-        if name not in datasets.keys():
-            datasets[name] = item
-            datasets_index[name] = 0
+            # check to see if we have encountered this type before
+            if name not in datasets.keys():
+                datasets[name] = item
+                dataset_indices[name] = 0
 
-        # check to see if we have stored this type before
-        if name not in h5_file.keys():
-            shape = ig[name].shape if item.shape == -1 else item.shape
-            dtype = np.dtype(type(ig[name])) if shape == [] else item.dtype
-            if dtype is None:
-                dtype = ig[name].dtype
-            # if we can't get a dtype from the descriptor try and get one from the value
-            if dtype != 'object':
-                logger.info('Creating dataset for %s (%s,%s).' % (str(name), str(shape), str(dtype)))
-                if h5_file is not None:
+            # check to see if we have stored this type before
+            if name not in h5_file.keys():
+                shape = item.shape if item.shape == -1 else item.shape
+                dtype = np.dtype(type(item)) if shape == [] else item.dtype
+                if dtype is None:
+                    dtype = item.dtype
+                # if we can't get a dtype from the descriptor try and get one
+                # from the value
+                if dtype != 'object':
+                    logger.debug('Creating dataset for %s (%s,%s).' % (str(name), str(shape), str(dtype)))
                     h5_file.create_dataset(
                         name, [1] + ([] if list(shape) == [1] else list(shape)),
                         maxshape=[None] + ([] if list(shape) == [1] else list(shape)), dtype=dtype)
-        else:
-            logger.info('Adding %s to dataset. New size is %i.' % (name, datasets_index[name]+1))
-            if h5_file is not None:
-                h5_file[name].resize(datasets_index[name]+1, axis=0)
+            else:
+                logger.debug('Adding %s to dataset. New size is %i.' % (name, dataset_indices[name]+1))
+                h5_file[name].resize(dataset_indices[name]+1, axis=0)
 
-        if name.startswith('xeng_raw'):
-            sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
-            logger.info("SD Timestamp: %f (%s)." % (sd_timestamp, time.ctime(sd_timestamp)))
-            scale_factor = float(meta['n_accs'] if ('n_accs' in meta.keys() and acc_scale) else 1)
-            scaled_data = (ig[name] / scale_factor).astype(np.float32)
-            logger.info("Sending signal display frame with timestamp %i (%s). %s. Max: %i, Mean: %i" % (
-                sd_timestamp,
-                time.ctime(sd_timestamp),
-                "Unscaled" if not acc_scale else "Scaled by %i" % scale_factor,
-                np.max(scaled_data),
-                np.mean(scaled_data)))
+            # if name.startswith('xeng_raw'):
+            #     sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
+            #     logger.info("SD Timestamp: %f (%s)." % (sd_timestamp, time.ctime(sd_timestamp)))
+            #     scale_factor = float(meta['n_accs'] if ('n_accs' in meta.keys() and acc_scale) else 1)
+            #     scaled_data = (item / scale_factor).astype(np.float32)
+            #     scale_status = 'Unscaled' if not acc_scale else 'Scaled by %i' % scale_factor
+            #     logger.info(
+            #         'Sending signal display frame with timestamp %i (%s). %s. '
+            #         'Max: %i, Mean: %i' % (
+            #             sd_timestamp, time.ctime(sd_timestamp),
+            #             scale_status, np.max(scaled_data), np.mean(scaled_data)))
 
-        if h5_file is not None:
-            h5_file[name][datasets_index[name]] = ig[name]
-        datasets_index[name] += 1
-        # we have dealt with this item so continue...
-        item.unset_changed()
+            h5_file[name][dataset_indices[name]] = item.value
+
+            dataset_indices[name] += 1
+
+        except IOError:
+            import IPython
+            IPython.embed()
+
+        # next item...
 
 
 def print_xeng_data(logger, data):
@@ -230,7 +233,8 @@ class CorrPlotter(threading.Thread):
                     l, = self.subplots[0].plot(plotdata)
                     self.subplots[1].plot(phaseplot)
                 lines.append(l)
-            self.subplots[0].legend(lines, names)
+            if LEGEND:
+                self.subplots[0].legend(lines, names)
             self.plot_counter += 1
             plot_update_event.set()
         except Queue.Empty:
@@ -269,12 +273,15 @@ class CorrReceiver(threading.Thread):
         self.port = port
 
         self.track_list = track_list
-        self.h5_filename = h5_filename
         self.print_data = print_data
         self.plot_queue = plot_queue
         self.plot_data_event = plot_data_event
         self.baselines = baselines
         self.channels = channels
+
+        self.h5_filename = h5_filename
+        self.h5_datasets = {}
+        self.h5_dataset_indices = {}
 
         self.quit_event = quit_event
 
@@ -321,7 +328,8 @@ class CorrReceiver(threading.Thread):
                 do_track_items(ig, logger, track_list=self.track_list)
 
             if h5_file:
-                do_h5_file(ig, logger, h5_file)
+                do_h5_file(ig, logger, h5_file,
+                           self.h5_datasets, self.h5_dataset_indices)
 
             get_data = False
             if self.plot_data_event is not None:
@@ -331,7 +339,7 @@ class CorrReceiver(threading.Thread):
                 data = process_xeng_data(ig, logger,
                                          self.baselines, self.channels)
             else:
-                logger.info('\talready got data, skipping this heap.')
+                logger.debug('\talready got data, skipping this heap.')
                 data = None
 
             if self.plot_queue:
@@ -390,6 +398,8 @@ parser.add_argument('--log', dest='log', action='store_true', default=False,
                     help='Logarithmic y axis.')
 parser.add_argument('--no_auto', dest='noauto', action='store_true', default=False,
                     help='Do not scale the data by the number of accumulations.')
+parser.add_argument('--legend', dest='legend', action='store_true', default=False,
+                    help='Show a plot legend.')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
                     help='log level to use, default INFO, options INFO, DEBUG, ERROR')
 parser.add_argument('--speadloglevel', dest='spead_log_level', action='store', default='INFO',
@@ -423,6 +433,7 @@ print 'Loaded instrument info from config file:\n\t%s' % args.config
 
 NUM_BASELINES = n_ants * (n_ants + 1) / 2 * 4
 BASELINES = utils.baselines_from_config(config=config)
+LEGEND = args.legend
 
 if args.items:
     track_list = args.items.split(',')
