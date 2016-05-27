@@ -3,7 +3,7 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-View status and error registers for the QDR corner-turner.
+View error registers for the PFBs.
 
 Created on Fri Jan  3 10:40:53 2014
 
@@ -21,7 +21,7 @@ import casperfpga.scroll as scroll
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Display the corner turner error counters on the fengine.',
+    description='Display the PFB error counters on the fengine.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',
@@ -35,7 +35,7 @@ parser.add_argument(
     default=False,
     help='reset all counters at script startup')
 parser.add_argument(
-    '--loglevel', dest='log_level', action='store', default='',
+    '--loglevel', dest='log_level', action='store', default='INFO',
     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
@@ -89,7 +89,7 @@ if args.rstcnt:
 
 
 def get_fpga_data(fpga):
-    rv = fpga.registers.ct_ctrs.read()['data']
+    rv = fpga.registers.pfb_ctrs.read()['data']
     return rv
 
 
