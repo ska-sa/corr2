@@ -261,14 +261,16 @@ def do_things_first(ig, logger):
 
 
 def do_plotting_things(ig):
-    if 'xeng_raw' not in ig.keys():
-        return
-    if ig['xeng_raw'] is None:
-        return
+    for key in ['xeng_raw','timestamp','sync_time','scale_factor_timestamp']:
+        if key not in ig.keys():
+            return
+        if ig[key] is None:
+            return
+        if ig[key].value is None:
+            return
     xeng_raw = ig['xeng_raw'].value
-    if xeng_raw is None:
-        return
-
+    sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value / float(ig['scale_factor_timestamp'].value))
+    print '(%s) timestamp %i => %s: ' % (time.ctime(), ig['timestamp'].value,time.ctime(sd_timestamp)),
     print np.shape(xeng_raw)
     baseline_data = []
     baseline_phase = []
