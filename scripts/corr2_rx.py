@@ -155,8 +155,11 @@ def process_xeng_data(ig, logger, baselines, channels):
     xeng_raw = ig['xeng_raw'].value
     if xeng_raw is None:
         return None
-    logger.info('Generating plot data...')
-    logger.info('\tprocessing heap with shape: %s' % str(np.shape(xeng_raw)))
+    logger.info('Processing xeng_raw heap with shape: %s' % str(np.shape(xeng_raw)))
+    scale_factor = float(ig['scale_factor_timestamp'].value)
+    sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value / scale_factor)
+    logger.info('(%s) timestamp %i => %s' % (
+        time.ctime(), ig['timestamp'].value, time.ctime(sd_timestamp)))
     baseline_data = []
     baseline_phase = []
     for baseline in baselines:
@@ -376,34 +379,51 @@ class CorrReceiver(threading.Thread):
         self.quit_event.clear()
 
 
-parser = argparse.ArgumentParser(description='Receive data from a corr2 correlator.',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--config', dest='config', action='store', default='',
-                    help='corr2 config file')
-parser.add_argument('--file', dest='writefile', action='store_true', default=False,
-                    help='Write an H5 file.')
-parser.add_argument('--filename', dest='filename', action='store', default='',
-                    help='Use a specific filename, otherwise use UNIX time. Implies --file.')
-parser.add_argument('--plot', dest='plot', action='store_true', default=False,
-                    help='Plot the specified baselines and channels.')
-parser.add_argument('--print', dest='printdata', action='store_true', default=False,
-                    help='Print the specified baselines and channels.')
-parser.add_argument('--baselines', dest='baselines', action='store', default='', type=str,
-                    help='Plot one or more baselines, comma-seperated list of integers. \'all\' for ALL.')
-parser.add_argument('--channels', dest='channels', action='store', default='-1,-1', type=str,
-                    help='a (start,end) tuple, -1 means 0, n_chans respectively')
-parser.add_argument('--items', dest='items', action='store', default='',
-                    help='SPEAD items to track, in comma-separated list - will output value to log as it is RXd')
-parser.add_argument('--log', dest='log', action='store_true', default=False,
-                    help='Logarithmic y axis.')
-parser.add_argument('--no_auto', dest='noauto', action='store_true', default=False,
-                    help='Do not scale the data by the number of accumulations.')
-parser.add_argument('--legend', dest='legend', action='store_true', default=False,
-                    help='Show a plot legend.')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
-                    help='log level to use, default INFO, options INFO, DEBUG, ERROR')
-parser.add_argument('--speadloglevel', dest='spead_log_level', action='store', default='INFO',
-                    help='log level to use in spead receiver, default INFO, options INFO, DEBUG, ERROR')
+parser = argparse.ArgumentParser(
+    description='Receive data from a corr2 correlator.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    '--config', dest='config', action='store', default='',
+    help='corr2 config file')
+parser.add_argument(
+    '--file', dest='writefile', action='store_true', default=False,
+    help='Write an H5 file.')
+parser.add_argument(
+    '--filename', dest='filename', action='store', default='',
+    help='Use a specific filename, otherwise use UNIX time. Implies --file.')
+parser.add_argument(
+    '--plot', dest='plot', action='store_true', default=False,
+    help='Plot the specified baselines and channels.')
+parser.add_argument(
+    '--print', dest='printdata', action='store_true', default=False,
+    help='Print the specified baselines and channels.')
+parser.add_argument(
+    '--baselines', dest='baselines', action='store', default='', type=str,
+    help='Plot one or more baselines, comma-seperated list of '
+         'integers. \'all\' for ALL.')
+parser.add_argument(
+    '--channels', dest='channels', action='store', default='-1,-1', type=str,
+    help='a (start,end) tuple, -1 means 0, n_chans respectively')
+parser.add_argument(
+    '--items', dest='items', action='store', default='',
+    help='SPEAD items to track, in comma-separated list - will output '
+         'value to log as it is RXd')
+parser.add_argument(
+    '--log', dest='log', action='store_true', default=False,
+    help='Logarithmic y axis.')
+parser.add_argument(
+    '--no_auto', dest='noauto', action='store_true', default=False,
+    help='Do not scale the data by the number of accumulations.')
+parser.add_argument(
+    '--legend', dest='legend', action='store_true', default=False,
+    help='Show a plot legend.')
+parser.add_argument(
+    '--loglevel', dest='log_level', action='store', default='INFO',
+    help='log level to use, default INFO, options INFO, DEBUG, ERROR')
+parser.add_argument(
+    '--speadloglevel', dest='spead_log_level', action='store', default='INFO',
+    help='log level to use in spead receiver, default INFO, options '
+         'INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 if args.log_level:
@@ -538,6 +558,7 @@ try:
     while corr_rx.isAlive():
         if plot_update_event.is_set():
             pyplot.draw()
+            plot_update_event.clear()
         else:
             time.sleep(0.05)
     print 'RX process ended.'
