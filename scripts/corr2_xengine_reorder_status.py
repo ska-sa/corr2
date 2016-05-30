@@ -14,7 +14,6 @@ import os
 import signal
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 from corr2.xhost_fpga import FpgaXHost
@@ -55,18 +54,8 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(FpgaXHost, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
-
-# check out how many x-engines there are per fpga
-fctr = 0
-available_regs = fpgas[0].registers.names()
-while True:
-    if 'reordcnt_spec%i' % fctr in available_regs:
-        fctr += 1
-    else:
-        break
-num_x_engines = fctr
 
 
 if args.rstcnt:
@@ -82,7 +71,7 @@ if args.rstcnt:
 
 
 def get_fpga_data(fpga):
-    return FpgaXHost.get_rx_reorder_status(fpga, num_x_engines)
+    return fpga.get_rx_reorder_status()
 
 
 def exit_gracefully(sig, frame):
