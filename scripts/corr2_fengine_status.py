@@ -17,22 +17,24 @@ import os
 
 from casperfpga import utils as fpgautils
 from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
-parser = argparse.ArgumentParser(description='Display information about a MeerKAT f-engine.',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='comma-delimited list of hosts, or a corr2 config file')
-parser.add_argument('-p', '--polltime', dest='polltime', action='store', default=1, type=int,
-                    help='time at which to poll f-engine data, in seconds')
-parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true', default=False,
-                    help='reset all counters at script startup')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                    help='log level to use, default None, options INFO, DEBUG, ERROR')
+parser = argparse.ArgumentParser(
+    description='Display information about a MeerKAT f-engine.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    '--hosts', dest='hosts', type=str, action='store', default='',
+    help='comma-delimited list of hosts, or a corr2 config file')
+parser.add_argument(
+    '-p', '--polltime', dest='polltime', action='store', default=1, type=int,
+    help='time at which to poll f-engine data, in seconds')
+parser.add_argument(
+    '-r', '--reset_count', dest='rstcnt', action='store_true', default=False,
+    help='reset all counters at script startup')
+parser.add_argument(
+    '--loglevel', dest='log_level', action='store', default='',
+    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 polltime = args.polltime
@@ -45,22 +47,14 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
-
 if 'CORR2INI' in os.environ.keys() and args.hosts == '':
     args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-#feng_hosts = ['roach02091b', 'roach020914', 'roach020915', 'roach020922']
-#feng_hosts = ['roach02091b']
-
 # make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
 fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 
 # check for 10gbe cores

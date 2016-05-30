@@ -196,13 +196,14 @@ class FpgaFHost(DigitiserDataReceiver):
         return cls(hostname, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
-    def ct_okay(self, sleeptime=1):
+    def ct_okay(self, wait_time=1):
         """
         Is the corner turner working?
+        :param wait_time - time in seconds to wait between reg reads
         :return: True or False,
         """
         ct_ctrs0 = self.registers.ct_ctrs.read()['data']
-        time.sleep(sleeptime)
+        time.sleep(wait_time)
         ct_ctrs1 = self.registers.ct_ctrs.read()['data']
 
         err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
@@ -789,8 +790,9 @@ class FpgaFHost(DigitiserDataReceiver):
         Checks if parity bits on f-eng are zero
         :return: True/False
         """
+        err_data = self.registers.ct_ctrs.read()['data']
         for cnt in range(0, 1):
-            err = self.registers.ct_ctrs.read()['data']['ct_parerr_cnt%d' % cnt]
+            err = err_data['ct_parerr_cnt%d' % cnt]
             if err == 0:
                 LOGGER.info('%s: ct_parerr_cnt%d okay.' % (self.host, cnt))
             else:
@@ -801,17 +803,22 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def check_fft_overflow(self, wait_time=2e-3):
         """
-        Checks if pfb counters on f-eng are not incrementing i.e. fft is not overflowing
+        Checks if pfb counters on f-eng are not incrementing i.e. fft
+        is not overflowing
+        :param wait_time - time in seconds to wait between reg reads
         :return: True/False
         """
+        ctrs0 = self.registers.pfb_ctrs.read()['data']
+        time.sleep(wait_time)
+        ctrs1 = self.registers.pfb_ctrs.read()['data']
         for cnt in range(0, 1):
-            overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
-            time.sleep(wait_time)
-            overflow1 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+            overflow0 = ctrs0['pfb_of%d_cnt' % cnt]
+            overflow1 = ctrs1['pfb_of%d_cnt' % cnt]
             if overflow0 == overflow1:
                 LOGGER.info('%s: pfb_of%d_cnt okay.' % (self.host, cnt))
             else:
-                LOGGER.error('%s: pfb_of%d_cnt incrementing.' % (self.host, cnt))
+                LOGGER.error('%s: pfb_of%d_cnt incrementing.' % (
+                    self.host, cnt))
                 return False
         LOGGER.info('%s: PFB okay.' % self.host)
         return True

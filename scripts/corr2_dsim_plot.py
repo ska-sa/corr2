@@ -21,8 +21,9 @@ parser = argparse.ArgumentParser(
     description='Plot outgoing p0 dsim data.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
-    dest='host', type=str, action='store', default='',
-    help='the dsim host to query')
+    '--host', dest='host', type=str, action='store', default='',
+    help='the dsim host to query, will override that found in the config'
+         'if there is a conflict')
 parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',
     help='a corr2 config file, will use $CORR2INI if none given')
@@ -57,18 +58,18 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.config == '':
-    args.config = os.environ['CORR2INI']
-if args.config != '':
-    host_list = utils.parse_hosts(args.config, section='dsimengine')
-else:
-    host_list = []
-
-try:
-    hostname = host_list[int(args.host)]
-    logging.info('Got hostname %s from config file.' % hostname)
-except ValueError:
+hostname = ''
+if args.host != '':
     hostname = args.host
+else:
+    if 'CORR2INI' in os.environ.keys() and args.config == '':
+        args.config = os.environ['CORR2INI']
+    if args.config != '':
+        cfg_host_list = utils.parse_hosts(args.config, section='dsimengine')
+        hostname = cfg_host_list[0]
+if hostname == '':
+    raise RuntimeError('Could not find a hostname to use.')
+logging.info('Using hostname %s.' % hostname)
 
 # process the range argument
 plotrange = [int(a) for a in args.range.split(',')]

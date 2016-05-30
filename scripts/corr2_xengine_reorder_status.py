@@ -57,23 +57,21 @@ if len(hosts) == 0:
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(FpgaXHost, hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 
+
 if args.rstcnt:
-    fpgautils.threaded_fpga_operation(
-        fpgas, 10, lambda fpga_:
-        fpga_.registers.control.write(status_clr='pulse'))
+    if 'unpack_cnt_rst' in fpgas[0].registers.control.field_names():
+        fpgautils.threaded_fpga_operation(
+            fpgas, 10, lambda fpga_:
+            fpga_.registers.control.write(cnt_rst='pulse',
+                                          unpack_cnt_rst='pulse'))
+    else:
+        fpgautils.threaded_fpga_operation(
+            fpgas, 10, lambda fpga_:
+            fpga_.registers.control.write(cnt_rst='pulse', up_cnt_rst='pulse'))
 
 
 def get_fpga_data(fpga):
-    data = fpga.get_status_registers()
-    print data
-    rv = []
-    for xd in data:
-        xdata = {}
-        for k in xd.keys():
-            if xd[k] == 1:
-                xdata[k] = 1
-        rv.append(xdata)
-    return rv
+    return fpga.get_rx_reorder_status()
 
 
 def exit_gracefully(sig, frame):

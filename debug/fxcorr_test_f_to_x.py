@@ -23,7 +23,7 @@ import time
 import threading
 import os
 import logging
-
+import sys
 
 FREQS_UNDER_TEST = []
 ANTS_UNDER_TEST = []
@@ -58,20 +58,26 @@ def do_things_first(ig, logger):
         logger.info('(%s) %s => %s' % (time.ctime(), name, str(ig[name])))
 
 
-def check_data_things(ig):
+def check_data_things(ig, heap_ctr):
     if 'xeng_raw' not in ig.keys():
-        return
+        return 0
     if ig['xeng_raw'] is None:
-        return
+        return 0
     xeng_raw = ig['xeng_raw'].value
     if xeng_raw is None:
-        return
+        return 0
 
-    print 'rx\'d heap:', np.shape(xeng_raw)
+    print heap_ctr, 'rx\'d heap:', np.shape(xeng_raw)
+
+    err_bls = []
+    okay_bls = []
 
     for baseline in range(0, len(BASELINES)):
         bdata = xeng_raw[:, baseline]
 
+        err = False
+
+        if VERBOSE: print '\ttesting baseline:', baseline, BASELINES[baseline]
         if baseline in BLS_UNDER_TEST:
             non_zero_range = FREQS_UNDER_TEST
             zero_range = range(0, min(FREQS_UNDER_TEST))
@@ -80,21 +86,38 @@ def check_data_things(ig):
             non_zero_range = []
             zero_range = range(N_CHANS)
 
+        if VERBOSE: print '\t\ttesting should-be-zero fchans:'
         for ctr in zero_range:
             complex_tuple = bdata[ctr]
             pwr = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
             if pwr != 0.0:
-                print 'Non-zero problem:', BASELINES[baseline], ctr, pwr
+                if VERBOSE:
+                    print '\t\t\tfchan(%i) != 0: 2^%.5f + 2^%.5f = %.5f' % (ctr, complex_tuple[0], complex_tuple[1], pwr)
+                err = True
             # assert pwr == 0.0
 
+        if VERBOSE: print '\t\ttesting should-be-non-zero fchans:'
         for ctr in non_zero_range:
             complex_tuple = bdata[ctr]
             pwr = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
+            if VERBOSE:
+                print '\t\t\tfchan(%i): 2^%.5f + 2^%.5f = %.5f' % (ctr, complex_tuple[0], complex_tuple[1], pwr)
             #if pwr == 0.0:
             #    cplx_bef = bdata[ctr - 1]
             #    pwr_bef = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
             #    pwr_aft = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
             #assert pwr != 0.0
+
+        if err:
+            err_bls.append(baseline)
+        else:
+            okay_bls.append(baseline)
+
+    print '\tbaselines in error:', err_bls
+    print '\tbaselines okay:', okay_bls
+    print ''
+    sys.stdout.flush()
+    return 1
 
 
 class CorrRx(threading.Thread):
@@ -148,9 +171,9 @@ class CorrRx(threading.Thread):
 
             do_things_first(ig, logger)
 
-            check_data_things(ig)
+            ctradd = check_data_things(ig, heap_ctr)
 
-            heap_ctr += 1
+            heap_ctr += ctradd
 
             if NUM_HEAPS > -1:
                 if heap_ctr >= NUM_HEAPS:
@@ -186,6 +209,8 @@ if __name__ == '__main__':
                         help='Comma-seperated tuple for start and stop freq chans to check.')
     parser.add_argument('--numheaps', dest='numheaps', action='store', default=-1, type=int,
                         help='How many heaps should be checked?')
+    parser.add_argument('--verbose', dest='verbose', action='store_true', default=False,
+                        help='Print each incorrect frequency in each incorrect baseline')
     parser.add_argument('--log', dest='log', action='store_true', default=False,
                         help='Logarithmic y axis.')
     parser.add_argument('--loglevel', dest='log_level', action='store', default='INFO',
@@ -196,6 +221,8 @@ if __name__ == '__main__':
 
     if 'CORR2INI' in os.environ.keys() and args.config == '':
         args.config = os.environ['CORR2INI']
+
+    VERBOSE = args.verbose
 
     # load the rx port and sd info from the config file
     config = utils.parse_ini_file(args.config)
@@ -237,7 +264,7 @@ if __name__ == '__main__':
             logging.basicConfig(level=getattr(logging, log_level))
         except AttributeError:
             raise RuntimeError('No such log level: %s' % log_level)
-    
+
     if args.spead_log_level:
         import logging
         spead_log_level = args.spead_log_level.strip()

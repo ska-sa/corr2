@@ -84,21 +84,33 @@ def parse_ini_file(ini_file='', required_sections=None):
 
 
 def hosts_from_config_dict(config_dict, section=None):
+    """
+    Return a list of hostnames given a config dictionary.
+    :param config_dict:
+    :param section: fengine, xengine, dsimengine
+    :return:
+    """
     assert hasattr(config_dict, 'keys')
     host_list = []
     for sectionkey in config_dict.keys():
         if (section is None) or (section == sectionkey):
-            if 'hosts' in config_dict[sectionkey].keys():
-                hosts = config_dict[sectionkey]['hosts'].split(',')
+            section_dict = config_dict[sectionkey]
+            section_keys = section_dict.keys()
+            if 'hosts' in section_keys:
+                hosts = section_dict['hosts'].split(',')
                 for ctr, host_ in enumerate(hosts):
                     hosts[ctr] = host_.strip()
                 host_list.extend(hosts)
+            elif 'host' in section_keys:
+                host_list.append(section_dict['host'])
     return host_list
 
 
 def hosts_from_config_file(config_file, section=None):
     """
     Make lists of hosts from a given correlator config file.
+    :param config_file: a corr2 config file
+    :param section: the section name to process. None is ALL sections.
     :return: a dictionary of hosts, by type
     """
     config = parse_ini_file(config_file)
@@ -108,20 +120,18 @@ def hosts_from_config_file(config_file, section=None):
 def baselines_from_config(config_file=None, config=None):
     """
     Get a list of the baselines from a config file.
-    :param config_file:
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
     :return:
     """
     config = config or parse_ini_file(config_file)
-
     sources = config['fengine']['source_names'].split(',')
     for ctr, src in enumerate(sources):
         sources[ctr] = src.strip()
-
     fhosts = config['fengine']['hosts'].split(',')
     for ctr, hst in enumerate(fhosts):
         fhosts[ctr] = hst.strip()
     n_antennas = len(fhosts)
-
     assert len(sources) / 2 == n_antennas
     order1 = []
     order2 = []
@@ -360,3 +370,27 @@ def thread_funcs(timeout, *funcs):
         raise RuntimeError('Given %d FPGAs, only got %d results, must '
                            'have timed out.' % (num_funcs, len(returnval)))
     return returnval
+
+
+def hosts_from_dhcp_leases(host_pref='roach',
+                           leases_file='/var/lib/misc/dnsmasq.leases'):
+    """
+    Get a list of hosts from a leases file.
+    :return:
+    """
+    hosts = []
+    if not isinstance(host_pref, list):
+        host_pref = [host_pref]
+    masqfile = open(leases_file)
+    for line in masqfile:
+        for host_prefix in host_pref:
+            _spos = line.find(host_prefix)
+            if _spos > 0:
+                _epos = line.find(' ', _spos + 1)
+                roachname = line[_spos:_epos].strip()
+                hosts.append(roachname)
+                break
+    masqfile.close()
+    return hosts, leases_file
+
+# end
