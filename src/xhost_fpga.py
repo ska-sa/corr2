@@ -72,55 +72,67 @@ class FpgaXHost(FpgaHost):
         LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
 
+    @staticmethod
+    def get_rx_reorder_status(fpga, numx):
+        _regs = fpga.registers
+        # older versions had other register names
+        _OLD = 'reorderr_timeout0' in _regs.names()
+
+        def get_gbe_data_old():
+            data = []
+            for ctr in range(0, numx):
+                _data = {
+                    'miss%i' % ctr: _regs['reord_missant%i' % ctr].read()['data']['reg'],
+                    'rcvcnt%i' % ctr: _regs['reordcnt_recv%i' % ctr].read()['data']['reg'],
+                    'ercv%i' % ctr: _regs['reorderr_recv%i' % ctr].read()['data']['reg'],
+                    'etim%i' % ctr: _regs['reorderr_timeout%i' % ctr].read()['data']['reg'],
+                    'edisc%i' % ctr: _regs['reorderr_disc%i' % ctr].read()['data']['reg'],
+                }
+                data.append(_data)
+            return data
+
+        def get_gbe_data():
+            data = []
+            for ctr in range(0, numx):
+                _tmp = _regs['reorderr_timedisc%i' % ctr].read()['data']
+                _data = {
+                    'miss%i' % ctr: _regs['reordcnt_spec%i' % ctr].read()['data']['missed_ant'],
+                    'rcvcnt%i' % ctr: _regs['reordcnt_recv%i' % ctr].read()['data']['reg'],
+                    'ercv%i' % ctr: _regs['reorderr_recv%i' % ctr].read()['data']['reg'],
+                    'etim%i' % ctr: _tmp['timeout'],
+                    'edisc%i' % ctr: _tmp['disc'],
+                }
+                data.append(_data)
+            return data
+
+        return get_gbe_data_old() if _OLD else get_gbe_data()
+
     def check_rx_reorder(self, sleeptime=1):
         """
         Is this X host reordering received data correctly?
         :param sleeptime - time, in seconds, to wait between register reads
         :return:
         """
-        _regs = self.registers
-        # older versions had other register names
-        _OLD = 'reorderr_timeout0' in _regs.names()
-
-        def get_gbe_data_old():
-            data = {}
-            for ctr in range(0, self.x_per_fpga):
-                data['miss%i' % ctr] = _regs['reord_missant%i' % ctr].read()['data']['reg']
-                data['rcvcnt%i' % ctr] = _regs['reordcnt_recv%i' % ctr].read()['data']['reg']
-                data['ercv%i' % ctr] = _regs['reorderr_recv%i' % ctr].read()['data']['reg']
-                data['etim%i' % ctr] = _regs['reorderr_timeout%i' % ctr].read()['data']['reg']
-                data['edisc%i' % ctr] = _regs['reorderr_disc%i' % ctr].read()['data']['reg']
-            return data
-
-        def get_gbe_data():
-            data = {}
-            for ctr in range(0, self.x_per_fpga):
-                data['miss%i' % ctr] = _regs['reordcnt_spec%i' % ctr].read()['data']['missed_ant']
-                data['rcvcnt%i' % ctr] = _regs['reordcnt_recv%i' % ctr].read()['data']['reg']
-                data['ercv%i' % ctr] = _regs['reorderr_recv%i' % ctr].read()['data']['reg']
-                _tmp = _regs['reorderr_timedisc%i' % ctr].read()['data']
-                data['etim%i' % ctr] = _tmp['timeout']
-                data['edisc%i' % ctr] = _tmp['disc']
-            return data
-
-        rxregs = get_gbe_data_old() if _OLD else get_gbe_data()
+        rxregs = FpgaXHost.get_rx_reorder_status(self, self.x_per_fpga)
         time.sleep(sleeptime)
-        rxregs_new = get_gbe_data_old() if _OLD else get_gbe_data()
+        rxregs_new = FpgaXHost.get_rx_reorder_status(self, self.x_per_fpga)
         # compare old and new - rx counts must change and may wrap, error
         # counts must remain the same
         for ctr in range(0, self.x_per_fpga):
-            if rxregs_new['rcvcnt%i' % ctr] == rxregs['rcvcnt%i' % ctr]:
+            _new = rxregs_new[ctr]
+            _old = rxregs[ctr]
+            if _new['rcvcnt%i' % ctr] == _old['rcvcnt%i' % ctr]:
                 LOGGER.error('%s: not receiving reordered data.' % self.host)
                 return False
-            if ((rxregs_new['ercv%i' % ctr] != rxregs['ercv%i' % ctr]) or
-                    (rxregs_new['etim%i' % ctr] != rxregs['etim%i' % ctr]) or
-                    (rxregs_new['edisc%i' % ctr] != rxregs['edisc%i' % ctr])):
+            if ((_new['ercv%i' % ctr] != _old['ercv%i' % ctr]) or
+                    (_new['etim%i' % ctr] != _old['etim%i' % ctr]) or
+                    (_new['edisc%i' % ctr] != _old['edisc%i' % ctr])):
                 LOGGER.error(
                     '%s: reports reorder errors: ercv(%i) etime(%i) edisc(%i)' %
                     (self.host,
-                     rxregs_new['ercv%i' % ctr] - rxregs['ercv%i' % ctr],
-                     rxregs_new['etim%i' % ctr] - rxregs['etim%i' % ctr],
-                     rxregs_new['edisc%i' % ctr] - rxregs['edisc%i' % ctr]))
+                     _new['ercv%i' % ctr] - _old['ercv%i' % ctr],
+                     _new['etim%i' % ctr] - _old['etim%i' % ctr],
+                     _new['edisc%i' % ctr] - _old['edisc%i' % ctr]))
                 return False
         LOGGER.info('%s: reordering data okay.' % self.host)
         return True
