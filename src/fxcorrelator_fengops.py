@@ -459,8 +459,9 @@ class FEngineOperations(object):
         :return:
         """
         self.logger.info('Checking F hosts are transmitting data...')
-        results = THREADED_FPGA_FUNC(self.hosts, timeout=5,
-                                     target_function='check_tx_raw')
+        results = THREADED_FPGA_FUNC(self.hosts, timeout=10,
+                                     target_function=('check_tx_raw',
+                                                      (0.2, 5), {}))
         all_okay = True
         for _v in results.values():
             all_okay = all_okay and _v

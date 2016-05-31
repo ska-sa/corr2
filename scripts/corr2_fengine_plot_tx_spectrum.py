@@ -136,8 +136,8 @@ while True:
                     # print '\t', pwr3
                     # print ''
 
-                    if (pwr1 != 0) or (pwr3 != 0):
-                        raise RuntimeError('pol1 isnt zero?')
+                    # if (pwr1 != 0) or (pwr3 != 0):
+                    #     raise RuntimeError('pol1 isnt zero?')
 
                     spectrum_total[0][freq] += (pwr0 + pwr2)
                     spectrum_count[0][freq] += 2

@@ -607,6 +607,7 @@ class FxCorrelator(Instrument):
     def product_set_destination(self, product_name, txip_str=None, txport=None):
         """
         Set the destination for a data product.
+        :param product_name:
         :param txip_str: A dotted-decimal string representation of the
         IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.
@@ -621,6 +622,7 @@ class FxCorrelator(Instrument):
                                      txip_str=None, txport=None):
         """
         Set the meta destination for a data product.
+        :param product_name:
         :param txip_str: A dotted-decimal string representation of the
         IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.
