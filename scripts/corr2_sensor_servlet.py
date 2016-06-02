@@ -81,7 +81,13 @@ class Corr2SensorServer(katcp.DeviceServer):
 
 @tornado.gen.coroutine
 def on_shutdown(ioloop, server):
-    print('Shutting down')
+    """
+    Shut down the ioloop sanely.
+    :param ioloop: the current tornado.ioloop.IOLoop
+    :param server: a katcp.DeviceServer instance
+    :return:
+    """
+    print('Sensor server shutting down')
     yield server.stop()
     ioloop.stop()
 
@@ -127,12 +133,15 @@ if __name__ == '__main__':
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
-    signal.signal(signal.SIGINT, lambda sig, frame:
-    ioloop.add_callback_from_signal(on_shutdown, ioloop, sensor_server))
-    print 'Sensor Server listening on port %d, ' % args.port
+    signal.signal(signal.SIGINT,
+                  lambda sig, frame: ioloop.add_callback_from_signal(
+                      on_shutdown, ioloop, sensor_server))
+    print 'Sensor server listening on port %d:' % args.port,
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
-    instrument = fxcorrelator.FxCorrelator('RTS correlator',
+    print 'started. Running somewhere in the ether... exit however you see fit.'
+    instrument = fxcorrelator.FxCorrelator('dummy corr for sensors',
                                            config_source=args.config)
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()
+# end

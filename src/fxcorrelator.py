@@ -263,6 +263,16 @@ class FxCorrelator(Instrument):
             raise KeyError('Sensor {} already exists'.format(sensor.name))
         self._sensors[sensor.name] = sensor
 
+    def sensors_get(self, sensor_name):
+        """
+        Get a sensor from the dictionary of instrument sensors
+        :param sensor_name:
+        :return:
+        """
+        if sensor_name not in self._sensors.keys():
+            raise KeyError('Sensor {} does not exist'.format(sensor_name))
+        return self._sensors[sensor_name]
+
     def set_synch_time(self, new_synch_time):
         """
         Set the last sync time for this system
