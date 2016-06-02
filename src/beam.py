@@ -107,15 +107,12 @@ class Beam(object):
         :return:
         """
 
-        # DEBUG
-        #THREADED_FPGA_OP(
-        #    self.hosts, timeout=5,
-        #    target_function=(
-        #        lambda fpga_:
-        #        fpga_.registers.bf_config.write(tvg_sel=True), [], {}))
-
-        # set the beam index
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_index_set', [self], {}))
+        # # DEBUG
+        # THREADED_FPGA_OP(
+        #     self.hosts, timeout=5,
+        #     target_function=(
+        #         lambda fpga_:
+        #         fpga_.registers.bf_config.write(tvg_sel=True), [], {}))
 
         # set the beam destination registers
         self.set_beam_destination(None)
