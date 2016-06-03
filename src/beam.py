@@ -414,7 +414,7 @@ class Beam(object):
         chans_per_partition = chans_per_host / self.beng_per_host
         beam_chans = chans_per_partition * len(self.partitions_active)
         # id is 0x5 + 12 least sig bits id of each beam
-        beam_data_id = 0x5000 + self.index
+        beam_data_id = 0x5000
         meta_ig.add_item(
             name='bf_raw', id=beam_data_id,
             description='Raw data for bengines in the system. Frequencies '
