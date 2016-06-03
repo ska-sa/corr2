@@ -170,6 +170,21 @@ class FxCorrelator(Instrument):
         # set an initialised flag
         self._initialised = True
 
+    def _gbe_setup(self):
+        """
+        Set up the 10gbe ports on the hosts
+        :return:
+        """
+        feng_port = int(self.configd['fengine']['10gbe_port'])
+        xeng_port = int(self.configd['xengine']['10gbe_port'])
+        info_dict = {host.host: (feng_port, 'fhost') for host in self.fhosts}
+        info_dict.update(
+            {host.host: (xeng_port, 'xhost') for host in self.xhosts})
+        timeout = len(self.fhosts[0].tengbes) * 30 * 1.1
+        THREADED_FPGA_FUNC(
+                self.fhosts + self.xhosts, timeout=timeout,
+                target_function=('setup_host_gbes', (self.logger, info_dict), {}))
+
     def _initialise(self, program, qdr_cal):
         """
         Run this if boards in the system have been programmed. Basic setup
@@ -189,8 +204,15 @@ class FxCorrelator(Instrument):
                              'want to do this?')
 
         # init the engines
-        self.fops.initialise()
-        self.xops.initialise()
+        self.fops.initialise_pre_gbe()
+        self.xops.initialise_pre_gbe()
+
+        # set up the tengbe ports in parallel
+        self._gbe_setup()
+
+        # continue with init
+        self.fops.initialise_post_gbe()
+        self.xops.initialise_post_gbe()
         if self.found_beamformer:
             self.bops.initialise()
 

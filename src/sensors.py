@@ -8,6 +8,9 @@ from concurrent import futures
 
 from fhost_fpga import DelaysUnsetError
 
+from casperfpga.katcp_fpga import KatcpRequestError, KatcpRequestFail, \
+    KatcpRequestInvalid
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -70,13 +73,16 @@ def _sensor_cb_feng_rxtime(sensor, executor, instrument):
     :param instrument:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(instrument.fops.check_rx_timestamps)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating feng rxtime sensor '
                          '- {}'.format(e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_sensor_cb_feng_rxtime ran')
     IOLoop.current().call_later(10, _sensor_cb_feng_rxtime, sensor, executor,
                                 instrument)
@@ -89,16 +95,16 @@ def _sensor_cb_fdelays(sensor, executor, f_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(f_host.delay_check_loadcounts)
-    except DelaysUnsetError:
-        sensor.set(time.time(), Sensor.UNKNOWN, None)
-        return
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating delay functionality sensor '
                          'for {} - {}'.format(f_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.WARN, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_sensor_cb_fdelays ran on {}'.format(f_host))
     IOLoop.current().call_later(10, _sensor_cb_fdelays, sensor,
                                 executor, f_host)
@@ -111,13 +117,16 @@ def _sensor_cb_flru(sensor, executor, f_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(f_host.host_okay)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating flru sensor for {} - '
                          '{}'.format(f_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_sensor_cb_flru ran on {}'.format(f_host))
     IOLoop.current().call_later(10, _sensor_cb_flru, sensor, executor, f_host)
 
@@ -129,13 +138,16 @@ def _sensor_cb_xlru(sensor, executor, x_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(x_host.host_okay)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating xlru sensor for {} - '
                          '{}'.format(x_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_sensor_cb_xlru ran on {}'.format(x_host))
     IOLoop.current().call_later(10, _sensor_cb_xlru, sensor, executor, x_host)
 
@@ -147,13 +159,16 @@ def _sensor_feng_phy(sensor, executor, f_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(f_host.check_phy_counter)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating feng_phy sensor for {} - '
                          '{}'.format(f_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_sensor_feng_phy ran on {}'.format(f_host))
     IOLoop.current().call_later(10, _sensor_feng_phy, sensor, executor, f_host)
 
@@ -165,13 +180,16 @@ def _sensor_xeng_phy(sensor, executor, x_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(x_host.check_phy_counter)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating xeng_phy sensor for {} - '
                          '{}'.format(x_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_sensor_xeng_phy ran on {}'.format(x_host))
     IOLoop.current().call_later(10, _sensor_xeng_phy, sensor, executor, x_host)
 
@@ -183,13 +201,16 @@ def _xeng_qdr_okay(sensor, executor, x_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(x_host.qdr_okay)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating xeng qdr sensor for {} - '
                          '{}'.format(x_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_xeng_qdr_okay ran on {}'.format(x_host))
     IOLoop.current().call_later(10, _xeng_qdr_okay, sensor, executor, x_host)
 
@@ -201,13 +222,16 @@ def _feng_qdr_okay(sensor, executor, f_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(f_host.qdr_okay)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating feng qdr sensor for {} - '
                          '{}'.format(f_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_feng_qdr_okay ran on {}'.format(f_host))
     IOLoop.current().call_later(10, _feng_qdr_okay, sensor, executor, f_host)
 
@@ -219,13 +243,16 @@ def _feng_pfb_okay(sensor, executor, f_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(f_host.check_fft_overflow)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating feng pfb sensor for {} - '
                          '{}'.format(f_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_feng_pfb_okay ran on {}'.format(f_host))
     IOLoop.current().call_later(10, _feng_pfb_okay, sensor, executor, f_host)
 
@@ -238,13 +265,16 @@ def _fhost_check_10gbe_rx(sensor, executor, f_host):
     :param executor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(f_host.check_rx_raw, 0.2, 5)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating {} for {} - '
                          '{}'.format(sensor.name, f_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_fhost_check_10gbe_rx ran')
     IOLoop.current().call_later(10, _fhost_check_10gbe_rx, sensor,
                                 executor, f_host)
@@ -259,13 +289,16 @@ def _fhost_check_10gbe_tx(sensor, executor, f_host):
     :param f_host:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(f_host.check_tx_raw, 0.2, 5)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating {} for {} - '
                          '{}'.format(sensor.name, f_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_fhost_check_10gbe_tx ran')
     IOLoop.current().call_later(10, _fhost_check_10gbe_tx, sensor,
                                 executor, f_host)
@@ -280,13 +313,16 @@ def _xhost_check_10gbe_rx(sensor, executor, x_host):
     :param x_host:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(x_host.check_rx_raw, 0.2, 5)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating {} for {} - '
                          '{}'.format(sensor.name, x_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_xhost_check_10gbe_rx ran')
     IOLoop.current().call_later(10, _xhost_check_10gbe_rx, sensor,
                                 executor, x_host)
@@ -302,15 +338,17 @@ def _xhost_report_10gbe_tx(sensor, executor, x_host, gbe):
     :param gbe:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(
             x_host.registers['%s_txctr' % gbe.name].read)
+        result = result['data']['reg']
+        sensor.set(time.time(), Sensor.NOMINAL, result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, 0)
     except Exception as e:
         LOGGER.exception('Error updating {} for {} - '
                          '{}'.format(sensor.name, x_host, e.message))
-    result = result['data']['reg']
-    sensor.set(time.time(), Sensor.NOMINAL, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, 0)
     LOGGER.debug('_xhost_report_10gbe_tx ran')
     IOLoop.current().call_later(10, _xhost_report_10gbe_tx, sensor,
                                 executor, x_host, gbe)
@@ -323,13 +361,16 @@ def _sensor_feng_rx_reorder(sensor, executor, f_host):
     :param sensor:
     :return: true/false
     """
-    result = False
     try:
         result = yield executor.submit(f_host.check_rx_reorder)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating feng_rx sensor for {} - '
                          '{}'.format(f_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_sensor_feng_rx ran on {}'.format(f_host))
     IOLoop.current().call_later(10, _sensor_feng_rx_reorder,
                                 sensor, executor, f_host)
@@ -342,13 +383,16 @@ def _sensor_xeng_rx_reorder(sensor, executor, x_host):
     :param sensor:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(x_host.check_rx_reorder)
+        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
+                   result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.exception('Error updating xeng_rx sensor for {} - '
                          '{}'.format(x_host, e.message))
-    sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR, result)
+        sensor.set(time.time(), Sensor.UNKNOWN, False)
     LOGGER.debug('_sensor_xeng_rx ran on {}'.format(x_host))
     IOLoop.current().call_later(10, _sensor_xeng_rx_reorder, sensor,
                                 executor, x_host)
@@ -363,18 +407,26 @@ def _sensor_cb_system_counters(executor, host, instrument):
     :param instrument:
     :return:
     """
-    result = False
     try:
         result = yield executor.submit(read_all_counters, host)
+        for sens_name in result:
+            sensor = instrument.sensors_get(sens_name)
+            oldval = instrument.sensors_counters_values[sens_name]
+            sens_value = result[sens_name] != oldval
+            sensor.set(time.time(), Sensor.NOMINAL, sens_value)
+        instrument.sensors_counters_values.update(result)
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        for sens_name in instrument.sensors_counters_values:
+            if sens_name.startswith(host.host):
+                sensor = instrument.sensors_get(sens_name)
+                sensor.set(time.time(), Sensor.UNKNOWN, 0)
     except Exception as e:
         LOGGER.exception('Error updating counter sensors for {} - '
                          '{}'.format(host, e.message))
-    for sens_name in result:
-        sensor = instrument.sensors_get(sens_name)
-        oldval = instrument.sensors_counters_values[sens_name]
-        sens_value = result[sens_name] != oldval
-        sensor.set(time.time(), Sensor.NOMINAL, sens_value)
-    instrument.sensors_counters_values.update(result)
+        for sens_name in instrument.sensors_counters_values:
+            if sens_name.startswith(host.host):
+                sensor = instrument.sensors_get(sens_name)
+                sensor.set(time.time(), Sensor.UNKNOWN, 0)
     IOLoop.current().call_later(10, _sensor_cb_system_counters,
                                 executor, host, instrument)
 
@@ -409,10 +461,9 @@ def setup_sensors(instrument, katcp_server):
 
     # f-engine received timestamps
     sensor = Sensor.boolean(
-        name='feng_rxtime',
+        name='feng_rxtime_ok',
         description='Are the times received by f-engines in the system okay',
-        default=False)
-
+        default=True)
     katcp_server.add_sensor(sensor)
     instrument.sensors_add(sensor)
     ioloop.add_callback(_sensor_cb_feng_rxtime, sensor, general_executor,
@@ -422,7 +473,7 @@ def setup_sensors(instrument, katcp_server):
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(
-            name='%s_feng_lru' % _f.host,
+            name='%s_feng_lru_ok' % _f.host,
             description='F-engine %s LRU okay' % _f.host,
             default=True)
         katcp_server.add_sensor(sensor)
@@ -433,7 +484,7 @@ def setup_sensors(instrument, katcp_server):
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(
-            name='%s_xeng_lru' % _x.host,
+            name='%s_xeng_lru_ok' % _x.host,
             description='X-engine %s LRU okay' % _x.host,
             default=True)
         katcp_server.add_sensor(sensor)
@@ -444,7 +495,7 @@ def setup_sensors(instrument, katcp_server):
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(
-            name='%s_xeng_qdr' % _x.host,
+            name='%s_xeng_qdr_ok' % _x.host,
             description='X-engine QDR okay',
             default=True)
         katcp_server.add_sensor(sensor)
@@ -455,7 +506,7 @@ def setup_sensors(instrument, katcp_server):
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(
-            name='%s_feng_qdr' % _f.host,
+            name='%s_feng_qdr_ok' % _f.host,
             description='F-engine QDR okay',
             default=True)
         katcp_server.add_sensor(sensor)
@@ -466,7 +517,7 @@ def setup_sensors(instrument, katcp_server):
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(
-            name='%s_xeng_phy' % _x.host,
+            name='%s_xeng_phy_ok' % _x.host,
             description='X-engine PHY okay',
             default=True)
         katcp_server.add_sensor(sensor)
@@ -477,7 +528,7 @@ def setup_sensors(instrument, katcp_server):
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(
-            name='%s_feng_phy' % _f.host,
+            name='%s_feng_phy_ok' % _f.host,
             description='F-engine PHY okay',
             default=True)
         katcp_server.add_sensor(sensor)
@@ -488,7 +539,7 @@ def setup_sensors(instrument, katcp_server):
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(
-            name='%s_feng_pfb' % _f.host,
+            name='%s_feng_pfb_ok' % _f.host,
             description='F-engine PFB okay',
             default=True)
         katcp_server.add_sensor(sensor)
@@ -499,7 +550,7 @@ def setup_sensors(instrument, katcp_server):
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(
-            name='%s_feng_10gbe_rx' % _f.host,
+            name='%s_feng_10gbe_rx_ok' % _f.host,
             description='F-engine 10gbe RX okay',
             default=True)
         katcp_server.add_sensor(sensor)
@@ -510,7 +561,7 @@ def setup_sensors(instrument, katcp_server):
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(
-            name='%s_feng_10gbe_tx' % _f.host,
+            name='%s_feng_10gbe_tx_ok' % _f.host,
             description='F-engine 10gbe TX okay',
             default=True)
         katcp_server.add_sensor(sensor)
@@ -521,7 +572,7 @@ def setup_sensors(instrument, katcp_server):
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(
-            name='%s_xeng_10gbe_rx' % _x.host,
+            name='%s_xeng_10gbe_rx_ok' % _x.host,
             description='X-engine 10gbe RX okay',
             default=True)
         katcp_server.add_sensor(sensor)
@@ -533,9 +584,9 @@ def setup_sensors(instrument, katcp_server):
         executor = host_executors[_x.host]
         for gbe in _x.tengbes:
             sensor = Sensor.integer(
-                name='%s_xeng_10gbe_%s_tx' % (_x.host, gbe.name),
+                name='%s_xeng_10gbe_%s_tx_ctr' % (_x.host, gbe.name),
                 description='X-engine 10gbe TX counter',
-                default=True)
+                default=0)
             katcp_server.add_sensor(sensor)
             instrument.sensors_add(sensor)
             ioloop.add_callback(_xhost_report_10gbe_tx, sensor,
@@ -545,7 +596,7 @@ def setup_sensors(instrument, katcp_server):
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(
-            name='%s_feng_reorder_rx' % _f.host,
+            name='%s_feng_reorder_ok' % _f.host,
             description='F-engine RX okay - reorder counters incrementing'
                         'correctly',
             default=True)
@@ -557,7 +608,7 @@ def setup_sensors(instrument, katcp_server):
     for _x in instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Sensor.boolean(
-            name='%s_xeng_reorder_rx' % _x.host,
+            name='%s_xeng_reorder_ok' % _x.host,
             description='X-engine RX okay - reorder counters incrementing'
                         'correctly',
             default=True)
@@ -569,7 +620,7 @@ def setup_sensors(instrument, katcp_server):
     for _f in instrument.fhosts:
         executor = host_executors[_f.host]
         sensor = Sensor.boolean(
-            name='%s_feng_delays' % _f.host,
+            name='%s_feng_delays_ok' % _f.host,
             description='F-engine %s delay functionality' % _f.host,
             default=True)
         katcp_server.add_sensor(sensor)
@@ -586,7 +637,7 @@ def setup_sensors(instrument, katcp_server):
                 name='%s' % ctr,
                 description='Counter on %s, True is changed since '
                             'last read' % _h.host,
-                default=False)
+                default=True)
             katcp_server.add_sensor(sensor)
             instrument.sensors_add(sensor)
         instrument.sensors_counters_values.update(host_ctrs)

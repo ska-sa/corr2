@@ -142,6 +142,7 @@ if __name__ == '__main__':
     print 'started. Running somewhere in the ether... exit however you see fit.'
     instrument = fxcorrelator.FxCorrelator('dummy corr for sensors',
                                            config_source=args.config)
+    instrument.standard_log_config(log_level)
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()
 # end
