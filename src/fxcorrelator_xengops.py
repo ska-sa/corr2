@@ -5,7 +5,6 @@ from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
 
 from casperfpga import utils as fpgautils
-from casperfpga import tengbe
 
 import data_product
 from net_address import NetAddress
@@ -44,36 +43,24 @@ class XEngineOperations(object):
         self.vacc_check_cb = None
         self.vacc_check_cb_data = None
 
-    def initialise(self):
+    @staticmethod
+    def _gberst(hosts, state):
+        THREADED_FPGA_OP(
+            hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.control.write(gbe_rst=state),))
+
+    def initialise_post_gbe(self):
         """
-        Set up x-engines on this device.
+        Perform post-gbe setup initialisation steps
         :return:
         """
-        # simulator
-        if use_xeng_sim:
-            THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(
-                    lambda fpga_: fpga_.registers.simulator.write(
-                        en=False, rst='pulse'),))
-
-        # disable transmission, place cores in reset, and give control
-        # register a known state
-        self.xeng_tx_disable(None)
-
-        def _gberst(hosts, state):
-            THREADED_FPGA_OP(
-                hosts, timeout=5,
-                target_function=(
-                    lambda fpga_:
-                    fpga_.registers.control.write(gbe_rst=state),))
-
-        _gberst(self.hosts, True)
-
-        self.clear_status_all()
-
-        # set up the 10gbe cores
-        self._setup_gbes()
+        # write the board IDs to the xhosts
+        board_id = 0
+        for f in self.hosts:
+            f.registers.board_id.write(reg=board_id)
+            board_id += 1
 
         # write the data product destination to the registers
         self.write_data_product_destination(None)
@@ -86,7 +73,7 @@ class XEngineOperations(object):
                 fpga_.registers.control.write(gbe_debug_rst='pulse'),))
 
         # release cores from reset
-        _gberst(self.hosts, False)
+        XEngineOperations._gberst(self.hosts, False)
 
         # simulator
         if use_xeng_sim:
@@ -108,6 +95,27 @@ class XEngineOperations(object):
         # check for errors
         # TODO - read status regs?
 
+    def initialise_pre_gbe(self):
+        """
+        Set up x-engines on this device.
+        :return:
+        """
+        # simulator
+        if use_xeng_sim:
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.simulator.write(
+                        en=False, rst='pulse'),))
+
+        # disable transmission, place cores in reset, and give control
+        # register a known state
+        self.xeng_tx_disable(None)
+
+        XEngineOperations._gberst(self.hosts, True)
+
+        self.clear_status_all()
+
     def configure(self):
         """
         Configure the xengine operations - this is done whenever a correlator
@@ -116,41 +124,6 @@ class XEngineOperations(object):
         """
         # set up the xengine data product
         self._setup_data_product()
-
-    def _setup_gbes(self):
-        """
-        Set up the 10gbe cores on the x hosts
-        :return:
-        """
-        # set up the 10gbe cores
-        xeng_port = int(self.corr.configd['xengine']['10gbe_port'])
-        mac_start = tengbe.Mac(self.corr.configd['xengine']['10gbe_start_mac'])
-
-        boards_info = {}
-        board_id = 0
-        mac = int(mac_start)
-        for f in self.hosts:
-            macs = []
-            for gbe in f.tengbes:
-                macs.append(mac)
-                mac += 1
-            boards_info[f.host] = board_id, macs
-            board_id += 1
-
-        def setup_gbes(f):
-            board_id, macs = boards_info[f.host]
-            f.registers.board_id.write(reg=board_id)
-            mac_ctr = 1
-            for gbe, this_mac in zip(f.tengbes, macs):
-                this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
-                gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
-                self.logger.info(
-                    'xhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i)' %
-                    (f.host, gbe.name, str(gbe.mac), xeng_port, board_id))
-                # gbe.tap_start(restart=True)
-                gbe.dhcp_start()
-                mac_ctr += 1
-        THREADED_FPGA_OP(self.hosts, timeout=40, target_function=(setup_gbes,))
 
     def _setup_data_product(self):
         """

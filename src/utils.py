@@ -59,6 +59,8 @@ class AdcData(object):
 def parse_ini_file(ini_file='', required_sections=None):
     """
     Parse an ini file into a dictionary. No checking done at all.
+    :param ini_file: the ini file to process
+    :param required_sections: sections that MUST be included
     :return: a dictionary containing the configuration
     """
     if (ini_file == '') and ('CORR2INI' in os.environ.keys()):

@@ -2,6 +2,8 @@ import logging
 import time
 
 from casperfpga.katcp_fpga import KatcpFpga
+from casperfpga import tengbe
+
 from host import Host
 
 LOGGER = logging.getLogger(__name__)
@@ -86,3 +88,25 @@ class FpgaHost(Host, KatcpFpga):
         else:
             LOGGER.info('%s: receiving good SPEAD data.' % self.host)
             return True
+
+    def setup_host_gbes(self, logger, info_dict):
+        """
+        Set up the tengbe ports on hosts
+        :param logger: a logger instance
+        :param info_dict: a dictionary with the port and hoststr for this
+        fpga host
+        :return:
+        """
+        port = info_dict[self.host][0]
+        hoststr = info_dict[self.host][1]
+        mac_ctr = 1
+        for gbe in self.tengbes:
+            this_mac = tengbe.Mac.from_roach_hostname(self.host, mac_ctr)
+            gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=port)
+            logger.info('%s(%s) gbe(%s) mac(%s) port(%i)' %
+                        (hoststr, self.host, gbe.name, str(gbe.mac), port))
+            # gbe.tap_start(restart=True)
+            gbe.dhcp_start()
+            mac_ctr += 1
+
+# end
