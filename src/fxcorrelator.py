@@ -77,6 +77,7 @@ class FxCorrelator(Instrument):
         self.accumulation_len = None
         self.xeng_accumulation_len = None
         self.fengine_sources = None
+        self.baselines = None
 
         self._sensors = {}
 
@@ -554,6 +555,9 @@ class FxCorrelator(Instrument):
                                       'both X- and F-engines' % _fh.host)
                     raise RuntimeError
 
+        # update the list of baselines on this system
+        self.baselines = utils.baselines_from_config(config=self.configd)
+
         # what data sources have we been allocated?
         self._handle_sources()
 
@@ -571,7 +575,7 @@ class FxCorrelator(Instrument):
         """
         assert len(self.fhosts) > 0
         _feng_cfg = self.configd['fengine']
-        source_names = _feng_cfg['source_names'].strip().split(',')
+        source_names = utils.sources_from_config(config=self.configd)
         source_mcast = _feng_cfg['source_mcast_ips'].strip().split(',')
         assert len(source_mcast) == len(source_names), (
             'Source names (%d) must be paired with multicast source '

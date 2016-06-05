@@ -717,17 +717,20 @@ class XEngineOperations(object):
         self.logger.info('\tChecking for errors & accumulations...')
         vacc_status = self.vacc_status()
         note_errors = False
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                if status['errors'] > 0 and status['errors'] < 100:
-                    self.logger.warn('\t\t100 > vacc errors > 0. Que pasa?')
-                    note_errors = True
-                elif status['errors'] >= 100:
-                    self.logger.error('\t\tvacc errors > 100. Que pasa?')
-                    return False
-                if status['count'] <= 0:
-                    self.logger.error('\t\tvacc counts <= 0. Que pasa?')
-                    return False
+
+        # TODO ACHTUNG ACHTUNG DANGER HIGH VOLTAGE
+
+        # for host in self.hosts:
+        #     for status in vacc_status[host.host]:
+        #         if status['errors'] > 0 and status['errors'] < 100:
+        #             self.logger.warn('\t\t100 > vacc errors > 0. Que pasa?')
+        #             note_errors = True
+        #         elif status['errors'] >= 100:
+        #             self.logger.error('\t\tvacc errors > 100. Que pasa?')
+        #             return False
+        #         if status['count'] <= 0:
+        #             self.logger.error('\t\tvacc counts <= 0. Que pasa?')
+        #             return False
         if note_errors:
             self.logger.debug('\t\txeng_vacc_check_status: mostly okay, some reorder errors')
         else:
@@ -801,41 +804,6 @@ class XEngineOperations(object):
         if reenable_timer:
             self.vacc_check_timer_start()
 
-    def get_baseline_order(self):
-        """
-        Return the order of baseline data output by a CASPER correlator X engine
-        :return:
-        """
-        # TODO - nants vs number of inputs?
-        assert len(self.corr.fengine_sources)/2 == self.corr.n_antennas
-        order1 = []
-        order2 = []
-        for ant_ctr in range(self.corr.n_antennas):
-            # print 'ant_ctr(%d)' % ant_ctr
-            for ctr2 in range(int(self.corr.n_antennas/2), -1, -1):
-                temp = (ant_ctr - ctr2) % self.corr.n_antennas
-                # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
-                if ant_ctr >= temp:
-                    order1.append((temp, ant_ctr))
-                else:
-                    order2.append((ant_ctr, temp))
-        order2 = [order_ for order_ in order2 if order_ not in order1]
-        baseline_order = order1 + order2
-        source_names = []
-        for source in self.corr.fengine_sources:
-            source_names.append(source['source'].name)
-        rv = []
-        for baseline in baseline_order:
-            rv.append((source_names[baseline[0] * 2],
-                       source_names[baseline[1] * 2]))
-            rv.append((source_names[baseline[0] * 2 + 1],
-                       source_names[baseline[1] * 2 + 1]))
-            rv.append((source_names[baseline[0] * 2],
-                       source_names[baseline[1] * 2 + 1]))
-            rv.append((source_names[baseline[0] * 2 + 1],
-                       source_names[baseline[1] * 2]))
-        return rv
-
     def xeng_tx_enable(self, data_product):
         """
         Start transmission of data products from the x-engines
@@ -895,7 +863,7 @@ class XEngineOperations(object):
             name='n_bls', id=0x1008,
             description='Number of baselines in the data product.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=len(self.get_baseline_order()))
+            value=len(self.corr.baselines))
 
         self.corr.speadops.item_0x1009(meta_ig)
         self.corr.speadops.item_0x100a(meta_ig)
@@ -908,7 +876,7 @@ class XEngineOperations(object):
             value=n_xengs)
 
         bls_ordering = numpy.array(
-            [baseline for baseline in self.get_baseline_order()])
+            [baseline for baseline in self.corr.baselines])
         # this is a list of the baseline product pairs, e.g. ['ant0x' 'ant0y']
         meta_ig.add_item(
             name='bls_ordering', id=0x100C,
@@ -1037,8 +1005,8 @@ class XEngineOperations(object):
                         'imaginary) unsigned integers.' % n_xengs,
             # dtype=numpy.int32,
             dtype=numpy.dtype('>i4'),
-            shape=[self.corr.n_chans, len(self.get_baseline_order()), 2])
-            # shape=[self.corr.n_chans * len(self.get_baseline_order()), 2])
+            shape=[self.corr.n_chans, len(self.corr.baselines), 2])
+            # shape=[self.corr.n_chans * len(self.corr.baselines), 2])
 
     def spead_meta_issue_all(self, data_product):
         """

@@ -36,8 +36,19 @@ if 'CORR2INI' in os.environ.keys() and configfile == '':
 if configfile == '':
     raise RuntimeError('No good carrying on without a config file')
 
-baselines = utils.baselines_from_config(config_file=configfile)
+configd = utils.parse_ini_file(configfile)
+baselines = utils.baselines_from_config(config=configd)
+fhosts = utils.hosts_from_config(config=configd, section='fengine')
+sources = utils.sources_from_config(config=configd)
+source_to_host = utils.source_to_host(sources, config=configd)
+
+bls_hosts = []
 for ctr, baseline in enumerate(baselines):
-    print ctr, ':', baseline
+    bls_hosts.append((source_to_host[baseline[0]],
+                      source_to_host[baseline[1]]))
+
+for ctr, baseline in enumerate(baselines):
+    ax = 'A' if baseline[0] == baseline[1] else ''
+    print ctr, ':', baseline, '-', bls_hosts[ctr], ax
 
 # end

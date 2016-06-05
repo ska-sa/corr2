@@ -85,18 +85,19 @@ def parse_ini_file(ini_file='', required_sections=None):
     return config
 
 
-def hosts_from_config_dict(config_dict, section=None):
+def hosts_from_config(config_file=None, config=None, section=None):
     """
-    Return a list of hostnames given a config dictionary.
-    :param config_dict:
-    :param section: fengine, xengine, dsimengine
-    :return:
+    Make lists of hosts from a given correlator config file.
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :param section: the section name to process. None is ALL sections.
+    :return: a dictionary of hosts, by type
     """
-    assert hasattr(config_dict, 'keys')
+    config = config or parse_ini_file(config_file)
     host_list = []
-    for sectionkey in config_dict.keys():
+    for sectionkey in config.keys():
         if (section is None) or (section == sectionkey):
-            section_dict = config_dict[sectionkey]
+            section_dict = config[sectionkey]
             section_keys = section_dict.keys()
             if 'hosts' in section_keys:
                 hosts = section_dict['hosts'].split(',')
@@ -108,15 +109,62 @@ def hosts_from_config_dict(config_dict, section=None):
     return host_list
 
 
-def hosts_from_config_file(config_file, section=None):
+def sources_from_config(config_file=None, config=None):
     """
-    Make lists of hosts from a given correlator config file.
+    Get a list of the sources given by the config
     :param config_file: a corr2 config file
-    :param section: the section name to process. None is ALL sections.
-    :return: a dictionary of hosts, by type
+    :param config: a corr2 config dictionary
+    :return:
     """
-    config = parse_ini_file(config_file)
-    return hosts_from_config_dict(config, section=section)
+    config = config or parse_ini_file(config_file)
+    sources = config['fengine']['source_names'].split(',')
+    for ctr, src in enumerate(sources):
+        sources[ctr] = src.strip()
+    return sources
+
+
+def host_to_sources(hosts, config_file=None, config=None):
+    """
+    Get sources related to a host
+    :param hosts: a list of hosts
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :return:
+    """
+    config = config or parse_ini_file(config_file)
+    f_per_fpga = int(config['fengine']['f_per_fpga'])
+    fhosts = hosts_from_config(config=config, section='fengine')
+    sources = sources_from_config(config=config)
+    if len(sources) != len(fhosts) * f_per_fpga:
+        raise RuntimeError('%i hosts, %i per fpga_host, expected %i '
+                           'sources' % (len(fhosts), f_per_fpga, len(sources)))
+    ctr = 0
+    rv = {}
+    for host in fhosts:
+        rv[host] = (sources[ctr], sources[ctr+1])
+        ctr += 2
+    return rv
+
+
+def source_to_host(sources, config_file=None, config=None):
+    """
+    Get sources related to a host
+    :param sources: a list of sources
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :return:
+    """
+    config = config or parse_ini_file(config_file)
+    fhosts = hosts_from_config(config=config, section='fengine')
+    source_host_dict = host_to_sources(fhosts, config=config)
+    ctr = 0
+    rv = {}
+    for source in sources:
+        for host in source_host_dict:
+            if source in source_host_dict[host]:
+                rv[source] = host
+                break
+    return rv
 
 
 def baselines_from_config(config_file=None, config=None):
@@ -127,12 +175,8 @@ def baselines_from_config(config_file=None, config=None):
     :return:
     """
     config = config or parse_ini_file(config_file)
-    sources = config['fengine']['source_names'].split(',')
-    for ctr, src in enumerate(sources):
-        sources[ctr] = src.strip()
-    fhosts = config['fengine']['hosts'].split(',')
-    for ctr, hst in enumerate(fhosts):
-        fhosts[ctr] = hst.strip()
+    sources = sources_from_config(config=config)
+    fhosts = hosts_from_config(config=config, section='fengine')
     n_antennas = len(fhosts)
     assert len(sources) / 2 == n_antennas
     order1 = []
@@ -173,11 +217,12 @@ def parse_hosts(str_file_dict, section=None):
     """
     # issit a config dict?
     if hasattr(str_file_dict, 'keys'):
-        host_list = hosts_from_config_dict(str_file_dict, section=section)
+        host_list = hosts_from_config(config=str_file_dict, section=section)
     else:
         try:
             # it's a file
-            host_list = hosts_from_config_file(str_file_dict, section=section)
+            host_list = hosts_from_config(config_file=str_file_dict,
+                                          section=section)
         except IOError:
             # it's a string
             hosts = str_file_dict.strip().split(',')
