@@ -167,18 +167,13 @@ def source_to_host(sources, config_file=None, config=None):
     return rv
 
 
-def baselines_from_config(config_file=None, config=None):
+def baselines_from_source_list(source_list):
     """
-    Get a list of the baselines from a config file.
-    :param config_file: a corr2 config file
-    :param config: a corr2 config dictionary
+    Get a list of the baselines from a source list.
+    :param source_list:
     :return:
     """
-    config = config or parse_ini_file(config_file)
-    sources = sources_from_config(config=config)
-    fhosts = hosts_from_config(config=config, section='fengine')
-    n_antennas = len(fhosts)
-    assert len(sources) / 2 == n_antennas
+    n_antennas = len(source_list) / 2
     order1 = []
     order2 = []
     for ant_ctr in range(n_antennas):
@@ -193,7 +188,7 @@ def baselines_from_config(config_file=None, config=None):
     order2 = [order_ for order_ in order2 if order_ not in order1]
     baseline_order = order1 + order2
     source_names = []
-    for source in sources:
+    for source in source_list:
         source_names.append(source)
     rv = []
     for baseline in baseline_order:
@@ -206,6 +201,48 @@ def baselines_from_config(config_file=None, config=None):
         rv.append((source_names[baseline[0] * 2 + 1],
                    source_names[baseline[1] * 2]))
     return rv
+
+
+def baselines_from_config(config_file=None, config=None):
+    """
+    Get a list of the baselines from a config file.
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :return:
+    """
+    config = config or parse_ini_file(config_file)
+    sources = sources_from_config(config=config)
+    fhosts = hosts_from_config(config=config, section='fengine')
+    n_antennas = len(fhosts)
+    assert len(sources) / 2 == n_antennas
+    return baselines_from_source_list(sources)
+    # order1 = []
+    # order2 = []
+    # for ant_ctr in range(n_antennas):
+    #     # print 'ant_ctr(%d)' % ant_ctr
+    #     for ctr2 in range(int(n_antennas / 2), -1, -1):
+    #         temp = (ant_ctr - ctr2) % n_antennas
+    #         # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
+    #         if ant_ctr >= temp:
+    #             order1.append((temp, ant_ctr))
+    #         else:
+    #             order2.append((ant_ctr, temp))
+    # order2 = [order_ for order_ in order2 if order_ not in order1]
+    # baseline_order = order1 + order2
+    # source_names = []
+    # for source in sources:
+    #     source_names.append(source)
+    # rv = []
+    # for baseline in baseline_order:
+    #     rv.append((source_names[baseline[0] * 2],
+    #                source_names[baseline[1] * 2]))
+    #     rv.append((source_names[baseline[0] * 2 + 1],
+    #                source_names[baseline[1] * 2 + 1]))
+    #     rv.append((source_names[baseline[0] * 2],
+    #                source_names[baseline[1] * 2 + 1]))
+    #     rv.append((source_names[baseline[0] * 2 + 1],
+    #                source_names[baseline[1] * 2]))
+    # return rv
 
 
 def parse_hosts(str_file_dict, section=None):

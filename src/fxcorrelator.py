@@ -457,6 +457,10 @@ class FxCorrelator(Instrument):
                 raise ValueError(
                     'Could not find the old EQ value, %s, to update '
                     'to new name, %s.' % (old_name, _source.name))
+
+        # update the list of baselines
+        self.baselines = utils.baselines_from_source_list(newlist)
+
         self.logger.info('Source labels updated from %s to %s' % (
             oldnames, newnames))
         # update the beam input labels
