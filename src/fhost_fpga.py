@@ -441,10 +441,8 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('%s attempting delay delta to %e (%e after shift)' %
                     (infostr, delta_delay, delta_delay_shifted))
         reg_info = delta_delay_reg.block_info
-        # bw_str = reg_info['bitwidths']
-        # bw = int(bw_str[1:len(bw_str)-1])
-        b_str = reg_info['bin_pts']
-        b = int(b_str[1:len(b_str)-1])
+        b = int(reg_info['bin_pts'])
+
         max_positive_delta_delay = 1 - 1/float(2**b)
         max_negative_delta_delay = -1 + 1/float(2**b)
         if delta_delay_shifted > max_positive_delta_delay:
