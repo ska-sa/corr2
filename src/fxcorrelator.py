@@ -31,7 +31,6 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 LOGGER = logging.getLogger(__name__)
 
-POST_MESS_DELAY = 5
 MAX_QDR_ATTEMPTS = 5
 
 
@@ -232,8 +231,8 @@ class FxCorrelator(Instrument):
 
         # wait for switches to learn, um, stuff
         self.logger.info('post mess-with-the-switch delay of %is' %
-                         POST_MESS_DELAY)
-        time.sleep(POST_MESS_DELAY)
+                         self.post_switch_delay)
+        time.sleep(self.post_switch_delay)
 
         # reset all counters on fhosts and xhosts
         self.fops.clear_status_all()
@@ -505,6 +504,10 @@ class FxCorrelator(Instrument):
         self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
         self.time_jitter_allowed_ms = int(_fxcorr_d['time_jitter_allowed_ms'])
         self.time_offset_allowed_s = int(_fxcorr_d['time_offset_allowed_s'])
+        try:
+            self.post_switch_delay = int(_fxcorr_d['switch_delay'])
+        except KeyError:
+            self.post_switch_delay = 10
 
         _feng_d = self.configd['fengine']
         self.adc_demux_factor = int(_feng_d['adc_demux_factor'])

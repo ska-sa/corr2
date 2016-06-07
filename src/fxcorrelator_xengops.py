@@ -717,22 +717,21 @@ class XEngineOperations(object):
         self.logger.info('\tChecking for errors & accumulations...')
         vacc_status = self.vacc_status()
         note_errors = False
-
-        # TODO ACHTUNG ACHTUNG DANGER HIGH VOLTAGE
-
-        # for host in self.hosts:
-        #     for status in vacc_status[host.host]:
-        #         if status['errors'] > 0 and status['errors'] < 100:
-        #             self.logger.warn('\t\t100 > vacc errors > 0. Que pasa?')
-        #             note_errors = True
-        #         elif status['errors'] >= 100:
-        #             self.logger.error('\t\tvacc errors > 100. Que pasa?')
-        #             return False
-        #         if status['count'] <= 0:
-        #             self.logger.error('\t\tvacc counts <= 0. Que pasa?')
-        #             return False
+        for host in self.hosts:
+            for status in vacc_status[host.host]:
+                if status['errors'] > 0:
+                    if status['errors'] < 100:
+                        self.logger.warn('\t\t100 > vacc errors > 0. Que pasa?')
+                        note_errors = True
+                    elif status['errors'] >= 100:
+                        self.logger.error('\t\tvacc errors > 100. Problems?')
+                        return False
+                if status['count'] <= 0:
+                    self.logger.error('\t\tvacc counts <= 0. Que pasa?')
+                    return False
         if note_errors:
-            self.logger.debug('\t\txeng_vacc_check_status: mostly okay, some reorder errors')
+            self.logger.debug('\t\txeng_vacc_check_status: mostly okay, some '
+                              'reorder errors')
         else:
             self.logger.debug('\t\txeng_vacc_check_status: all okay')
         return True
@@ -742,6 +741,7 @@ class XEngineOperations(object):
         Set the vacc accumulation length based on a required dump time,
         in seconds
         :param acc_time_s: new dump time, in seconds
+        :param vacc_resync:
         :return:
         """
         if use_xeng_sim:
