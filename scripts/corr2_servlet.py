@@ -10,7 +10,7 @@ import signal
 from tornado import gen
 import Queue
 
-from corr2 import fxcorrelator
+from corr2 import fxcorrelator, sensors
 
 
 class KatcpLogFormatter(logging.Formatter):
@@ -136,6 +136,7 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.initialise(program=program,
                                        qdr_cal=qdr_cal,
                                        require_epoch=require_epoch)
+            sensors.setup_mainloop_sensors(self.instrument, self)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',
@@ -312,7 +313,7 @@ class Corr2Server(katcp.DeviceServer):
                                'correct: %s' % ve.message
             except Exception as ve:
                 return 'fail', 'provided input labels were not ' \
-                               'correct: Unhandled exception - ' % ve.message
+                               'correct: Unhandled exception - %s' % ve.message
         else:
             return tuple(['ok'] + self.instrument.get_labels())
 

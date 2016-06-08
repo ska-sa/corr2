@@ -6,8 +6,6 @@ from katcp import Sensor
 from tornado.ioloop import IOLoop
 from concurrent import futures
 
-from fhost_fpga import DelaysUnsetError
-
 from casperfpga.katcp_fpga import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
 
@@ -431,9 +429,48 @@ def _sensor_cb_system_counters(executor, host, instrument):
                                 executor, host, instrument)
 
 
+def setup_mainloop_sensors(instrument, katcp_server):
+    """
+    Set up compound sensors to be reported to CAM from the main katcp servlet
+    :param instrument: the corr2.Instrument these sensors act upon
+    :param katcp_server: the katcp server with which to register the sensors
+    :return:
+    """
+    # # Set up a 1-worker pool per host to serialise interactions with each host
+    # host_executors = {
+    #     host.host: futures.ThreadPoolExecutor(max_workers=1)
+    #     for host in instrument.fhosts + instrument.xhosts
+    # }
+    # general_executor = futures.ThreadPoolExecutor(max_workers=1)
+
+    if not instrument.initialised():
+        raise RuntimeError('Cannot set up sensors until instrument is '
+                           'initialised.')
+
+    ioloop = getattr(instrument, 'ioloop', None)
+    if not ioloop:
+        ioloop = getattr(katcp_server, 'ioloop', None)
+    if not ioloop:
+        raise RuntimeError('IOLoop-containing katcp version required. Can go '
+                           'no further.')
+
+    instrument.sensors_clear()
+
+    # f-engine host to source mapping
+    for _f in instrument.fhosts:
+        rv = [dsrc.name for dsrc in _f.data_sources]
+        sensor = Sensor.string(
+            name='%s_input_mapping' % _f.host,
+            description='F-engine host %s input mapping' % _f.host,
+            initial_status=Sensor.NOMINAL,
+            default=str(rv))
+        katcp_server.add_sensor(sensor)
+        instrument.sensors_add(sensor)
+
+
 def setup_sensors(instrument, katcp_server):
     """
-    Set up compound sensors to be reported to CAM
+    INSTRUMENT-STATE-INDEPENDENT sensors to be reported to CAM
     :param instrument: the corr2.Instrument these sensors act upon
     :param katcp_server: the katcp server with which to register the sensors
     :return:

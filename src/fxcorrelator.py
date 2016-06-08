@@ -8,6 +8,8 @@ Created on Feb 28, 2013
 
 import logging
 import time
+from katcp import Sensor
+
 
 from casperfpga import utils as fpgautils
 
@@ -456,6 +458,16 @@ class FxCorrelator(Instrument):
                 raise ValueError(
                     'Could not find the old EQ value, %s, to update '
                     'to new name, %s.' % (old_name, _source.name))
+
+        # update the hostname sensors
+        try:
+            for fhost in self.fhosts:
+                sensor = self.sensors_get('%s_input_mapping' % fhost.host)
+                rv = [dsrc.name for dsrc in fhost.data_sources]
+                sensor.set(time.time(), Sensor.NOMINAL, str(rv))
+        except Exception as ve:
+            self.logger.WARNING('Could not update input_mapping '
+                                'sensors!\n\n%s' % ve.message)
 
         # update the list of baselines
         self.baselines = utils.baselines_from_source_list(newlist)
