@@ -156,7 +156,7 @@ class Corr2Server(katcp.DeviceServer):
         print multiargs
         return 'fail', 'a test failure, like it should'
 
-    @request(Int(default=-1))
+    @request(Float(default=-1.0))
     @return_reply(Float())
     def request_digitiser_synch_epoch(self, sock, synch_time):
         """
