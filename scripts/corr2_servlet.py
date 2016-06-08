@@ -5,16 +5,12 @@ import sys
 import argparse
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
+import tornado
+import signal
+from tornado import gen
+import Queue
 
 from corr2 import fxcorrelator
-
-USE_TORNADO = False
-if USE_TORNADO:
-    import tornado
-    import signal
-    from tornado import gen
-else:
-    import Queue
 
 
 class KatcpLogFormatter(logging.Formatter):
@@ -67,8 +63,9 @@ class Corr2Server(katcp.DeviceServer):
     BUILD_INFO = ('corr2', 0, 1, 'alpha')
 
     def __init__(self, *args, **kwargs):
+        use_tornado = kwargs.pop('tornado')
         super(Corr2Server, self).__init__(*args, **kwargs)
-        if USE_TORNADO:
+        if use_tornado:
             self.set_concurrency_options(thread_safe=False,
                                          handler_thread=False)
         self.instrument = None
@@ -82,6 +79,14 @@ class Corr2Server(katcp.DeviceServer):
         :return: 'ok'
         """
         return 'ok',
+
+    @staticmethod
+    def rv_to_liststr(rv):
+        rv = str(rv)
+        rv = rv.replace('(', '').replace(')', '')
+        rv = rv.replace('[', '').replace(']', '')
+        rv = rv.replace(',', '')
+        return rv.split(' ')
 
     @request(Str(), Int(default=1000))
     @return_reply()
@@ -152,7 +157,7 @@ class Corr2Server(katcp.DeviceServer):
         return 'fail', 'a test failure, like it should'
 
     @request(Int(default=-1))
-    @return_reply(Int())
+    @return_reply(Float())
     def request_digitiser_synch_epoch(self, sock, synch_time):
         """
         Set/Get the digitiser synch time, UNIX time.
@@ -179,7 +184,7 @@ class Corr2Server(katcp.DeviceServer):
     def _check_product_name(self, product_name):
         """
         Does a given product name exist on this instrument?
-        :param product_name:
+        :param product_name: an instrument data product name
         :return:
         """
         return product_name in self.instrument.data_products
@@ -227,7 +232,7 @@ class Corr2Server(katcp.DeviceServer):
     def request_capture_list(self, sock, product_name):
         """
         :param sock:
-        :param product_name:
+        :param product_name: an instrument data product name
         :return:
         """
         product_names = []
@@ -251,6 +256,7 @@ class Corr2Server(katcp.DeviceServer):
     def request_capture_start(self, sock, product_name):
         """
         :param sock:
+        :param product_name: an instrument data product name
         :return:
         """
         if not self._check_product_name(product_name):
@@ -264,6 +270,7 @@ class Corr2Server(katcp.DeviceServer):
     def request_capture_stop(self, sock, product_name):
         """
         :param sock:
+        :param product_name: an instrument data product name
         :return:
         """
         if not self._check_product_name(product_name):
@@ -277,6 +284,7 @@ class Corr2Server(katcp.DeviceServer):
         """
 
         :param sock:
+        :param product_name: an instrument data product name
         :return:
         """
         if not self._check_product_name(product_name):
@@ -326,11 +334,8 @@ class Corr2Server(katcp.DeviceServer):
             except Exception as e:
                 return 'fail', 'unknown exception: %s' % e.message
         _src = self.instrument.fops.eq_get(source_name)
-        eqstring = str(_src[source_name]['eq'])
-        eqstring = eqstring.replace('(', '').replace(')', '')
-        eqstring = eqstring.replace('[', '').replace(']', '')
-        eqstring = eqstring.replace(',', '')
-        return tuple(['ok'] + eqstring.split(' '))
+        return tuple(['ok'] +
+                     Corr2Server.rv_to_liststr(_src[source_name]['eq']))
 
     @request(Float(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -386,10 +391,7 @@ class Corr2Server(katcp.DeviceServer):
         quant_string = ''
         for complex_word in snapdata:
             quant_string += ' %s' % str(complex_word)
-        quant_string = quant_string.replace('(', '').replace(')', '')
-        quant_string = quant_string.replace('[', '').replace(']', '')
-        quant_string = quant_string.replace(',', '')
-        return tuple(['ok'] + quant_string.split(' '))
+        return tuple(['ok'] + Corr2Server.rv_to_liststr(quant_string))
 
     @request(Str(), Str(), Float(multiple=True))
     @return_reply(Str(multiple=True))
@@ -409,11 +411,7 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', '%s' % e.message
         cur_weights = self.instrument.bops.get_beam_weights(
             beam_name, input_name)
-        wght_str = str(cur_weights)
-        wght_str = wght_str.replace('(', '').replace(')', '')
-        wght_str = wght_str.replace('[', '').replace(']', '')
-        wght_str = wght_str.replace(',', '')
-        return tuple(['ok'] + wght_str.split(' '))
+        return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_weights))
 
     @request(Str(), Float(), Float())
     @return_reply(Str(), Str(), Str())
@@ -421,6 +419,9 @@ class Corr2Server(katcp.DeviceServer):
         """
         Set the beamformer bandwidth/partitions
         :param sock:
+        :param beam_name: required beam product
+        :param bandwidth: required spectrum, in hz
+        :param centerfreq: required cf of spectrum bandwidth chunk
         :return:
         """
         if not self.instrument.found_beamformer:
@@ -438,7 +439,7 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply()
     def request_vacc_sync(self, sock):
         """
-
+        Initiate a new vacc sync operation on the instrument.
         :param sock:
         :return:
         """
@@ -452,8 +453,9 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply(Int())
     def request_fft_shift(self, sock, new_shift):
         """
-
+        Set a new FFT shift schedule.
         :param sock:
+        :param new_shift: an integer representation of the new FFT shift
         :return:
         """
         if new_shift >= 0:
@@ -470,6 +472,8 @@ class Corr2Server(katcp.DeviceServer):
     def request_get_log(self, sock):
         """
         Fetch and print the instrument log.
+        :param sock:
+        :return:
         """
         if self.instrument is None:
             return 'fail', '... you have not connected yet!'
@@ -521,7 +525,9 @@ class Corr2Server(katcp.DeviceServer):
         Apply and/or get the gain settings for an input
         :param sock:
         :param source_name: the source on which to act
-        :param eq_vals: the equaliser values
+        :param value: the equaliser values
+        :param fstart: the channel on which to start applying this gain
+        :param fstop: the channel at which to stop
         :return:
         """
         if source_name == '':
@@ -537,11 +543,8 @@ class Corr2Server(katcp.DeviceServer):
             except Exception as e:
                 return 'fail', 'unknown exception: %s' % e.message
         _src = self.instrument.fops.eq_get(source_name)
-        eqstring = str(_src[source_name]['eq'])
-        eqstring = eqstring.replace('(', '').replace(')', '')
-        eqstring = eqstring.replace('[', '').replace(']', '')
-        eqstring = eqstring.replace(',', '')
-        return tuple(['ok'] + eqstring.split(' '))
+        return tuple(['ok'] +
+                     Corr2Server.rv_to_liststr(_src[source_name]['eq']))
 
     @request(Str(default='', multiple=True))
     def request_debug_gain_all(self, sock, *eq_vals):
@@ -585,12 +588,18 @@ class Corr2Server(katcp.DeviceServer):
     #     print 'pong', astring, anint
     #     return 'ok'
 
-if USE_TORNADO:
-    @gen.coroutine
-    def on_shutdown(ioloop, server):
-        print('Shutting down')
-        yield server.stop()
-        ioloop.stop()
+
+@gen.coroutine
+def on_shutdown(ioloop, server):
+    """
+    Shut down the ioloop sanely.
+    :param ioloop: the current tornado.ioloop.IOLoop
+    :param server: a katcp.DeviceServer instance
+    :return:
+    """
+    print('corr2 server shutting down')
+    yield server.stop()
+    ioloop.stop()
 
 if __name__ == '__main__':
 
@@ -606,9 +615,9 @@ if __name__ == '__main__':
     parser.add_argument(
         '--log_format_katcp', dest='lfm', action='store_true', default=False,
         help='format log messsages for katcp')
-    # parser.add_argument('-c', '--config', dest='configfile', action='store',
-    #                     default='', type=str,
-    #                     help='config file location')
+    parser.add_argument(
+        '--tornado', dest='tornado', action='store_true', default=True,
+        help='use a Tornado version of the Katcp server')
     args = parser.parse_args()
 
     try:
@@ -631,25 +640,27 @@ if __name__ == '__main__':
         root_logger.addHandler(console_handler)
         use_katcp_logging = False
 
-    if USE_TORNADO:
+    print 'Server listening on port %d,' % args.port,
+    server = Corr2Server('127.0.0.1', args.port, tornado=args.tornado)
+
+    if use_katcp_logging:
+        katcp_emit_handler = KatcpLogEmitHandler(server, stream=sys.stdout)
+        katcp_emit_handler.setLevel(log_level)
+        root_logger.addHandler(katcp_emit_handler)
+
+    if args.tornado:
         ioloop = tornado.ioloop.IOLoop.current()
-        server = Corr2Server('127.0.0.1', args.port)
         signal.signal(
             signal.SIGINT,
             lambda sig, frame: ioloop.add_callback_from_signal(
                 on_shutdown, ioloop, server))
-        print 'Server listening on port %d, ' % args.port
         server.set_ioloop(ioloop)
         ioloop.add_callback(server.start)
+        print 'started. Running somewhere in the ether... exit however ' \
+              'you see fit.'
         ioloop.start()
     else:
-        print 'Server listening on port %d, ' % args.port,
         queue = Queue.Queue()
-        server = Corr2Server('127.0.0.1', args.port)
-        if use_katcp_logging:
-            katcp_emit_handler = KatcpLogEmitHandler(server, stream=sys.stdout)
-            katcp_emit_handler.setLevel(log_level)
-            root_logger.addHandler(katcp_emit_handler)
         server.set_restart_queue(queue)
         server.start()
         print 'started. Running somewhere in the ether... exit however ' \
@@ -671,5 +682,4 @@ if __name__ == '__main__':
             print 'Shutting down...'
             server.stop()
             server.join()
-
 # end

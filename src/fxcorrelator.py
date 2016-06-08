@@ -315,7 +315,7 @@ class FxCorrelator(Instrument):
             self.logger.error(_err)
             raise RuntimeError(_err)
         self._synchronisation_epoch = new_synch_time
-        self.logger.info('Set synch epoch to %d' % new_synch_time)
+        self.logger.info('Set synch epoch to %.5f' % new_synch_time)
 
     def est_synch_epoch(self):
         """
