@@ -137,6 +137,7 @@ plotrange_shifted = (plotrange[0] - (loopstart * snapshot_samples), plotrange[1]
 
 print 'Will need to read the snapshot %i times' % (loopstop - loopstart)
 
+
 def get_data():
     # read the data
     snapdata = []
@@ -169,14 +170,35 @@ def get_data():
     if len(pol_data[0]) != len(pol_data[1]):
         raise RuntimeError('Unequal length data for p0 and p1?!')
     print '%s data is %d points long.' % (fpga.host, len(pol_data[0]))
-    assert len(pol_data[0]) >= numtoplot, 'Not enough snap data for ' \
-                                         'the required number of channels! %i - %i' % (len(pol_data[0]), numtoplot)
+    assert len(pol_data[0]) >= numtoplot, 'Not enough snap data for the ' \
+                                          'required number of channels! %i - %i' % (len(pol_data[0]), numtoplot)
     fpga_data['p0'] = pol_data[0][plotrange_shifted[0]:plotrange_shifted[1]]
     fpga_data['p1'] = pol_data[1][plotrange_shifted[0]:plotrange_shifted[1]]
     return fpga_data
 
 
-def plot_func(figure, sub_plots, idata, ictr, pctr):
+def plot_hist(figure, sub_plots, pctr):
+    data = get_data()
+    for ctr, integd in enumerate(data.values()):
+        plt = sub_plots[ctr]
+        plt[0].cla()
+        plt[0].set_title('%s:p%i real, %i' % (
+            fpga.host, ctr, pctr))
+        plt[0].grid(True)
+        plt[1].cla()
+        plt[1].set_title('%s:p%i imag, %i' % (
+            fpga.host, ctr, pctr))
+        plt[1].grid(True)
+        hdata = data['p%i' % ctr]
+        plt[0].hist(numpy.real(hdata), bins=32)
+        plt[1].hist(numpy.imag(hdata), bins=32)
+        pctr += 1
+    figure.canvas.draw()
+    pctr += 1
+    figure.canvas.manager.window.after(10, plot_hist, figure, sub_plots, pctr)
+
+
+def plot_spectrum(figure, sub_plots, idata, ictr, pctr):
     data = get_data()
     ictr += 1
     p0_data = numpy.abs(data['p0'])
@@ -198,22 +220,22 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
         plt.cla()
         plt.set_title('%s:%i, %i, %i' % (fpga.host, ctr, ictr, pctr))
         plt.grid(True)
-        if args.hist:
-            plt.hist(integd, bins=64, range=(0.0, 1.5))
-            idata = None
-            ictr = 0
-            pctr += 1
-        elif args.linear:
+        if args.linear:
             plt.plot(integd)
         else:
-            plt.semilogy(integd)
+            if numpy.sum(integd) > 0:
+                plt.semilogy(integd)
+            else:
+                plt.set_title('%s:%i, %i, %i - NO NONZERO DATA' % (
+                    fpga.host, ctr, ictr, pctr))
     figure.canvas.draw()
     if ictr == args.integrate and args.integrate > 0:
         idata = None
         ictr = 0
         pctr += 1
-    figure.canvas.manager.window.after(10, plot_func, figure, sub_plots,
+    figure.canvas.manager.window.after(10, plot_spectrum, figure, sub_plots,
                                        idata, ictr, pctr)
+
 # print, no plot
 if args.printvals and args.noplot:
     import sys
@@ -230,15 +252,22 @@ if args.printvals and args.noplot:
 # set up the figure with a subplot to be plotted
 fig = pyplot.figure()
 subplots = []
-for p in range(2):
-    sub_plot = fig.add_subplot(2, 1, p+1)
-    subplots.append(sub_plot)
-integrated_data = None
-integration_counter = 0
 plot_counter = 0
-fig.canvas.manager.window.after(1, plot_func, fig, subplots,
-                                integrated_data,
-                                integration_counter, plot_counter)
+if args.hist:
+        subplots.append((fig.add_subplot(2, 2, 1),
+                         fig.add_subplot(2, 2, 2)))
+        subplots.append((fig.add_subplot(2, 2, 3),
+                         fig.add_subplot(2, 2, 4)))
+        fig.canvas.manager.window.after(10, plot_hist, fig, subplots,
+                                        plot_counter)
+else:
+    subplots.append(fig.add_subplot(2, 1, 1))
+    subplots.append(fig.add_subplot(2, 1, 2))
+    integrated_data = None
+    integration_counter = 0
+    fig.canvas.manager.window.after(10, plot_spectrum, fig, subplots,
+                                    integrated_data, integration_counter,
+                                    plot_counter)
 pyplot.show()
 print 'Plot started.'
 
