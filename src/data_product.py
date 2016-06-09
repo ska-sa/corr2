@@ -38,15 +38,6 @@ def _setup_spead(meta_address):
                              streamconfig,
                              51200000,
                              streamsocket)
-    # # multicast
-    # mcast_interface = \
-    #     self.corr.configd['xengine']['multicast_interface_address']
-    # self.tx.t._udp_out.setsockopt(
-    #     socket.SOL_IP, socket.IP_MULTICAST_IF,
-    #     socket.inet_aton(mcast_interface))
-    # self.tx.t._udp_out.setsockopt(
-    #     socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
-    #     socket.inet_aton(txip_str) + socket.inet_aton(mcast_interface))
     return meta_ig, meta_tx
 
 

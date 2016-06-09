@@ -28,6 +28,8 @@ import logging
 import argparse
 import sys
 
+from casperfpga import tengbe
+
 from corr2 import utils
 
 
@@ -329,7 +331,6 @@ class CorrReceiver(threading.Thread):
         self.logger.setLevel(log_level)
         self.logger = logging.getLogger(__name__)
         spead2._logger.setLevel(spead_log_level)
-
         spead2._logger.setLevel(logging.FATAL)
 
         self._target = self.rx_cont
@@ -377,7 +378,8 @@ class CorrReceiver(threading.Thread):
         # make a SPEAD2 receiver stream
         strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
                            max_heaps=8, ring_heaps=8)
-        strm.add_udp_reader(port=self.port, max_size=9200,
+        strm.add_udp_reader(port=self.port,
+                            max_size=9200,
                             buffer_size=5120000)
 
         # were we given a H5 file to which to write?
@@ -391,7 +393,7 @@ class CorrReceiver(threading.Thread):
         idx = 0
         last_cnt = -1
 
-        # process receivd heaps
+        # process received heaps
         for heap in strm:
             ig.update(heap)
             cnt_diff = heap.cnt - last_cnt
@@ -537,11 +539,49 @@ if __name__ == '__main__':
 
     # load information from the config file of the running system
     config = utils.parse_ini_file(args.config)
-    data_port = int(config['xengine']['output_destination_port'])
     n_chans = int(config['fengine']['n_chans'])
     fhosts = config['fengine']['hosts'].split(',')
     n_ants = len(fhosts)
     print 'Loaded instrument info from config file:\n\t%s' % args.config
+
+    # find out where the data is going. if it's a multicast address, then
+    # subscribe to multicast
+    output = {
+        'product': config['xengine']['output_products'],
+        'src_ip': tengbe.IpAddress(config['xengine']['output_destination_ip']),
+        'port': int(config['xengine']['output_destination_port']),
+    }
+    data_port = output['port']
+    if output['src_ip'].is_multicast():
+        import socket
+        import struct
+        print 'Source is multicast: %s' % output['src_ip']
+        # look up multicast group address in name server and find out IP version
+        addrinfo = socket.getaddrinfo(str(output['src_ip']), None)[0]
+
+        # create a socket
+        mcast_sock = socket.socket(addrinfo[0], socket.SOCK_DGRAM)
+
+        # # Allow multiple copies of this program on one machine
+        # # (not strictly needed)
+        # mcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #
+        # # bind it to the port
+        # mcast_sock.bind(('', data_port))
+        # print 'Receiver bound to port %i.' % data_port
+
+        # join group
+        group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
+        if addrinfo[0] == socket.AF_INET:  # IPv4
+            mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
+            mcast_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            print 'Subscribing to %s.' % str(output['src_ip'])
+        else:
+            mreq = group_bin + struct.pack('@I', 0)
+            mcast_sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
+    else:
+        mcast_sock = None
+        print 'Source is not multicast: %s' % output['src_ip']
 
     NUM_BASELINES = n_ants * (n_ants + 1) / 2 * 4
     BASELINES = utils.baselines_from_config(config=config)
