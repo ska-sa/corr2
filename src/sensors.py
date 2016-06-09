@@ -429,6 +429,63 @@ def _sensor_cb_system_counters(executor, host, instrument):
                                 executor, host, instrument)
 
 
+@tornado.gen.coroutine
+def _sensor_cb_pps(instrument, executor, host):
+    """
+    Host PPS counters
+    :return:
+    """
+    def read_tengbe_tx_rx(fpga):
+        rv = {}
+        for tengbe in fpga.tengbes:
+            ctrs = tengbe.read_counters()
+            rv[tengbe.name] = (ctrs['%s_txctr' % tengbe.name],
+                               ctrs['%s_rxctr' % tengbe.name])
+        return rv
+    try:
+        temp = yield executor.submit(read_tengbe_tx_rx, host)
+        previous = instrument.previous_pps[host.host]
+        result = temp.copy()
+        # print temp
+        # print previous
+        # print result
+        for tname in temp:
+            result[tname] = ((temp[tname][0] - previous[tname][0]) / 10.0,
+                             (temp[tname][1] - previous[tname][1]) / 10.0)
+        instrument.previous_pps[host.host] = temp.copy()
+        for tengbe in host.tengbes:
+            sensor_tx = instrument.sensors_get('%s_%s_tx_pps_ctr' % (
+                host.host, tengbe.name))
+            sensor_rx = instrument.sensors_get('%s_%s_rx_pps_ctr' % (
+                host.host, tengbe.name))
+            sensor_tx.set(time.time(),
+                          Sensor.NOMINAL if result else Sensor.ERROR,
+                          result[tengbe.name][0])
+            sensor_rx.set(time.time(),
+                          Sensor.NOMINAL if result else Sensor.ERROR,
+                          result[tengbe.name][1])
+    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+        for tengbe in host.tengbes:
+            sensor_tx = instrument.sensors_get('%s_%s_tx_pps_ctr' % (
+                host.host, tengbe.name))
+            sensor_rx = instrument.sensors_get('%s_%s_rx_pps_ctr' % (
+                host.host, tengbe.name))
+            sensor_tx.set(time.time(), Sensor.UNKNOWN, -1)
+            sensor_rx.set(time.time(), Sensor.UNKNOWN, -1)
+    except Exception as e:
+        LOGGER.exception('Error updating PPS sensors for {} - '
+                         '{}'.format(host.host, e.message))
+        for tengbe in host.tengbes:
+            sensor_tx = instrument.sensors_get('%s_%s_tx_pps_ctr' % (
+                host.host, tengbe.name))
+            sensor_rx = instrument.sensors_get('%s_%s_rx_pps_ctr' % (
+                host.host, tengbe.name))
+            sensor_tx.set(time.time(), Sensor.UNKNOWN, -1)
+            sensor_rx.set(time.time(), Sensor.UNKNOWN, -1)
+    LOGGER.debug('_sensor_cb_pps ran on {}'.format(host.host))
+    IOLoop.current().call_later(10, _sensor_cb_pps, instrument, executor, host)
+
+
 def setup_mainloop_sensors(instrument, katcp_server):
     """
     Set up compound sensors to be reported to CAM from the main katcp servlet
@@ -663,6 +720,31 @@ def setup_sensors(instrument, katcp_server):
         katcp_server.add_sensor(sensor)
         instrument.sensors_add(sensor)
         ioloop.add_callback(_sensor_cb_fdelays, sensor, executor, _f)
+
+    # tengbe packet-per-second counters
+    instrument.previous_pps = {
+        _h.host: {
+            _t.name: (0, 0) for _t in _h.tengbes
+        } for _h in instrument.fhosts + instrument.xhosts
+    }
+    for _h in instrument.fhosts + instrument.xhosts:
+        executor = host_executors[_h.host]
+        for tengbe in _h.tengbes:
+            sensor = Sensor.integer(
+                name='%s_%s_tx_pps_ctr' % (_h.host, tengbe.name),
+                description='%s %s TX packet-per-second counter' % (
+                    _h.host, tengbe.name),
+                default=0)
+            katcp_server.add_sensor(sensor)
+            instrument.sensors_add(sensor)
+            sensor = Sensor.integer(
+                name='%s_%s_rx_pps_ctr' % (_h.host, tengbe.name),
+                description='%s %s RX packet-per-second counter' % (
+                    _h.host, tengbe.name),
+                default=0)
+            katcp_server.add_sensor(sensor)
+            instrument.sensors_add(sensor)
+        ioloop.add_callback(_sensor_cb_pps, instrument, executor, _h)
 
     # read all relevant counters
     instrument.sensors_counters_values = {}
