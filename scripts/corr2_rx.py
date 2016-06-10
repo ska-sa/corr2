@@ -124,10 +124,7 @@ class PlotConsumer(object):
                     l, = sbplt[0].plot(plotdata)
                 else:
                     l, = sbplt[0].semilogy(plotdata)
-                if np.sum(phaseplot) == 0:
-                    sbplt[1].plot(phaseplot)
-                else:
-                    sbplt[1].semilogy(phaseplot)
+                sbplt[1].plot(phaseplot)
             else:
                 l, = sbplt[0].plot(plotdata)
                 sbplt[1].plot(phaseplot)
@@ -257,13 +254,14 @@ def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
         # next item...
 
 
-def process_xeng_data(ig, logger, baselines, channels):
+def process_xeng_data(ig, logger, baselines, channels, acc_scale=False):
     """
     Assemble data for the the plotting/printing thread to deal with.
     :param ig: the SPEAD2 item group
     :param logger: the logger to use
     :param baselines: which baselines are of interest?
     :param channels: the channels in which we are interested
+    :param acc_scale: boolean, scale the data down or not
     :return:
     """
     if 'xeng_raw' not in ig.keys():
@@ -275,6 +273,7 @@ def process_xeng_data(ig, logger, baselines, channels):
         return None
     logger.info('Processing xeng_raw heap with '
                 'shape: %s' % str(np.shape(xeng_raw)))
+    num_accs = int(ig['n_accs'].value)
     scale_factor = float(ig['scale_factor_timestamp'].value)
     sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value /
                                             scale_factor)
@@ -284,16 +283,11 @@ def process_xeng_data(ig, logger, baselines, channels):
     baseline_phase = []
     for baseline in baselines:
         bdata = xeng_raw[:, baseline]
-        powerdata = []
-        phasedata = []
-        for ctr in range(channels[0], channels[1]):
-            complex_tuple = bdata[ctr]
-            pwr = np.sqrt(complex_tuple[0]**2 + complex_tuple[1]**2)
-            powerdata.append(pwr)
-            cplx = complex(complex_tuple[0], complex_tuple[1])
-            phase = np.angle(cplx)
-            # phase = np.unwrap(phase)
-            phasedata.append(phase)
+        bdata = bdata[channels[0]:channels[1], :]
+        if acc_scale:
+            bdata = bdata / (num_accs * 1.0)
+        powerdata = (bdata**2).sum(1)
+        phasedata = np.angle(bdata[:, 0] + (bdata[:, 1] * 1j))
         baseline_data.append((baseline, powerdata[:]))
         baseline_phase.append((baseline, phasedata[:]))
     return baseline_data, baseline_phase
@@ -304,7 +298,7 @@ class CorrReceiver(threading.Thread):
     Receive thread to process heaps received by a SPEAD2 stream.
     """
     def __init__(self, port, quit_event, track_list, h5_filename,
-                 baselines, channels,
+                 baselines, channels, acc_scale,
                  log_handler=None, log_level=logging.INFO,
                  spead_log_level=logging.INFO):
         """
@@ -315,6 +309,7 @@ class CorrReceiver(threading.Thread):
         :param h5_filename: the H5 filename to use
         :param baselines: the baselines in which we're interested
         :param channels: the channels to plot/print
+        :param acc_scale: boolean, to scale the data or not
         :param log_handler:
         :param log_level:
         :param spead_log_level:
@@ -340,6 +335,8 @@ class CorrReceiver(threading.Thread):
         self.track_list = track_list
         self.baselines = baselines
         self.channels = channels
+
+        self.acc_scale = acc_scale
 
         self.h5_filename = h5_filename
         self.h5_datasets = {}
@@ -419,7 +416,7 @@ class CorrReceiver(threading.Thread):
                 need_plot = False
             if need_print or need_plot:
                 data = process_xeng_data(
-                    ig, logger, self.baselines, self.channels)
+                    ig, logger, self.baselines, self.channels, self.acc_scale)
             else:
                 logger.debug('\talready got data, skipping '
                              'processing this heap.')
@@ -504,8 +501,8 @@ if __name__ == '__main__':
         '--ion', dest='ion', action='store_true', default=False,
         help='Animate the plot automatically.')
     parser.add_argument(
-        '--no_auto', dest='noauto', action='store_true', default=False,
-        help='Do not scale the data by the number of accumulations.')
+        '--scale', dest='scale', action='store_true', default=False,
+        help='Scale the data by the number of accumulations.')
     parser.add_argument(
         '--legend', dest='legend', action='store_true', default=False,
         help='Show a plot legend.')
@@ -606,11 +603,6 @@ if __name__ == '__main__':
     else:
         print 'Not saving to disk.'
 
-    if args.noauto:
-        acc_scale = False
-    else:
-        acc_scale = True
-
     baselines = []
     channels = []
     if args.printdata or args.plot:
@@ -674,6 +666,7 @@ if __name__ == '__main__':
         h5_filename=h5_filename,
         baselines=baselines,
         channels=channels,
+        acc_scale=args.scale,
         quit_event=quit_event, )
     if printsumer:
         corr_rx.set_print_queue(printsumer.data_queue,
