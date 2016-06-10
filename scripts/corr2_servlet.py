@@ -13,18 +13,18 @@ import Queue
 from corr2 import fxcorrelator, sensors
 
 
-class KatcpLogFormatter(logging.Formatter):
-    def format(self, record):
-        translate_levels = {
-            'WARNING': 'warn',
-            'warning': 'warn'
-        }
-        if record.levelname in translate_levels:
-            record.levelname = translate_levels[record.levelname]
-        else:
-            record.levelname = record.levelname.lower()
-        record.msg = record.msg.replace(' ', '\_')
-        return super(KatcpLogFormatter, self).format(record)
+# class KatcpLogFormatter(logging.Formatter):
+#     def format(self, record):
+#         translate_levels = {
+#             'WARNING': 'warn',
+#             'warning': 'warn'
+#         }
+#         if record.levelname in translate_levels:
+#             record.levelname = translate_levels[record.levelname]
+#         else:
+#             record.levelname = record.levelname.lower()
+#         record.msg = record.msg.replace(' ', '\_')
+#         return super(KatcpLogFormatter, self).format(record)
 
 
 class KatcpLogEmitHandler(logging.StreamHandler):
@@ -548,6 +548,7 @@ class Corr2Server(katcp.DeviceServer):
                      Corr2Server.rv_to_liststr(_src[source_name]['eq']))
 
     @request(Str(default='', multiple=True))
+    @return_reply()
     def request_debug_gain_all(self, sock, *eq_vals):
         """
         Apply and/or get the gain settings for an input
@@ -562,6 +563,19 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', 'unknown exception: %s' % e.message
         else:
             return 'fail', 'did not give new eq values?'
+        return 'ok',
+
+    @request(Str(default='INFO'), Str('CLOWNS EVERYWHERE!!!'))
+    @return_reply()
+    def request_debug_log(self, sock, level, msg):
+        """
+        Log a test message - to test the formatter and handler
+        :param sock:
+        :param level:
+        :param msg:
+        :return:
+        """
+        self.instrument.logger.log(eval('logging.%s' % level), msg)
         return 'ok',
 
     # @request(Int(default=-1), Int(default=-1))
@@ -617,8 +631,8 @@ if __name__ == '__main__':
         '--log_format_katcp', dest='lfm', action='store_true', default=False,
         help='format log messsages for katcp')
     parser.add_argument(
-        '--tornado', dest='tornado', action='store_true', default=True,
-        help='use a Tornado version of the Katcp server')
+        '--no_tornado', dest='no_tornado', action='store_true', default=False,
+        help='do NOT use the tornado version of the Katcp server')
     args = parser.parse_args()
 
     try:
@@ -642,14 +656,14 @@ if __name__ == '__main__':
         use_katcp_logging = False
 
     print 'Server listening on port %d,' % args.port,
-    server = Corr2Server('127.0.0.1', args.port, tornado=args.tornado)
+    server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
 
     if use_katcp_logging:
         katcp_emit_handler = KatcpLogEmitHandler(server, stream=sys.stdout)
         katcp_emit_handler.setLevel(log_level)
         root_logger.addHandler(katcp_emit_handler)
 
-    if args.tornado:
+    if not args.no_tornado:
         ioloop = tornado.ioloop.IOLoop.current()
         signal.signal(
             signal.SIGINT,

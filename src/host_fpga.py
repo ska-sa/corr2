@@ -21,7 +21,14 @@ class FpgaHost(Host, KatcpFpga):
 
     def check_rx_reorder(self):
         """
+        Is the host receiving and reordering data?
+        :return:
+        """
+        raise NotImplementedError
 
+    def read_spead_counters(self):
+        """
+        Read SPEAD counters on the host.
         :return:
         """
         raise NotImplementedError
@@ -29,7 +36,7 @@ class FpgaHost(Host, KatcpFpga):
     def check_rx(self, max_waittime=30):
         """
         Check the receive path on this FPGA host
-        :param max_waittime: the maximum time to wait for raw 10gbe data
+        :param max_waittime: the maximum time to wait
         :return:
         """
         if not self.check_rx_raw(0.2, 5):
@@ -56,6 +63,7 @@ class FpgaHost(Host, KatcpFpga):
     def check_rx_spead(self, max_waittime=5):
         """
         Check that this host is receiving SPEAD data.
+        :param max_waittime: the maximum time to wait
         :return:
         """
         start_time = time.time()

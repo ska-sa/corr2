@@ -537,8 +537,8 @@ class XEngineOperations(object):
                 _err = 'xeng_vacc_sync: all hosts do not have matching ' \
                        'vacc LSWs and MSWs'
                 self.logger.error(_err)
-                print 'lsws:', lsws
-                print 'msws:', msws
+                self.logger.error('LSWs: %s' % lsws)
+                self.logger.error('MSWs: %s' % msws)
                 vacc_status = self.vacc_status()
                 self._vacc_sync_print_vacc_statuses(vacc_status)
                 return False

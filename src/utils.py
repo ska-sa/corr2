@@ -450,7 +450,8 @@ def thread_funcs(timeout, *funcs):
         except Queue.Empty:
             break
     if len(returnval) != num_funcs:
-        print returnval
+        LOGGER.exception('Given %d FPGAs, only got %d results, must '
+                          'have timed out.' % (num_funcs, len(returnval)))
         raise RuntimeError('Given %d FPGAs, only got %d results, must '
                            'have timed out.' % (num_funcs, len(returnval)))
     return returnval
@@ -460,6 +461,8 @@ def hosts_from_dhcp_leases(host_pref='roach',
                            leases_file='/var/lib/misc/dnsmasq.leases'):
     """
     Get a list of hosts from a leases file.
+    :param host_pref: the prefix of the hosts in which we're interested
+    :param leases_file: the file to read
     :return:
     """
     hosts = []
