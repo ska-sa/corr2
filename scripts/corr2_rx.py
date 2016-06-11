@@ -283,11 +283,27 @@ def process_xeng_data(ig, logger, baselines, channels, acc_scale=False):
     baseline_phase = []
     for baseline in baselines:
         bdata = xeng_raw[:, baseline]
-        bdata = bdata[channels[0]:channels[1], :]
+
         if acc_scale:
             bdata = bdata / (num_accs * 1.0)
-        powerdata = (bdata**2).sum(1)
-        phasedata = np.angle(bdata[:, 0] + (bdata[:, 1] * 1j))
+
+        powerdata = []
+        phasedata = []
+        for ctr in range(channels[0], channels[1]):
+            complex_tuple = bdata[ctr]
+            pwr = np.sqrt(complex_tuple[0]**2 + complex_tuple[1]**2)
+            powerdata.append(pwr)
+            cplx = complex(complex_tuple[0], complex_tuple[1])
+            phase = np.angle(cplx)
+            phasedata.append(phase)
+
+        # ?!broken?!
+        # bdata = bdata[channels[0]:channels[1], :]
+        # if acc_scale:
+        #     bdata = bdata / (num_accs * 1.0)
+        # powerdata = (bdata**2).sum(1)
+        # phasedata = np.angle(bdata[:, 0] + (bdata[:, 1] * 1j))
+
         baseline_data.append((baseline, powerdata[:]))
         baseline_phase.append((baseline, phasedata[:]))
     return baseline_data, baseline_phase
