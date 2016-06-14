@@ -86,6 +86,10 @@ class FEngineOperations(object):
         THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
             lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),))
 
+        # set the sample rate on the Fhosts
+        for host in self.hosts:
+            host.rx_data_sample_rate_hz = self.corr.sample_rate_hz
+
     def configure(self):
         """
         Configure the fengine operations - this is done whenever a correlator
