@@ -150,8 +150,12 @@ class DataProduct(object):
         Enable TX for this data product
         :return:
         """
-        # heapgen = sptx.HeapGenerator(self.meta_ig)
-        # self.meta_tx.send_heap(heapgen.get_start())
+        try:
+            heapgen = sptx.HeapGenerator(self.meta_ig)
+            self.meta_tx.send_heap(heapgen.get_start())
+        except AttributeError:
+            LOGGER.warning('Installed version of SPEAD2 doesn\'t seem to'
+                           'support stream start packets?')
         self.en_cb(self)
         LOGGER.info('DataProduct %s - output enabled' % self.name)
 
@@ -160,9 +164,13 @@ class DataProduct(object):
         Disable TX for this data product
         :return:
         """
-        heapgen = sptx.HeapGenerator(self.meta_ig)
         self.dis_cb(self)
-        self.meta_tx.send_heap(heapgen.get_end())
+        try:
+            heapgen = sptx.HeapGenerator(self.meta_ig)
+            self.meta_tx.send_heap(heapgen.get_end())
+        except AttributeError:
+            LOGGER.warning('Installed version of SPEAD2 doesn\'t seem to'
+                           'support stream stop packets?')
         LOGGER.info('DataProduct %s - output disabled' % self.name)
 
     def __repr__(self):
