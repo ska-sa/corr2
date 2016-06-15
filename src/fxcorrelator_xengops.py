@@ -108,6 +108,17 @@ class XEngineOperations(object):
                     lambda fpga_: fpga_.registers.simulator.write(
                         en=False, rst='pulse'),))
 
+        # set the gapsize register
+        if 'gap_size' not in self.hosts[0].registers.names():
+            self.logger.exception('X-engine image has no register gap_size?')
+            raise RuntimeError('X-engine image has no register gap_size?')
+        gapsize = int(self.corr.configd['xengine']['10gbe_pkt_gapsize'])
+        self.logger.info('X-engines: setting packet gap size to %i' % gapsize)
+        THREADED_FPGA_OP(
+            self.hosts, timeout=5,
+            target_function=(
+                lambda fpga_: fpga_.registers.gap_size.write_int(gapsize),))
+
         # disable transmission, place cores in reset, and give control
         # register a known state
         self.xeng_tx_disable(None)
