@@ -109,24 +109,35 @@ class XEngineOperations(object):
                         en=False, rst='pulse'),))
 
         # set the gapsize register
-        if 'gap_size' not in self.hosts[0].registers.names():
-            self.logger.exception('X-engine image has no register gap_size?')
-            raise RuntimeError('X-engine image has no register gap_size?')
         gapsize = int(self.corr.configd['xengine']['10gbe_pkt_gapsize'])
         self.logger.info('X-engines: setting packet gap size to %i' % gapsize)
-        THREADED_FPGA_OP(
-            self.hosts, timeout=5,
-            target_function=(
-                lambda fpga_: fpga_.registers.gap_size.write_int(gapsize),))
-        # HACK - this is a hack to overcome broken x-engine firmware in
-        # versions around a2d0615bc9cd95eabf7c8ed922c1a15658c0688e.
-        # The logic next to the gap_size register is broken, registering
-        # the LAST value written, not the new one.
-        THREADED_FPGA_OP(
-            self.hosts, timeout=5,
-            target_function=(
-                lambda fpga_: fpga_.registers.gap_size.write_int(gapsize-1),))
-        # /HACK
+        if 'gapsize' in self.hosts[0].registers.names():
+            # these versions have the correct logic surrounding the register
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.gapsize.write_int(gapsize),))
+        elif 'gap_size' in self.hosts[0].registers.names():
+            # these versions do not, they need a software hack for the setting
+            # to 'take'
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.gap_size.write_int(gapsize),))
+            # HACK - this is a hack to overcome broken x-engine firmware in
+            # versions around a2d0615bc9cd95eabf7c8ed922c1a15658c0688e.
+            # The logic next to the gap_size register is broken, registering
+            # the LAST value written, not the new one.
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.gap_size.write_int(
+                        gapsize-1),))
+            # /HACK
+        else:
+            _errmsg = 'X-engine image has no register gap_size/gapsize?'
+            self.logger.exception(_errmsg)
+            raise RuntimeError(_errmsg)
 
         # disable transmission, place cores in reset, and give control
         # register a known state
