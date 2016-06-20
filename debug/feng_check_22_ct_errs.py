@@ -65,7 +65,7 @@ max_hostname = -1
 for fpga_ in fpgas:
     max_hostname = max(len(fpga_.host), max_hostname)
     freg_error = False
-    for necreg in ['ct_errcnt', 'ct_cnt', 'wintime_error']:
+    for necreg in ['ct_ctrs']:
         if necreg not in fpga_.registers.names():
             freg_error = True
             continue
@@ -80,22 +80,17 @@ if len(registers_missing) > 0:
 
 if args.rstcnt:
     if 'unpack_cnt_rst' in fpgas[0].registers.control.field_names():
-        fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
-                                                                                  unpack_cnt_rst='pulse'))
+        fpgautils.threaded_fpga_operation(
+            fpgas, 10, lambda fpga_:
+            fpga_.registers.control.write(cnt_rst='pulse', unpack_cnt_rst='pulse'))
     else:
-        fpgautils.threaded_fpga_operation(fpgas, 10,
-                                      lambda fpga_: fpga_.registers.control.write(cnt_rst='pulse',
-                                                                                  up_cnt_rst='pulse'))
+        fpgautils.threaded_fpga_operation(
+            fpgas, 10, lambda fpga_:
+            fpga_.registers.control.write(cnt_rst='pulse', up_cnt_rst='pulse'))
+
 
 def get_fpga_data(fpga):
-    rv = {}
-    one = fpga.registers.ct_errcnt.read()['data']
-    two = fpga.registers.ct_cnt.read()['data']
-    three = fpga.registers.wintime_error.read()['data']
-    rv.update(one)
-    rv.update(two)
-    rv.update(three)
+    rv = fpga.registers.ct_ctrs.read()['data']
     return rv
 
 import signal

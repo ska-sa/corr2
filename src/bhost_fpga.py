@@ -58,6 +58,9 @@ class FpgaBHost(FpgaXHost):
         :return
         """
         beam_cfgreg = self.registers['bf%i_config' % beam.index]
+        # in newer versions this moved to a different register
+        if 'n_partitions' not in beam_cfgreg.field_names():
+            beam_cfgreg = self.registers['bf%i_num_parts' % beam.index]
         numparts = len(beam.partitions_active)
         beam_cfgreg.write(n_partitions=numparts)
         LOGGER.debug('%s:%i: Beam %i:%s num_partitions set - %i' % (

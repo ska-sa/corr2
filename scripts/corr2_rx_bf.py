@@ -1,21 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-"""
- Capture utility for a relatively generic packetised correlator data output stream.
-
- The script performs two primary roles:
-
- Storage of stream data on disk in hdf5 format. This includes placing meta data into the file as attributes.
-
- Regeneration of a SPEAD stream suitable for us in the online signal displays. At the moment this is basically
- just an aggregate of the incoming streams from the multiple x engines scaled with n_accumulations (if set)
-
-Author: Simon Ratcliffe
-Revs:
-2010-11-26  JRM Added command-line option for autoscaling.
-"""
-
 import spead2
 import spead2.recv as s2rx
 import time
@@ -27,25 +12,20 @@ import numpy as np
 import matplotlib.pyplot as pyplot
 
 logging.basicConfig(level=logging.DEBUG)
+LOGGER = logging.getLogger(__name__)
 
 
 class CorrRx(threading.Thread):
     def __init__(self, **kwargs):
 
-        self.logger = logging.getLogger(__name__)
-        self.logger.addHandler(logging.StreamHandler())
-        self.logger.setLevel(logging.DEBUG)
-
         spead2._logger.setLevel(logging.DEBUG)
-
         self._target = self.rx_cont
         self._kwargs = kwargs
-
         self.spead_queue = spead_queue
-
         self.memory_error_event = memory_error_event
-
         self.quit_event = quit_event
+        self.heap_step = kwargs['heap_cnt_step']
+        self.xeng_acclen = kwargs['xeng_acclen']
         threading.Thread.__init__(self)
 
     def run(self):
@@ -53,119 +33,97 @@ class CorrRx(threading.Thread):
         self._target(**self._kwargs)
 
     def rx_cont(self, **kwargs):
-        logger = self.logger
-
-        data_port = 8889
-
-        logger.info('Data reception on port %i.' % data_port)
-
+        LOGGER.info('Data reception on port %i.' % data_port)
         ig = spead2.ItemGroup()
-
         strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, max_heaps=8,
                            ring_heaps=8)
         strm.add_udp_reader(port=data_port, max_size=9200,
                             buffer_size=51200000)
-
-        idx = 0
         last_heap_cnt = -1
-
         heap_ctr = 0
-
         try:
             for heap in strm:
-
-                if last_heap_cnt == -1:
-                    last_heap_cnt = heap.cnt - 2097152
-
-                diff = heap.cnt - last_heap_cnt
-
-                if diff < 0:
-                    raise RuntimeError
-
-                if diff != 2097152:
-                    logger.debug('Heap cnt JUMP: %i -> %i' % (last_heap_cnt,
-                                                              heap.cnt))
-                last_heap_cnt = heap.cnt
-
-                ig.update(heap)
-
-                logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f - %i' % (
-                    idx, heap.cnt, time.time(), diff))
-
-                print 'PROCESSING HEAP idx(%i) cnt(%i) @ %.4f - %i' % (
-                    idx, heap.cnt, time.time(), diff)
-
-                print 'IG KEYS:', ig.keys()
-
-                if 'x' in ig.keys():
-                    if ig['x'] is not None:
-
-                        bfraw = ig['x'].value
-                        if bfraw is not None:
-
-                            # print np.shape(bfraw)
-                            channel_select = 66
-                            chandata = bfraw[channel_select, :]
-
-                            chandata = bfraw[:, 0]
-
-                            _cd = []
-                            for _d in chandata:
-                                _pwr = np.sqrt(_d[0]**2 + _d[1]**2)
-                                _cd.append(_pwr)
-                            chandata = _cd[:]
-
-                            if not got_data_event.is_set():
-                                plotqueue.put((channel_select, chandata))
-                                got_data_event.set()
-
+                # wait for the got_data event to be cleared
+                if got_data_event.is_set():
+                    time.sleep(0.1)
+                    continue
+                heap_ctr += 1
                 # should we quit?
                 if self.quit_event.is_set():
-                    logger.info('Got a signal from main(), exiting rx loop...')
+                    LOGGER.info('Got a signal from main(), exiting rx loop...')
                     break
-
-                heap_ctr += 1
-                if heap_ctr > 10:
-                    self.quit_event.set()
-
+                if last_heap_cnt == -1:
+                    last_heap_cnt = heap.cnt - self.heap_step
+                diff = heap.cnt - last_heap_cnt
+                last_heap_cnt = heap.cnt
+                if diff < 0:
+                    raise RuntimeError('The heap count went backwards?!')
+                # if diff != self.heap_step:
+                #     LOGGER.debug('Heap cnt JUMP: %i -> %i = %i' %
+                #                  (heap.cnt - diff, heap.cnt, diff))
+                # else:
+                LOGGER.debug('PROCESSING HEAP ctr(%i) cnt(%i) - '
+                             '%i' % (heap_ctr, heap.cnt, diff))
+                ig.update(heap)
+                # process the raw beamformer data
+                if 'bf_raw' in ig.keys():
+                    if ig['bf_raw'] is None:
+                        continue
+                    bfraw = ig['bf_raw'].value
+                    if bfraw is None:
+                        continue
+                    # only get more data when we're ready
+                    # we'll lose spectra, but that's okay
+                    if not got_data_event.is_set():
+                        # integrate the spectra in the heap
+                        (speclen, numspec, cplx) = np.shape(bfraw)
+                        if numspec != self.xeng_acclen:
+                            import IPython
+                            IPython.embed()
+                            raise RuntimeError(
+                                'Receiving too many spectra from the '
+                                'beamformer. Expected %i, got %i.' % (
+                                    self.xeng_acclen, numspec))
+                        intdata = [0] * speclen
+                        for specctr in range(0, numspec):
+                            # print 'processing spectrum %i' % specctr
+                            specdata = bfraw[:, specctr, :]
+                            for ctr, _d in enumerate(specdata):
+                                _pwr = np.sqrt(_d[0]**2 + _d[1]**2)
+                                intdata[ctr] += _pwr
+                        plotqueue.put(intdata)
+                        got_data_event.set()
         except MemoryError:
             self.memory_error_event.set()
 
         strm.stop()
-        logger.info("Files and sockets closed.")
+        LOGGER.info("Files and sockets closed.")
         self.quit_event.clear()
 
 # some defaults
-filename = None
-plotbaseline = None
-items = None
+data_port = -1
+heap_ctr_step = -1
+xeng_acclen = -1
 
 if __name__ == '__main__':
     import argparse
 
     from corr2 import utils
 
-    parser = argparse.ArgumentParser(description='Receive data from a correlator.',
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description='Plot SPEAD data from a beamformer.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--config', dest='config', action='store', default='',
                         help='corr2 config file')
-    parser.add_argument('--file', dest='writefile', action='store_true', default=False,
-                        help='Write an H5 file.')
-    parser.add_argument('--filename', dest='filename', action='store', default='',
-                        help='Use a specific filename, otherwise use UNIX time. Implies --file.')
-    parser.add_argument('--plot_baselines', dest='plotbaselines', action='store', default='', type=str,
-                        help='Plot one or more baselines, comma-seperated list of integers.')
-    parser.add_argument('--plot_channels', dest='plotchannels', action='store', default='-1,-1', type=str,
-                        help='a start,end tuple, -1 means 0,n_chans respectively')
-    parser.add_argument('--item', dest='items', action='append', default=[],   
-                        help='spead item to output value to log as we receive it')
+    parser.add_argument(dest='beam', action='store', help='beam to plot')
+    parser.add_argument('--listbeams', dest='listbeams', action='store_true',
+                        default=False, help='List available beams.')
     parser.add_argument('--ion', dest='ion', action='store_true', default=False,
                         help='Interactive mode plotting.')
     parser.add_argument('--log', dest='log', action='store_true', default=False,
                         help='Logarithmic y axis.')
-    parser.add_argument(
-        '--no_auto', dest='noauto', action='store_true', default=False,
-        help='Do not scale the data by the number of accumulations.')
+    parser.add_argument('--sum', dest='sum', action='store_true', default=False,
+                        help='Sum the spectra in the packet.')
     parser.add_argument(
         '--loglevel', dest='log_level', action='store', default='DEBUG',
         help='log level to use, default INFO, options INFO, DEBUG, ERROR')
@@ -181,24 +139,23 @@ if __name__ == '__main__':
 
     # load the rx port and sd info from the config file
     config = utils.parse_ini_file(args.config)
-    data_port = int(config['xengine']['output_destination_port'])
-    n_chans = int(config['fengine']['n_chans'])
-    print 'Loaded instrument info from config file:\n\t%s' % args.config
 
-    if args.items:
-        items = args.items
-        print 'Tracking:'
-        for item in items:
-            print '\t  * %s' % item
-    else:
-        print 'Not tracking any items.'
+    if args.listbeams:
+        print 'Available beams:'
+        for section_name in config:
+            if section_name.startswith('beam'):
+                print '\t', section_name
+        import sys
+        sys.exit(0)
+    beam_config = config[args.beam]
+    data_port = int(beam_config['data_port'])
+    xeng_acclen = int(config['xengine']['xeng_accumulation_len'])
+    num_chans = int(config['fengine']['n_chans'])
+    heap_ctr_step = xeng_acclen * num_chans * 2
+    print 'Loaded instrument info from config file:\n\t%s' % args.config
 
 print 'Initialising SPEAD transports for data:'
 print '\tData reception on port', data_port
-if filename is not None:
-    print '\tStoring to file %s' % filename
-else:
-    print '\tNot saving to disk.'
 
 quit_event = threading.Event()
 memory_error_event = threading.Event()
@@ -206,25 +163,25 @@ plotqueue = Queue.Queue()
 got_data_event = threading.Event()
 spead_queue = Queue.Queue()
 
-
 if args.ion:
     pyplot.ion()
 
 
 def plot():
     if got_data_event.is_set():
+        got_data_event.clear()
         try:
-            chan, chandata = plotqueue.get_nowait()
+            specdata = plotqueue.get_nowait()
             pyplot.subplot(1, 1, 1)
             pyplot.cla()
             ymax = -1
             ymin = 2**32
             if args.log:
                 pyplot.subplot(1, 1, 1)
-                pyplot.semilogy(chandata, label='channel_%i' % chan)
+                pyplot.semilogy(specdata, label='bfspectrum')
             else:
                 pyplot.subplot(1, 1, 1)
-                pyplot.plot(chandata, label='channel_%i' % chan)
+                pyplot.plot(specdata, label='bfspectrum')
             # ymax = max(ymax, max(chandata))
             # ymin = min(ymin, min(chandata))
             pyplot.legend(loc='upper left')
@@ -232,16 +189,14 @@ def plot():
             pyplot.show()
         except Queue.Empty:
             pass
-        got_data_event.clear()
 
 crx = CorrRx(quit_event=quit_event,
              data_port=data_port,
              acc_scale=False,
-             filename=filename,
-             plotbaseline=plotbaseline,
-             items=args.items,
              memory_error_event=memory_error_event,
-             spead_queue=spead_queue)
+             spead_queue=spead_queue,
+             heap_cnt_step=heap_ctr_step,
+             xeng_acclen=xeng_acclen)
 
 try:
     crx.daemon = True

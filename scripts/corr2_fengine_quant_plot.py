@@ -42,6 +42,12 @@ parser.add_argument(
     '--linear', dest='linear', action='store_true', default=False,
     help='plot linear, not log')
 parser.add_argument(
+    '--print', dest='printvals', action='store_true', default=False,
+    help='print the plotted values to the screen')
+parser.add_argument(
+    '--noplot', dest='noplot', action='store_true', default=False,
+    help='do not plot anything')
+parser.add_argument(
     '--loglevel', dest='log_level', action='store', default='INFO',
     help='log level to use, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -53,6 +59,9 @@ if args.log_level != '':
         logging.basicConfig(level=eval('logging.%s' % log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
+
+if args.noplot and (not args.printvals):
+    raise RuntimeError('Must either plot or print vals!')
 
 if 'CORR2INI' in os.environ.keys() and args.config == '':
     args.config = os.environ['CORR2INI']
@@ -77,7 +86,7 @@ required_snaps = ['snap_quant0_ss', 'snap_quant1_ss']
 # process the range argument
 plotrange = [int(a) for a in args.range.split(',')]
 if plotrange[0] == -1:
-    plotrange = (0, plotrange[1])
+    plotrange = (0, EXPECTED_FREQS)
 if (plotrange[1] != -1) and (plotrange[1] <= plotrange[0]):
     raise RuntimeError('Plot range of %s is incorrect.' % str(plotrange))
 plotrange = (int(plotrange[0]), int(plotrange[1]))
@@ -107,14 +116,32 @@ snapshot_bytes = (2**nsamples) * (dwidth/8)
 print 'Snapshot is %i bytes long' % snapshot_bytes
 snapshot_samples = (2**nsamples) * 4
 print 'Snapshot is %i samples long' % snapshot_samples
-loops_necessary = EXPECTED_FREQS / snapshot_samples
-print 'Will need to read the snapshot %i times' % loops_necessary
+#loops_necessary = EXPECTED_FREQS / snapshot_samples
+#print 'Will need to read the snapshot %i times' % loops_necessary
+
+import math
+print 'Range:', plotrange
+numtoplot = plotrange[1] - plotrange[0]
+print 'Chans to plot:', numtoplot
+loopnec = int(math.ceil((numtoplot * 1.0) / snapshot_samples))
+loopstart = plotrange[0] / snapshot_samples
+loopstop = loopstart + loopnec
+plotrange_shifted = (plotrange[0] - (loopstart * snapshot_samples), plotrange[1] - (loopstart * snapshot_samples))
+
+#print 'loopsnec:', loopnec
+#print 'loopstart:', loopstart
+#print 'loopstop:', loopstop
+#print 'plotrange:', plotrange
+#print 'plotrange_shifted:', plotrange_shifted
+#raise RuntimeError
+
+print 'Will need to read the snapshot %i times' % (loopstop - loopstart)
 
 
 def get_data():
     # read the data
     snapdata = []
-    for loop_ctr in range(0, loops_necessary):
+    for loop_ctr in range(loopstart, loopstop):
         temp_snapdata = {}
         for snap in required_snaps:
             offset = snapshot_bytes * loop_ctr
@@ -126,7 +153,7 @@ def get_data():
     fpga_data = {'p0': [], 'p1': []}
     pol_data = [[], []]
     # reorder the data
-    for loop_ctr in range(0, loops_necessary):
+    for loop_ctr in range(loopstart, loopstop):
         print 'calculating quant data for loop %i' % loop_ctr
         quant_data = [snapdata[loop_ctr][required_snaps[0]]['data'],
                       snapdata[loop_ctr][required_snaps[1]]['data']]
@@ -143,14 +170,35 @@ def get_data():
     if len(pol_data[0]) != len(pol_data[1]):
         raise RuntimeError('Unequal length data for p0 and p1?!')
     print '%s data is %d points long.' % (fpga.host, len(pol_data[0]))
-    assert len(pol_data[0]) == EXPECTED_FREQS, 'Not enough snap data for ' \
-                                                   'the number of channels!'
-    fpga_data['p0'] = pol_data[0]
-    fpga_data['p1'] = pol_data[1]
+    assert len(pol_data[0]) >= numtoplot, 'Not enough snap data for the ' \
+                                          'required number of channels! %i - %i' % (len(pol_data[0]), numtoplot)
+    fpga_data['p0'] = pol_data[0][plotrange_shifted[0]:plotrange_shifted[1]]
+    fpga_data['p1'] = pol_data[1][plotrange_shifted[0]:plotrange_shifted[1]]
     return fpga_data
 
 
-def plot_func(figure, sub_plots, idata, ictr, pctr):
+def plot_hist(figure, sub_plots, pctr):
+    data = get_data()
+    for ctr, integd in enumerate(data.values()):
+        plt = sub_plots[ctr]
+        plt[0].cla()
+        plt[0].set_title('%s:p%i real, %i' % (
+            fpga.host, ctr, pctr))
+        plt[0].grid(True)
+        plt[1].cla()
+        plt[1].set_title('%s:p%i imag, %i' % (
+            fpga.host, ctr, pctr))
+        plt[1].grid(True)
+        hdata = data['p%i' % ctr]
+        plt[0].hist(numpy.real(hdata), bins=32)
+        plt[1].hist(numpy.imag(hdata), bins=32)
+        pctr += 1
+    figure.canvas.draw()
+    pctr += 1
+    figure.canvas.manager.window.after(10, plot_hist, figure, sub_plots, pctr)
+
+
+def plot_spectrum(figure, sub_plots, idata, ictr, pctr):
     data = get_data()
     ictr += 1
     p0_data = numpy.abs(data['p0'])
@@ -160,43 +208,66 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
     for ctr in range(0, len(p0_data)):
         idata[0][ctr] += p0_data[ctr]
         idata[1][ctr] += p1_data[ctr]
-    print '\tMean:   %.10f' % numpy.mean(p0_data[100:4000])
-    print '\tStddev: %.10f' % numpy.std(p0_data[100:4000])
+    #print '\tMean:   %.10f' % numpy.mean(p0_data[100:4000])
+    #print '\tStddev: %.10f' % numpy.std(p0_data[100:4000])
+    if args.printvals:
+        print idata
+    if args.noplot:
+        return
     # actually draw the plots
     for ctr, integd in enumerate(idata.values()):
         plt = sub_plots[ctr]
         plt.cla()
         plt.set_title('%s:%i, %i, %i' % (fpga.host, ctr, ictr, pctr))
         plt.grid(True)
-        if args.hist:
-            plt.hist(integd, bins=64, range=(-1.0, 1.0))
-            idata = None
-            ictr = 0
-            pctr += 1
-        elif args.linear:
+        if args.linear:
             plt.plot(integd)
         else:
-            plt.semilogy(integd)
+            if numpy.sum(integd) > 0:
+                plt.semilogy(integd)
+            else:
+                plt.set_title('%s:%i, %i, %i - NO NONZERO DATA' % (
+                    fpga.host, ctr, ictr, pctr))
     figure.canvas.draw()
     if ictr == args.integrate and args.integrate > 0:
         idata = None
         ictr = 0
         pctr += 1
-    fig.canvas.manager.window.after(10, plot_func, figure, sub_plots,
-                                    idata, ictr, pctr)
+    figure.canvas.manager.window.after(10, plot_spectrum, figure, sub_plots,
+                                       idata, ictr, pctr)
+
+# print, no plot
+if args.printvals and args.noplot:
+    import sys
+    while True:
+        try:
+            d = get_data()
+            print 'p0:', d['p0']
+            print 'p1:', d['p1']
+            time.sleep(1)
+        except KeyboardInterrupt:
+            break
+    sys.exit(0)
 
 # set up the figure with a subplot to be plotted
 fig = pyplot.figure()
 subplots = []
-for p in range(2):
-    sub_plot = fig.add_subplot(2, 1, p+1)
-    subplots.append(sub_plot)
-integrated_data = None
-integration_counter = 0
 plot_counter = 0
-fig.canvas.manager.window.after(1, plot_func, fig, subplots,
-                                integrated_data,
-                                integration_counter, plot_counter)
+if args.hist:
+        subplots.append((fig.add_subplot(2, 2, 1),
+                         fig.add_subplot(2, 2, 2)))
+        subplots.append((fig.add_subplot(2, 2, 3),
+                         fig.add_subplot(2, 2, 4)))
+        fig.canvas.manager.window.after(10, plot_hist, fig, subplots,
+                                        plot_counter)
+else:
+    subplots.append(fig.add_subplot(2, 1, 1))
+    subplots.append(fig.add_subplot(2, 1, 2))
+    integrated_data = None
+    integration_counter = 0
+    fig.canvas.manager.window.after(10, plot_spectrum, fig, subplots,
+                                    integrated_data, integration_counter,
+                                    plot_counter)
 pyplot.show()
 print 'Plot started.'
 

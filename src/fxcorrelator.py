@@ -8,6 +8,8 @@ Created on Feb 28, 2013
 
 import logging
 import time
+from katcp import Sensor
+
 
 from casperfpga import utils as fpgautils
 
@@ -31,7 +33,6 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 LOGGER = logging.getLogger(__name__)
 
-POST_MESS_DELAY = 5
 MAX_QDR_ATTEMPTS = 5
 
 
@@ -77,6 +78,7 @@ class FxCorrelator(Instrument):
         self.accumulation_len = None
         self.xeng_accumulation_len = None
         self.fengine_sources = None
+        self.baselines = None
 
         self._sensors = {}
 
@@ -170,6 +172,21 @@ class FxCorrelator(Instrument):
         # set an initialised flag
         self._initialised = True
 
+    def _gbe_setup(self):
+        """
+        Set up the 10gbe ports on the hosts
+        :return:
+        """
+        feng_port = int(self.configd['fengine']['10gbe_port'])
+        xeng_port = int(self.configd['xengine']['10gbe_port'])
+        info_dict = {host.host: (feng_port, 'fhost') for host in self.fhosts}
+        info_dict.update(
+            {host.host: (xeng_port, 'xhost') for host in self.xhosts})
+        timeout = len(self.fhosts[0].tengbes) * 30 * 1.1
+        THREADED_FPGA_FUNC(
+                self.fhosts + self.xhosts, timeout=timeout,
+                target_function=('setup_host_gbes', (self.logger, info_dict), {}))
+
     def _initialise(self, program, qdr_cal):
         """
         Run this if boards in the system have been programmed. Basic setup
@@ -189,8 +206,15 @@ class FxCorrelator(Instrument):
                              'want to do this?')
 
         # init the engines
-        self.fops.initialise()
-        self.xops.initialise()
+        self.fops.initialise_pre_gbe()
+        self.xops.initialise_pre_gbe()
+
+        # set up the tengbe ports in parallel
+        self._gbe_setup()
+
+        # continue with init
+        self.fops.initialise_post_gbe()
+        self.xops.initialise_post_gbe()
         if self.found_beamformer:
             self.bops.initialise()
 
@@ -209,8 +233,8 @@ class FxCorrelator(Instrument):
 
         # wait for switches to learn, um, stuff
         self.logger.info('post mess-with-the-switch delay of %is' %
-                         POST_MESS_DELAY)
-        time.sleep(POST_MESS_DELAY)
+                         self.post_switch_delay)
+        time.sleep(self.post_switch_delay)
 
         # reset all counters on fhosts and xhosts
         self.fops.clear_status_all()
@@ -263,6 +287,16 @@ class FxCorrelator(Instrument):
             raise KeyError('Sensor {} already exists'.format(sensor.name))
         self._sensors[sensor.name] = sensor
 
+    def sensors_get(self, sensor_name):
+        """
+        Get a sensor from the dictionary of instrument sensors
+        :param sensor_name:
+        :return:
+        """
+        if sensor_name not in self._sensors.keys():
+            raise KeyError('Sensor {} does not exist'.format(sensor_name))
+        return self._sensors[sensor_name]
+
     def set_synch_time(self, new_synch_time):
         """
         Set the last sync time for this system
@@ -283,7 +317,7 @@ class FxCorrelator(Instrument):
             self.logger.error(_err)
             raise RuntimeError(_err)
         self._synchronisation_epoch = new_synch_time
-        self.logger.info('Set synch epoch to %d' % new_synch_time)
+        self.logger.info('Set synch epoch to %.5f' % new_synch_time)
 
     def est_synch_epoch(self):
         """
@@ -424,6 +458,20 @@ class FxCorrelator(Instrument):
                 raise ValueError(
                     'Could not find the old EQ value, %s, to update '
                     'to new name, %s.' % (old_name, _source.name))
+
+        # update the hostname sensors
+        try:
+            for fhost in self.fhosts:
+                sensor = self.sensors_get('%s_input_mapping' % fhost.host)
+                rv = [dsrc.name for dsrc in fhost.data_sources]
+                sensor.set(time.time(), Sensor.NOMINAL, str(rv))
+        except Exception as ve:
+            self.logger.WARNING('Could not update input_mapping '
+                                'sensors!\n\n%s' % ve.message)
+
+        # update the list of baselines
+        self.baselines = utils.baselines_from_source_list(newlist)
+
         self.logger.info('Source labels updated from %s to %s' % (
             oldnames, newnames))
         # update the beam input labels
@@ -468,6 +516,10 @@ class FxCorrelator(Instrument):
         self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
         self.time_jitter_allowed_ms = int(_fxcorr_d['time_jitter_allowed_ms'])
         self.time_offset_allowed_s = int(_fxcorr_d['time_offset_allowed_s'])
+        try:
+            self.post_switch_delay = int(_fxcorr_d['switch_delay'])
+        except KeyError:
+            self.post_switch_delay = 10
 
         _feng_d = self.configd['fengine']
         self.adc_demux_factor = int(_feng_d['adc_demux_factor'])
@@ -522,6 +574,9 @@ class FxCorrelator(Instrument):
                                       'both X- and F-engines' % _fh.host)
                     raise RuntimeError
 
+        # update the list of baselines on this system
+        self.baselines = utils.baselines_from_config(config=self.configd)
+
         # what data sources have we been allocated?
         self._handle_sources()
 
@@ -539,7 +594,7 @@ class FxCorrelator(Instrument):
         """
         assert len(self.fhosts) > 0
         _feng_cfg = self.configd['fengine']
-        source_names = _feng_cfg['source_names'].strip().split(',')
+        source_names = utils.sources_from_config(config=self.configd)
         source_mcast = _feng_cfg['source_mcast_ips'].strip().split(',')
         assert len(source_mcast) == len(source_names), (
             'Source names (%d) must be paired with multicast source '
@@ -607,6 +662,7 @@ class FxCorrelator(Instrument):
     def product_set_destination(self, product_name, txip_str=None, txport=None):
         """
         Set the destination for a data product.
+        :param product_name:
         :param txip_str: A dotted-decimal string representation of the
         IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.
@@ -621,6 +677,7 @@ class FxCorrelator(Instrument):
                                      txip_str=None, txport=None):
         """
         Set the meta destination for a data product.
+        :param product_name:
         :param txip_str: A dotted-decimal string representation of the
         IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.

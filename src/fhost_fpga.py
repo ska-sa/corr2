@@ -190,19 +190,22 @@ class FpgaFHost(DigitiserDataReceiver):
                 self.delay_errors.append(Event())
                 self.delay_loadcounts.append(-1)
 
+        self.rx_data_sample_rate_hz = -1
+
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
         boffile = config_source['bitstream']
         return cls(hostname, katcp_port=katcp_port, boffile=boffile,
                    connect=True, config=config_source)
 
-    def ct_okay(self, sleeptime=1):
+    def ct_okay(self, wait_time=1):
         """
         Is the corner turner working?
+        :param wait_time - time in seconds to wait between reg reads
         :return: True or False,
         """
         ct_ctrs0 = self.registers.ct_ctrs.read()['data']
-        time.sleep(sleeptime)
+        time.sleep(wait_time)
         ct_ctrs1 = self.registers.ct_ctrs.read()['data']
 
         err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
@@ -245,6 +248,7 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Return a dictionary of all the EQ settings for the sources allocated
         to this fhost
+        :param source_name: the name ID of the source
         :return:
         """
         if source_name is not None:
@@ -255,6 +259,7 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         Read a given EQ BRAM.
         :param eq_bram:
+        :param eq_name: the name ID of the EQ to be read
         :return: a list of the complex EQ values from RAM
         """
         if eq_bram is None and eq_name is None:
@@ -440,10 +445,8 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('%s attempting delay delta to %e (%e after shift)' %
                     (infostr, delta_delay, delta_delay_shifted))
         reg_info = delta_delay_reg.block_info
-        # bw_str = reg_info['bitwidths']
-        # bw = int(bw_str[1:len(bw_str)-1])
-        b_str = reg_info['bin_pts']
-        b = int(b_str[1:len(b_str)-1])
+        b = int(reg_info['bin_pts'])
+
         max_positive_delta_delay = 1 - 1/float(2**b)
         max_negative_delta_delay = -1 + 1/float(2**b)
         if delta_delay_shifted > max_positive_delta_delay:
@@ -789,8 +792,9 @@ class FpgaFHost(DigitiserDataReceiver):
         Checks if parity bits on f-eng are zero
         :return: True/False
         """
+        err_data = self.registers.ct_ctrs.read()['data']
         for cnt in range(0, 1):
-            err = self.registers.ct_ctrs.read()['data']['ct_parerr_cnt%d' % cnt]
+            err = err_data['ct_parerr_cnt%d' % cnt]
             if err == 0:
                 LOGGER.info('%s: ct_parerr_cnt%d okay.' % (self.host, cnt))
             else:
@@ -801,24 +805,134 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def check_fft_overflow(self, wait_time=2e-3):
         """
-        Checks if pfb counters on f-eng are not incrementing i.e. fft is not overflowing
+        Checks if pfb counters on f-eng are not incrementing i.e. fft
+        is not overflowing
+        :param wait_time - time in seconds to wait between reg reads
         :return: True/False
         """
+        ctrs0 = self.registers.pfb_ctrs.read()['data']
+        time.sleep(wait_time)
+        ctrs1 = self.registers.pfb_ctrs.read()['data']
         for cnt in range(0, 1):
-            overflow0 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
-            time.sleep(wait_time)
-            overflow1 = self.registers.pfb_ctrs.read()['data']['pfb_of%d_cnt' % cnt]
+            overflow0 = ctrs0['pfb_of%d_cnt' % cnt]
+            overflow1 = ctrs1['pfb_of%d_cnt' % cnt]
             if overflow0 == overflow1:
                 LOGGER.info('%s: pfb_of%d_cnt okay.' % (self.host, cnt))
             else:
-                LOGGER.error('%s: pfb_of%d_cnt incrementing.' % (self.host, cnt))
+                LOGGER.error('%s: pfb_of%d_cnt incrementing.' % (
+                    self.host, cnt))
                 return False
         LOGGER.info('%s: PFB okay.' % self.host)
         return True
 
-    def get_adc_snapshots(self):
+    def get_adc_timed_snapshots(self, fromnow=2, loadtime_unix=-1,
+                                loadtime_system=-1):
+        """
+        Get a snapshot of incoming ADC data at a specific time.
+        :param fromnow: trigger x seconds from now
+        :param loadtime_unix: the load time as a UNIX time
+        :param loadtime_system: the load time as a system board time.
+        Default is 2 seconds in the future.
+        :return:
+        """
+        tic = time.time()
+        timediff = loadtime_unix - time.time()
+
+        if 'adc_snap_trig_select' not in self.registers.control.field_names():
+            raise NotImplementedError('Timed ADC snapshot support does'
+                                      'not exist on older f-engines.')
+        if self.rx_data_sample_rate_hz == -1:
+            raise ValueError('Cannot continue with unknown source sample'
+                             'rate. Please set this with: '
+                             '\'host.rx_data_sample_rate_hz = xxxx\' first.')
+
+        if loadtime_system != -1:
+            if loadtime_system & ((2**12) - 1) != 0:
+                LOGGER.exception('Time resolution from the digitiser is '
+                                 'only 2^12, trying to trigger at %i would '
+                                 'never work.' % loadtime_system)
+                raise ValueError('Time resolution from the digitiser is '
+                                 'only 2^12, trying to trigger at %i would '
+                                 'never work.' % loadtime_system)
+
+        localtime = self.get_local_time()
+        if localtime & ((2**12) - 1) != 0:
+            LOGGER.exception('Bottom 12 bits of local time are not '
+                             'zero? %i' % localtime)
+            raise ValueError('Bottom 12 bits of local time are not '
+                             'zero? %i' % localtime)
+
+        if loadtime_unix != -1:
+            timediff_samples = (timediff * 1.0) * self.rx_data_sample_rate_hz
+            loadtime = int(localtime + timediff_samples)
+            loadtime += 2**12
+            loadtime = (loadtime >> 12) << 12
+        elif loadtime_system != -1:
+            loadtime = loadtime_system
+        else:
+            loadtime = int(localtime + (self.rx_data_sample_rate_hz * fromnow))
+            loadtime += 2**12
+            loadtime = (loadtime >> 12) << 12
+
+        if loadtime <= localtime:
+            LOGGER.exception(
+                'A load time in past makes no sense. %i < %i = %i' % (
+                    loadtime, localtime, loadtime - localtime))
+            raise ValueError(
+                'A load time in past makes no sense. %i < %i = %i' % (
+                    loadtime, localtime, loadtime - localtime))
+        custom_timeout = int((loadtime - localtime) /
+                             self.rx_data_sample_rate_hz) + 1
+        ltime_msw = (loadtime >> 32) & (2**16 - 1)
+        ltime_lsw = loadtime & ((2**32) - 1)
+        self.registers.trig_time_msw.write_int(ltime_msw)
+        self.registers.trig_time_lsw.write_int(ltime_lsw)
+        snaptic = time.time()
+        rv = self.get_adc_snapshots(trig_sel=0, custom_timeout=custom_timeout)
+        toc = time.time()
+        LOGGER.debug('%s: timed ADC read took %.3f sec, total %.3f sec' % (
+            self.host, (toc - snaptic), (toc - tic)))
+        return rv
+
+    def get_adc_snapshots(self, trig_sel=1, custom_timeout=-1):
         """
         Read the ADC snapshots from this Fhost
+        :param trig_sel: 0 for time-trigger, 1 for constant trigger
+        :param custom_timeout: should a custom timeout be applied to the
+        snapshot read operation?
+        """
+        if 'p1_d3' not in self.snapshots.snap_adc0_ss.field_names():
+            return self.get_adc_snapshots_old()
+        if 'adc_snap_trig_select' in self.registers.control.field_names():
+            self.registers.control.write(adc_snap_trig_select=trig_sel)
+        self.registers.control.write(adc_snap_arm=0)
+        self.snapshots.snap_adc0_ss.arm()
+        self.snapshots.snap_adc1_ss.arm()
+        self.registers.control.write(adc_snap_arm=1)
+        if custom_timeout != -1:
+            d = self.snapshots.snap_adc0_ss.read(
+                arm=False, timeout=custom_timeout)['data']
+            d.update(self.snapshots.snap_adc1_ss.read(
+                arm=False, timeout=custom_timeout)['data'])
+        else:
+            d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
+            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
+        self.registers.control.write(adc_snap_arm=0)
+        p0 = {'d%i' % ctr: d['p0_d%i' % ctr] for ctr in range(8)}
+        p1 = {'d%i' % ctr: d['p1_d%i' % ctr]
+              for ctr in [0, 1, 2, 3, 5, 6, 7]}
+        p1['d4'] = []
+        for ctr in range(len(d['p1_d4_u8'])):
+            _tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
+            p1['d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
+
+        return {'p0': p0, 'p1': p1}
+
+    def get_adc_snapshots_old(self):
+        """
+        Old implementations of reading the ADC snapshots, included for
+        compatibility.
+        :return:
         """
         if 'p1_4' in self.snapshots.snap_adc0_ss.field_names():
             # temp new style
@@ -836,22 +950,6 @@ class FpgaFHost(DigitiserDataReceiver):
             for ctr in range(len(d['p1_3_u8'])):
                 _tmp = (d['p1_3_u8'][ctr] << 2) | d['p1_3_l2'][ctr]
                 p1['d3'].append(caspermem.bin2fp(_tmp, 10, 9, True))
-        elif 'p1_d3' in self.snapshots.snap_adc0_ss.field_names():
-            # new style - should be default
-            self.registers.control.write(adc_snap_arm=0)
-            self.snapshots.snap_adc0_ss.arm()
-            self.snapshots.snap_adc1_ss.arm()
-            self.registers.control.write(adc_snap_arm=1)
-            d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
-            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
-            self.registers.control.write(adc_snap_arm=0)
-            p0 = {'d%i' % ctr: d['p0_d%i' % ctr] for ctr in range(8)}
-            p1 = {'d%i' % ctr: d['p1_d%i' % ctr]
-                  for ctr in [0, 1, 2, 3, 5, 6, 7]}
-            p1['d4'] = []
-            for ctr in range(len(d['p1_d4_u8'])):
-                _tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
-                p1['d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
         else:
             p0 = self.snapshots.snap_adc0_ss.read()['data']
             p1 = self.snapshots.snap_adc1_ss.read()['data']

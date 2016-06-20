@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Deprogram one or more ROACHs.
+Program one or more ROACHs.
 
 @author: paulp
 """
@@ -12,23 +12,23 @@ from casperfpga import katcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Deprogram one or more CASPER devices',
+    description='Program one or more CASPER devices',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',
     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument(
-    '--class', dest='hclass', action='store', default='',
-    help='start/stop a class: fengine or xengine')
-parser.add_argument(
     '--dnsmasq', dest='dnsmasq', action='store_true', default=False,
     help='search for roach hostnames in /var/lib/misc/dnsmasq.leases')
 parser.add_argument(
-    '--reboot', action='store_true', default=False,
-    help='reboot roach in /var/lib/misc/dnsmasq.leases')
+    '--comms', dest='comms', action='store', default='katcp', type=str,
+    help='katcp (default) or dcp?')
 parser.add_argument(
     '--loglevel', dest='log_level', action='store', default='',
     help='log level to use, default None, options INFO, DEBUG, ERROR')
+parser.add_argument(
+    dest='fpg', action='store', default='',
+    help='.fpg file to program')
 args = parser.parse_args()
 
 if args.log_level != '':
@@ -62,30 +62,11 @@ else:
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
-# create the devices and deprogram them
+# create the devices and program them
 fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
 running = fpgautils.threaded_fpga_function(fpgas, 10, 'is_running')
-deprogrammed = []
-to_deprogram = []
-already_deprogrammed = []
-for fpga in fpgas:
-    if running[fpga.host]:
-        deprogrammed.append(fpga.host)
-        to_deprogram.append(fpga)
-    else:
-        already_deprogrammed.append(fpga.host)
-running = fpgautils.threaded_fpga_function(to_deprogram, 10, 'deprogram')
-
-if len(deprogrammed) != 0:
-    print deprogrammed, ': deprogrammed okay.'
-if len(already_deprogrammed) != 0:
-    print already_deprogrammed, ': already deprogrammed.'
-
-if args.reboot:
-    for fpga in fpgas:
-        fpga.katcprequest(name='restart', request_timeout=-1.0,
-                          require_ok=True, request_args=())
-        print 'Restarting {}'.format(fpga.host)
+fpgautils.threaded_fpga_function(fpgas, 10,
+                                 'upload_to_ram_and_program', args.fpg)
 fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 
 # end

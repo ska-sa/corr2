@@ -476,7 +476,6 @@ class FpgaDsimHost(FpgaHost):
 
     def setup_tengbes(self):
         """Set up 10GbE MACs, IPs and destination address/port"""
-        start_mac = self.config['10gbe_start_mac']
         port = int(self.config['10gbe_port'])
         num_tengbes = len(self.tengbes)
         if num_tengbes < 1:
@@ -484,12 +483,12 @@ class FpgaDsimHost(FpgaHost):
         gbes_per_pol = 2        # Hardcoded assumption
         num_pols = num_tengbes // gbes_per_pol
 
-        mac_bits = start_mac.split(':')
-        macbase = int(mac_bits[5])
+        mac_ctr = 1
         for ctr in range(num_tengbes):
-            this_mac = tengbe.Mac.from_roach_hostname(self.host, ctr)
-            ip = '0.0.0.0'
-            self.tengbes['gbe%d' % ctr].setup(mac=this_mac, ipaddress=ip, port=port)
+            this_mac = tengbe.Mac.from_roach_hostname(self.host, mac_ctr)
+            self.tengbes['gbe%d' % ctr].setup(
+                mac=this_mac, ipaddress='0.0.0.0', port=port)
+            mac_ctr += 1
         for gbe in self.tengbes:
             gbe.dhcp_start()
 
@@ -520,3 +519,5 @@ class FpgaDsimHost(FpgaHost):
 
         self.write_int('gbe_porttx', port)
         self.registers.control.write(gbe_rst=False)
+
+    

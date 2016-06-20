@@ -38,15 +38,6 @@ def _setup_spead(meta_address):
                              streamconfig,
                              51200000,
                              streamsocket)
-    # # multicast
-    # mcast_interface = \
-    #     self.corr.configd['xengine']['multicast_interface_address']
-    # self.tx.t._udp_out.setsockopt(
-    #     socket.SOL_IP, socket.IP_MULTICAST_IF,
-    #     socket.inet_aton(mcast_interface))
-    # self.tx.t._udp_out.setsockopt(
-    #     socket.SOL_IP, socket.IP_ADD_MEMBERSHIP,
-    #     socket.inet_aton(txip_str) + socket.inet_aton(mcast_interface))
     return meta_ig, meta_tx
 
 
@@ -159,6 +150,12 @@ class DataProduct(object):
         Enable TX for this data product
         :return:
         """
+        try:
+            heapgen = sptx.HeapGenerator(self.meta_ig)
+            self.meta_tx.send_heap(heapgen.get_start())
+        except AttributeError:
+            LOGGER.warning('Installed version of SPEAD2 doesn\'t seem to'
+                           'support stream start packets?')
         self.en_cb(self)
         LOGGER.info('DataProduct %s - output enabled' % self.name)
 
@@ -168,6 +165,12 @@ class DataProduct(object):
         :return:
         """
         self.dis_cb(self)
+        try:
+            heapgen = sptx.HeapGenerator(self.meta_ig)
+            self.meta_tx.send_heap(heapgen.get_end())
+        except AttributeError:
+            LOGGER.warning('Installed version of SPEAD2 doesn\'t seem to'
+                           'support stream stop packets?')
         LOGGER.info('DataProduct %s - output disabled' % self.name)
 
     def __repr__(self):
