@@ -118,6 +118,15 @@ class XEngineOperations(object):
             self.hosts, timeout=5,
             target_function=(
                 lambda fpga_: fpga_.registers.gap_size.write_int(gapsize),))
+        # HACK - this is a hack to overcome broken x-engine firmware in
+        # versions around a2d0615bc9cd95eabf7c8ed922c1a15658c0688e.
+        # The logic next to the gap_size register is broken, registering
+        # the LAST value written, not the new one.
+        THREADED_FPGA_OP(
+            self.hosts, timeout=5,
+            target_function=(
+                lambda fpga_: fpga_.registers.gap_size.write_int(gapsize-1),))
+        # /HACK
 
         # disable transmission, place cores in reset, and give control
         # register a known state
