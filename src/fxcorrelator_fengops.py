@@ -1,10 +1,11 @@
 import numpy
+import time
+
 from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
 from data_source import DataSource
 import utils
-import time
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -24,7 +25,23 @@ class FEngineOperations(object):
         self.logger = corr_obj.logger
         # do config things
 
-    def initialise(self):
+    def initialise_post_gbe(self):
+        """
+        Perform post-gbe setup initialisation steps
+        :return:
+        """
+        # write the board IDs to the fhosts
+        board_id = 0
+        for f in self.hosts:
+            f.registers.tx_metadata.write(board_id=board_id,
+                                          porttx=self.corr.fengine_output.port)
+            board_id += 1
+
+        # release from reset
+        THREADED_FPGA_OP(self.hosts, timeout=10, target_function=(
+            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+
+    def initialise_pre_gbe(self):
         """
         Set up f-engines on this device. This is done after programming the
         devices in the instrument.
@@ -67,14 +84,11 @@ class FEngineOperations(object):
         self.corr.fengine_output.name = 'fengine_destination'
         fdest_ip = int(self.corr.fengine_output.ip_address)
         THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
-            lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),) )
+            lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),))
 
-        # set up the 10gbe cores
-        self._setup_gbes()
-
-        # release from reset
-        THREADED_FPGA_OP(self.hosts, timeout=10, target_function=(
-            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+        # set the sample rate on the Fhosts
+        for host in self.hosts:
+            host.rx_data_sample_rate_hz = self.corr.sample_rate_hz
 
     def configure(self):
         """
@@ -82,53 +96,12 @@ class FEngineOperations(object):
         is instantiated.
         :return:
         """
-
-    def _setup_gbes(self):
-        """
-        Set up the 10gbe cores on the f hosts
-        :return:
-        """
-        # set up the 10gbe cores
-        feng_port = int(self.corr.configd['fengine']['10gbe_port'])
-        mac_start = tengbe.Mac(self.corr.configd['fengine']['10gbe_start_mac'])
-
-        # set up shared board info
-        boards_info = {}
-        board_id = 0
-        mac = int(mac_start)
-        for f in self.hosts:
-            macs = []
-            for gbe in f.tengbes:
-                macs.append(mac)
-                mac += 1
-            boards_info[f.host] = board_id, macs
-            board_id += 1
-
-        def setup_gbes(f):
-            board_id, macs = boards_info[f.host]
-            f.registers.tx_metadata.write(board_id=board_id,
-                                          porttx=self.corr.fengine_output.port)
-            mac_ctr = 1
-            for gbe, this_mac in zip(f.tengbes, macs):
-                this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
-                gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
-                self.logger.info(
-                    'fhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i) '
-                    'tx(%s:%i)' % (f.host, gbe.name, str(gbe.mac), feng_port,
-                                   board_id,
-                                   self.corr.fengine_output.ip_address,
-                                   self.corr.fengine_output.port))
-                # gbe.tap_start(restart=True)
-                gbe.dhcp_start()
-                mac_ctr += 1
-
-        timeout = len(self.hosts[0].tengbes) * 30 * 1.1
-        THREADED_FPGA_OP(
-            self.hosts, timeout=timeout, target_function=(setup_gbes,))
+        return
 
     def sys_reset(self, sleeptime=0):
         """
         Pulse the sys_rst line on all F-engine hosts
+        :param sleeptime:
         :return:
         """
         self.logger.info('Forcing an f-engine resync')
@@ -459,8 +432,9 @@ class FEngineOperations(object):
         :return:
         """
         self.logger.info('Checking F hosts are transmitting data...')
-        results = THREADED_FPGA_FUNC(self.hosts, timeout=5,
-                                     target_function='check_tx_raw')
+        results = THREADED_FPGA_FUNC(self.hosts, timeout=10,
+                                     target_function=('check_tx_raw',
+                                                      (0.2, 5), {}))
         all_okay = True
         for _v in results.values():
             all_okay = all_okay and _v

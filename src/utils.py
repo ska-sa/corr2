@@ -59,6 +59,8 @@ class AdcData(object):
 def parse_ini_file(ini_file='', required_sections=None):
     """
     Parse an ini file into a dictionary. No checking done at all.
+    :param ini_file: the ini file to process
+    :param required_sections: sections that MUST be included
     :return: a dictionary containing the configuration
     """
     if (ini_file == '') and ('CORR2INI' in os.environ.keys()):
@@ -83,26 +85,164 @@ def parse_ini_file(ini_file='', required_sections=None):
     return config
 
 
-def hosts_from_config_dict(config_dict, section=None):
-    assert hasattr(config_dict, 'keys')
+def hosts_from_config(config_file=None, config=None, section=None):
+    """
+    Make lists of hosts from a given correlator config file.
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :param section: the section name to process. None is ALL sections.
+    :return: a dictionary of hosts, by type
+    """
+    config = config or parse_ini_file(config_file)
     host_list = []
-    for sectionkey in config_dict.keys():
+    for sectionkey in config.keys():
         if (section is None) or (section == sectionkey):
-            if 'hosts' in config_dict[sectionkey].keys():
-                hosts = config_dict[sectionkey]['hosts'].split(',')
+            section_dict = config[sectionkey]
+            section_keys = section_dict.keys()
+            if 'hosts' in section_keys:
+                hosts = section_dict['hosts'].split(',')
                 for ctr, host_ in enumerate(hosts):
                     hosts[ctr] = host_.strip()
                 host_list.extend(hosts)
+            elif 'host' in section_keys:
+                host_list.append(section_dict['host'])
     return host_list
 
 
-def hosts_from_config_file(config_file, section=None):
+def sources_from_config(config_file=None, config=None):
     """
-    Make lists of hosts from a given correlator config file.
-    :return: a dictionary of hosts, by type
+    Get a list of the sources given by the config
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :return:
     """
-    config = parse_ini_file(config_file)
-    return hosts_from_config_dict(config, section=section)
+    config = config or parse_ini_file(config_file)
+    sources = config['fengine']['source_names'].split(',')
+    for ctr, src in enumerate(sources):
+        sources[ctr] = src.strip()
+    return sources
+
+
+def host_to_sources(hosts, config_file=None, config=None):
+    """
+    Get sources related to a host
+    :param hosts: a list of hosts
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :return:
+    """
+    config = config or parse_ini_file(config_file)
+    f_per_fpga = int(config['fengine']['f_per_fpga'])
+    fhosts = hosts_from_config(config=config, section='fengine')
+    sources = sources_from_config(config=config)
+    if len(sources) != len(fhosts) * f_per_fpga:
+        raise RuntimeError('%i hosts, %i per fpga_host, expected %i '
+                           'sources' % (len(fhosts), f_per_fpga, len(sources)))
+    ctr = 0
+    rv = {}
+    for host in fhosts:
+        rv[host] = (sources[ctr], sources[ctr+1])
+        ctr += 2
+    return rv
+
+
+def source_to_host(sources, config_file=None, config=None):
+    """
+    Get sources related to a host
+    :param sources: a list of sources
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :return:
+    """
+    config = config or parse_ini_file(config_file)
+    fhosts = hosts_from_config(config=config, section='fengine')
+    source_host_dict = host_to_sources(fhosts, config=config)
+    ctr = 0
+    rv = {}
+    for source in sources:
+        for host in source_host_dict:
+            if source in source_host_dict[host]:
+                rv[source] = host
+                break
+    return rv
+
+
+def baselines_from_source_list(source_list):
+    """
+    Get a list of the baselines from a source list.
+    :param source_list:
+    :return:
+    """
+    n_antennas = len(source_list) / 2
+    order1 = []
+    order2 = []
+    for ant_ctr in range(n_antennas):
+        # print 'ant_ctr(%d)' % ant_ctr
+        for ctr2 in range(int(n_antennas / 2), -1, -1):
+            temp = (ant_ctr - ctr2) % n_antennas
+            # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
+            if ant_ctr >= temp:
+                order1.append((temp, ant_ctr))
+            else:
+                order2.append((ant_ctr, temp))
+    order2 = [order_ for order_ in order2 if order_ not in order1]
+    baseline_order = order1 + order2
+    source_names = []
+    for source in source_list:
+        source_names.append(source)
+    rv = []
+    for baseline in baseline_order:
+        rv.append((source_names[baseline[0] * 2],
+                   source_names[baseline[1] * 2]))
+        rv.append((source_names[baseline[0] * 2 + 1],
+                   source_names[baseline[1] * 2 + 1]))
+        rv.append((source_names[baseline[0] * 2],
+                   source_names[baseline[1] * 2 + 1]))
+        rv.append((source_names[baseline[0] * 2 + 1],
+                   source_names[baseline[1] * 2]))
+    return rv
+
+
+def baselines_from_config(config_file=None, config=None):
+    """
+    Get a list of the baselines from a config file.
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :return:
+    """
+    config = config or parse_ini_file(config_file)
+    sources = sources_from_config(config=config)
+    fhosts = hosts_from_config(config=config, section='fengine')
+    n_antennas = len(fhosts)
+    assert len(sources) / 2 == n_antennas
+    return baselines_from_source_list(sources)
+    # order1 = []
+    # order2 = []
+    # for ant_ctr in range(n_antennas):
+    #     # print 'ant_ctr(%d)' % ant_ctr
+    #     for ctr2 in range(int(n_antennas / 2), -1, -1):
+    #         temp = (ant_ctr - ctr2) % n_antennas
+    #         # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
+    #         if ant_ctr >= temp:
+    #             order1.append((temp, ant_ctr))
+    #         else:
+    #             order2.append((ant_ctr, temp))
+    # order2 = [order_ for order_ in order2 if order_ not in order1]
+    # baseline_order = order1 + order2
+    # source_names = []
+    # for source in sources:
+    #     source_names.append(source)
+    # rv = []
+    # for baseline in baseline_order:
+    #     rv.append((source_names[baseline[0] * 2],
+    #                source_names[baseline[1] * 2]))
+    #     rv.append((source_names[baseline[0] * 2 + 1],
+    #                source_names[baseline[1] * 2 + 1]))
+    #     rv.append((source_names[baseline[0] * 2],
+    #                source_names[baseline[1] * 2 + 1]))
+    #     rv.append((source_names[baseline[0] * 2 + 1],
+    #                source_names[baseline[1] * 2]))
+    # return rv
 
 
 def parse_hosts(str_file_dict, section=None):
@@ -114,11 +254,12 @@ def parse_hosts(str_file_dict, section=None):
     """
     # issit a config dict?
     if hasattr(str_file_dict, 'keys'):
-        host_list = hosts_from_config_dict(str_file_dict, section=section)
+        host_list = hosts_from_config(config=str_file_dict, section=section)
     else:
         try:
             # it's a file
-            host_list = hosts_from_config_file(str_file_dict, section=section)
+            host_list = hosts_from_config(config_file=str_file_dict,
+                                          section=section)
         except IOError:
             # it's a string
             hosts = str_file_dict.strip().split(',')
@@ -309,7 +450,34 @@ def thread_funcs(timeout, *funcs):
         except Queue.Empty:
             break
     if len(returnval) != num_funcs:
-        print returnval
+        LOGGER.exception('Given %d FPGAs, only got %d results, must '
+                          'have timed out.' % (num_funcs, len(returnval)))
         raise RuntimeError('Given %d FPGAs, only got %d results, must '
                            'have timed out.' % (num_funcs, len(returnval)))
     return returnval
+
+
+def hosts_from_dhcp_leases(host_pref='roach',
+                           leases_file='/var/lib/misc/dnsmasq.leases'):
+    """
+    Get a list of hosts from a leases file.
+    :param host_pref: the prefix of the hosts in which we're interested
+    :param leases_file: the file to read
+    :return:
+    """
+    hosts = []
+    if not isinstance(host_pref, list):
+        host_pref = [host_pref]
+    masqfile = open(leases_file)
+    for line in masqfile:
+        for host_prefix in host_pref:
+            _spos = line.find(host_prefix)
+            if _spos > 0:
+                _epos = line.find(' ', _spos + 1)
+                roachname = line[_spos:_epos].strip()
+                hosts.append(roachname)
+                break
+    masqfile.close()
+    return hosts, leases_file
+
+# end

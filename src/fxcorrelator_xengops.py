@@ -5,7 +5,6 @@ from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
 
 from casperfpga import utils as fpgautils
-from casperfpga import tengbe
 
 import data_product
 from net_address import NetAddress
@@ -44,36 +43,24 @@ class XEngineOperations(object):
         self.vacc_check_cb = None
         self.vacc_check_cb_data = None
 
-    def initialise(self):
+    @staticmethod
+    def _gberst(hosts, state):
+        THREADED_FPGA_OP(
+            hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.control.write(gbe_rst=state),))
+
+    def initialise_post_gbe(self):
         """
-        Set up x-engines on this device.
+        Perform post-gbe setup initialisation steps
         :return:
         """
-        # simulator
-        if use_xeng_sim:
-            THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(
-                    lambda fpga_: fpga_.registers.simulator.write(
-                        en=False, rst='pulse'),))
-
-        # disable transmission, place cores in reset, and give control
-        # register a known state
-        self.xeng_tx_disable(None)
-
-        def _gberst(hosts, state):
-            THREADED_FPGA_OP(
-                hosts, timeout=5,
-                target_function=(
-                    lambda fpga_:
-                    fpga_.registers.control.write(gbe_rst=state),))
-
-        _gberst(self.hosts, True)
-
-        self.clear_status_all()
-
-        # set up the 10gbe cores
-        self._setup_gbes()
+        # write the board IDs to the xhosts
+        board_id = 0
+        for f in self.hosts:
+            f.registers.board_id.write(reg=board_id)
+            board_id += 1
 
         # write the data product destination to the registers
         self.write_data_product_destination(None)
@@ -86,7 +73,7 @@ class XEngineOperations(object):
                 fpga_.registers.control.write(gbe_debug_rst='pulse'),))
 
         # release cores from reset
-        _gberst(self.hosts, False)
+        XEngineOperations._gberst(self.hosts, False)
 
         # simulator
         if use_xeng_sim:
@@ -108,6 +95,58 @@ class XEngineOperations(object):
         # check for errors
         # TODO - read status regs?
 
+    def initialise_pre_gbe(self):
+        """
+        Set up x-engines on this device.
+        :return:
+        """
+        # simulator
+        if use_xeng_sim:
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.simulator.write(
+                        en=False, rst='pulse'),))
+
+        # set the gapsize register
+        gapsize = int(self.corr.configd['xengine']['10gbe_pkt_gapsize'])
+        self.logger.info('X-engines: setting packet gap size to %i' % gapsize)
+        if 'gapsize' in self.hosts[0].registers.names():
+            # these versions have the correct logic surrounding the register
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.gapsize.write_int(gapsize),))
+        elif 'gap_size' in self.hosts[0].registers.names():
+            # these versions do not, they need a software hack for the setting
+            # to 'take'
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.gap_size.write_int(gapsize),))
+            # HACK - this is a hack to overcome broken x-engine firmware in
+            # versions around a2d0615bc9cd95eabf7c8ed922c1a15658c0688e.
+            # The logic next to the gap_size register is broken, registering
+            # the LAST value written, not the new one.
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.gap_size.write_int(
+                        gapsize-1),))
+            # /HACK
+        else:
+            _errmsg = 'X-engine image has no register gap_size/gapsize?'
+            self.logger.exception(_errmsg)
+            raise RuntimeError(_errmsg)
+
+        # disable transmission, place cores in reset, and give control
+        # register a known state
+        self.xeng_tx_disable(None)
+
+        XEngineOperations._gberst(self.hosts, True)
+
+        self.clear_status_all()
+
     def configure(self):
         """
         Configure the xengine operations - this is done whenever a correlator
@@ -116,41 +155,6 @@ class XEngineOperations(object):
         """
         # set up the xengine data product
         self._setup_data_product()
-
-    def _setup_gbes(self):
-        """
-        Set up the 10gbe cores on the x hosts
-        :return:
-        """
-        # set up the 10gbe cores
-        xeng_port = int(self.corr.configd['xengine']['10gbe_port'])
-        mac_start = tengbe.Mac(self.corr.configd['xengine']['10gbe_start_mac'])
-
-        boards_info = {}
-        board_id = 0
-        mac = int(mac_start)
-        for f in self.hosts:
-            macs = []
-            for gbe in f.tengbes:
-                macs.append(mac)
-                mac += 1
-            boards_info[f.host] = board_id, macs
-            board_id += 1
-
-        def setup_gbes(f):
-            board_id, macs = boards_info[f.host]
-            f.registers.board_id.write(reg=board_id)
-            mac_ctr = 1
-            for gbe, this_mac in zip(f.tengbes, macs):
-                this_mac = tengbe.Mac.from_roach_hostname(f.host, mac_ctr)
-                gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=xeng_port)
-                self.logger.info(
-                    'xhost(%s) gbe(%s) mac(%s) port(%i) board_id(%i)' %
-                    (f.host, gbe.name, str(gbe.mac), xeng_port, board_id))
-                # gbe.tap_start(restart=True)
-                gbe.dhcp_start()
-                mac_ctr += 1
-        THREADED_FPGA_OP(self.hosts, timeout=40, target_function=(setup_gbes,))
 
     def _setup_data_product(self):
         """
@@ -564,8 +568,8 @@ class XEngineOperations(object):
                 _err = 'xeng_vacc_sync: all hosts do not have matching ' \
                        'vacc LSWs and MSWs'
                 self.logger.error(_err)
-                print 'lsws:', lsws
-                print 'msws:', msws
+                self.logger.error('LSWs: %s' % lsws)
+                self.logger.error('MSWs: %s' % msws)
                 vacc_status = self.vacc_status()
                 self._vacc_sync_print_vacc_statuses(vacc_status)
                 return False
@@ -743,15 +747,24 @@ class XEngineOperations(object):
         """
         self.logger.info('\tChecking for errors & accumulations...')
         vacc_status = self.vacc_status()
+        note_errors = False
         for host in self.hosts:
             for status in vacc_status[host.host]:
                 if status['errors'] > 0:
-                    self.logger.error('\t\tvacc errors > 0. Que pasa?')
-                    return False
+                    if status['errors'] < 100:
+                        self.logger.warn('\t\t100 > vacc errors > 0. Que pasa?')
+                        note_errors = True
+                    elif status['errors'] >= 100:
+                        self.logger.error('\t\tvacc errors > 100. Problems?')
+                        return False
                 if status['count'] <= 0:
                     self.logger.error('\t\tvacc counts <= 0. Que pasa?')
                     return False
-        self.logger.debug('\t\txeng_vacc_check_status: all okay')
+        if note_errors:
+            self.logger.debug('\t\txeng_vacc_check_status: mostly okay, some '
+                              'reorder errors')
+        else:
+            self.logger.debug('\t\txeng_vacc_check_status: all okay')
         return True
 
     def set_acc_time(self, acc_time_s, vacc_resync=True):
@@ -759,6 +772,7 @@ class XEngineOperations(object):
         Set the vacc accumulation length based on a required dump time,
         in seconds
         :param acc_time_s: new dump time, in seconds
+        :param vacc_resync:
         :return:
         """
         if use_xeng_sim:
@@ -821,41 +835,6 @@ class XEngineOperations(object):
         if reenable_timer:
             self.vacc_check_timer_start()
 
-    def get_baseline_order(self):
-        """
-        Return the order of baseline data output by a CASPER correlator X engine
-        :return:
-        """
-        # TODO - nants vs number of inputs?
-        assert len(self.corr.fengine_sources)/2 == self.corr.n_antennas
-        order1 = []
-        order2 = []
-        for ant_ctr in range(self.corr.n_antennas):
-            # print 'ant_ctr(%d)' % ant_ctr
-            for ctr2 in range(int(self.corr.n_antennas/2), -1, -1):
-                temp = (ant_ctr - ctr2) % self.corr.n_antennas
-                # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
-                if ant_ctr >= temp:
-                    order1.append((temp, ant_ctr))
-                else:
-                    order2.append((ant_ctr, temp))
-        order2 = [order_ for order_ in order2 if order_ not in order1]
-        baseline_order = order1 + order2
-        source_names = []
-        for source in self.corr.fengine_sources:
-            source_names.append(source['source'].name)
-        rv = []
-        for baseline in baseline_order:
-            rv.append((source_names[baseline[0] * 2],
-                       source_names[baseline[1] * 2]))
-            rv.append((source_names[baseline[0] * 2 + 1],
-                       source_names[baseline[1] * 2 + 1]))
-            rv.append((source_names[baseline[0] * 2],
-                       source_names[baseline[1] * 2 + 1]))
-            rv.append((source_names[baseline[0] * 2 + 1],
-                       source_names[baseline[1] * 2]))
-        return rv
-
     def xeng_tx_enable(self, data_product):
         """
         Start transmission of data products from the x-engines
@@ -915,7 +894,7 @@ class XEngineOperations(object):
             name='n_bls', id=0x1008,
             description='Number of baselines in the data product.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=len(self.get_baseline_order()))
+            value=len(self.corr.baselines))
 
         self.corr.speadops.item_0x1009(meta_ig)
         self.corr.speadops.item_0x100a(meta_ig)
@@ -928,7 +907,7 @@ class XEngineOperations(object):
             value=n_xengs)
 
         bls_ordering = numpy.array(
-            [baseline for baseline in self.get_baseline_order()])
+            [baseline for baseline in self.corr.baselines])
         # this is a list of the baseline product pairs, e.g. ['ant0x' 'ant0y']
         meta_ig.add_item(
             name='bls_ordering', id=0x100C,
@@ -1057,8 +1036,8 @@ class XEngineOperations(object):
                         'imaginary) unsigned integers.' % n_xengs,
             # dtype=numpy.int32,
             dtype=numpy.dtype('>i4'),
-            shape=[self.corr.n_chans, len(self.get_baseline_order()), 2])
-            # shape=[self.corr.n_chans * len(self.get_baseline_order()), 2])
+            shape=[self.corr.n_chans, len(self.corr.baselines), 2])
+            # shape=[self.corr.n_chans * len(self.corr.baselines), 2])
 
     def spead_meta_issue_all(self, data_product):
         """

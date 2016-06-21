@@ -110,13 +110,16 @@ class FilterOperations(object):
             # check the RX data
             self.logger.info('filter_ops: waiting for data.')
             time.sleep(5.0)
-            THREADED_FPGA_OP(self.hosts, timeout=5,
-                             target_function=(lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
+            THREADED_FPGA_OP(
+                self.hosts, timeout=5,
+                target_function=(
+                    lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
             THREADED_FPGA_FUNC(self.hosts, timeout=5,
                                target_function='clear_status')
             time.sleep(1.0)
             if not self._check_rx():
-                raise RuntimeError('One or more filter engines are not receiving data.')
+                raise RuntimeError('One or more filter engines are not '
+                                   'receiving data.')
     
             # enable TX
             THREADED_FPGA_FUNC(self.hosts, timeout=5,
@@ -207,10 +210,12 @@ class FilterOperations(object):
         :return:
         """
         _destinations_per_filter = 2  # eish, this is hardcoded for now...
-        _destinations = parse_sources(name_string=self.corr.configd['fengine']['source_names'],
-                                      ip_string=self.corr.configd['fengine']['source_mcast_ips'],)
-        self.logger.info('filterops._process_destinations: assuming {} destinations '
-                         'per filter board'.format(_destinations_per_filter))
+        _destinations = parse_sources(
+            name_string=self.corr.configd['fengine']['source_names'],
+            ip_string=self.corr.configd['fengine']['source_mcast_ips'],)
+        self.logger.info('filterops._process_destinations: assuming '
+                         '{} destinations per filter '
+                         'board'.format(_destinations_per_filter))
     
         for _filtfpga in self.hosts:
             _offset = _filtfpga.board_id * _destinations_per_filter

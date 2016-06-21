@@ -16,24 +16,30 @@ import copy
 import threading
 import Queue
 
-#from corr2.digitiser import Digitiser
-from casperfpga import katcp_fpga
 from casperfpga import dcp_fpga
+from casperfpga import katcp_fpga
 
-parser = argparse.ArgumentParser(description='Display information about a MeerKAT digitiser.',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(dest='hostname', type=str, action='store',
-                    help='the hostname of the digitiser')
-parser.add_argument('-p', '--polltime', dest='polltime', action='store', default=1, type=int,
-                    help='time at which to poll digitiser data, in seconds')
-parser.add_argument('-s', '--payloadsize', dest='payloadsize', action='store', default=5120, type=int,
-                    help='expected 10GBE SPEAD payload size, in bytes')
-parser.add_argument('--get_tx_ips', dest='get_tx_ips', action='store_true', default=False,
-                    help='query outgoing IPs, takes a few seconds')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                    help='log level to use, default None, options INFO, DEBUG, ERROR')
+parser = argparse.ArgumentParser(
+    description='Display information about a MeerKAT digitiser.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    dest='hostname', type=str, action='store',
+    help='the hostname of the digitiser')
+parser.add_argument(
+    '-p', '--polltime', dest='polltime', action='store', default=1, type=int,
+    help='time at which to poll digitiser data, in seconds')
+parser.add_argument(
+    '-s', '--payloadsize', dest='payloadsize', action='store', default=5120,
+    type=int, help='expected 10GBE SPEAD payload size, in bytes')
+parser.add_argument(
+    '--get_tx_ips', dest='get_tx_ips', action='store_true', default=False,
+    help='query outgoing IPs, takes a few seconds')
+parser.add_argument(
+    '--comms', dest='comms', action='store', default='katcp', type=str,
+    help='katcp (default) or dcp?')
+parser.add_argument(
+    '--loglevel', dest='log_level', action='store', default='',
+    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 polltime = args.polltime

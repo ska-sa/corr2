@@ -1,7 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Issue spead metadata for a data product
+Issue spead metadata for a data product.
+
+BE CAREFUL WITH THIS! Much metadata will change as the instrument is
+set up and used. These changes WILL NOT REFLECT in a base instrument created
+from the config file, which is what this will give you.
+
+It is recommended that you use ?capture-meta against your running instrument!
 
 @author: paulp
 """

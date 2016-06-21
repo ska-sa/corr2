@@ -42,7 +42,7 @@ class DataSource(object):
         Does the data source's IP address begin with 239?
         :return:
         """
-        return (int(self.ip_address) >> 24) == 239
+        return self.ip_address.is_multicast()
 
     def __repr__(self):
         return self.__str__()
