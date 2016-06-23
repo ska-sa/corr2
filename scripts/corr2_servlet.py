@@ -171,15 +171,15 @@ class Corr2Server(katcp.DeviceServer):
         #                  'request_digitiser_synch_epoch')
         #     return 'fail', 'request %s before initialised... refusing.' % \
         #            'request_digitiser_synch_epoch'
-        if synch_time > -1:
+        if synch_time > -1.0:
             try:
                 self.instrument.set_synch_time(synch_time)
             except RuntimeError as ve:
                 return 'fail', 'request digitiser_synch_epoch did not ' \
-                               'succeed, check the log - ' % ve.message
+                               'succeed, check the log - %s' % ve.message
             except Exception as ve:
                 return 'fail', 'request digitiser_synch_epoch failed for an ' \
-                               'unknown reason, check the log - ' % ve.message
+                               'unknown reason, check the log - %s' % ve.message
         return 'ok', self.instrument.get_synch_time()
 
     def _check_product_name(self, product_name):
