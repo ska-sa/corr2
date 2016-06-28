@@ -121,6 +121,17 @@ data = get_fpga_data(fpgas[0])
 reg_names = data.keys()
 reg_names.sort()
 
+# work out the maximum host & field name widths
+max_1st_col_offset = -1
+for fpga in fpgas:
+    max_1st_col_offset = max(max_1st_col_offset, len(fpga.host))
+max_regname = -1
+for regname in reg_names:
+    max_1st_col_offset = max(max_1st_col_offset, len(regname))
+    max_regname = max(max_regname, len(regname))
+max_1st_col_offset += 5
+max_regname += 2
+
 
 def exit_gracefully(sig, frame):
     print sig, frame
@@ -149,36 +160,41 @@ try:
             scroller.clear_buffer()
             _seconds = 'second' if args.polltime == 1 else (
                 '%i seconds' % args.polltime)
-            scroller.add_line(
+            scroller.add_string(
                 'Polling %i fengine%s every %s - %is elapsed.' % (
                     len(fpgas), '' if len(fpgas) == 1 else 's', _seconds,
-                    time.time() - STARTTIME), 0, 0, absolute=True)
-            start_pos = 15
+                    time.time() - STARTTIME), 0, 0, fixed=True)
+            scroller.set_current_line(1)
+            start_pos = max_1st_col_offset
             pos_increment = COLUMN_WIDTH
-            scroller.add_line('Host', 0, 1, absolute=True)
+            scroller.add_string('Host', 0, 1)
             for reg in reg_names:
-                scroller.add_line(new_line=reg.rjust(8), xpos=start_pos,
-                                  ypos=1, absolute=True)
+                scroller.add_string(
+                    reg.rjust(max_regname),
+                    xpos=start_pos, ypos=1)
                 start_pos += pos_increment
-            scroller.set_ypos(newpos=2)
-            scroller.set_ylimits(ymin=2)
+            scroller.add_string('', cr=True)
+            scroller.set_current_line(2)
+            scroller.set_ylimits(1)
             all_fpga_data = fpgautils.threaded_fpga_operation(
                 fpgas, 10, target_function=(get_fpga_data,))
             for ctr, fpga in enumerate(fpgas):
                 fpga_data = all_fpga_data[fpga.host]
-                scroller.add_line(fpga.host)
-                start_pos = 15
+                scroller.add_string(fpga.host)
+                start_pos = max_1st_col_offset
                 pos_increment = COLUMN_WIDTH
                 for reg in reg_names:
-                    regval = '%8d' % fpga_data[reg]
-                    scroller.add_line(
-                        regval, start_pos,
-                        scroller.get_current_line() - 1)  # all on the same line
+                    regval = '{val:{width}}'.format(
+                        val=fpga_data[reg], width=max_regname)
+                    scroller.add_string(
+                        regval,
+                        start_pos)
                     start_pos += pos_increment
+                scroller.add_string('', cr=True)
             scroller.draw_screen()
             last_refresh = time.time()
         else:
-            time.sleep(0.1)
+            time.sleep(0.05)
 except Exception, e:
     exit_gracefully(None, None)
     raise

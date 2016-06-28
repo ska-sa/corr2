@@ -117,26 +117,26 @@ try:
             scroller.draw_screen()
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
-            scroller.add_line('Polling %i fengine%s every %s - %is elapsed.' % (
-                len(fpgas), '' if len(fpgas) == 1 else 's',
-                'second' if polltime == 1 else ('%i seconds' % polltime),
-                time.time() - STARTTIME), 0, 0, absolute=True)
-            start_pos = 20
-            pos_increment = 20
-            scroller.set_ypos(newpos=1)
-            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10,
-                                                              get_fpga_data)
+            scroller.add_string(
+                'Polling %i fengine%s every %s - %is elapsed.' % (
+                    len(fpgas), '' if len(fpgas) == 1 else 's',
+                    'second' if polltime == 1 else ('%i seconds' % polltime),
+                    time.time() - STARTTIME), 0, 0, fixed=True)
+            scroller.set_current_line(1)
+            scroller.set_ylimits(1)
+            all_fpga_data = fpgautils.threaded_fpga_operation(
+                fpgas, 10, get_fpga_data)
             for ctr, fpga in enumerate(fpgas):
                 fpga_data = all_fpga_data[fpga.host]
                 scroller.add_line(fpga.host)
                 printline = ''
                 for key, value in fpga_data.items():
-                    printline += '\t%s[%i]' % (key, value)
+                    printline += '    %s[%i]' % (key, value)
                 scroller.add_line(printline)
             scroller.draw_screen()
             last_refresh = time.time()
         else:
-            time.sleep(0.1)
+            time.sleep(0.05)
 except Exception, e:
     exit_gracefully(None, None)
     raise
