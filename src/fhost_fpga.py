@@ -730,13 +730,17 @@ class FpgaFHost(DigitiserDataReceiver):
         Get the quant snapshots for all the sources on this host.
         :return:
         """
-        return {src.name: self.get_quant_snapshot(src.name)
-                for src in self.data_sources}
+        return {
+            src.name: self.get_quant_snapshot(src.name)
+            for src in self.data_sources
+        }
 
-    def get_quant_snapshot(self, source_name=None):
+    def _find_source(self, source_name):
         """
-        Read the post-quantisation snapshot for a given source
-        :return:
+        Is a named source on this host?
+        :param source_name:
+        :return: a tuple of the located DataSource and its index
+         Raise Value error if the source is not located in this host.
         """
         targetsrc = None
         targetsrc_num = -1
@@ -745,11 +749,33 @@ class FpgaFHost(DigitiserDataReceiver):
                 targetsrc = src
                 targetsrc_num = srcnum
                 break
-
         if targetsrc is None:
             raise ValueError('Could not find source %s on '
                              'this fhost.' % source_name)
+        return targetsrc, targetsrc_num
 
+    def get_small_voltage_buffer(self, source_name, unix_time):
+        """
+        Read the small voltage buffer for a source from a host.
+        :param source_name: the source name
+        :param unix_time: the time at which to read
+        :return:
+        """
+        targetsrc, targetsrc_num = self._find_source(source_name)
+        d = self.get_adc_timed_snapshots(loadtime_unix=unix_time)
+        if targetsrc_num % 2 == 0:
+            return d['p0']
+        else:
+            return d['p1']
+
+    def get_quant_snapshot(self, source_name):
+        """
+        Read the post-quantisation snapshot for a given source
+        :param source_name: the source name for which to read the quantiser
+        snapshot data.
+        :return:
+        """
+        targetsrc, targetsrc_num = self._find_source(source_name)
         if targetsrc_num % 2 == 0:
             snapshot = self.snapshots.snap_quant0_ss
         else:
@@ -892,6 +918,11 @@ class FpgaFHost(DigitiserDataReceiver):
         toc = time.time()
         LOGGER.debug('%s: timed ADC read took %.3f sec, total %.3f sec' % (
             self.host, (toc - snaptic), (toc - tic)))
+        if ((loadtime >> 12) & ((2**32)-1)) != rv['time48']:
+            err_str = 'ADC data not read at specified time: %i != %i' % (
+                loadtime, rv['time48'])
+            LOGGER.error(err_str)
+            raise RuntimeError(err_str)
         return rv
 
     def get_adc_snapshots(self, trig_sel=1, custom_timeout=-1):
@@ -911,22 +942,30 @@ class FpgaFHost(DigitiserDataReceiver):
         self.registers.control.write(adc_snap_arm=1)
         if custom_timeout != -1:
             d = self.snapshots.snap_adc0_ss.read(
-                arm=False, timeout=custom_timeout)['data']
+                arm=False, timeout=custom_timeout)
+            time48 = d['extra_value']['data']['timestamp']
+            d = d['data']
             d.update(self.snapshots.snap_adc1_ss.read(
                 arm=False, timeout=custom_timeout)['data'])
         else:
-            d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
+            d = self.snapshots.snap_adc0_ss.read(arm=False)
+            time48 = d['extra_value']['data']['timestamp']
+            d = d['data']
             d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
         self.registers.control.write(adc_snap_arm=0)
-        p0 = {'d%i' % ctr: d['p0_d%i' % ctr] for ctr in range(8)}
-        p1 = {'d%i' % ctr: d['p1_d%i' % ctr]
-              for ctr in [0, 1, 2, 3, 5, 6, 7]}
-        p1['d4'] = []
+        # process p1_d4, which was broken up over two snapshots
+        d['p1_d4'] = []
         for ctr in range(len(d['p1_d4_u8'])):
             _tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
-            p1['d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
-
-        return {'p0': p0, 'p1': p1}
+            d['p1_d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
+        # pack the data into simple lists
+        rv = {'p0': [], 'p1': []}
+        for ctr in range(0, len(d['p0_d0'])):
+            for ctr2 in range(0, 8):
+                rv['p0'].append(d['p0_d%i' % ctr2][ctr])
+                rv['p1'].append(d['p1_d%i' % ctr2][ctr])
+        rv['time48'] = time48
+        return rv
 
     def get_adc_snapshots_old(self):
         """
@@ -953,7 +992,14 @@ class FpgaFHost(DigitiserDataReceiver):
         else:
             p0 = self.snapshots.snap_adc0_ss.read()['data']
             p1 = self.snapshots.snap_adc1_ss.read()['data']
-        return {'p0': p0, 'p1': p1}
+        # pack the data into simple lists
+        rv = {'p0': [], 'p1': []}
+        for ctr in range(0, len(p0['d0'])):
+            for ctr2 in range(0, 8):
+                rv['p0'].append(p0['d%i' % ctr2][ctr])
+                rv['p1'].append(p1['d%i' % ctr2][ctr])
+        rv['time48'] = -1
+        return rv
 
 '''
     def _get_fengine_fpga_config(self):

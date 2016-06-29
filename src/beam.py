@@ -263,19 +263,34 @@ class Beam(object):
                 rv.append(ctr)
         return rv
 
-    def set_weights(self, input_name, new_weight):
+    def get_source_index(self, source_name):
         """
-        Set the weight for this beam for a given input
+        Given a source/input name, return its position in the input list
+        :param source_name: which source/input we're looking for
         :return:
         """
-        input_index = self.source_labels.index(input_name)
-        if new_weight == self.source_weights[input_index]:
+        if source_name not in self.source_labels:
+            raise ValueError('No such input, %s. Available inputs: %s' % (
+                source_name, self.source_labels
+            ))
+        return self.source_labels.index(source_name)
+
+    def set_weights(self, input_name, new_weight, force=False):
+        """
+        Set the weight for this beam for a given input
+        :param input_name: which source/input we're looking for
+        :param new_weight: the new weight to apply to this input/source
+        :param force: force the write, even if the stored value is the same
+        :return:
+        """
+        input_index = self.get_source_index(input_name)
+        if (new_weight == self.source_weights[input_index]) and (not force):
             LOGGER.info('Beam %i:%s: %s weight already %.3f' % (
                 self.index, self.name, input_name, new_weight))
             return False
         self.source_weights[input_index] = new_weight
-        THREADED_FPGA_FUNC(self.hosts, 5,
-                           ('beam_weights_set', [self], {}))
+        THREADED_FPGA_FUNC(
+            self.hosts, 5, ('beam_weights_set', [self, [input_index]], {}))
 
         # TODO - send SPEAD metadata about weights
 
@@ -286,11 +301,25 @@ class Beam(object):
     def get_weights(self, input_name):
         """
         Get the current weight(s) associated with an input on this beam.
-        :param input_name:
+        :param input_name: which source/input we're looking for
         :return:
         """
-        input_index = self.source_labels.index(input_name)
-        return self.source_weights[input_index]
+        input_index = self.get_source_index(input_name)
+        d = THREADED_FPGA_FUNC(
+            self.hosts, 5, ('beam_weights_get', [self, [input_index]], {}))
+        ref = d[d.keys()[0]][0]
+        for dhost, dval in d.items():
+            for vctr, v in enumerate(dval[0]):
+                if v != ref[vctr]:
+                    raise RuntimeError(
+                        'Beamweights for beam %s input %s differ across '
+                        'hosts!?' % (self.name, input_name))
+        for v in ref:
+            if v != ref[0]:
+                raise RuntimeError('Beamweights for beam %s input %s differ '
+                                   'across b-engs!?' % (self.name, input_name))
+        self.source_weights[input_index] = ref[0]
+        return ref[0]
 
     def _bandwidth_to_partitions(self, bandwidth, centerfreq):
         """

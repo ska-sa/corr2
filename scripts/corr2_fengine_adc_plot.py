@@ -90,18 +90,8 @@ time.sleep(0.5)
 fpga.get_system_information()
 
 
-def get_data():
-    _data = fpga.get_adc_snapshots()
-    rv = {'p0': [], 'p1': []}
-    for ctr in range(0, len(_data['p0']['d0'])):
-        for ctr2 in range(0, 8):
-            rv['p0'].append(_data['p0']['d%i' % ctr2][ctr])
-            rv['p1'].append(_data['p1']['d%i' % ctr2][ctr])
-    return rv
-
-
 def plot_func(figure, sub_plots, idata, ictr, pctr):
-    data = get_data()
+    data = fpga.get_adc_snapshots()
     ictr += 1
 
     topstop = plotrange[1] if plotrange[1] != -1 else len(data['p0'])
@@ -165,17 +155,17 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
                                     sub_plots, idata, ictr, pctr)
 
 # set up the figure with a subplot to be plotted
-data = get_data()
+data = fpga.get_adc_snapshots()
 
 if args.noplot:
     while True:
         print data
         time.sleep(1)
-        data = get_data()
+        data = fpga.get_adc_snapshots()
 else:
     fig = pyplot.figure()
     subplots = []
-    num_plots = len(data.keys())
+    num_plots = 2
     for p in range(num_plots):
         sub_plot = fig.add_subplot(num_plots, 1, p+1)
         subplots.append(sub_plot)

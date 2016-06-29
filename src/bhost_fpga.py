@@ -30,7 +30,7 @@ class FpgaBHost(FpgaXHost):
     def beam_destination_set(self, beam):
         """
         Set the data destination for this beam.
-        :param beam: a Beam object
+        :param beam: The Beam() on which to act
         :return
         """
         beam_cfgreg = self.registers['bf%i_config' % beam.index]
@@ -44,7 +44,7 @@ class FpgaBHost(FpgaXHost):
     def beam_index_set(self, beam):
         """
         Set the beam index.
-        :param beam:
+        :param beam: The Beam() on which to act
         :return:
         """
         beam_cfgreg = self.registers['bf%i_config' % beam.index]
@@ -54,7 +54,7 @@ class FpgaBHost(FpgaXHost):
 
     def beam_num_partitions_set(self, beam):
         """
-        :param beam: a Beam object
+        :param beam: The Beam() on which to act
         :return
         """
         beam_cfgreg = self.registers['bf%i_config' % beam.index]
@@ -82,33 +82,58 @@ class FpgaBHost(FpgaXHost):
     #         self.host, self.index, beam.index, beam.name,
     #         partition_start, partition_start+self.beng_per_host-1))
 
-    def beam_weights_set(self, beam):
+    def beam_weights_set(self, beam, source_indices=None):
         """
         Set the beam weights for the given beam.
+        :param beam: The Beam() on which to act
+        :param source_indices: a list of the input/ant/source indices to set
         """
-        for ant_ctr, ant_weight in enumerate(beam.source_weights):
+        if not source_indices:
+            source_indices = range(len(beam.source_weights))
+        for ant_ctr in source_indices:
+            ant_weight = beam.source_weights[ant_ctr]
             self.registers.bf_value_in0.write(bw=ant_weight)
             for beng_ctr in range(0, self.beng_per_host):
-                self.registers.bf_control.write(stream=beam.index,
-                                                beng=beng_ctr,
-                                                antenna=ant_ctr)
+                self.registers.bf_control.write(
+                    stream=beam.index, beng=beng_ctr, antenna=ant_ctr)
                 self.registers.bf_value_ctrl.write(bw='pulse')
                 LOGGER.info('%s:%i: Beam %i:%s set beng(%i) antenna(%i) '
                             'weight(%.5f)' % (self.host, self.index,
                                               beam.index, beam.name,
                                               beng_ctr, ant_ctr, ant_weight))
 
+    def beam_weights_get(self, beam, source_indices=None):
+        """
+        Get the beam weights for the given beam.
+        :param beam: The Beam() on which to act
+        :param source_indices: a list of the input/ant/source indices to get
+        """
+        if not source_indices:
+            source_indices = range(len(beam.source_weights))
+        rv = []
+        for ant_ctr in source_indices:
+            self.registers.bf_control.write(
+                stream=beam.index, beng=0, antenna=ant_ctr)
+            d = self.registers.bf_valout_bw1.read()['data']
+            d.update(self.registers.bf_valout_bw0.read()['data'])
+            drv = [d['bw%i' % beng_ctr] for beng_ctr in range(self.x_per_fpga)]
+            rv.append(drv)
+        return rv
+
     def beam_partitions_read(self, beam):
         """
         Determine which partitions are currently active in the hardware.
+        :param beam: The Beam() on which to act
         """
         self.registers.bf_control.write(stream=beam.index)
         vals = self.registers.bf_valout_filt.read()['data']
-        return [v for v in vals.values()]
+        rv = [vals['filt%i' % beng_ctr] for beng_ctr in range(self.x_per_fpga)]
+        return rv
 
     def beam_partitions_control(self, beam):
         """
         Enable the active partitions for a beam on this host.
+        :param beam: The Beam() on which to act
         """
         host_parts = beam.partitions_by_host[self.index]
         actv_parts = beam.partitions_active

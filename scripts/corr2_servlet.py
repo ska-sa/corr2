@@ -3,6 +3,7 @@
 import logging
 import sys
 import argparse
+import time
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 import tornado
@@ -388,30 +389,61 @@ class Corr2Server(katcp.DeviceServer):
         except ValueError as e:
             logging.info(e)
             return 'fail', 'failed to read quant snap data for ' \
-                           'given source %s' % source_name
+                           'source %s' % source_name
         quant_string = ''
         for complex_word in snapdata:
             quant_string += ' %s' % str(complex_word)
         return tuple(['ok'] + Corr2Server.rv_to_liststr(quant_string))
 
-    @request(Str(), Str(), Float(multiple=True))
+    @request(Str(), Float(default=-1))
+    @return_reply(Str(multiple=True))
+    def request_small_voltage_buffer(self, sock, source_name, capture_time):
+        """
+        Get a list of values representing the quantised spectrum for
+        the given source
+        :param sock:
+        :param source_name: the source to query
+        :param capture_time: the UNIX time from which to capture data
+        :return:
+        """
+        try:
+            if capture_time == -1:
+                capture_time = time.time() + 1
+            snapdata = self.instrument.fops.get_small_voltage_buffer(
+                source_name, capture_time)
+        except ValueError as e:
+            logging.info(e)
+            return 'fail', 'failed to read ADC voltage data for ' \
+                           'source %s' % source_name
+        data_string = ''
+        for data_word in snapdata:
+            data_string += ' %s' % str(data_word)
+        return tuple(['ok'] + Corr2Server.rv_to_liststr(data_string))
+
+    @request(Str(), Str(), Float(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
         """
         Set the weight for a input
         :param sock:
+        :param beam_name: required beam product
+        :param input_name: required input
         :return:
         """
         if not self.instrument.found_beamformer:
             return 'fail', 'Cannot run beamformer commands with no beamformer'
+        if weight_list[0] != '':
+            try:
+                self.instrument.bops.set_beam_weights(beam_name,
+                                                      input_name,
+                                                      weight_list[0])
+            except Exception as e:
+                return 'fail', '%s' % e.message
         try:
-            self.instrument.bops.set_beam_weights(beam_name,
-                                                  input_name,
-                                                  weight_list[0])
+            cur_weights = self.instrument.bops.get_beam_weights(
+                beam_name, input_name)
         except Exception as e:
-            return 'fail', '%s' % e.message
-        cur_weights = self.instrument.bops.get_beam_weights(
-            beam_name, input_name)
+                return 'fail', '%s' % e.message
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_weights))
 
     @request(Str(), Float(), Float())

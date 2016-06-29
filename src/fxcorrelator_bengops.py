@@ -134,6 +134,17 @@ class BEngineOperations(object):
         for beam in self.beams.values():
             beam.partitions_deactivate(partitions_to_deactivate)
 
+    def get_beam_by_name(self, beam_name):
+        """
+        Given a string beam_name, return the corresponding Beam
+        :param beam_name:
+        :return:
+        """
+        if beam_name not in self.beams:
+            raise KeyError('No such beam: %s, available beams: %s' % (
+                beam_name, self.beams))
+        return self.beams[beam_name]
+
     def set_beam_bandwidth(self, beam_name, bandwidth, centerfreq):
         """
         Set the partitions for a given beam based on a provided bandwidth
@@ -143,10 +154,7 @@ class BEngineOperations(object):
         :param centerfreq: the center freq of this band, in hz
         :return: tuple, the set (bw, cf) for that beam
         """
-        if beam_name not in self.beams:
-            raise RuntimeError('No such beam: %s, available beams: %s' % (
-                beam_name, self.beams))
-        beam = self.beams[beam_name]
+        beam = self.get_beam_by_name(beam_name)
         return beam.set_beam_bandwidth(bandwidth, centerfreq)
 
     def get_beam_bandwidth(self, beam_name):
@@ -156,32 +164,28 @@ class BEngineOperations(object):
         :param beam_name: the name of the beam to set
         :return: (beam bandwidth, beam_cf)
         """
-        if beam_name not in self.beams:
-            raise RuntimeError('No such beam: %s, available beams: %s' % (
-                beam_name, self.beams))
-        beam = self.beams[beam_name]
+        beam = self.get_beam_by_name(beam_name)
         return beam.get_beam_bandwidth()
 
     def set_beam_weights(self, beam_name, input_name, new_weight):
         """
         Set the beam weights for a given beam and input.
-        :param beam_name str: the beam name
-        :param input_name str: the input name
+        :param beam_name: the beam name
+        :param input_name: the input name
+        :param new_weight: the new weight to apply to this beam & input
         :return:
         """
-        if beam_name not in self.beams:
-            raise RuntimeError('No such beam: %s, available beams: %s' % (
-                beam_name, self.beams))
+        beam = self.get_beam_by_name(beam_name)
         self.beams[beam_name].set_weights(input_name, new_weight)
 
     def get_beam_weights(self, beam_name, input_name):
         """
         Get the current beam weights for a given beam and input.
-        :param beam_name str: the beam name
-        :param input_name str: the input name
+        :param beam_name: the beam name
+        :param input_name: the input name
         :return: the beam weight(s) for this combination
         """
-        beam = self.beams[beam_name]
+        beam = self.get_beam_by_name(beam_name)
         return beam.get_weights(input_name)
 
     def update_labels(self, oldnames, newnames):

@@ -616,9 +616,23 @@ class FEngineOperations(object):
         :param source_name:
         :return:
         """
-        for host in self.corr.fhosts:
+        for host in self.hosts:
             try:
                 return host.get_quant_snapshot(source_name)
+            except ValueError:
+                pass
+        raise ValueError('Could not find source %s anywhere.' % source_name)
+
+    def get_small_voltage_buffer(self, source_name, unix_time):
+        """
+        Read the small voltage buffer for a source from a host.
+        :param source_name: the source name
+        :param unix_time: the time at which to read
+        :return:
+        """
+        for host in self.hosts:
+            try:
+                return host.get_small_voltage_buffer(source_name, unix_time)
             except ValueError:
                 pass
         raise ValueError('Could not find source %s anywhere.' % source_name)
