@@ -754,13 +754,15 @@ class FpgaFHost(DigitiserDataReceiver):
                              'this fhost.' % source_name)
         return targetsrc, targetsrc_num
 
-    def get_small_voltage_buffer(self, source_name, unix_time):
+    def get_adc_snapshot_for_source(self, source_name, unix_time=-1):
         """
         Read the small voltage buffer for a source from a host.
         :param source_name: the source name
         :param unix_time: the time at which to read
         :return:
         """
+        if unix_time == -1:
+            unix_time = time.time() + 1
         targetsrc, targetsrc_num = self._find_source(source_name)
         d = self.get_adc_timed_snapshots(loadtime_unix=unix_time)
         if targetsrc_num % 2 == 0:

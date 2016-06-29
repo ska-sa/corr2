@@ -3,7 +3,6 @@
 import logging
 import sys
 import argparse
-import time
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 import tornado
@@ -397,7 +396,7 @@ class Corr2Server(katcp.DeviceServer):
 
     @request(Str(), Float(default=-1))
     @return_reply(Str(multiple=True))
-    def request_small_voltage_buffer(self, sock, source_name, capture_time):
+    def request_adc_snapshot(self, sock, source_name, capture_time):
         """
         Get a list of values representing the quantised spectrum for
         the given source
@@ -407,9 +406,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         try:
-            if capture_time == -1:
-                capture_time = time.time() + 1
-            snapdata = self.instrument.fops.get_small_voltage_buffer(
+            snapdata = self.instrument.fops.get_adc_snapshot(
                 source_name, capture_time)
         except ValueError as e:
             logging.info(e)

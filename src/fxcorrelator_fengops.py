@@ -623,16 +623,18 @@ class FEngineOperations(object):
                 pass
         raise ValueError('Could not find source %s anywhere.' % source_name)
 
-    def get_small_voltage_buffer(self, source_name, unix_time):
+    def get_adc_snapshot(self, source_name, unix_time=-1):
         """
         Read the small voltage buffer for a source from a host.
         :param source_name: the source name
         :param unix_time: the time at which to read
         :return:
         """
+        if unix_time == -1:
+                unix_time = time.time() + 1
         for host in self.hosts:
             try:
-                return host.get_small_voltage_buffer(source_name, unix_time)
+                return host.get_adc_snapshot_for_source(source_name, unix_time)
             except ValueError:
                 pass
         raise ValueError('Could not find source %s anywhere.' % source_name)
