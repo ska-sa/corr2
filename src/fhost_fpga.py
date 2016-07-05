@@ -867,10 +867,10 @@ class FpgaFHost(DigitiserDataReceiver):
         timediff = loadtime_unix - time.time()
 
         if 'adc_snap_trig_select' not in self.registers.control.field_names():
-            raise NotImplementedError('Timed ADC snapshot support does'
+            raise NotImplementedError('Timed ADC snapshot support does '
                                       'not exist on older f-engines.')
         if self.rx_data_sample_rate_hz == -1:
-            raise ValueError('Cannot continue with unknown source sample'
+            raise ValueError('Cannot continue with unknown source sample '
                              'rate. Please set this with: '
                              '\'host.rx_data_sample_rate_hz = xxxx\' first.')
 
