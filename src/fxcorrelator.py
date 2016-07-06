@@ -466,8 +466,8 @@ class FxCorrelator(Instrument):
                 rv = [dsrc.name for dsrc in fhost.data_sources]
                 sensor.set(time.time(), Sensor.NOMINAL, str(rv))
         except Exception as ve:
-            self.logger.WARNING('Could not update input_mapping '
-                                'sensors!\n\n%s' % ve.message)
+            self.logger.warning('Could not update input_mapping '
+                                'sensors!\n%s' % ve.message)
 
         # update the list of baselines
         self.baselines = utils.baselines_from_source_list(newlist)
