@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+# import time
 import sys
 import argparse
 import katcp
@@ -136,7 +137,9 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.initialise(program=program,
                                        qdr_cal=qdr_cal,
                                        require_epoch=require_epoch)
-            sensors.setup_mainloop_sensors(self.instrument, self)
+            sensor_manager = sensors.SensorManager(self, self.instrument)
+            self.instrument.sensor_manager = sensor_manager
+            sensors.setup_mainloop_sensors(sensor_manager)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',
@@ -198,10 +201,10 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        temp = ipportstr.split(':')
-        txipstr = temp[0]
-        txport = int(temp[1])
         try:
+            temp = ipportstr.split(':')
+            txipstr = temp[0]
+            txport = int(temp[1])
             self.instrument.product_set_meta_destination(
                 stream, txip_str=txipstr, txport=txport)
         except Exception as e:
@@ -633,6 +636,14 @@ class Corr2Server(katcp.DeviceServer):
     #     return 'ok'
 
 
+# @gen.coroutine
+# def send_test_informs(server):
+#     supdate_inform = katcp.Message.inform('test-mass-inform',
+#                                           'arg0', 1.111, 'arg2',
+#                                           time.time())
+#     server.mass_inform(supdate_inform)
+#     tornado.ioloop.IOLoop.current().call_later(5, send_test_informs, server)
+
 @gen.coroutine
 def on_shutdown(ioloop, server):
     """
@@ -700,15 +711,16 @@ if __name__ == '__main__':
                 on_shutdown, ioloop, server))
         server.set_ioloop(ioloop)
         ioloop.add_callback(server.start)
-        print 'started. Running somewhere in the ether... exit however ' \
-              'you see fit.'
+        # ioloop.add_callback(send_test_informs, server)
+        print 'started with ioloop. Running somewhere in the ether... ' \
+              'exit however you see fit.'
         ioloop.start()
     else:
         queue = Queue.Queue()
         server.set_restart_queue(queue)
         server.start()
-        print 'started. Running somewhere in the ether... exit however ' \
-              'you see fit.'
+        print 'started with no ioloop. Running somewhere in the ether... ' \
+              'exit however you see fit.'
         try:
             while True:
                 try:

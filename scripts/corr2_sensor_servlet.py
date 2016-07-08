@@ -76,7 +76,9 @@ class Corr2SensorServer(katcp.DeviceServer):
         """
         self.instrument = instrument
         self.instrument.initialise(program=False)
-        sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
+        sensor_manager = sensors.SensorManager(self, self.instrument)
+        self.instrument.sensor_manager = sensor_manager
+        sensors.setup_sensors(sensor_manager)
 
 
 @tornado.gen.coroutine

@@ -3,6 +3,7 @@ import numpy
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
+from katcp import Sensor
 
 from casperfpga import utils as fpgautils
 
@@ -784,6 +785,9 @@ class XEngineOperations(object):
         self.corr.logger.info('set_acc_time: %.3fs -> new_acc_len(%i)' %
                               (acc_time_s, new_acc_len))
         self.set_acc_len(new_acc_len, vacc_resync)
+        if self.corr.sensor_manager:
+            sensor = self.corr.sensor_manager.sensor_get('integration-time')
+            sensor.set(time.time(), Sensor.NOMINAL, self.get_acc_time())
 
     def get_acc_time(self):
         """
@@ -826,6 +830,9 @@ class XEngineOperations(object):
             target_function=(
                 lambda fpga_:
                 fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
+        if self.corr.sensor_manager:
+            sensor = self.corr.sensor_manager.sensor_get('n-accs')
+            sensor.set(time.time(), Sensor.NOMINAL, self.corr.accumulation_len)
         self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))

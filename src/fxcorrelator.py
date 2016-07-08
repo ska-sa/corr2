@@ -80,7 +80,7 @@ class FxCorrelator(Instrument):
         self.fengine_sources = None
         self.baselines = None
 
-        self._sensors = {}
+        self.sensor_manager = None
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
@@ -185,7 +185,8 @@ class FxCorrelator(Instrument):
         timeout = len(self.fhosts[0].tengbes) * 30 * 1.1
         THREADED_FPGA_FUNC(
                 self.fhosts + self.xhosts, timeout=timeout,
-                target_function=('setup_host_gbes', (self.logger, info_dict), {}))
+                target_function=('setup_host_gbes',
+                                 (self.logger, info_dict), {}))
 
     def _initialise(self, program, qdr_cal):
         """
@@ -270,33 +271,6 @@ class FxCorrelator(Instrument):
         if self.found_beamformer:
             self.bops.configure()
 
-    def sensors_clear(self):
-        """
-        Clear the current sensors
-        :return:
-        """
-        self._sensors = {}
-
-    def sensors_add(self, sensor):
-        """
-        Add a sensor to the dictionary of instrument sensors
-        :param sensor:
-        :return:
-        """
-        if sensor.name in self._sensors.keys():
-            raise KeyError('Sensor {} already exists'.format(sensor.name))
-        self._sensors[sensor.name] = sensor
-
-    def sensors_get(self, sensor_name):
-        """
-        Get a sensor from the dictionary of instrument sensors
-        :param sensor_name:
-        :return:
-        """
-        if sensor_name not in self._sensors.keys():
-            raise KeyError('Sensor {} does not exist'.format(sensor_name))
-        return self._sensors[sensor_name]
-
     def set_synch_time(self, new_synch_time):
         """
         Set the last sync time for this system
@@ -317,6 +291,9 @@ class FxCorrelator(Instrument):
             self.logger.error(_err)
             raise RuntimeError(_err)
         self._synchronisation_epoch = new_synch_time
+        if self.sensor_manager:
+            sensor = self.sensor_manager.sensor_get('synch_epoch')
+            sensor.set(time.time(), Sensor.NOMINAL, self._synchronisation_epoch)
         self.logger.info('Set synch epoch to %.5f' % new_synch_time)
 
     def est_synch_epoch(self):
@@ -341,6 +318,7 @@ class FxCorrelator(Instrument):
         """
         Returns the unix time UTC equivalent to the board timestamp. Does
         NOT account for wrapping timestamps.
+        :param mcnt: the time from system boards (ADC ticks since startup)
         """
         if self.get_synch_time() < 0:
             self.logger.info('time_from_mcnt: synch epoch unset, estimating')
@@ -352,6 +330,7 @@ class FxCorrelator(Instrument):
         """
         Returns the board timestamp from a given UTC system time
         (seconds since Unix Epoch). Accounts for wrapping timestamps.
+        :param time_seconds: UNIX time
         """
         if self.get_synch_time() < 0:
             self.logger.info('mcnt_from_time: synch epoch unset, estimating')
@@ -459,18 +438,23 @@ class FxCorrelator(Instrument):
                     'Could not find the old EQ value, %s, to update '
                     'to new name, %s.' % (old_name, _source.name))
 
-        # update the hostname sensors
-        try:
-            for fhost in self.fhosts:
-                sensor = self.sensors_get('%s_input_mapping' % fhost.host)
-                rv = [dsrc.name for dsrc in fhost.data_sources]
-                sensor.set(time.time(), Sensor.NOMINAL, str(rv))
-        except Exception as ve:
-            self.logger.warning('Could not update input_mapping '
-                                'sensors!\n%s' % ve.message)
-
         # update the list of baselines
         self.baselines = utils.baselines_from_source_list(newlist)
+
+        # update the hostname and baseline sensors
+        if self.sensor_manager:
+            sm = self.sensor_manager
+            try:
+                for fhost in self.fhosts:
+                    sensor = sm.sensor_get('%s-input-mapping' % fhost.host)
+                    rv = [dsrc.name for dsrc in fhost.data_sources]
+                    sensor.set(time.time(), Sensor.NOMINAL, str(rv))
+            except Exception as ve:
+                self.logger.warning('Could not update input_mapping '
+                                    'sensors!\n%s' % ve.message)
+            sm.sensor_get('baseline-ordering').set(
+                timestamp=time.time(), status=Sensor.NOMINAL,
+                value=str(self.baselines))
 
         self.logger.info('Source labels updated from %s to %s' % (
             oldnames, newnames))
@@ -529,6 +513,9 @@ class FxCorrelator(Instrument):
         self.f_per_fpga = int(_feng_d['f_per_fpga'])
         self.ports_per_fengine = int(_feng_d['ports_per_fengine'])
         self.analogue_bandwidth = int(_feng_d['bandwidth'])
+        self.true_cf = float(_feng_d['true_cf'])
+        self.quant_format = _feng_d['quant_format']
+        self.adc_bitwidth = int(_feng_d['sample_bits'])
 
         _xeng_d = self.configd['xengine']
         self.x_per_fpga = int(_xeng_d['x_per_fpga'])
@@ -543,6 +530,7 @@ class FxCorrelator(Instrument):
         self.found_beamformer = False
         if 'bengine' in self.configd.keys():
             self.found_beamformer = True
+            self.beng_outbits = 8
 
         # set up hosts and engines based on the configuration in the ini file
         _targetClass = fhost_fpga.FpgaFHost
@@ -671,7 +659,12 @@ class FxCorrelator(Instrument):
         if product_name not in self.data_products:
             raise ValueError('product %s is not in product list: %s' % (
                 product_name, self.data_products))
-        self.data_products[product_name].set_destination(txip_str, txport)
+        product = self.data_products[product_name]
+        product.set_destination(txip_str, txport)
+        if self.sensor_manager:
+            sensor_name = '%s-destination' % product.name
+            sensor = self.sensor_manager.sensor_get(sensor_name)
+            sensor.set(time.time(), Sensor.NOMINAL, str(product.destination))
 
     def product_set_meta_destination(self, product_name,
                                      txip_str=None, txport=None):
@@ -686,7 +679,13 @@ class FxCorrelator(Instrument):
         if product_name not in self.data_products:
             raise ValueError('product %s is not in product list: %s' % (
                 product_name, self.data_products))
-        self.data_products[product_name].set_meta_destination(txip_str, txport)
+        product = self.data_products[product_name]
+        product.set_meta_destination(txip_str, txport)
+        if self.sensor_manager:
+            sensor_name = '%s-meta-destination' % product.name
+            sensor = self.sensor_manager.sensor_get(sensor_name)
+            sensor.set(time.time(), Sensor.NOMINAL,
+                       str(product.meta_destination))
 
     def product_tx_enable(self, product_name):
         """
