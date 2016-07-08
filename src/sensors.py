@@ -103,6 +103,8 @@ class Corr2Sensor(Sensor):
     def __init__(self, sensor_type, name, description=None, units='',
                  params=None, default=None, initial_status=None,
                  manager=None, executor=None):
+        if '_' in name:
+            raise ValueError('Corr2Sensor names cannot include underscores.')
         self.manager = manager
         self.executor = executor
         super(Corr2Sensor, self).__init__(sensor_type, name, description,
