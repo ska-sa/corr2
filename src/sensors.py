@@ -104,7 +104,12 @@ class Corr2Sensor(Sensor):
                  params=None, default=None, initial_status=None,
                  manager=None, executor=None):
         if '_' in name:
-            raise ValueError('Corr2Sensor names cannot include underscores.')
+            LOGGER.warning(
+                'Sensor names cannot have underscores in them, so {name} '
+                'becomes {name_conv}'.format(name=name,
+                                             name_conv=name.replace('_', '-')
+                                             ))
+            name = name.replace('_', '-')
         self.manager = manager
         self.executor = executor
         super(Corr2Sensor, self).__init__(sensor_type, name, description,
@@ -228,26 +233,40 @@ class SensorManager(object):
 
 
 @tornado.gen.coroutine
-def _sensor_cb_feng_rxtime(sensor):
+def _sensor_cb_feng_rxtime(sensor_ok, sensor_values):
     """
     Sensor call back to check received f-engine times
-    :param sensor:
+    :param sensor_ok: the combined times-are-okay sensor
+    :param sensor_values: per-host sensors for time and unix-time
     :return:
     """
-    executor = sensor.executor
-    instrument = sensor.manager.instrument
+    executor = sensor_ok.executor
+    instrument = sensor_ok.manager.instrument
     try:
-        result = yield executor.submit(instrument.fops.check_rx_timestamps)
-        sensor.set(time.time(), Sensor.NOMINAL if result else Sensor.ERROR,
-                   result)
+        result, counts, times = yield executor.submit(
+            instrument.fops.check_rx_timestamps)
+        sensor_ok.set(time.time(),
+                      Sensor.NOMINAL if result else Sensor.ERROR,
+                      result)
+        for host in counts:
+            sensor, sensor_u = sensor_values[host]
+            sensor.set(time.time(), Sensor.NOMINAL, counts[host])
+            sensor_u.set(time.time(), Sensor.NOMINAL, times[host])
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(time.time(), Sensor.UNKNOWN, False)
+        sensor_ok.set(time.time(), Sensor.UNKNOWN, False)
+        for sensor, sensor_u in sensor_values.values():
+            sensor.set(time.time(), Sensor.UNKNOWN, -1)
+            sensor_u.set(time.time(), Sensor.UNKNOWN, -1)
     except Exception as e:
         LOGGER.exception('Error updating feng rxtime sensor '
                          '- {}'.format(e.message))
-        sensor.set(time.time(), Sensor.UNKNOWN, False)
+        sensor_ok.set(time.time(), Sensor.UNKNOWN, False)
+        for sensor, sensor_u in sensor_values.values():
+            sensor.set(time.time(), Sensor.UNKNOWN, -1)
+            sensor_u.set(time.time(), Sensor.UNKNOWN, -1)
     LOGGER.debug('_sensor_cb_feng_rxtime ran')
-    IOLoop.current().call_later(10, _sensor_cb_feng_rxtime, sensor)
+    IOLoop.current().call_later(10, _sensor_cb_feng_rxtime,
+                                sensor_ok, sensor_values)
 
 
 @tornado.gen.coroutine
@@ -824,6 +843,24 @@ def setup_mainloop_sensors(sensor_manager):
         sensor.set(timestamp=time.time(), status=Sensor.NOMINAL,
                    value=str(product.meta_destination))
 
+    # beamformer weights and gains - CAN CHANGE
+    beam_weights = sensor_manager.instrument.bops.get_beam_weights()
+    for beam, weights in beam_weights.items():
+        sensor = Corr2Sensor.string(
+            name='{beam}-weights'.format(beam=beam),
+            description='Beam {beam} weights'.format(beam=beam),
+            initial_status=Sensor.UNKNOWN, manager=sensor_manager)
+        sensor.set(timestamp=time.time(), status=Sensor.NOMINAL,
+                   value=str(weights))
+    beam_gains = sensor_manager.instrument.bops.get_beam_quant_gains()
+    for beam, gain in beam_gains.items():
+        sensor = Corr2Sensor.float(
+            name='{beam}-quantiser-gains'.format(beam=beam),
+            description='Beam {beam} quantiser gains'.format(beam=beam),
+            initial_status=Sensor.UNKNOWN, manager=sensor_manager)
+        sensor.set(timestamp=time.time(), status=Sensor.NOMINAL,
+                   value=gain)
+
     # ddc_mix_freq
     sensor = Corr2Sensor.float(
         name='ddc-mix-frequency',
@@ -872,9 +909,25 @@ def setup_mainloop_sensors(sensor_manager):
     sensor.set(timestamp=time.time(), status=Sensor.NOMINAL,
                value=sensor_manager.instrument.sample_rate_hz)
 
+    # x-engine fchan range
+    n_chans = sensor_manager.instrument.n_chans
+    n_xeng = len(sensor_manager.instrument.xhosts)
+    chans_per_x = n_chans / n_xeng
+    for _x in sensor_manager.instrument.xhosts:
+        bid = _x.registers.board_id.read()['data']['reg']
+        sensor = Corr2Sensor.string(
+            name='%s-rx-fchan-range' % _x.host,
+            description='The frequency channels processed '
+                        'by {host}.'.format(host=_x.host),
+            initial_status=Sensor.UNKNOWN,
+            manager=sensor_manager)
+        sensor.set(timestamp=time.time(), status=Sensor.NOMINAL,
+                   value='({start},{end})'.format(start=bid*chans_per_x,
+                                                  end=(bid+1)*chans_per_x))
+
     # feng_pkt_len (feng_heap_len?!)
 
-    # per host sensors
+    # per host tengbe sensors
     all_hosts = sensor_manager.instrument.fhosts + \
                 sensor_manager.instrument.xhosts
     for _h in all_hosts:
@@ -937,13 +990,28 @@ def setup_sensors(sensor_manager):
 
     sensor_manager.sensors_clear()
 
-    # f-engine received timestamps
-    sensor = Corr2Sensor.boolean(
+    # f-engine received timestamps okay and per-host received timestamps
+    sensor_ok = Corr2Sensor.boolean(
         name='feng-rxtime-ok',
         description='Are the times received by f-engines in the system okay',
         initial_status=Sensor.UNKNOWN,
         manager=sensor_manager, executor=general_executor)
-    ioloop.add_callback(_sensor_cb_feng_rxtime, sensor)
+    sensor_values = {}
+    for _f in sensor_manager.instrument.fhosts:
+        sensor = Corr2Sensor.integer(
+            name='%s-feng-rxtime48' % _f.host,
+            description='F-engine %s - 48-bit timestamps received from '
+                        'the digitisers' % _f.host,
+            initial_status=Sensor.UNKNOWN,
+            manager=sensor_manager)
+        sensor_u = Corr2Sensor.integer(
+            name='%s-feng-rxtime-unix' % _f.host,
+            description='F-engine %s - UNIX timestamps received from '
+                        'the digitisers' % _f.host,
+            initial_status=Sensor.UNKNOWN,
+            manager=sensor_manager)
+        sensor_values[_f.host] = (sensor, sensor_u)
+    ioloop.add_callback(_sensor_cb_feng_rxtime, sensor_ok, sensor_values)
 
     # f-engine lru
     for _f in sensor_manager.instrument.fhosts:
@@ -1039,7 +1107,7 @@ def setup_sensors(sensor_manager):
     for _x in sensor_manager.instrument.xhosts:
         executor = host_executors[_x.host]
         sensor = Corr2Sensor.boolean(
-            name='%s-xeng-10gbe-rx_ok' % _x.host,
+            name='%s-xeng-10gbe-rx-ok' % _x.host,
             description='X-engine 10gbe RX okay',
             initial_status=Sensor.UNKNOWN,
             manager=sensor_manager, executor=executor)

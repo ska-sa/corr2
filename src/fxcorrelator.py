@@ -246,7 +246,8 @@ class FxCorrelator(Instrument):
             raise RuntimeError('The f-engines RX have a problem.')
 
         # check that the timestamps received on the f-engines make sense
-        if not self.fops.check_rx_timestamps():
+        result, times, times_unix = self.fops.check_rx_timestamps()
+        if not result:
             raise RuntimeError('The timestamps received by the f-engines '
                                'are not okay. Check the logs')
 
