@@ -424,19 +424,19 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply(Str(multiple=True))
     def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
         """
-        Set the weight for a input
+        Set the weight for an input
         :param sock:
         :param beam_name: required beam product
         :param input_name: required input
+        :param weight_list: list of weights to set, one per input
         :return:
         """
         if not self.instrument.found_beamformer:
             return 'fail', 'Cannot run beamformer commands with no beamformer'
         if weight_list[0] != '':
             try:
-                self.instrument.bops.set_beam_weights(beam_name,
-                                                      input_name,
-                                                      weight_list[0])
+                self.instrument.bops.set_beam_weights(
+                    weight_list[0], beam_name, input_name)
             except Exception as e:
                 return 'fail', '%s' % e.message
         try:
@@ -445,6 +445,29 @@ class Corr2Server(katcp.DeviceServer):
         except Exception as e:
                 return 'fail', '%s' % e.message
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_weights))
+
+    @request(Str(), Float(default=''))
+    @return_reply(Str(multiple=True))
+    def request_beam_quant_gains(self, sock, beam_name, new_gain):
+        """
+        Set the quantiser gain for an input
+        :param sock:
+        :param beam_name: required beam product
+        :param new_gain: the new gain to apply
+        :return:
+        """
+        if not self.instrument.found_beamformer:
+            return 'fail', 'Cannot run beamformer commands with no beamformer'
+        if new_gain != '':
+            try:
+                self.instrument.bops.set_beam_quant_gains(new_gain, beam_name)
+            except Exception as e:
+                return 'fail', '%s' % e.message
+        try:
+            cur_gains = self.instrument.bops.get_beam_quant_gains(beam_name)
+        except Exception as e:
+                return 'fail', '%s' % e.message
+        return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))
 
     @request(Str(), Float(), Float())
     @return_reply(Str(), Str(), Str())
