@@ -41,6 +41,7 @@ class Beam(object):
         self.beng_per_host = None
 
         self.source_weights = None
+        self.quant_gain = None
         self.source_labels = None
         self.source_poly = None
 
@@ -93,6 +94,7 @@ class Beam(object):
             input_weight = float(_split[1])
             obj.source_labels.append(input_name)
             obj.source_weights.append(input_weight)
+        obj.quant_gain = 1
         obj.source_poly = []
         return obj
 
@@ -119,6 +121,10 @@ class Beam(object):
 
         # set the weights for this beam
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set', [self], {}))
+
+        # set the quantiser gains for this beam
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_quant_gains_set',
+                                           [self, self.quant_gain], {}))
 
         LOGGER.info('Beam %i:%s: initialised okay' % (
             self.index, self.name))
@@ -291,19 +297,19 @@ class Beam(object):
         self.source_weights[input_index] = new_weight
         THREADED_FPGA_FUNC(
             self.hosts, 5, ('beam_weights_set', [self, [input_index]], {}))
-
-        # TODO - send SPEAD metadata about weights
-
         LOGGER.info('Beam %i:%s: %s weight set to %.3f' % (
             self.index, self.name, input_name, new_weight))
         return True
 
-    def get_weights(self, input_name):
+    def get_weights(self, input_name=None):
         """
         Get the current weight(s) associated with an input on this beam.
         :param input_name: which source/input we're looking for
         :return:
         """
+        if input_name is None:
+            return {nptnm: self.get_weights(nptnm)
+                    for nptnm in self.source_labels}
         input_index = self.get_source_index(input_name)
         d = THREADED_FPGA_FUNC(
             self.hosts, 5, ('beam_weights_get', [self, [input_index]], {}))
@@ -320,6 +326,46 @@ class Beam(object):
                                    'across b-engs!?' % (self.name, input_name))
         self.source_weights[input_index] = ref[0]
         return ref[0]
+
+    def set_quant_gains(self, new_quant_gain, force=False):
+        """
+        Set the quantiser gain for this beam for a given input
+        :param new_quant_gain: the new gain to apply to this input/source
+        :param force: force the write, even if the stored value is the same
+        :return:
+        """
+        if (new_quant_gain == self.quant_gain) and (not force):
+            LOGGER.info('Beam %i:%s: quantiser gain already %.3f' % (
+                self.index, self.name, new_quant_gain))
+            return False
+        rv = THREADED_FPGA_FUNC(
+            self.hosts, 5, ('beam_quant_gains_set', [self, new_quant_gain], {}))
+        gain_set = rv.values()[0]
+        self.quant_gain = gain_set
+        LOGGER.info('Beam %i:%s: quantiser gain: %.3f specified, set to '
+                    '%.3f' % (self.index, self.name, new_quant_gain, gain_set))
+        return True
+
+    def get_quant_gains(self):
+        """
+        Get the current quantiser gain(s) associated with an input on this beam.
+        :return:
+        """
+        d = THREADED_FPGA_FUNC(
+            self.hosts, 5, ('beam_quant_gains_get', [self], {}))
+        ref_gain = d[d.keys()[0]]
+        for dhost, dval in d.items():
+            if dval != ref_gain:
+                raise RuntimeError(
+                    'Quantiser gains for beam %s differ across '
+                    'hosts!? %.3f != %.3f' % (self.name, dval, ref_gain))
+        if self.quant_gain != ref_gain:
+            LOGGER.warning(
+                'Beam {idx}:{beam} quant gain variable set to {sw}, but '
+                'hardware says {hw}'.format(
+                    idx=self.index, beam=self.name,
+                    sw=self.quant_gain, hw=ref_gain))
+        return ref_gain
 
     def _bandwidth_to_partitions(self, bandwidth, centerfreq):
         """
