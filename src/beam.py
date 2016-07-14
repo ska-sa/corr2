@@ -472,7 +472,8 @@ class Beam(object):
         """
         bw, cf = self.get_beam_bandwidth()
         meta_ig = self.data_product.meta_ig
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='bandwidth', id=0x1013,
             description='The analogue bandwidth in this beam data product.',
             shape=[], format=[('f', 64)],
@@ -490,7 +491,8 @@ class Beam(object):
         beam_chans = chans_per_partition * len(self.partitions_active)
         # id is 0x5 + 12 least sig bits id of each beam
         beam_data_id = 0x5000
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='bf_raw', id=beam_data_id,
             description='Raw data for bengines in the system. Frequencies '
                         'are assembled from lowest frequency to highest '
@@ -520,7 +522,8 @@ class Beam(object):
         self.speadops.item_0x1009(sig=meta_ig)
         self.speadops.item_0x100a(sig=meta_ig)
 
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='n_bengs', id=0x100F,
             description='The total number of B engines in the system.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
@@ -531,13 +534,15 @@ class Beam(object):
         self.speadops.item_0x1045(sig=meta_ig)
         self.speadops.item_0x1046(sig=meta_ig)
 
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='b_per_fpga', id=0x1047,
             description='The number of b-engines per fpga.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.beng_per_host)
 
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='beng_out_bits_per_sample', id=0x1050,
             description='The number of bits per value in the beng output. '
                         'Note that this is for a single value, not the '
@@ -556,14 +561,16 @@ class Beam(object):
         :return:
         """
         meta_ig = self.data_product.meta_ig
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='rx_udp_port', id=0x1022,
             description='Destination UDP port for B engine output.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.data_product.destination.port)
 
         ipstr = numpy.array(str(self.data_product.destination.ip))
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='rx_udp_ip_str', id=0x1024,
             description='Destination IP address for B engine output UDP '
                         'packets.',
@@ -579,7 +586,8 @@ class Beam(object):
         :return:
         """
         meta_ig = self.data_product.meta_ig
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='beamweight',
             id=0x2000,
             description='The unitless per-channel digital scaling '

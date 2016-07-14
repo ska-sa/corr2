@@ -2,7 +2,6 @@ import numpy
 import time
 
 from casperfpga import utils as fpgautils
-from casperfpga import tengbe
 
 from data_source import DataSource
 import utils
@@ -189,8 +188,8 @@ class FEngineOperations(object):
 
     def _prepare_delay_vals(self, delay=0, delta_delay=0, phase_offset=0,
                             delta_phase_offset=0, ld_time=None, ld_check=True):
-        # convert delay in time into delay in samples
-        delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
+        # convert delay in time into delay in clock cycles
+        delay_s = float(delay) * self.corr.sample_rate_hz
 
         # convert to fractions of a sample
         phase_offset_s = float(phase_offset)/float(numpy.pi)
