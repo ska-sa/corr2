@@ -2,7 +2,6 @@ import numpy
 import time
 
 from casperfpga import utils as fpgautils
-from casperfpga import tengbe
 
 from data_source import DataSource
 import utils
@@ -131,7 +130,8 @@ class FEngineOperations(object):
     def check_rx_timestamps(self):
         """
         Are the timestamps being received by the f-engines okay?
-        :return:
+        :return: (a boolean, the f-engine times as 48-bit counts,
+        their unix representations)
         """
         self.logger.info('Checking timestamps on F hosts...')
         results = THREADED_FPGA_FUNC(
@@ -142,7 +142,8 @@ class FEngineOperations(object):
         if synch_epoch == -1:
             self.logger.warning('System synch epoch unset, skipping f-engine '
                                 'future time test.')
-        feng_times = []
+        feng_times = {}
+        feng_times_unix = {}
         for host in self.hosts:
             feng_mcnt = results[host.host]
             # are the count bits okay?
@@ -150,7 +151,7 @@ class FEngineOperations(object):
                 _err = '%s: bottom 12 bits of timestamp from f-engine are ' \
                        'not zero?! feng_mcnt(%i)' % (host.host, feng_mcnt)
                 self.logger.error(_err)
-                return False
+                return False, feng_times, feng_times_unix
             # compare the f-engine times to the local UNIX time
             if synch_epoch != -1:
                 # is the time in the future?
@@ -161,7 +162,7 @@ class FEngineOperations(object):
                            'now(%.3f) feng_time(%.3f)' % (host.host, read_time,
                                                           feng_time)
                     self.logger.error(_err)
-                    return False
+                    return False, feng_times, feng_times_unix
                 # is the time close enough to local time?
                 if abs(read_time - feng_time) > self.corr.time_offset_allowed_s:
                     _err = '%s: time calculated from board cannot be so far ' \
@@ -169,23 +170,26 @@ class FEngineOperations(object):
                            'diff(%.3f)' % (host.host, read_time, feng_time,
                                            read_time - feng_time)
                     self.logger.error(_err)
-                    return False
-            feng_times.append(feng_mcnt)
+                    return False, feng_times, feng_times_unix
+                feng_times_unix[host.host] = feng_time
+            else:
+                feng_times_unix[host.host] = -1
+            feng_times[host.host] = feng_mcnt
 
         # are they all within 500ms of one another?
-        diff = max(feng_times) - min(feng_times)
+        diff = max(feng_times.values()) - min(feng_times.values())
         diff_ms = diff / float(self.corr.sample_rate_hz) * 1000.0
         if diff_ms > self.corr.time_jitter_allowed_ms:
             _err = 'F-engine timestamps are too far apart: %.3fms' % diff_ms
             self.logger.error(_err)
-            return False
+            return False, feng_times, feng_times_unix
         self.logger.info('\tdone.')
-        return True
+        return True, feng_times, feng_times_unix
 
     def _prepare_delay_vals(self, delay=0, delta_delay=0, phase_offset=0,
                             delta_phase_offset=0, ld_time=None, ld_check=True):
-        # convert delay in time into delay in samples
-        delay_s = float(delay) * self.corr.sample_rate_hz  # delay in clock cycles
+        # convert delay in time into delay in clock cycles
+        delay_s = float(delay) * self.corr.sample_rate_hz
 
         # convert to fractions of a sample
         phase_offset_s = float(phase_offset)/float(numpy.pi)

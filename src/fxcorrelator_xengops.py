@@ -3,6 +3,7 @@ import numpy
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
+from katcp import Sensor
 
 from casperfpga import utils as fpgautils
 
@@ -784,6 +785,9 @@ class XEngineOperations(object):
         self.corr.logger.info('set_acc_time: %.3fs -> new_acc_len(%i)' %
                               (acc_time_s, new_acc_len))
         self.set_acc_len(new_acc_len, vacc_resync)
+        if self.corr.sensor_manager:
+            sensor = self.corr.sensor_manager.sensor_get('integration-time')
+            sensor.set(time.time(), Sensor.NOMINAL, self.get_acc_time())
 
     def get_acc_time(self):
         """
@@ -826,6 +830,9 @@ class XEngineOperations(object):
             target_function=(
                 lambda fpga_:
                 fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
+        if self.corr.sensor_manager:
+            sensor = self.corr.sensor_manager.sensor_get('n-accs')
+            sensor.set(time.time(), Sensor.NOMINAL, self.corr.accumulation_len)
         self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
@@ -864,7 +871,13 @@ class XEngineOperations(object):
         self.logger.info('X-engine output disabled')
 
     def spead_meta_update_product_destination(self):
-        self.data_product.meta_ig.add_item(
+        """
+
+        :return:
+        """
+        meta_ig = self.data_product.meta_ig
+        self.corr.speadops.add_item(
+            meta_ig,
             name='rx_udp_port', id=0x1022,
             description='Destination UDP port for %s data '
                         'output.' % self.data_product.name,
@@ -872,7 +885,8 @@ class XEngineOperations(object):
             value=self.data_product.destination.port)
 
         ipstr = numpy.array(str(self.data_product.destination.ip))
-        self.data_product.meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='rx_udp_ip_str', id=0x1024,
             description='Destination IP address for %s data '
                         'output.' % self.data_product.name,
@@ -890,7 +904,8 @@ class XEngineOperations(object):
 
         self.corr.speadops.item_0x1007(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='n_bls', id=0x1008,
             description='Number of baselines in the data product.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
@@ -900,7 +915,8 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x100a(meta_ig)
 
         n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='n_xengs', id=0x100B,
             description='The number of x-engines in the system.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
@@ -909,7 +925,8 @@ class XEngineOperations(object):
         bls_ordering = numpy.array(
             [baseline for baseline in self.corr.baselines])
         # this is a list of the baseline product pairs, e.g. ['ant0x' 'ant0y']
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='bls_ordering', id=0x100C,
             description='The baseline ordering in the output data product.',
             shape=bls_ordering.shape,
@@ -918,13 +935,15 @@ class XEngineOperations(object):
 
         self.corr.speadops.item_0x100e(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='center_freq', id=0x1011,
             description='The on-sky centre-frequency.',
             shape=[], format=[('f', 64)],
             value=int(self.corr.configd['fengine']['true_cf']))
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='bandwidth', id=0x1013,
             description='The input (analogue) bandwidth of the system.',
             shape=[], format=[('f', 64)],
@@ -934,7 +953,8 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1016(meta_ig)
         self.corr.speadops.item_0x101e(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='xeng_acc_len', id=0x101F,
             description='Number of spectra accumulated inside X engine. '
                         'Determines minimum integration time and '
@@ -946,7 +966,8 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1020(meta_ig)
 
         pkt_len = int(self.corr.configd['fengine']['10gbe_pkt_len'])
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='feng_pkt_len', id=0x1021,
             description='Payload size of 10GbE packet exchange between '
                         'F and X engines in 64 bit words. Usually equal '
@@ -958,21 +979,24 @@ class XEngineOperations(object):
         self.spead_meta_update_product_destination()
 
         port = int(self.corr.configd['fengine']['10gbe_port'])
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='feng_udp_port', id=0x1023,
             description='Port for F-engines 10Gbe links in the system.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=port)
 
         ipstr = numpy.array(self.corr.configd['fengine']['10gbe_start_ip'])
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='feng_start_ip', id=0x1025,
             description='Start IP address for F-engines in the system.',
             shape=ipstr.shape,
             dtype=ipstr.dtype,
             value=ipstr)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='xeng_rate', id=0x1026,
             description='Target clock rate of processing engines (xeng).',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
@@ -981,13 +1005,15 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1027(meta_ig)
 
         x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='x_per_fpga', id=0x1041,
             description='Number of X engines per FPGA host.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=x_per_fpga)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='ddc_mix_freq', id=0x1043,
             description='Digital downconverter mixing frequency as a fraction '
                         'of the ADC sampling frequency. eg: 0.25. Set to zero '
@@ -998,7 +1024,8 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1045(meta_ig)
         self.corr.speadops.item_0x1046(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='xeng_out_bits_per_sample', id=0x1048,
             description='The number of bits per value of the xeng '
                         'accumulator output. Note this is for a '
@@ -1006,7 +1033,8 @@ class XEngineOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.xeng_outbits)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='f_per_fpga', id=0x1049,
             description='Number of F engines per FPGA host.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
@@ -1016,7 +1044,8 @@ class XEngineOperations(object):
 
         self.corr.speadops.item_0x1600(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='flags_xeng_raw', id=0x1601,
             description='Flags associated with xeng_raw data output. '
                         'bit 34 - corruption or data missing during integration'
@@ -1025,7 +1054,8 @@ class XEngineOperations(object):
                         'bits 0 - 31 reserved for internal debugging',
             shape=[], format=[('u', SPEAD_ADDRSIZE)])
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='xeng_raw', id=0x1800,
             description='Raw data for %i xengines in the system. This item '
                         'represents a full spectrum (all frequency channels) '
@@ -1042,6 +1072,7 @@ class XEngineOperations(object):
     def spead_meta_issue_all(self, data_product):
         """
         Issue = update the metadata then send it.
+        :param data_product: The DataProduct object for which to send metadata
         :return:
         """
         dprod = data_product or self.data_product

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+# import time
 import sys
 import argparse
 import katcp
@@ -136,7 +137,10 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.initialise(program=program,
                                        qdr_cal=qdr_cal,
                                        require_epoch=require_epoch)
-            sensors.setup_mainloop_sensors(self.instrument, self)
+            sensor_manager = sensors.SensorManager(self, self.instrument)
+            self.instrument.sensor_manager = sensor_manager
+            sensor_manager.sensors_clear()
+            sensors.setup_mainloop_sensors(sensor_manager)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',
@@ -198,10 +202,10 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        temp = ipportstr.split(':')
-        txipstr = temp[0]
-        txport = int(temp[1])
         try:
+            temp = ipportstr.split(':')
+            txipstr = temp[0]
+            txport = int(temp[1])
             self.instrument.product_set_meta_destination(
                 stream, txip_str=txipstr, txport=txport)
         except Exception as e:
@@ -421,19 +425,19 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply(Str(multiple=True))
     def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
         """
-        Set the weight for a input
+        Set the weight for an input
         :param sock:
         :param beam_name: required beam product
         :param input_name: required input
+        :param weight_list: list of weights to set, one per input
         :return:
         """
         if not self.instrument.found_beamformer:
             return 'fail', 'Cannot run beamformer commands with no beamformer'
         if weight_list[0] != '':
             try:
-                self.instrument.bops.set_beam_weights(beam_name,
-                                                      input_name,
-                                                      weight_list[0])
+                self.instrument.bops.set_beam_weights(
+                    weight_list[0], beam_name, input_name)
             except Exception as e:
                 return 'fail', '%s' % e.message
         try:
@@ -442,6 +446,29 @@ class Corr2Server(katcp.DeviceServer):
         except Exception as e:
                 return 'fail', '%s' % e.message
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_weights))
+
+    @request(Str(), Float(default=''))
+    @return_reply(Str(multiple=True))
+    def request_beam_quant_gains(self, sock, beam_name, new_gain):
+        """
+        Set the quantiser gain for an input
+        :param sock:
+        :param beam_name: required beam product
+        :param new_gain: the new gain to apply
+        :return:
+        """
+        if not self.instrument.found_beamformer:
+            return 'fail', 'Cannot run beamformer commands with no beamformer'
+        if new_gain != '':
+            try:
+                self.instrument.bops.set_beam_quant_gains(new_gain, beam_name)
+            except Exception as e:
+                return 'fail', '%s' % e.message
+        try:
+            cur_gains = self.instrument.bops.get_beam_quant_gains(beam_name)
+        except Exception as e:
+                return 'fail', '%s' % e.message
+        return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))
 
     @request(Str(), Float(), Float())
     @return_reply(Str(), Str(), Str())
@@ -633,6 +660,14 @@ class Corr2Server(katcp.DeviceServer):
     #     return 'ok'
 
 
+# @gen.coroutine
+# def send_test_informs(server):
+#     supdate_inform = katcp.Message.inform('test-mass-inform',
+#                                           'arg0', 1.111, 'arg2',
+#                                           time.time())
+#     server.mass_inform(supdate_inform)
+#     tornado.ioloop.IOLoop.current().call_later(5, send_test_informs, server)
+
 @gen.coroutine
 def on_shutdown(ioloop, server):
     """
@@ -700,15 +735,16 @@ if __name__ == '__main__':
                 on_shutdown, ioloop, server))
         server.set_ioloop(ioloop)
         ioloop.add_callback(server.start)
-        print 'started. Running somewhere in the ether... exit however ' \
-              'you see fit.'
+        # ioloop.add_callback(send_test_informs, server)
+        print 'started with ioloop. Running somewhere in the ether... ' \
+              'exit however you see fit.'
         ioloop.start()
     else:
         queue = Queue.Queue()
         server.set_restart_queue(queue)
         server.start()
-        print 'started. Running somewhere in the ether... exit however ' \
-              'you see fit.'
+        print 'started with no ioloop. Running somewhere in the ether... ' \
+              'exit however you see fit.'
         try:
             while True:
                 try:

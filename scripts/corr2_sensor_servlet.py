@@ -9,7 +9,7 @@ import signal
 import tornado
 
 from tornado.ioloop import IOLoop
-from corr2 import sensors, fxcorrelator
+from corr2 import sensors, sensors_periodic, fxcorrelator
 
 
 class KatcpLogFormatter(logging.Formatter):
@@ -70,13 +70,15 @@ class Corr2SensorServer(katcp.DeviceServer):
     def initialise(self, instrument):
         """
         Setup and start sensors
-        :param:
+        :param instrument: a corr2 Instrument object
         :return:
 
         """
         self.instrument = instrument
         self.instrument.initialise(program=False)
-        sensors.setup_sensors(instrument=self.instrument, katcp_server=self)
+        sensor_manager = sensors.SensorManager(self, self.instrument)
+        self.instrument.sensor_manager = sensor_manager
+        sensors_periodic.setup_sensors(sensor_manager)
 
 
 @tornado.gen.coroutine

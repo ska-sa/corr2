@@ -1,19 +1,19 @@
 import numpy
+import time
+
+from sensors import Corr2Sensor
 
 SPEAD_ADDRSIZE = 48
 
 
-def add_item(sig, stx=None, **kwargs):
-    """
-    Add an item to a SPEAD ItemGroup, send if SPEAD TX provided
-    :param sig: SPEAD ItemGroup
-    :param stx: SPEAD transmitter
-    :param kwargs:
-    :return:
-    """
-    sig.add_item(**kwargs)
-    if stx:
-        stx.send_heap(sig.get_heap())
+def create_sensor_from_meta(sensor_manager, **kwargs):
+    sid = kwargs['id']
+    sname = kwargs['name'].replace('_', '-')
+    sensor = Corr2Sensor.string(
+        name='speadmeta-0x{id:04x}-{name}'.format(id=sid, name=sname),
+        description=kwargs['description'],
+        initial_status=Corr2Sensor.UNKNOWN, manager=sensor_manager)
+    return sensor
 
 
 class SpeadOperations(object):
@@ -25,6 +25,33 @@ class SpeadOperations(object):
         self.corr = corr_obj
         self.logger = self.corr.logger
 
+    def add_item(self, sig, stx=None, **kwargs):
+        """
+        Add an item to a SPEAD ItemGroup, send if SPEAD TX provided
+        :param sig: SPEAD ItemGroup
+        :param stx: SPEAD transmitter
+        :param kwargs:
+        :return:
+        """
+        # spead2 metadata create (and send)
+        if sig:
+            sig.add_item(**kwargs)
+        if stx:
+            stx.send_heap(sig.get_heap())
+        # add or update a sensor
+        if self.corr.sensor_manager:
+            # does the sensor exist?
+            try:
+                sensor = self.corr.sensor_manager.metasensors[kwargs['id']]
+            except KeyError:
+                sensor = create_sensor_from_meta(self.corr.sensor_manager,
+                                                 **kwargs)
+                self.corr.sensor_manager.metasensors[kwargs['id']] = sensor
+            if 'value' in kwargs:
+                svalue = str(kwargs['value'])
+                sensor.set(timestamp=time.time(), status=Corr2Sensor.NOMINAL,
+                           value=svalue)
+
     def update_metadata(self, ids):
         """
         Update an ID and trigger those data sources that contain those IDs
@@ -32,6 +59,7 @@ class SpeadOperations(object):
         :param ids: a list of ids to update
         :return:
         """
+        # loop through known products and match spead IDs to those products
         for name, product in self.corr.data_products.items():
             changes = False
             for speadid in ids:
@@ -43,7 +71,7 @@ class SpeadOperations(object):
                 product.meta_transmit()
 
     def item_0x1007(self, sig, stx=None):
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='adc_sample_rate', id=0x1007,
             description='The expected ADC sample rate (samples per '
@@ -52,7 +80,7 @@ class SpeadOperations(object):
             value=self.corr.sample_rate_hz)
 
     def item_0x1009(self, sig, stx=None):
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='n_chans', id=0x1009,
             description='Number of frequency channels in an integration.',
@@ -60,7 +88,7 @@ class SpeadOperations(object):
             value=self.corr.n_chans)
 
     def item_0x100a(self, sig, stx=None):
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='n_ants', id=0x100A,
             description='The number of antennas in the system.',
@@ -74,7 +102,7 @@ class SpeadOperations(object):
                      fsrc['numonhost'])
                     for fsrc in self.corr.fengine_sources]
         metalist = numpy.array(metalist)
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='input_labelling', id=0x100E,
             description='input labels and numbers',
@@ -83,7 +111,7 @@ class SpeadOperations(object):
             value=metalist)
 
     def item_0x1013(self, sig, stx=None):
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='bandwidth', id=0x1013,
             description='The analogue bandwidth of the digitally processed '
@@ -94,7 +122,7 @@ class SpeadOperations(object):
     def item_0x1015(self, sig, stx=None):
         spec_acclen = (self.corr.accumulation_len *
                        self.corr.xeng_accumulation_len)
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='n_accs', id=0x1015,
             description='The number of spectra that are accumulated '
@@ -103,7 +131,7 @@ class SpeadOperations(object):
             value=spec_acclen)
 
     def item_0x1016(self, sig, stx=None):
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='int_time', id=0x1016,
             description='The time per integration, in seconds.',
@@ -111,7 +139,7 @@ class SpeadOperations(object):
             value=self.corr.xops.get_acc_time())
 
     def item_0x101e(self, sig, stx=None):
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='fft_shift', id=0x101E,
             description='The FFT bitshift pattern. F-engine '
@@ -122,7 +150,7 @@ class SpeadOperations(object):
     def item_0x1020(self, sig, stx=None):
         quant_str = self.corr.configd['fengine']['quant_format']
         quant_bits = int(quant_str.split('.')[0])
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='requant_bits', id=0x1020,
             description='Number of bits after requantisation in the '
@@ -133,7 +161,7 @@ class SpeadOperations(object):
     def item_0x1027(self, sig, stx=None):
         val = self.corr.get_synch_time()
         val = 0 if val < 0 else val
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='sync_time', id=0x1027,
             description='The time at which the digitisers were synchronised. '
@@ -143,7 +171,7 @@ class SpeadOperations(object):
 
     def item_0x1045(self, sig, stx=None):
         sample_bits = int(self.corr.configd['fengine']['sample_bits'])
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='adc_bits', id=0x1045,
             description='How many bits per ADC sample.',
@@ -151,7 +179,7 @@ class SpeadOperations(object):
             value=sample_bits)
 
     def item_0x1046(self, sig, stx=None):
-        add_item(
+        self.add_item(
             sig=sig, stx=stx,
             name='scale_factor_timestamp', id=0x1046,
             description='Timestamp scaling factor. Divide the SPEAD '
@@ -168,7 +196,7 @@ class SpeadOperations(object):
             eq = [[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
                   for eq_coeff in all_eqs[_srcname]['eq']]
             eq = numpy.array(eq, dtype=numpy.int32)
-            add_item(
+            self.add_item(
                 sig=sig, stx=stx,
                 name='eq_coef_%s' % _srcname, id=0x1400 + _srcnum,
                 description='The unitless per-channel digital scaling '
@@ -179,9 +207,8 @@ class SpeadOperations(object):
                 dtype=eq.dtype,
                 value=eq)
 
-    @staticmethod
-    def item_0x1600(sig, stx=None):
-        add_item(
+    def item_0x1600(self, sig, stx=None):
+        self.add_item(
             sig=sig, stx=stx,
             name='timestamp', id=0x1600,
             description='Timestamp of start of this integration. uint '
