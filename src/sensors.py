@@ -962,6 +962,25 @@ def setup_mainloop_sensors(sensor_manager):
             sensor.set(time.time(), Sensor.NOMINAL,
                        str(tengbe.multicast_subscriptions))
 
+    # git information, if we have any
+    hosts = [('fengine', sensor_manager.instrument.fhosts[0]),
+             ('xengine', sensor_manager.instrument.xhosts[0])]
+    for _htype, _h in hosts:
+        if 'git' in _h.rcs_info:
+            filectr = 0
+            for gitfile, gitparams in _h.rcs_info['git'].items():
+                namepref = 'git-' + _htype + '-' + str(filectr)
+                for param, value in gitparams.items():
+                    sensname = namepref + '-' + param
+                    sensname = sensname.replace('_', '-')
+                    sensor = Corr2Sensor.string(
+                        name=sensname,
+                        description='Git info: %s' % sensname,
+                        initial_status=Sensor.UNKNOWN,
+                        manager=sensor_manager)
+                    sensor.set(time.time(), Sensor.NOMINAL, str(value))
+                filectr += 1
+
 
 def setup_sensors(sensor_manager):
     """
