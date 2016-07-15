@@ -133,6 +133,7 @@ class Instrument(object):
     def register_data_product(self, data_product):
         """
         Register a data product with this instrument
+        :param data_product - the DataProduct to be registered
         :return:
         """
         if data_product.name in self.data_products:

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import logging
-# import time
 import sys
 import argparse
 import katcp
@@ -28,11 +27,27 @@ from corr2 import fxcorrelator, sensors
 #         return super(KatcpLogFormatter, self).format(record)
 
 
-class KatcpLogEmitHandler(logging.StreamHandler):
+class StreamToLogger(object):
+    """
+    Fake file-like stream object that redirects writes to
+    a logger instance.
+    From: http://www.electricmonk.nl/log/2011/08/14/redirect-stdout-and-stderr-to-a-logger-in-python/
+    """
+    def __init__(self, logger, log_level=logging.INFO):
+        self.logger = logger
+        self.log_level = log_level
+        self.linebuf = ''
+
+    def write(self, buf):
+        for line in buf.rstrip().splitlines():
+            self.logger.log(self.log_level, line.rstrip())
+
+
+class KatcpLogEmitHandler(logging.Handler):
 
     def __init__(self, katcp_server, stream=None):
         self.katcp_server = katcp_server
-        super(KatcpLogEmitHandler, self).__init__(stream)
+        super(KatcpLogEmitHandler, self).__init__()
 
     def emit(self, record):
         """
@@ -634,6 +649,21 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.logger.log(eval('logging.%s' % level), msg)
         return 'ok',
 
+    @request()
+    @return_reply()
+    def request_debug_stdouterr(self, sock):
+        """
+        Blargh.
+        :param sock:
+        :return:
+        """
+        # from __future__ import print_function
+        import time
+        ts = str(time.time())
+        print 'This should go to standard out. ' + ts
+        sys.stderr.write('This should go to standard error. %s\n' % ts)
+        return 'ok',
+
     # @request(Int(default=-1), Int(default=-1))
     # @return_reply(Int(), Int())
     # def request_eq(self, sock, new_real, new_imag):
@@ -719,13 +749,18 @@ if __name__ == '__main__':
         root_logger.addHandler(console_handler)
         use_katcp_logging = False
 
-    print 'Server listening on port %d,' % args.port,
     server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
 
     if use_katcp_logging:
         katcp_emit_handler = KatcpLogEmitHandler(server, stream=sys.stdout)
         katcp_emit_handler.setLevel(log_level)
         root_logger.addHandler(katcp_emit_handler)
+        # if we're using katcp logging, redirect all stdout and stderr
+        # to the logs
+        sys.stdout = StreamToLogger(logging.getLogger('STDOUT'), logging.INFO)
+        sys.stderr = StreamToLogger(logging.getLogger('STDERR'), logging.ERROR)
+
+    print 'Server listening on port %d,' % args.port,
 
     if not args.no_tornado:
         ioloop = tornado.ioloop.IOLoop.current()
