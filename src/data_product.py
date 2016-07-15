@@ -131,12 +131,12 @@ class DataProduct(object):
         Send the metadata for this data product.
         :return:
         """
-        if not self.meta_ig:
+        if self.meta_ig is None:
             LOGGER.info('SPEAD meta itemgroup for data product %s is '
                         'unavailable, not sending metadata.' %
                         self.name)
             return
-        if not self.meta_tx:
+        if self.meta_tx is None:
             LOGGER.info('SPEAD meta transmitter for data product %s is '
                         'unavailable, not sending metadata.' %
                         self.name)
