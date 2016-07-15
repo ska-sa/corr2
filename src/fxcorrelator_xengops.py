@@ -627,23 +627,90 @@ class XEngineOperations(object):
         Check the vacc status, errors and accumulations
         :return:
         """
-        vac_okay = self.vacc_check_okay_initial()
+        self.logger.info('\tChecking for errors & accumulations...')
+        vac_okay = self._vacc_check_okay_initial()
         if not vac_okay:
             vacc_status = self.vacc_status()
             vacc_error_detail = THREADED_FPGA_FUNC(
                 self.hosts, timeout=5,
                 target_function='vacc_get_error_detail')
-            self.logger.error('xeng_vacc_sync: exited on vacc error')
-            self.logger.error('xeng_vacc_sync: vacc statii:')
+            self.logger.error('\t\txeng_vacc_sync: exited on vacc error')
+            self.logger.error('\t\txeng_vacc_sync: vacc statii:')
             for host, item in vacc_status.items():
-                self.logger.error('    %s: %s' % (host, str(item)))
-            self.logger.error('xeng_vacc_sync: vacc errors:')
+                self.logger.error('\t\t\t%s: %s' % (host, str(item)))
+            self.logger.error('\t\txeng_vacc_sync: vacc errors:')
             for host, item in vacc_error_detail.items():
-                self.logger.error('    %s: %s' % (host, str(item)))
-            self.logger.error('xeng_vacc_sync: exited on vacc error')
+                self.logger.error('\t\t\t%s: %s' % (host, str(item)))
+            self.logger.error('\t\txeng_vacc_sync: exited on vacc error')
             return False
-        self.logger.info('    ...accumulations rolling in without error.')
+        self.logger.info('\t...accumulations rolling in without error.')
         return True
+
+    def _vacc_check_okay_initial(self):
+        """
+        After an initial setup, is the vacc okay?
+        Are the error counts zero and the counters
+        ticking over?
+        :return: True or False
+        """
+        vacc_status = self.vacc_status()
+        note_errors = False
+        for host in self.hosts:
+            for xeng_ctr, status in enumerate(vacc_status[host.host]):
+                _msgpref = '{h}:{x} - '.format(h=host, x=xeng_ctr)
+                errs = status['errors']
+                thresh = self.corr.qdr_vacc_error_threshold
+                if (errs > 0) and (errs < thresh):
+                    self.logger.warn(
+                        '\t\t{pref}{thresh} > vacc errors > 0. Que '
+                        'pasa?'.format(pref=_msgpref, thresh=thresh))
+                    note_errors = True
+                elif (errs > 0) and (errs >= thresh):
+                    self.logger.error(
+                        '\t\t{pref}vacc errors > {thresh}. Problems.'.format(
+                            pref=_msgpref, thresh=thresh))
+                    return False
+                if status['count'] <= 0:
+                    self.logger.error(
+                        '\t\t{}vacc counts <= 0. Que pasa?'.format(_msgpref))
+                    return False
+        if note_errors:
+            # investigate the errors further, what caused them?
+            if self._vacc_non_parity_errors():
+                self.logger.error('\t\t\tsome vacc errors, but they\'re not '
+                                  'parity errors. Problems.')
+                return False
+            self.logger.info('\t\tvacc_check_okay_initial: mostly okay, some '
+                             'QDR parity errors')
+        else:
+            self.logger.info('\t\tvacc_check_okay_initial: all okay')
+        return True
+
+    def _vacc_non_parity_errors(self):
+        """
+        Are VACC errors other than parity errors occuring?
+        :return:
+        """
+        _loops = 2
+        parity_errors = 0
+        for ctr in range(_loops):
+            detail = THREADED_FPGA_FUNC(
+                self.hosts, timeout=5, target_function='vacc_get_error_detail')
+            for xhost in detail:
+                for vals in detail[xhost]:
+                    for field in vals:
+                        if vals[field] > 0:
+                            if field != 'parity':
+                                return True
+                            else:
+                                parity_errors += 1
+            if ctr < _loops - 1:
+                time.sleep(self.get_acc_time() * 1.1)
+        if parity_errors == 0:
+            self.logger.error('\t\tThat\'s odd, VACC errors reported but '
+                              'nothing caused them?')
+            return True
+        return False
 
     def vacc_sync(self):
         """
@@ -738,35 +805,6 @@ class XEngineOperations(object):
             self.vacc_synch_running.clear()
             self.logger.error(e.message)
             raise e
-
-    def vacc_check_okay_initial(self):
-        """
-        After an initial setup, is the vacc okay?
-        Are the error counts zero and the counters
-        ticking over?
-        :return: True or False
-        """
-        self.logger.info('\tChecking for errors & accumulations...')
-        vacc_status = self.vacc_status()
-        note_errors = False
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                if status['errors'] > 0:
-                    if status['errors'] < 100:
-                        self.logger.warn('\t\t100 > vacc errors > 0. Que pasa?')
-                        note_errors = True
-                    elif status['errors'] >= 100:
-                        self.logger.error('\t\tvacc errors > 100. Problems?')
-                        return False
-                if status['count'] <= 0:
-                    self.logger.error('\t\tvacc counts <= 0. Que pasa?')
-                    return False
-        if note_errors:
-            self.logger.debug('\t\txeng_vacc_check_status: mostly okay, some '
-                              'reorder errors')
-        else:
-            self.logger.debug('\t\txeng_vacc_check_status: all okay')
-        return True
 
     def set_acc_time(self, acc_time_s, vacc_resync=True):
         """

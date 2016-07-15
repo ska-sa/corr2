@@ -251,6 +251,10 @@ class FxCorrelator(Instrument):
             raise RuntimeError('The timestamps received by the f-engines '
                                'are not okay. Check the logs')
 
+        # check the f-engine corner turners for party errors
+        if not self.fops.check_ct_parity():
+            raise RuntimeError('The f-engine QDRs are reporting errors.')
+
         # check that the F-engines are transmitting data correctly
         if not self.fops.check_tx():
             raise RuntimeError('The f-engines TX have a problem.')
@@ -517,11 +521,20 @@ class FxCorrelator(Instrument):
         self.true_cf = float(_feng_d['true_cf'])
         self.quant_format = _feng_d['quant_format']
         self.adc_bitwidth = int(_feng_d['sample_bits'])
+        try:
+            self.qdr_ct_error_threshold = int(_feng_d['qdr_ct_error_threshold'])
+        except KeyError:
+            self.qdr_ct_error_threshold = 100
 
         _xeng_d = self.configd['xengine']
         self.x_per_fpga = int(_xeng_d['x_per_fpga'])
         self.accumulation_len = int(_xeng_d['accumulation_len'])
         self.xeng_accumulation_len = int(_xeng_d['xeng_accumulation_len'])
+        try:
+            self.qdr_vacc_error_threshold = int(
+                _xeng_d['qdr_vacc_error_threshold'])
+        except KeyError:
+            self.qdr_vacc_error_threshold = 100
 
         # get this from the running x-engines?
         self.xeng_clk = int(_xeng_d['x_fpga_clock'])

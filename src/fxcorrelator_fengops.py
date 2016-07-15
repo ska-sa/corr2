@@ -642,3 +642,54 @@ class FEngineOperations(object):
             except ValueError:
                 pass
         raise ValueError('Could not find source %s anywhere.' % source_name)
+
+    def check_ct_parity(self):
+        """
+        Check the corner turner parity error counters
+        :return:
+        """
+        self.logger.info('Checking CT parity errors (QDR test)')
+        _required_bits = int(numpy.ceil(numpy.log2(
+            self.corr.qdr_ct_error_threshold)))
+        # do the bitstreams have wide-enough counters?
+        bitwidth = self.hosts[0].registers.ct_ctrs.field_get_by_name(
+            'ct_parerr_cnt0').width_bits
+        if bitwidth < _required_bits:
+            self.logger.warn(
+                '\tCT parity error counter is too narrow: {bw} < {rbw}. NOT '
+                'running test.'.format(bw=bitwidth, rbw=_required_bits))
+            return True
+        thresh = self.corr.qdr_ct_error_threshold
+
+        def _check_host(host):
+            ctrs = host.registers.ct_ctrs.read()['data']
+            note_errors = False
+            for pol in [0, 1]:
+                fname = 'ct_parerr_cnt' + str(pol)
+                if (ctrs[fname] > 0) and (ctrs[fname] < thresh):
+                    self.logger.warn('\t{h}: {thrsh} > {nm} > 0. Que '
+                                     'pasa?'.format(h=host.host, nm=fname,
+                                                    thrsh=thresh))
+                    note_errors = True
+                elif (ctrs[fname] > 0) and (ctrs[fname] >= thresh):
+                    self.logger.error('\t{h}: {nm} > {thrsh}. Problems.'.format(
+                        h=host.host, nm=fname, thrsh=thresh))
+                    return False, False
+            return True, note_errors
+        res = THREADED_FPGA_OP(
+            self.hosts, 5,
+            (_check_host, [], {}))
+        note_errors = False
+        for host, results in res.items():
+            if not results[0]:
+                return False
+            if results[1]:
+                note_errors = True
+        if note_errors:
+            self.logger.info('\tcheck_ct_parity: mostly okay, some errors')
+        else:
+            self.logger.info('\tcheck_ct_parity: all okay')
+        return True
+
+
+
