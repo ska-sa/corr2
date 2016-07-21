@@ -94,10 +94,10 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
     data = fpga.get_adc_snapshots()
     ictr += 1
 
-    topstop = plotrange[1] if plotrange[1] != -1 else len(data['p0'])
+    topstop = plotrange[1] if plotrange[1] != -1 else len(data['p0'].data)
 
-    p0_data = data['p0'][plotrange[0]:topstop]
-    p1_data = data['p1'][plotrange[0]:topstop]
+    p0_data = data['p0'].data[plotrange[0]:topstop]
+    p1_data = data['p1'].data[plotrange[0]:topstop]
 
     # print '\tMean:   %.10f' % numpy.mean(p0_data[1000:3000])
     # print '\tStddev: %.10f' % numpy.std(p0_data[1000:3000])

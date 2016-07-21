@@ -9,6 +9,21 @@ from host_fpga import FpgaHost
 LOGGER = logging.getLogger(__name__)
 
 
+class AdcData(object):
+    """
+    Container for lists of ADC data
+    """
+    def __init__(self, timestamp, data):
+        """
+
+        :param timestamp: int, system time at which the data was read
+        :param data: a list of the data, sample-by-sample
+        :return:
+        """
+        self.timestamp = timestamp
+        self.data = data
+
+
 class DelaysUnsetError(Exception):
     pass
 
@@ -754,22 +769,6 @@ class FpgaFHost(DigitiserDataReceiver):
                              'this fhost.' % source_name)
         return targetsrc, targetsrc_num
 
-    def get_adc_snapshot_for_source(self, source_name, unix_time=-1):
-        """
-        Read the small voltage buffer for a source from a host.
-        :param source_name: the source name
-        :param unix_time: the time at which to read
-        :return:
-        """
-        if unix_time == -1:
-            unix_time = time.time() + 1
-        targetsrc, targetsrc_num = self._find_source(source_name)
-        d = self.get_adc_timed_snapshots(loadtime_unix=unix_time)
-        if targetsrc_num % 2 == 0:
-            return d['p0']
-        else:
-            return d['p1']
-
     def get_quant_snapshot(self, source_name):
         """
         Read the post-quantisation snapshot for a given source
@@ -853,27 +852,40 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('%s: PFB okay.' % self.host)
         return True
 
-    def get_adc_timed_snapshots(self, fromnow=2, loadtime_unix=-1,
-                                loadtime_system=-1):
+    def get_adc_snapshot_for_source(self, source_name, unix_time=-1):
         """
-        Get a snapshot of incoming ADC data at a specific time.
-        :param fromnow: trigger x seconds from now
+        Read the small voltage buffer for a source from a host.
+        :param source_name: the source name
+        :param unix_time: the time at which to read
+        :return: AdcData()
+        """
+        targetsrc, targetsrc_num = self._find_source(source_name)
+        if unix_time == -1:
+            d = self.get_adc_snapshots_timed(from_now=2)
+        else:
+            d = self.get_adc_snapshots_timed(loadtime_unix=unix_time)
+        return d['p%i' % (targetsrc_num % 2)]
+
+    def _get_adc_timed_convert_times(
+            self, from_now=2, loadtime_unix=-1,
+            loadtime_system=-1, localtime=-1):
+        """
+        Given trigger times as a number of options, convert them to a
+        single system time.
+        :param from_now: trigger x seconds from now, default is two
         :param loadtime_unix: the load time as a UNIX time
         :param loadtime_system: the load time as a system board time.
-        Default is 2 seconds in the future.
-        :return:
+        :param localtime: pass the system localtime, in ticks, to the function
+        :return: localtime, system load time
         """
-        tic = time.time()
-        timediff = loadtime_unix - time.time()
-
-        if 'adc_snap_trig_select' not in self.registers.control.field_names():
-            raise NotImplementedError('Timed ADC snapshot support does '
-                                      'not exist on older f-engines.')
-        if self.rx_data_sample_rate_hz == -1:
-            raise ValueError('Cannot continue with unknown source sample '
-                             'rate. Please set this with: '
-                             '\'host.rx_data_sample_rate_hz = xxxx\' first.')
-
+        start_tic = time.time()
+        if localtime == -1:
+            localtime = self.get_local_time()
+        if localtime & ((2**12) - 1) != 0:
+            LOGGER.exception('Bottom 12 bits of local time are not '
+                             'zero? %i' % localtime)
+            raise ValueError('Bottom 12 bits of local time are not '
+                             'zero? %i' % localtime)
         if loadtime_system != -1:
             if loadtime_system & ((2**12) - 1) != 0:
                 LOGGER.exception('Time resolution from the digitiser is '
@@ -882,25 +894,41 @@ class FpgaFHost(DigitiserDataReceiver):
                 raise ValueError('Time resolution from the digitiser is '
                                  'only 2^12, trying to trigger at %i would '
                                  'never work.' % loadtime_system)
-
-        localtime = self.get_local_time()
-        if localtime & ((2**12) - 1) != 0:
-            LOGGER.exception('Bottom 12 bits of local time are not '
-                             'zero? %i' % localtime)
-            raise ValueError('Bottom 12 bits of local time are not '
-                             'zero? %i' % localtime)
-
+            return localtime, loadtime_system
         if loadtime_unix != -1:
-            timediff_samples = (timediff * 1.0) * self.rx_data_sample_rate_hz
-            loadtime = int(localtime + timediff_samples)
-            loadtime += 2**12
-            loadtime = (loadtime >> 12) << 12
-        elif loadtime_system != -1:
-            loadtime = loadtime_system
+            timediff = loadtime_unix - start_tic
         else:
-            loadtime = int(localtime + (self.rx_data_sample_rate_hz * fromnow))
-            loadtime += 2**12
-            loadtime = (loadtime >> 12) << 12
+            timediff = from_now
+        timediff_samples = (timediff * 1.0) * self.rx_data_sample_rate_hz
+        loadtime = int(localtime + timediff_samples)
+        loadtime += 2**12
+        loadtime = (loadtime >> 12) << 12
+        return localtime, loadtime
+
+    def get_adc_snapshots_timed(self, from_now=2, loadtime_unix=-1,
+                                loadtime_system=-1, localtime=-1):
+        """
+        Get a snapshot of incoming ADC data at a specific time.
+        :param from_now: trigger x seconds from now
+        :param loadtime_unix: the load time as a UNIX time
+        :param loadtime_system: the load time as a system board time.
+        :param localtime: pass the system localtime, in ticks, to the function
+        Default is 2 seconds in the future.
+        :return {'p0': AdcData(), 'p1': AdcData()}
+        """
+        if self.rx_data_sample_rate_hz == -1:
+            raise ValueError('Cannot continue with unknown source sample '
+                             'rate. Please set this with: '
+                             '\'host.rx_data_sample_rate_hz = xxxx\' first.')
+
+        if 'adc_snap_trig_select' not in self.registers.control.field_names():
+            raise NotImplementedError('Timed ADC snapshot support does '
+                                      'not exist on older f-engines.')
+
+        tic = time.time()
+        localtime, loadtime = self._get_adc_timed_convert_times(
+            from_now=from_now, loadtime_unix=loadtime_unix,
+            loadtime_system=loadtime_system, localtime=localtime)
 
         if loadtime <= localtime:
             LOGGER.exception(
@@ -909,22 +937,26 @@ class FpgaFHost(DigitiserDataReceiver):
             raise ValueError(
                 'A load time in past makes no sense. %i < %i = %i' % (
                     loadtime, localtime, loadtime - localtime))
+
         custom_timeout = int((loadtime - localtime) /
                              self.rx_data_sample_rate_hz) + 1
+
         ltime_msw = (loadtime >> 32) & (2**16 - 1)
         ltime_lsw = loadtime & ((2**32) - 1)
         self.registers.trig_time_msw.write_int(ltime_msw)
         self.registers.trig_time_lsw.write_int(ltime_lsw)
-        snaptic = time.time()
+        snap_tic = time.time()
         rv = self.get_adc_snapshots(trig_sel=0, custom_timeout=custom_timeout)
         toc = time.time()
         LOGGER.debug('%s: timed ADC read took %.3f sec, total %.3f sec' % (
-            self.host, (toc - snaptic), (toc - tic)))
-        if ((loadtime >> 12) & ((2**32)-1)) != rv['time48']:
-            err_str = 'ADC data not read at specified time: %i != %i' % (
-                loadtime, rv['time48'])
+            self.host, (toc - snap_tic), (toc - tic)))
+        if ((loadtime >> 12) & ((2**32)-1)) != rv['p0'].timestamp:
+            err_str = 'ADC data not read at specified time: %i != %s' % (
+                loadtime, str(rv['p0'].timestamp))
             LOGGER.error(err_str)
             raise RuntimeError(err_str)
+        rv['p0'].timestamp = loadtime
+        rv['p1'].timestamp = loadtime
         return rv
 
     def get_adc_snapshots(self, trig_sel=1, custom_timeout=-1):
@@ -933,9 +965,10 @@ class FpgaFHost(DigitiserDataReceiver):
         :param trig_sel: 0 for time-trigger, 1 for constant trigger
         :param custom_timeout: should a custom timeout be applied to the
         snapshot read operation?
+        :return {'p0': AdcData(), 'p1': AdcData()}
         """
         if 'p1_d3' not in self.snapshots.snap_adc0_ss.field_names():
-            return self.get_adc_snapshots_old()
+            return self._get_adc_snapshots_compat()
         if 'adc_snap_trig_select' in self.registers.control.field_names():
             self.registers.control.write(adc_snap_trig_select=trig_sel)
         self.registers.control.write(adc_snap_arm=0)
@@ -961,19 +994,20 @@ class FpgaFHost(DigitiserDataReceiver):
             _tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
             d['p1_d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
         # pack the data into simple lists
-        rv = {'p0': [], 'p1': []}
+        rvp0 = []
+        rvp1 = []
         for ctr in range(0, len(d['p0_d0'])):
             for ctr2 in range(0, 8):
-                rv['p0'].append(d['p0_d%i' % ctr2][ctr])
-                rv['p1'].append(d['p1_d%i' % ctr2][ctr])
-        rv['time48'] = time48
-        return rv
+                rvp0.append(d['p0_d%i' % ctr2][ctr])
+                rvp1.append(d['p1_d%i' % ctr2][ctr])
+        return {'p0': AdcData(time48, rvp0),
+                'p1': AdcData(time48, rvp1)}
 
-    def get_adc_snapshots_old(self):
+    def _get_adc_snapshots_compat(self):
         """
         Old implementations of reading the ADC snapshots, included for
         compatibility.
-        :return:
+        :return {'p0': AdcData(), 'p1': AdcData()}
         """
         if 'p1_4' in self.snapshots.snap_adc0_ss.field_names():
             # temp new style
@@ -995,13 +1029,14 @@ class FpgaFHost(DigitiserDataReceiver):
             p0 = self.snapshots.snap_adc0_ss.read()['data']
             p1 = self.snapshots.snap_adc1_ss.read()['data']
         # pack the data into simple lists
-        rv = {'p0': [], 'p1': []}
+        rvp0 = []
+        rvp1 = []
         for ctr in range(0, len(p0['d0'])):
             for ctr2 in range(0, 8):
-                rv['p0'].append(p0['d%i' % ctr2][ctr])
-                rv['p1'].append(p1['d%i' % ctr2][ctr])
-        rv['time48'] = -1
-        return rv
+                rvp0.append(p0['d%i' % ctr2][ctr])
+                rvp1.append(p1['d%i' % ctr2][ctr])
+        return {'p0': AdcData(-1, rvp0),
+                'p1': AdcData(-1, rvp1)}
 
 '''
     def _get_fengine_fpga_config(self):

@@ -414,27 +414,48 @@ class Corr2Server(katcp.DeviceServer):
         return tuple(['ok'] + Corr2Server.rv_to_liststr(quant_string))
 
     @request(Str(), Float(default=-1))
-    @return_reply(Str(multiple=True))
+    @return_reply(Int())
     def request_adc_snapshot(self, sock, source_name, capture_time):
         """
-        Get a list of values representing the quantised spectrum for
-        the given source
+        Request a snapshot of ADC data for a specific source, at a
+        specific time.
         :param sock:
         :param source_name: the source to query
         :param capture_time: the UNIX time from which to capture data
         :return:
         """
         try:
-            snapdata = self.instrument.fops.get_adc_snapshot(
+            data = self.instrument.fops.get_adc_snapshot(
                 source_name, capture_time)
+            snaptime = data[source_name].timestamp
+            rstr = str(data[source_name].data)
+            sock.inform(source_name, rstr)
+            return 'ok', snaptime
         except ValueError as e:
             logging.info(e)
             return 'fail', 'failed to read ADC voltage data for ' \
                            'source %s' % source_name
-        data_string = ''
-        for data_word in snapdata:
-            data_string += ' %s' % str(data_word)
-        return tuple(['ok'] + Corr2Server.rv_to_liststr(data_string))
+
+    @request()
+    @return_reply(Int())
+    def request_transient_buffer_trigger(self, sock):
+        """
+        Get ADC snapshots for all data sources, hopefully triggered at the
+        same time.
+        :param sock:
+        :return:
+        """
+        try:
+            data = self.instrument.fops.get_adc_snapshot()
+            for source in data:
+                rstr = str(data[source].data)
+                sock.inform(source, rstr)
+            snaptime = data[data.keys()[0]].timestamp
+            return 'ok', snaptime
+        except ValueError as e:
+            logging.info(e)
+            return 'fail', 'failed to read ADC voltage data from transient' \
+                           'buffers.'
 
     @request(Str(), Str(), Float(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -469,7 +490,7 @@ class Corr2Server(katcp.DeviceServer):
         Set the quantiser gain for an input
         :param sock:
         :param beam_name: required beam product
-        :param new_gain: the new gain to apply
+        :param new_gain: the new gain to apply - a real float
         :return:
         """
         if not self.instrument.found_beamformer:

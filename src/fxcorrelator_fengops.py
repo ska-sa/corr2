@@ -627,21 +627,53 @@ class FEngineOperations(object):
                 pass
         raise ValueError('Could not find source %s anywhere.' % source_name)
 
-    def get_adc_snapshot(self, source_name, unix_time=-1):
+    def get_adc_snapshot(self, source_name=None, unix_time=-1):
         """
         Read the small voltage buffer for a source from a host.
-        :param source_name: the source name
+        :param source_name: the source name, if None, will return all sources
         :param unix_time: the time at which to read
-        :return:
+        :return: {src_name0: AdcData(),
+                  src_name1: AdcData(),
+                 }
         """
-        if unix_time == -1:
-                unix_time = time.time() + 1
-        for host in self.hosts:
-            try:
-                return host.get_adc_snapshot_for_source(source_name, unix_time)
-            except ValueError:
-                pass
-        raise ValueError('Could not find source %s anywhere.' % source_name)
+        if source_name is None:
+            # get data for all f-engines triggered at the same time
+            localtime = self.hosts[0].get_local_time()
+            _sample_rate = self.hosts[0].rx_data_sample_rate_hz
+            if unix_time == -1:
+                timediff = 2
+            else:
+                timediff = unix_time - time.time()
+            timediff_samples = (timediff * 1.0) * _sample_rate
+            loadtime = int(localtime + timediff_samples)
+            loadtime += 2**12
+            loadtime = (loadtime >> 12) << 12
+            res = THREADED_FPGA_FUNC(
+                self.hosts, timeout=10,
+                target_function=('get_adc_snapshots_timed', [],
+                                 {'loadtime_system': loadtime,
+                                  'localtime': localtime}))
+            rv = {}
+            for source in self.corr.fengine_sources:
+                host = source['host'].host
+                num = source['source_num']
+                name = source['source'].name
+                assert num % 2 == source['numonhost']
+                rv[name] = res[host]['p%i' % (num % 2)]
+            return rv
+        else:
+            # return the data only for one given source
+            rv = None
+            for host in self.hosts:
+                try:
+                    rv = host.get_adc_snapshot_for_source(
+                        source_name, unix_time)
+                except ValueError:
+                    pass
+            if rv is None:
+                raise ValueError(
+                    'Could not find source %s on any host.' % source_name)
+            return {source_name: rv}
 
     def check_ct_parity(self):
         """
