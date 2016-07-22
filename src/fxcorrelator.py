@@ -675,31 +675,15 @@ class FxCorrelator(Instrument):
                 product_name, self.data_products))
         product = self.data_products[product_name]
         product.set_destination(txip_str, txport)
-        if self.sensor_manager:
-            sensor_name = '%s-destination' % product.name
-            sensor = self.sensor_manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Sensor.NOMINAL, str(product.destination))
-
-    def product_set_meta_destination(self, product_name,
-                                     txip_str=None, txport=None):
-        """
-        Set the meta destination for a data product.
-        :param product_name:
-        :param txip_str: A dotted-decimal string representation of the
-        IP address. e.g. '1.2.3.4'
-        :param txport: An integer port number.
-        :return: <nothing>
-        """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        product = self.data_products[product_name]
         product.set_meta_destination(txip_str, txport)
         if self.sensor_manager:
+            set_time = time.time()
+            sensor_name = '%s-destination' % product.name
+            sensor = self.sensor_manager.sensor_get(sensor_name)
+            sensor.set(set_time, Sensor.NOMINAL, str(product.destination))
             sensor_name = '%s-meta-destination' % product.name
             sensor = self.sensor_manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Sensor.NOMINAL,
-                       str(product.meta_destination))
+            sensor.set(set_time, Sensor.NOMINAL, str(product.meta_destination))
 
     def product_tx_enable(self, product_name):
         """

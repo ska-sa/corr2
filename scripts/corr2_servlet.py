@@ -213,27 +213,23 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply()
     def request_meta_destination(self, sock, stream, ipportstr):
         """
-
+        Set/Get the capture AND meta destination for this instrument
         :param sock:
+        :param stream: the name of the product stream
+        :param ipportstr: ip and port, in the form 1.2.3.4:7890
         :return:
         """
-        try:
-            temp = ipportstr.split(':')
-            txipstr = temp[0]
-            txport = int(temp[1])
-            self.instrument.product_set_meta_destination(
-                stream, txip_str=txipstr, txport=txport)
-        except Exception as e:
-            return 'fail', 'setting meta destination for %s failed: %s' % \
-                   (stream, e.message)
-        return 'ok',
+        return 'fail', 'This has been deprecated. Use capture-destination to ' \
+                       'set both capture and meta destinations at the same time'
 
     @request(Str(), Str())
     @return_reply()
     def request_capture_destination(self, sock, stream, ipportstr):
         """
-        Set/Get the capture destination for this instrument
+        Set/Get the capture AND meta destination for this instrument
         :param sock:
+        :param stream: the name of the product stream
+        :param ipportstr: ip and port, in the form 1.2.3.4:7890
         :return:
         """
         try:
@@ -243,8 +239,8 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.product_set_destination(
                 stream, txipstr, txport)
         except Exception as e:
-            return 'fail', 'setting capture destination for %s failed: %s' % \
-                   (stream, e.message)
+            return 'fail', 'setting capture AND meta destination for %s ' \
+                           'failed: %s' % (stream, e.message)
         return 'ok',
 
     @request(Str(default=''))
