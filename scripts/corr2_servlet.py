@@ -9,6 +9,7 @@ import tornado
 import signal
 from tornado import gen
 import Queue
+import time
 
 from corr2 import fxcorrelator, sensors
 
@@ -114,18 +115,13 @@ class Corr2Server(katcp.DeviceServer):
         :param log_len:
         :return:
         """
-        logging.info('got a create request with config file %s' % config_file)
         try:
             self.instrument = fxcorrelator.FxCorrelator(
-                'a_correlator', config_source=config_file)
+                'corr_%s' % str(time.time()), config_source=config_file)
             self.instrument.standard_log_config()
-            logging.info('made correlator okay')
             return 'ok',
         except Exception as e:
-            localexc = e
-            pass
-        logging.error('create threw Exception: %s' % localexc.message)
-        return 'fail', 'create threw Exception: %s' % localexc.message
+            return 'fail', 'Failed to create instrument: %s' % e.message
 
     def setup_sensors(self):
         """
@@ -160,10 +156,8 @@ class Corr2Server(katcp.DeviceServer):
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',
         except Exception as e:
-            localexc = e
-            pass
-        logging.error('initialise threw Exception: %s' % localexc.message)
-        return 'fail', 'initialise threw Exception: %s' % localexc.message
+            return 'fail', 'Failed to initialise %s: %s' % (
+                self.instrument.descriptor, e.message)
 
     @request(Str(multiple=True))
     @return_reply()
@@ -174,7 +168,7 @@ class Corr2Server(katcp.DeviceServer):
         :return: 'fail' and a test fail message
         """
         print multiargs
-        return 'fail', 'a test failure, like it should'
+        return 'fail', 'A test failure, like it should'
 
     @request(Float(default=-1.0))
     @return_reply(Float())
@@ -182,8 +176,8 @@ class Corr2Server(katcp.DeviceServer):
         """
         Set/Get the digitiser synch time, UNIX time.
         :param sock:
-        :param synch_time:
-        :return:
+        :param synch_time: unix time float
+        :return: the currently set synch time
         """
         # if not self.instrument.initialised():
         #     logging.warn('request %s before initialised... refusing.' %
@@ -193,12 +187,9 @@ class Corr2Server(katcp.DeviceServer):
         if synch_time > -1.0:
             try:
                 self.instrument.set_synch_time(synch_time)
-            except RuntimeError as ve:
-                return 'fail', 'request digitiser_synch_epoch did not ' \
-                               'succeed, check the log - %s' % ve.message
-            except Exception as ve:
-                return 'fail', 'request digitiser_synch_epoch failed for an ' \
-                               'unknown reason, check the log - %s' % ve.message
+            except Exception as e:
+                return 'fail', 'Failed to set digitiser synch epoch: ' \
+                               '%s' % e.message
         return 'ok', self.instrument.get_synch_time()
 
     def _check_product_name(self, product_name):
@@ -211,42 +202,47 @@ class Corr2Server(katcp.DeviceServer):
 
     @request(Str(), Str())
     @return_reply()
-    def request_meta_destination(self, sock, stream, ipportstr):
+    def request_meta_destination(self, sock, product_name, ipportstr):
         """
         Set/Get the capture AND meta destination for this instrument
         :param sock:
-        :param stream: the name of the product stream
+        :param product_name: an instrument data product name
         :param ipportstr: ip and port, in the form 1.2.3.4:7890
         :return:
         """
         return 'fail', 'This has been deprecated. Use capture-destination to ' \
                        'set both capture and meta destinations at the same time'
 
-    @request(Str(), Str())
-    @return_reply()
-    def request_capture_destination(self, sock, stream, ipportstr):
+    @request(Str(), Str(default=''))
+    @return_reply(Str(multiple=True))
+    def request_capture_destination(self, sock, product_name, ipportstr):
         """
         Set/Get the capture AND meta destination for this instrument
         :param sock:
-        :param stream: the name of the product stream
+        :param product_name: an instrument data product name
         :param ipportstr: ip and port, in the form 1.2.3.4:7890
         :return:
         """
-        try:
-            temp = ipportstr.split(':')
-            txipstr = temp[0]
-            txport = int(temp[1])
-            self.instrument.product_set_destination(
-                stream, txipstr, txport)
-        except Exception as e:
-            return 'fail', 'setting capture AND meta destination for %s ' \
-                           'failed: %s' % (stream, e.message)
-        return 'ok',
+        if ipportstr != '':
+            try:
+                temp = ipportstr.split(':')
+                txipstr = temp[0]
+                txport = int(temp[1])
+                self.instrument.product_set_destination(
+                    product_name, txipstr, txport)
+            except Exception as e:
+                return 'fail', 'Failed to set capture AND meta destination ' \
+                               'for %s: %s' % (product_name, e.message)
+        else:
+            dprod = self.instrument.data_products[product_name]
+            ipportstr = '%s:%d' % (dprod.destination.ip, dprod.destination.port)
+        return 'ok', product_name, ipportstr
 
     @request(Str(default=''))
     @return_reply()
     def request_capture_list(self, sock, product_name):
         """
+        List available products and their destination IP:port
         :param sock:
         :param product_name: an instrument data product name
         :return:
@@ -258,7 +254,7 @@ class Corr2Server(katcp.DeviceServer):
             product_names.extend(self.instrument.data_products.keys())
         for prod in product_names:
             if not self._check_product_name(prod):
-                return 'fail', 'Product %s not in instrument data ' \
+                return 'fail', 'Failed: product %s not in instrument data ' \
                                'products: %s' % (prod,
                                                  self.instrument.data_products)
             dprod = self.instrument.data_products[prod]
@@ -268,45 +264,53 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok',
 
     @request(Str(default=''))
-    @return_reply()
+    @return_reply(Str())
     def request_capture_start(self, sock, product_name):
         """
+        Start transmission of a data product.
         :param sock:
         :param product_name: an instrument data product name
         :return:
         """
         if not self._check_product_name(product_name):
-            return 'fail', 'requested product name not found'
+            return 'fail', 'Failed: product %s not in instrument data ' \
+                           'products: %s' % (product_name,
+                                             self.instrument.data_products)
         self.instrument.product_issue_metadata(product_name)
         self.instrument.product_tx_enable(product_name)
-        return 'ok',
+        return 'ok', product_name
 
     @request(Str(default=''))
-    @return_reply()
+    @return_reply(Str())
     def request_capture_stop(self, sock, product_name):
         """
+        Stop transmission of a data product.
         :param sock:
         :param product_name: an instrument data product name
         :return:
         """
         if not self._check_product_name(product_name):
-            return 'fail', 'requested product name not found'
+            return 'fail', 'Failed: product %s not in instrument data ' \
+                           'products: %s' % (product_name,
+                                             self.instrument.data_products)
         self.instrument.product_tx_disable(product_name)
-        return 'ok',
+        return 'ok', product_name
 
     @request(Str(default=''))
-    @return_reply()
+    @return_reply(Str())
     def request_capture_meta(self, sock, product_name):
         """
-
+        Issue metadata for a data product
         :param sock:
         :param product_name: an instrument data product name
         :return:
         """
         if not self._check_product_name(product_name):
-            return 'fail', 'requested product name not found'
+            return 'fail', 'Failed: product %s not in instrument data ' \
+                           'products: %s' % (product_name,
+                                             self.instrument.data_products)
         self.instrument.product_issue_metadata(product_name)
-        return 'ok',
+        return 'ok', product_name
 
     @request(Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -323,16 +327,12 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.set_labels(newlist)
                 return tuple(['ok'] + self.instrument.get_labels())
-            except ValueError as ve:
-                return 'fail', 'provided input labels were not ' \
-                               'correct: %s' % ve.message
-            except Exception as ve:
-                return 'fail', 'provided input labels were not ' \
-                               'correct: Unhandled exception - %s' % ve.message
+            except Exception as e:
+                return 'fail', 'Failed to set input labels: %s' % e.message
         else:
             return tuple(['ok'] + self.instrument.get_labels())
 
-    @request(Str(default=''), Str(default='', multiple=True))
+    @request(Str(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_gain(self, sock, source_name, *eq_vals):
         """
@@ -342,13 +342,14 @@ class Corr2Server(katcp.DeviceServer):
         :param eq_vals: the equaliser values
         :return:
         """
-        if source_name == '':
-            return 'fail', 'no source name given'
+        if source_name.strip() == '':
+            return 'fail', 'No source name given'
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
                 self.instrument.fops.eq_set(True, source_name, list(eq_vals))
             except Exception as e:
-                return 'fail', 'unknown exception: %s' % e.message
+                return 'fail', 'Failed setting eq for source %s: ' \
+                               '%s' % (source_name, e.message)
         _src = self.instrument.fops.eq_get(source_name)
         return tuple(['ok'] +
                      Corr2Server.rv_to_liststr(_src[source_name]['eq']))
@@ -357,7 +358,7 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):
         """
-
+        Set delays for the instrument.
         :param sock:
         :param loadtime: the load time, in seconds
         :param sock: the coefficient set, as a list of strings, described in
@@ -369,7 +370,7 @@ class Corr2Server(katcp.DeviceServer):
                 loadtime, delay_strings)
             return tuple(['ok'] + actual)
         except Exception as e:
-            return 'fail', 'could not set delays - %s' % e.message
+            return 'fail', 'Failed setting delays: %s' % e.message
 
     @request(Float(default=-1.0))
     @return_reply(Float())
@@ -384,8 +385,9 @@ class Corr2Server(katcp.DeviceServer):
         if new_acc_time != -1.0:
             try:
                 self.instrument.xops.set_acc_time(new_acc_time)
-            except:
-                return 'fail', 'could not set accumulation length'
+            except Exception as e:
+                return 'fail', 'Failed to set accumulation ' \
+                               'length: %s' % e.message
         return 'ok', self.instrument.xops.get_acc_time()
 
     @request(Str(default=''))
@@ -401,9 +403,8 @@ class Corr2Server(katcp.DeviceServer):
         try:
             snapdata = self.instrument.fops.get_quant_snap(source_name)
         except ValueError as e:
-            logging.info(e)
-            return 'fail', 'failed to read quant snap data for ' \
-                           'source %s' % source_name
+            return 'fail', 'Failed reading quant snap data for ' \
+                           'source %s: %s' % (source_name, e.message)
         quant_string = ''
         for complex_word in snapdata:
             quant_string += ' %s' % str(complex_word)
@@ -428,9 +429,8 @@ class Corr2Server(katcp.DeviceServer):
             sock.inform(source_name, rstr)
             return 'ok', snaptime
         except ValueError as e:
-            logging.info(e)
-            return 'fail', 'failed to read ADC voltage data for ' \
-                           'source %s' % source_name
+            return 'fail', 'Failed reading ADC voltage data for ' \
+                           'source %s: %s' % (source_name, e.message)
 
     @request()
     @return_reply(Int())
@@ -449,9 +449,8 @@ class Corr2Server(katcp.DeviceServer):
             snaptime = data[data.keys()[0]].timestamp
             return 'ok', snaptime
         except ValueError as e:
-            logging.info(e)
-            return 'fail', 'failed to read ADC voltage data from transient' \
-                           'buffers.'
+            return 'fail', 'Failed to read ADC voltage data from transient' \
+                           'buffers: %s' % e.message
 
     @request(Str(), Str(), Float(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -471,12 +470,15 @@ class Corr2Server(katcp.DeviceServer):
                 self.instrument.bops.set_beam_weights(
                     weight_list[0], beam_name, input_name)
             except Exception as e:
-                return 'fail', '%s' % e.message
+                return 'fail', 'Failed setting beamweights for beam %s, ' \
+                               'input %s: %s' % (beam_name, input_name,
+                                                 e.message)
         try:
             cur_weights = self.instrument.bops.get_beam_weights(
                 beam_name, input_name)
         except Exception as e:
-                return 'fail', '%s' % e.message
+            return 'fail', 'Failed reading beamweights for beam %s, input ' \
+                           '%s: %s' % (beam_name, input_name, e.message)
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_weights))
 
     @request(Str(), Float(default=''))
@@ -495,11 +497,13 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.bops.set_beam_quant_gains(new_gain, beam_name)
             except Exception as e:
-                return 'fail', '%s' % e.message
+                return 'fail', 'Failed setting beam gain for beam %s: %s' % (
+                    beam_name, e.message)
         try:
             cur_gains = self.instrument.bops.get_beam_quant_gains(beam_name)
         except Exception as e:
-                return 'fail', '%s' % e.message
+            return 'fail', 'Failed reading beam gain for beam %s: %s' % (
+                beam_name, e.message)
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))
 
     @request(Str(), Float(), Float())
@@ -521,7 +525,8 @@ class Corr2Server(katcp.DeviceServer):
                 bandwidth,
                 centerfreq)
         except Exception as e:
-            return 'fail', '%s' % e.message
+            return 'fail', 'Failed setting beam passband for beam %s: %s' % (
+                beam_name, e.message)
         return 'ok', beam_name, str(cur_bw), str(cur_cf)
 
     @request()
@@ -535,7 +540,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument.xops.vacc_sync()
         except Exception as e:
-            return 'fail', 'Error syncing vaccs: %s' % e.message
+            return 'fail', 'Failed syncing vaccs: %s' % e.message
         return 'ok',
 
     @request(Int(default=-1))
@@ -574,7 +579,7 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok', len(logstrings)
 
     @request(Str(default=''), Int(default=-1))
-    @return_reply()
+    @return_reply(Str())
     def request_set_loglevel_logger(self, logger_name, log_level_int, sock):
         """
         Set the log level of one of the internal loggers.
@@ -587,7 +592,7 @@ class Corr2Server(katcp.DeviceServer):
         else:
             logger = logging.getLogger()
         logger.setLevel(log_level_int)
-        return 'ok',
+        return 'ok', '%s' % str(log_level_int)
 
     @request()
     @return_reply()
@@ -630,7 +635,8 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.fops.eq_set(True, source_name, list(eq_vals))
             except Exception as e:
-                return 'fail', 'unknown exception: %s' % e.message
+                return 'fail', 'Failed setting eq for input %s: %s' % (
+                    source_name, e.message)
         _src = self.instrument.fops.eq_get(source_name)
         return tuple(['ok'] +
                      Corr2Server.rv_to_liststr(_src[source_name]['eq']))
@@ -648,7 +654,7 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.fops.eq_set(True, None, list(eq_vals))
             except Exception as e:
-                return 'fail', 'unknown exception: %s' % e.message
+                return 'fail', 'Failed setting all eqs: %s' % e.message
         else:
             return 'fail', 'did not give new eq values?'
         return 'ok',
