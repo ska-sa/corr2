@@ -1,5 +1,3 @@
-__author__ = 'paulp'
-
 import logging
 
 
@@ -14,6 +12,7 @@ class Corr2LogHandler(logging.Handler):
         :param max_len: how many log messages should be stored in the FIFO
         :return:
         """
+        raise DeprecationWarning
         logging.Handler.__init__(self)
         self._max_len = max_len
         self._records = []

@@ -57,7 +57,6 @@ class FxCorrelator(Instrument):
 
         """
         self.logger = logger
-        self.loghandler = None
 
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
@@ -84,25 +83,6 @@ class FxCorrelator(Instrument):
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
-
-    def standard_log_config(self, log_level=logging.INFO, silence_spead=True):
-        """Convenience method for setting up logging in scripts etc.
-        :param log_level: The loglevel to use by default, logging.INFO.
-        :param silence_spead: Set 'spead' logger to level WARNING if True
-
-        """
-        # Set the root logging handler - submodules loggers will automatically
-        # use it
-        self.loghandler = log.Corr2LogHandler()
-        logging.root.addHandler(self.loghandler)
-        logging.root.setLevel(log_level)
-        self.logger.setLevel(log_level)
-        self.logger.addHandler(self.loghandler)
-
-        if silence_spead:
-            # set the SPEAD logger to warning only
-            spead_logger = logging.getLogger('spead')
-            spead_logger.setLevel(logging.WARNING)
 
     def initialise(self, program=True, qdr_cal=True, require_epoch=False):
         """

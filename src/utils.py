@@ -451,7 +451,7 @@ def thread_funcs(timeout, *funcs):
             break
     if len(returnval) != num_funcs:
         LOGGER.exception('Given %d FPGAs, only got %d results, must '
-                          'have timed out.' % (num_funcs, len(returnval)))
+                         'have timed out.' % (num_funcs, len(returnval)))
         raise RuntimeError('Given %d FPGAs, only got %d results, must '
                            'have timed out.' % (num_funcs, len(returnval)))
     return returnval

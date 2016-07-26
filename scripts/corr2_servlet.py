@@ -14,18 +14,20 @@ import time
 from corr2 import fxcorrelator, sensors
 
 
-# class KatcpLogFormatter(logging.Formatter):
-#     def format(self, record):
-#         translate_levels = {
-#             'WARNING': 'warn',
-#             'warning': 'warn'
-#         }
-#         if record.levelname in translate_levels:
-#             record.levelname = translate_levels[record.levelname]
-#         else:
-#             record.levelname = record.levelname.lower()
-#         record.msg = record.msg.replace(' ', '\_')
-#         return super(KatcpLogFormatter, self).format(record)
+class KatcpStreamHandler(logging.StreamHandler):
+
+    def format(self, record):
+        """
+        Convert the record message contents to a katcp #log format
+        :param record: a logging.LogRecord
+        :return:
+        """
+        level = 'WARN' if record.levelname == 'WARNING' else record.levelname
+        level = level.lower()
+        msg = record.msg.replace(' ', '\_')
+        msg = msg.replace('\t', '\_' * 4)
+        return '#log ' + level + ' ' + '%.6f' % time.time() + ' ' + \
+               record.filename + ' ' + msg
 
 
 class StreamToLogger(object):
@@ -42,33 +44,6 @@ class StreamToLogger(object):
     def write(self, buf):
         for line in buf.rstrip().splitlines():
             self.logger.log(self.log_level, line.rstrip())
-
-
-class KatcpLogEmitHandler(logging.Handler):
-
-    def __init__(self, katcp_server, stream=None):
-        self.katcp_server = katcp_server
-        super(KatcpLogEmitHandler, self).__init__()
-
-    def emit(self, record):
-        """
-        Replace a regular log emit with sending a katcp
-        log message to all connected clients.
-        :param record: the log record to process
-        """
-        try:
-            if record.levelname == 'WARNING':
-                record.levelname = 'WARN'
-            inform_msg = self.katcp_server.create_log_inform(
-                record.levelname.lower(),
-                record.msg,
-                record.filename)
-            self.katcp_server.mass_inform(inform_msg)
-            self.flush()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except:
-            self.handleError(record)
 
 
 class Corr2Server(katcp.DeviceServer):
@@ -118,7 +93,6 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument = fxcorrelator.FxCorrelator(
                 'corr_%s' % str(time.time()), config_source=config_file)
-            self.instrument.standard_log_config()
             return 'ok',
         except Exception as e:
             return 'fail', 'Failed to create instrument: %s' % e.message
@@ -687,32 +661,6 @@ class Corr2Server(katcp.DeviceServer):
         sys.stderr.write('This should go to standard error. %s\n' % ts)
         return 'ok',
 
-    # @request(Int(default=-1), Int(default=-1))
-    # @return_reply(Int(), Int())
-    # def request_eq(self, sock, new_real, new_imag):
-    #     """
-    #
-    #     :param sock:
-    #     :return:
-    #     """
-    #     if new_shift >= 0:
-    #         current_shift_value = fengops.feng_set_eq_all(self.instrument, new_real, new_imag)
-    #     else:
-    #         current_shift_value = fengops.feng_get_fft_shift_all(self.instrument)
-    #         current_shift_value = current_shift_value[current_shift_value.keys()[0]]
-    #     return 'ok', current_shift_value
-    #
-    # @request(Str(default='a string woohoo'), Int(default=777))
-    # @return_reply()
-    # def request_pang(self, sock, astring, anint):
-    #     """
-    #     ping-pong
-    #     :return:
-    #     """
-    #     print 'pong', astring, anint
-    #     return 'ok'
-
-
 # @gen.coroutine
 # def send_test_informs(server):
 #     supdate_inform = katcp.Message.inform('test-mass-inform',
@@ -720,6 +668,7 @@ class Corr2Server(katcp.DeviceServer):
 #                                           time.time())
 #     server.mass_inform(supdate_inform)
 #     tornado.ioloop.IOLoop.current().call_later(5, send_test_informs, server)
+
 
 @gen.coroutine
 def on_shutdown(ioloop, server):
@@ -729,9 +678,10 @@ def on_shutdown(ioloop, server):
     :param server: a katcp.DeviceServer instance
     :return:
     """
-    print('corr2 server shutting down')
+    print 'corr2 server shutting down'
     yield server.stop()
     ioloop.stop()
+
 
 if __name__ == '__main__':
 
@@ -761,7 +711,9 @@ if __name__ == '__main__':
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
     if args.lfm or (not sys.stdout.isatty()):
-        use_katcp_logging = True
+        console_handler = KatcpStreamHandler(stream=sys.stdout)
+        console_handler.setLevel(log_level)
+        root_logger.addHandler(console_handler)
     else:
         console_handler = logging.StreamHandler(stream=sys.stdout)
         console_handler.setLevel(log_level)
@@ -770,19 +722,8 @@ if __name__ == '__main__':
                                       '%(levelname)s - %(message)s')
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
-        use_katcp_logging = False
 
     server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
-
-    if use_katcp_logging:
-        katcp_emit_handler = KatcpLogEmitHandler(server, stream=sys.stdout)
-        katcp_emit_handler.setLevel(log_level)
-        root_logger.addHandler(katcp_emit_handler)
-        # if we're using katcp logging, redirect all stdout and stderr
-        # to the logs
-        sys.stdout = StreamToLogger(logging.getLogger('STDOUT'), logging.INFO)
-        sys.stderr = StreamToLogger(logging.getLogger('STDERR'), logging.ERROR)
-
     print 'Server listening on port %d,' % args.port,
 
     if not args.no_tornado:

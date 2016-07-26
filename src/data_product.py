@@ -154,7 +154,7 @@ class DataProduct(object):
             heapgen = sptx.HeapGenerator(self.meta_ig)
             self.meta_tx.send_heap(heapgen.get_start())
         except AttributeError:
-            LOGGER.warning('Installed version of SPEAD2 doesn\'t seem to'
+            LOGGER.warning('Installed version of SPEAD2 does not seem to'
                            'support stream start packets?')
         self.en_cb(self)
         LOGGER.info('DataProduct %s - output enabled' % self.name)
@@ -169,7 +169,7 @@ class DataProduct(object):
             heapgen = sptx.HeapGenerator(self.meta_ig)
             self.meta_tx.send_heap(heapgen.get_end())
         except AttributeError:
-            LOGGER.warning('Installed version of SPEAD2 doesn\'t seem to'
+            LOGGER.warning('Installed version of SPEAD2 does not seem to'
                            'support stream stop packets?')
         LOGGER.info('DataProduct %s - output disabled' % self.name)
 
