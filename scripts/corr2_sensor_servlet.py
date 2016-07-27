@@ -7,50 +7,26 @@ import os
 import katcp
 import signal
 import tornado
+import time
 
 from tornado.ioloop import IOLoop
 from corr2 import sensors, sensors_periodic, fxcorrelator
 
 
-class KatcpLogFormatter(logging.Formatter):
+class KatcpStreamHandler(logging.StreamHandler):
+
     def format(self, record):
-        translate_levels = {
-            'WARNING': 'warn',
-            'warning': 'warn'
-        }
-        if record.levelname in translate_levels:
-            record.levelname = translate_levels[record.levelname]
-        else:
-            record.levelname = record.levelname.lower()
-        record.msg = record.msg.replace(' ', '\_')
-        return super(KatcpLogFormatter, self).format(record)
-
-
-class KatcpLogEmitHandler(logging.StreamHandler):
-
-    def __init__(self, katcp_server, stream=None):
-        self.katcp_server = katcp_server
-        super(KatcpLogEmitHandler, self).__init__(stream)
-
-    def emit(self, record):
         """
-        Replace a regular log emit with sending a katcp
-        log message to all connected clients.
-        :param record: the log record to process
+        Convert the record message contents to a katcp #log format
+        :param record: a logging.LogRecord
+        :return:
         """
-        try:
-            if record.levelname == 'WARNING':
-                record.levelname = 'WARN'
-            inform_msg = self.katcp_server.create_log_inform(
-                record.levelname.lower(),
-                record.msg,
-                record.filename)
-            self.katcp_server.mass_inform(inform_msg)
-            self.flush()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except:
-            self.handleError(record)
+        level = 'WARN' if record.levelname == 'WARNING' else record.levelname
+        level = level.lower()
+        msg = record.msg.replace(' ', '\_')
+        msg = msg.replace('\t', '\_' * 4)
+        return '#log ' + level + ' ' + '%.6f' % time.time() + ' ' + \
+               record.filename + ' ' + msg
 
 
 class Corr2SensorServer(katcp.DeviceServer):
@@ -117,7 +93,9 @@ if __name__ == '__main__':
     corr2_sensors_logger = logging.getLogger('corr2.sensors')
     corr2_sensors_logger.setLevel(log_level)
     if args.lfm or (not sys.stdout.isatty()):
-        use_katcp_logging = True
+        console_handler = KatcpStreamHandler(stream=sys.stdout)
+        console_handler.setLevel(log_level)
+        corr2_sensors_logger.addHandler(console_handler)
     else:
         console_handler = logging.StreamHandler(stream=sys.stdout)
         console_handler.setLevel(log_level)
@@ -126,7 +104,6 @@ if __name__ == '__main__':
                                       '%(levelname)s - %(message)s')
         console_handler.setFormatter(formatter)
         corr2_sensors_logger.addHandler(console_handler)
-        use_katcp_logging = False
 
     if 'CORR2INI' in os.environ.keys() and args.config == '':
         args.config = os.environ['CORR2INI']
@@ -144,7 +121,6 @@ if __name__ == '__main__':
     print 'started. Running somewhere in the ether... exit however you see fit.'
     instrument = fxcorrelator.FxCorrelator('dummy corr for sensors',
                                            config_source=args.config)
-    instrument.standard_log_config(log_level)
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()
 # end

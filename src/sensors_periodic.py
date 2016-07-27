@@ -10,7 +10,6 @@ from casperfpga.katcp_fpga import KatcpRequestError, KatcpRequestFail, \
 
 from sensors import Corr2Sensor
 
-
 LOGGER = logging.getLogger(__name__)
 
 FHOST_REGS = ['spead_ctrs', 'reorder_ctrs', 'sync_ctrs', 'pfb_ctrs', 'ct_ctrs']
@@ -79,13 +78,12 @@ def _sensor_cb_feng_rxtime(sensor_ok, sensor_values):
     try:
         result, counts, times = yield executor.submit(
             instrument.fops.check_rx_timestamps)
-        sensor_ok.set(time.time(),
-                      Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor_ok.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                       result)
         for host in counts:
             sensor, sensor_u = sensor_values[host]
-            sensor.set(time.time(), Corr2Sensor.NOMINAL, counts[host])
-            sensor_u.set(time.time(), Corr2Sensor.NOMINAL, times[host])
+            sensor.set_value(counts[host])
+            sensor_u.set_value(times[host])
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor_ok.set(time.time(), Corr2Sensor.UNKNOWN, False)
         for sensor, sensor_u in sensor_values.values():
@@ -113,8 +111,7 @@ def _sensor_cb_fdelays(sensor, f_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(f_host.delay_check_loadcounts)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -136,8 +133,7 @@ def _sensor_cb_flru(sensor, f_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(f_host.host_okay)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -159,8 +155,7 @@ def _sensor_cb_xlru(sensor, x_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(x_host.host_okay)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -182,8 +177,7 @@ def _sensor_feng_phy(sensor, f_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(f_host.check_phy_counter)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -205,8 +199,7 @@ def _sensor_xeng_phy(sensor, x_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(x_host.check_phy_counter)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -228,8 +221,7 @@ def _xeng_qdr_okay(sensor, x_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(x_host.qdr_okay)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -251,8 +243,7 @@ def _feng_qdr_okay(sensor, f_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(f_host.qdr_okay)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -274,8 +265,7 @@ def _feng_pfb_okay(sensor, f_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(f_host.check_fft_overflow)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -297,8 +287,7 @@ def _fhost_check_10gbe_rx(sensor, f_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(f_host.check_rx_raw, 0.2, 5)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -321,8 +310,7 @@ def _fhost_check_10gbe_tx(sensor, f_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(f_host.check_tx_raw, 0.2, 5)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -345,8 +333,7 @@ def _xhost_check_10gbe_rx(sensor, x_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(x_host.check_rx_raw, 0.2, 5)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -372,7 +359,7 @@ def _xhost_report_10gbe_tx(sensor, x_host, gbe):
         result = yield executor.submit(
             x_host.registers['%s_txctr' % gbe.name].read)
         result = result['data']['reg']
-        sensor.set(time.time(), Corr2Sensor.NOMINAL, result)
+        sensor.set_value(result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, 0)
     except Exception as e:
@@ -393,8 +380,7 @@ def _sensor_feng_rx_reorder(sensor, f_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(f_host.check_rx_reorder)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -416,8 +402,7 @@ def _sensor_xeng_rx_reorder(sensor, x_host):
     executor = sensor.executor
     try:
         result = yield executor.submit(x_host.check_rx_reorder)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
+        sensor.set(time.time(), Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                    result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
@@ -442,7 +427,7 @@ def _sensor_cb_system_counters(host, host_executor, manager):
             sensor = manager.sensor_get(sens_name)
             oldval = sensor.previous_value
             sens_value = result[sens_name] != oldval
-            sensor.set(time.time(), Corr2Sensor.NOMINAL, sens_value)
+            sensor.set_value(sens_value)
             sensor.previous_value = result[sens_name]
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         for sensor in manager._sensors.values():
@@ -486,19 +471,18 @@ def _sensor_cb_pps(host, host_executor, manager):
             previous_value = sensor.previous_value
             pps = (new_values[tengbe.name][0] - previous_value) / 10.0
             sensor.previous_value = new_values[tengbe.name][0]
-            sensor.set(time.time(), Corr2Sensor.NOMINAL, pps)
+            sensor.set_value(pps)
             # rx
             sensor_name = '%s-%s-rx-pps-ctr' % (host.host, tengbe.name)
             sensor = manager.sensor_get(sensor_name)
             previous_value = sensor.previous_value
             pps = (new_values[tengbe.name][1] - previous_value) / 10.0
             sensor.previous_value = new_values[tengbe.name][1]
-            sensor.set(time.time(), Corr2Sensor.NOMINAL, pps)
+            sensor.set_value(pps)
             # link-status
             sensor_name = '%s-%s-link-status' % (host.host, tengbe.name)
             sensor = manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Corr2Sensor.NOMINAL,
-                       new_values[tengbe.name][2])
+            sensor.set_value(new_values[tengbe.name][2])
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         for tengbe in host.tengbes:
             # tx

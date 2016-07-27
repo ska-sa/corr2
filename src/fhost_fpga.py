@@ -5,6 +5,8 @@ from threading import Event
 
 import casperfpga.memory as caspermem
 from host_fpga import FpgaHost
+from data_source import DataSource
+from sensors import Corr2Sensor, create_source_delay_sensors
 
 LOGGER = logging.getLogger(__name__)
 
@@ -155,6 +157,118 @@ class DigitiserDataReceiver(FpgaHost):
         LOGGER.debug('{}: status cleared.'.format(self.host))
 
 
+class Delay(object):
+    def __init__(self, delay=0, delay_delta=0,
+                 phase_offset=0, phase_offset_delta=0,
+                 load_time=None, load_wait=None, load_check=True):
+        """
+        :param delay is in samples
+        :param delay_delta is in samples per sample
+        :param phase_offset is in fractions of a sample
+        :param phase_offset_delta is in samples per sample
+        :param load_time is in samples since epoch
+        :param load_wait is seconds to wait for delay values to load
+        :param load_check whether to check if load happened
+        """
+        self.delay = delay
+        self.delay_delta = delay_delta
+        self.phase_offset = phase_offset
+        self.phase_offset_delta = phase_offset_delta
+        self.load_time = load_time
+        self.load_wait = load_wait
+        self.load_check = load_check
+        self.load_count = -1
+        self.error = Event()
+
+
+class FengineSource(DataSource):
+    """
+    A data source that is received by an f-engine. 
+    """
+    def __init__(self, name, ip_string, ip_range, port,
+                 host=None, offset=-1, source_number=-1,
+                 sensor_manager=None):
+        """
+
+        :param name: the name of this data source
+        :param ip_string: the ip address at which it can be found - a dotted
+        decimal STRING
+        :param ip_range: the consecutive number of IPs over which it is spread
+        :param port: the port to which it is sent
+        :param host: the Fpga host on which this source is received
+        :param offset: which source on that host is this?
+        :param source_number: in the system, which source is this?
+        :param sensor_manager: a SensorManager instance
+        :return:
+        """
+        self.host = host
+        self.offset = offset
+        self.source_number = source_number
+        self.eq_poly = None
+        self.eq_bram_name = 'eq%i' % offset
+        self.delay = Delay()
+        self.sensor_manager = sensor_manager
+        super(FengineSource, self).__init__(name, ip_string, ip_range, port)
+        if sensor_manager is not None:
+            create_source_delay_sensors(self)
+
+    def update_name(self, new_name):
+        """
+        Update the name of this FengineSource
+        :param new_name: the new name for this source
+        :return:
+        """
+        if new_name == self.name:
+            return
+        old_name = self.name
+        self.name = new_name
+        if self.sensor_manager is not None:
+            sensor_names = ['%s-delay-set' % old_name,
+                            '%s-phase-set' % old_name,
+                            '%s-loadtime' % old_name]
+            for sensor_name in sensor_names:
+                sensor_name = sensor_name.replace('_', '-')
+                self.sensor_manager.sensor_deactivate(sensor_name)
+            create_source_delay_sensors(self)
+    
+    def set_delay(self, delay=0.0, delay_delta=0.0,
+                  phase_offset=0.0, phase_offset_delta=0.0,
+                  load_time=None, load_wait=None, load_check=True):
+        """
+        Update delay settings for data stream at offset specified
+        ready for writing
+
+        :param delay is in samples
+        :param delay_delta is in samples per sample
+        :param phase_offset is in fractions of a sample
+        :param phase_offset_delta is in samples per sample
+        :param load_time is in samples since epoch
+        :param load_wait is seconds to wait for delay values to load
+        :param load_check whether to check if load happened
+        :return 
+        """
+        self.delay.delay = delay
+        self.delay.delay_delta = delay_delta
+        self.delay.phase_offset = phase_offset
+        self.delay.phase_offset_delta = phase_offset_delta
+        self.delay.load_time = load_time
+        self.delay.load_wait = load_wait
+        self.delay.load_check = load_check
+        if self.sensor_manager is not None:
+            self.sensor_manager.sensor_set(
+                sensor=('%s-delay-set' % self.name).replace('_', '-'),
+                status=Corr2Sensor.NOMINAL,
+                value='%.5f,%.5f' % (self.delay.delay, self.delay.delay_delta))
+            self.sensor_manager.sensor_set(
+                sensor=('%s-phase-set' % self.name).replace('_', '-'),
+                status=Corr2Sensor.NOMINAL,
+                value='%.5f,%.5f' % (self.delay.phase_offset,
+                                     self.delay.phase_offset_delta))
+            self.sensor_manager.sensor_set(
+                sensor=('%s-loadtime' % self.name).replace('_', '-'),
+                status=Corr2Sensor.NOMINAL, value=self.delay.load_time)
+
+
 class FpgaFHost(DigitiserDataReceiver):
     """
     A Host, that hosts Fengines, that is a CASPER KATCP FPGA.
@@ -171,15 +285,6 @@ class FpgaFHost(DigitiserDataReceiver):
         # list of DataSources received by this f-engine host
         self.data_sources = []
 
-        # dictionary, indexed on source name, containing tuples
-        # of poly and bram name
-        self.eqs = {}
-
-        # list of dictionaries containing delay settings for each stream
-        self.delays = []
-        self.delay_errors = []
-        self.delay_loadcounts = []
-
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
             self.ports_per_fengine = int(config['ports_per_fengine'])
@@ -195,15 +300,6 @@ class FpgaFHost(DigitiserDataReceiver):
             self.n_chans = None
             self.min_load_time = None
             self.network_latency_adjust = None
-
-        if self.num_fengines:
-            for offset in range(self.num_fengines):
-                self.delays.append({'delay': 0, 'delta_delay': 0,
-                                    'phase_offset': 0, 'delta_phase_offset': 0,
-                                    'load_time': None, 'load_wait': None,
-                                    'load_check': True})
-                self.delay_errors.append(Event())
-                self.delay_loadcounts.append(-1)
 
         self.rx_data_sample_rate_hz = -1
 
@@ -254,33 +350,34 @@ class FpgaFHost(DigitiserDataReceiver):
         # check that it doesn't already exist before adding it
         for src in self.data_sources:
             if src.name == data_source.name:
-                raise ValueError('%s == %s - cannot have two sources with '
-                                 'the same name on one '
-                                 'fhost' % (src.name, data_source.name))
+                raise ValueError(
+                    '%s == %s - cannot have two sources with the same name '
+                    'on one fhost' % (src.name, data_source.name))
         self.data_sources.append(data_source)
 
-    def get_source_eq(self, source_name=None):
+    def get_source(self, source_name):
         """
-        Return a dictionary of all the EQ settings for the sources allocated
-        to this fhost
-        :param source_name: the name ID of the source
+        Get a source based on its name
+        :param source_name:
         :return:
         """
-        if source_name is not None:
-            return self.eqs[source_name]
-        return self.eqs
+        for src in self.data_sources:
+            if src.name == source_name:
+                return src
+        raise ValueError('{host}: source {src} not found on this host.'.format(
+            host=self.host, src=source_name))
 
-    def read_eq(self, eq_bram=None, eq_name=None):
+    def read_eq(self, source_name=None, eq_bram=None):
         """
         Read a given EQ BRAM.
-        :param eq_bram:
-        :param eq_name: the name ID of the EQ to be read
+        :param source_name: the source name
+        :param eq_bram: the name of the EQ BRAM to read
         :return: a list of the complex EQ values from RAM
         """
-        if eq_bram is None and eq_name is None:
+        if eq_bram is None and source_name is None:
             raise RuntimeError('Cannot have both tuple and name None')
-        if eq_name is not None:
-            eq_bram = 'eq%i' % self.eqs[eq_name]['bram_num']
+        if source_name is not None:
+            eq_bram = self.get_source(source_name).eq_bram_name
         # eq vals are packed as 32-bit complex (16 real, 16 imag)
         eqvals = self.read(eq_bram, self.n_chans*4)
         eqvals = struct.unpack('>%ih' % (self.n_chans*2), eqvals)
@@ -291,35 +388,32 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def write_eq_all(self):
         """
-        Write the self.eq variables to the device SBRAMs
+        Write the EQ variables to the device SBRAMs
         :return:
         """
-        for eqname in self.eqs.keys():
-            LOGGER.debug('%s: writing EQ %s' % (self.host, eqname))
-            self.write_eq(eq_name=eqname)
+        for src in self.data_sources:
+            LOGGER.debug('%s: writing EQ %s' % (self.host, src.name))
+            self.write_eq(source_name=src.name)
 
-    def write_eq(self, eq_tuple=None, eq_name=None):
+    def write_eq(self, source_name=None, eq_tuple=None):
         """
         Write a given complex eq to the given SBRAM.
 
         Specify either eq_tuple, a combination of sbram_name and value(s),
-        OR eq_name, but not both. If eq_name is specified, the sbram_name
-        and eq value(s) are read from the self.eqs dictionary.
+        OR source_name, but not both. If source_name is specified, the
+        sbram_name and eq value(s) are read from the sources.
 
+        :param source_name: the name of the source that has the EQ to write
         :param eq_tuple: a tuple of an integer, complex number or list or
         integers or complex numbers and a sbram name
-        :param eq_name: the name of an eq to use, found in the self.eqs
-        dictionary
         :return:
         """
-        if eq_tuple is None and eq_name is None:
+        if eq_tuple is None and source_name is None:
             raise RuntimeError('Cannot have both tuple and name None')
-        if eq_name is not None:
-            if eq_name not in self.eqs:
-                raise ValueError('%s: unknown source name %s' %
-                                 (self.host, eq_name))
-            eq_poly = self.eqs[eq_name]['eq']
-            eq_bram = 'eq%i' % self.eqs[eq_name]['bram_num']
+        if source_name is not None:
+            src = self.get_source(source_name)
+            eq_bram = src.eq_bram_name
+            eq_poly = src.eq_poly
         else:
             eq_poly = eq_tuple[0]
             eq_bram = eq_tuple[1]
@@ -342,12 +436,12 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
-    def delay_get_status(self):
+    def _delay_get_status_registers(self):
         """
         Get the status registers for the delay operations on this f-host
         :return:
         """
-        num_pols = len(self.delays)
+        num_pols = len(self.data_sources)
         rv = []
         for pol in range(num_pols):
             rv.append(self.registers['tl_cd%i_status' % pol].read()['data'])
@@ -358,17 +452,15 @@ class FpgaFHost(DigitiserDataReceiver):
         Are new delays being loaded on this fhost?
         :return: True is the load counts are increasing, false if not
         """
-        if len(self.delay_loadcounts) == 0:
-            raise DelaysUnsetError('Delays not yet setup')
-        new_status = self.delay_get_status()
+        new_status = self._delay_get_status_registers()
         rv = True
-        for cnt, last_loadcount in enumerate(self.delay_loadcounts):
-            new_val = new_status[cnt]['load_count']
-            old_val = self.delay_loadcounts[cnt]
+        for src in self.data_sources:
+            new_val = new_status[src.offset]['load_count']
+            old_val = src.delay.load_count
             if old_val != -1:
                 if old_val == new_val:
                     rv = False
-            self.delay_loadcounts[cnt] = new_val
+            src.delay.load_count = new_val
         return rv
 
     def check_delays(self):
@@ -377,8 +469,8 @@ class FpgaFHost(DigitiserDataReceiver):
         :return: True for all okay, False for errors present
         """
         okay = True
-        for delay_err in self.delay_errors:
-            okay = okay and (not delay_err.is_set())
+        for src in self.data_sources:
+            okay = okay and (not src.delay.error.is_set())
         return okay
 
     def write_delays_all(self):
@@ -386,43 +478,15 @@ class FpgaFHost(DigitiserDataReceiver):
         Goes through all offsets and writes delays with stored delay settings
         """
         act_vals = []
-        for offset in range(len(self.delays)):
-            coeffs = self.delays[offset]
-            act_val = self.write_delay(
-                offset,
-                coeffs['delay'],
-                coeffs['delta_delay'],
-                coeffs['phase_offset'],
-                coeffs['delta_phase_offset'],
-                coeffs['load_time'],
-                coeffs['load_wait'],
-                coeffs['load_check'])
+
+        for src in self.data_sources:
+            act_val = self.write_delay(source=src)
             act_vals.append(act_val)
         return act_vals
 
-    def set_delay(self, offset, delay=0.0, delta_delay=0.0,
-                  phase_offset=0.0, delta_phase_offset=0.0,
-                  load_time=None, load_wait=None, load_check=True):
-        """
-        Update delay settings for data stream at offset specified
-        ready for writing
-
-        :param delay is in samples
-        :param delta_delay is in samples per sample
-        :param phase_offset is in fractions of a sample
-        :param delta_phase_offset is in samples per sample
-        :return 
-        """
-        self.delays[offset] = {
-            'delay': delay, 'delta_delay': delta_delay,
-            'phase_offset': phase_offset,
-            'delta_phase_offset': delta_phase_offset,
-            'load_time': load_time, 'load_wait': load_wait,
-            'load_check': load_check}
-
     @staticmethod
-    def _write_delay_delay(infostr, bitshift, delay_reg, delta_delay_reg,
-                           delay, delta_delay):
+    def _write_delay_delay(infostr, bitshift, delay_reg, delay_delta_reg,
+                           delay, delay_delta):
         """
         Do the delta delay portion of write_delay
         :return:
@@ -453,13 +517,13 @@ class FpgaFHost(DigitiserDataReceiver):
             raise ValueError(_err)
 
         # shift up by amount shifted down by on fpga
-        delta_delay_shifted = float(delta_delay) * bitshift
+        delta_delay_shifted = float(delay_delta) * bitshift
         dds = delta_delay_shifted
         dd = dds / bitshift
 
         LOGGER.info('%s attempting delay delta to %e (%e after shift)' %
-                    (infostr, delta_delay, delta_delay_shifted))
-        reg_info = delta_delay_reg.block_info
+                    (infostr, delay_delta, delta_delay_shifted))
+        reg_info = delay_delta_reg.block_info
         b = int(reg_info['bin_pts'])
 
         max_positive_delta_delay = 1 - 1/float(2**b)
@@ -482,7 +546,7 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('%s writing delay delta to %e (%e after shift)' %
                     (infostr, dd, dds))
         try:
-            delta_delay_reg.write(delta=dds)
+            delay_delta_reg.write(delta=dds)
         except ValueError as e:
             _err = '%s writing delay delta (%.8e), error - %s' % \
                    (infostr, dds, e.message)
@@ -491,12 +555,12 @@ class FpgaFHost(DigitiserDataReceiver):
 
     @staticmethod
     def _write_delay_phase(infostr, bitshift, phase_reg, phase_offset,
-                           delta_phase_offset):
+                           phase_offset_delta):
         """
         :return:
         """
         # multiply by amount shifted down by on FPGA
-        delta_phase_offset_shifted = float(delta_phase_offset) * bitshift
+        delta_phase_offset_shifted = float(phase_offset_delta) * bitshift
 
         LOGGER.info('%s attempting to set initial phase to %f and phase '
                     'delta to %e' % (infostr, phase_offset,
@@ -559,9 +623,29 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error(_err)
             raise ValueError(_err)
 
-    def write_delay(self, offset, delay=0.0, delta_delay=0.0, 
-                    phase_offset=0.0, delta_phase_offset=0.0, 
-                    load_mcnt=None, load_wait_delay=None, load_check=True):
+    @staticmethod
+    def _get_delay_bitshift():
+        """
+
+        :return:
+        """
+        # TODO should this be in config file?
+        bitshift_schedule = 23
+        bitshift = (2**bitshift_schedule)
+        return bitshift
+
+    def _get_delay_regs(self, offset):
+        """
+        What are the registers associated with delays at this offset?
+        :param offset:
+        :return: a tuple of delay, delta and phase registers
+        """
+        delay_reg = self.registers['delay%i' % offset]
+        delay_delta_reg = self.registers['delta_delay%i' % offset]
+        phase_reg = self.registers['phase%i' % offset]
+        return delay_reg, delay_delta_reg, phase_reg
+
+    def write_delay(self, source):
         """
         Configures a given stream to a delay in samples and phase in degrees.
 
@@ -572,38 +656,27 @@ class FpgaFHost(DigitiserDataReceiver):
         By default, it will load immediately and verify that things worked
         as expected.
 
-        :param offset is polarisation's offset within FPGA
-        :param delay is in samples
-        :param delta_delay is in samples per sample
-        :param phase_offset is in fractions of a sample
-        :param delta_phase_offset is in samples per sample
-        :param load_mcnt is in samples since epoch
-        :param load_wait_delay is seconds to wait for delay values to load
-        :param load_check whether to check if load happened
+        :param source: the source for which to apply delays
         :return actual values to be loaded
         """
+        bitshift = self._get_delay_bitshift()
+        offset = source.offset
+        dly = source.delay
 
-        # TODO should this be in config file?
-        bitshift_schedule = 23
-        bitshift = (2**bitshift_schedule)
+        delay_reg, delay_delta_reg, phase_reg = self._get_delay_regs(offset)
 
-        # delay registers
-        delay_reg = self.registers['delay%i' % offset]
-        delta_delay_reg = self.registers['delta_delay%i' % offset]
-        phase_reg = self.registers['phase%i' % offset]
-
-        _infstr = '%s:%i:%i:' % (self.host, offset, load_mcnt)
-        self._write_delay_delay(_infstr, bitshift, delay_reg, delta_delay_reg,
-                                delay, delta_delay)
-        self._write_delay_phase(_infstr, bitshift, phase_reg, phase_offset,
-                                delta_phase_offset)
+        _infstr = '%s:%i:%i:' % (self.host, offset, dly.load_time)
+        self._write_delay_delay(_infstr, bitshift, delay_reg, delay_delta_reg,
+                                dly.delay, dly.delay_delta)
+        self._write_delay_phase(_infstr, bitshift, phase_reg, dly.phase_offset,
+                                dly.phase_offset_delta)
 
         cd_tl_name = 'tl_cd%i' % offset
         fd_tl_name = 'tl_fd%i' % offset
         status = self.arm_timed_latches(
             [cd_tl_name, fd_tl_name],
-            mcnt=load_mcnt,
-            check_time_delay=load_wait_delay)
+            mcnt=dly.load_time,
+            check_time_delay=dly.load_wait)
         cd_status_before = status['status_before'][cd_tl_name]
         cd_status_after = status['status_after'][cd_tl_name]
         fd_status_before = status['status_before'][fd_tl_name]
@@ -626,12 +699,12 @@ class FpgaFHost(DigitiserDataReceiver):
         if cd_armed_before:
             LOGGER.error('%s coarse delay timed latch was already armed. '
                          'Previous load failed.' % _infstr)
-            self.delay_errors[offset].set()
+            dly.error.set()
 
         if fd_armed_before:
             LOGGER.error('%s phase correction timed latch was already '
                          'armed. Previous load failed.' % _infstr)
-            self.delay_errors[offset].set()
+            dly.error.set()
 
         # did the system arm correctly
         if (not cd_armed_before) and (cd_arm_count_before == cd_arm_count_after):
@@ -640,7 +713,7 @@ class FpgaFHost(DigitiserDataReceiver):
                          (_infstr, cd_arm_count_before, cd_ld_count_before))
             LOGGER.error('%s AFTER:  coarse arm_count(%i) ld_count(%i)' %
                          (_infstr, cd_arm_count_after, cd_ld_count_after))
-            self.delay_errors[offset].set()
+            dly.error.set()
 
         if (not fd_armed_before) and (fd_arm_count_before == fd_arm_count_after):
             LOGGER.error('%s phase correction arm count did not change.' %
@@ -651,31 +724,51 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.error('%s AFTER:  phase correction arm_count(%i) '
                          'ld_count(%i)' %
                          (_infstr, fd_arm_count_after, fd_ld_count_after))
-            self.delay_errors[offset].set()
+            dly.error.set()
 
         # did the system load?
-        if load_check:
+        if dly.load_check:
             if cd_ld_count_before == cd_ld_count_after:
                 LOGGER.error('%s coarse delay load count did not change. '
                              'Load failed.' % _infstr)
-                self.delay_errors[offset].set()
+                dly.error.set()
 
             if fd_ld_count_before == fd_ld_count_after:
                 LOGGER.error('%s phase correction load count did not '
                              'change. Load failed.' % _infstr)
-                self.delay_errors[offset].set()
+                dly.error.set()
 
         # read values back to see what actual values were loaded
         act_delay = delay_reg.read()['data']['initial']
-        act_delta_delay = delta_delay_reg.read()['data']['delta'] / bitshift
+        act_delay_delta = delay_delta_reg.read()['data']['delta'] / bitshift
         act_phase_offset = phase_reg.read()['data']['initial']
-        act_delta_phase_offset = phase_reg.read()['data']['delta'] / bitshift
+        act_phase_offset_delta = phase_reg.read()['data']['delta'] / bitshift
         return {
             'act_delay': act_delay,
-            'act_delta_delay': act_delta_delay,
+            'act_delay_delta': act_delay_delta,
             'act_phase_offset': act_phase_offset,
-            'act_delta_phase_offset': act_delta_phase_offset,
+            'act_phase_offset_delta': act_phase_offset_delta,
         }
+
+    # def read_delay(self, source):
+    #     """
+    #     Read registers containing delay values actually set in hardware.
+    #     :return: dictionary
+    #     """
+    #     bitshift = self._get_delay_bitshift()
+    #     delay_reg, delay_delta_reg, phase_reg = self._get_delay_regs(source.offset)
+    #
+    #     # read values back to see what actual values were loaded
+    #     act_delay = delay_reg.read()['data']['initial']
+    #     act_delay_delta = delay_delta_reg.read()['data']['delta'] / bitshift
+    #     act_phase_offset = phase_reg.read()['data']['initial']
+    #     act_phase_offset_delta = phase_reg.read()['data']['delta'] / bitshift
+    #     return {
+    #         'act_delay': act_delay,
+    #         'act_delay_delta': act_delay_delta,
+    #         'act_phase_offset': act_phase_offset,
+    #         'act_phase_offset_delta': act_phase_offset_delta,
+    #     }
 
     def arm_timed_latches(self, names, mcnt=None, check_time_delay=None):
         """
@@ -750,25 +843,6 @@ class FpgaFHost(DigitiserDataReceiver):
             for src in self.data_sources
         }
 
-    def _find_source(self, source_name):
-        """
-        Is a named source on this host?
-        :param source_name:
-        :return: a tuple of the located DataSource and its index
-         Raise Value error if the source is not located in this host.
-        """
-        targetsrc = None
-        targetsrc_num = -1
-        for srcnum, src in enumerate(self.data_sources):
-            if src.name == source_name:
-                targetsrc = src
-                targetsrc_num = srcnum
-                break
-        if targetsrc is None:
-            raise ValueError('Could not find source %s on '
-                             'this fhost.' % source_name)
-        return targetsrc, targetsrc_num
-
     def get_quant_snapshot(self, source_name):
         """
         Read the post-quantisation snapshot for a given source
@@ -776,8 +850,8 @@ class FpgaFHost(DigitiserDataReceiver):
         snapshot data.
         :return:
         """
-        targetsrc, targetsrc_num = self._find_source(source_name)
-        if targetsrc_num % 2 == 0:
+        src = self.get_source(source_name)
+        if src.offset == 0:
             snapshot = self.snapshots.snap_quant0_ss
         else:
             snapshot = self.snapshots.snap_quant1_ss
@@ -859,12 +933,12 @@ class FpgaFHost(DigitiserDataReceiver):
         :param unix_time: the time at which to read
         :return: AdcData()
         """
-        targetsrc, targetsrc_num = self._find_source(source_name)
+        src = self.get_source(source_name)
         if unix_time == -1:
             d = self.get_adc_snapshots_timed(from_now=2)
         else:
             d = self.get_adc_snapshots_timed(loadtime_unix=unix_time)
-        return d['p%i' % (targetsrc_num % 2)]
+        return d['p%i' % src.offset]
 
     def _get_adc_timed_convert_times(
             self, from_now=2, loadtime_unix=-1,

@@ -326,7 +326,7 @@ class Corr2Server(katcp.DeviceServer):
                                '%s' % (source_name, e.message)
         _src = self.instrument.fops.eq_get(source_name)
         return tuple(['ok'] +
-                     Corr2Server.rv_to_liststr(_src[source_name]['eq']))
+                     Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Float(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -613,7 +613,7 @@ class Corr2Server(katcp.DeviceServer):
                     source_name, e.message)
         _src = self.instrument.fops.eq_get(source_name)
         return tuple(['ok'] +
-                     Corr2Server.rv_to_liststr(_src[source_name]['eq']))
+                     Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Str(default='', multiple=True))
     @return_reply()

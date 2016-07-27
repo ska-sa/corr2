@@ -825,7 +825,7 @@ class XEngineOperations(object):
         self.set_acc_len(new_acc_len, vacc_resync)
         if self.corr.sensor_manager:
             sensor = self.corr.sensor_manager.sensor_get('integration-time')
-            sensor.set(time.time(), Sensor.NOMINAL, self.get_acc_time())
+            sensor.set_value(self.get_acc_time())
 
     def get_acc_time(self):
         """
@@ -870,7 +870,7 @@ class XEngineOperations(object):
                 fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
         if self.corr.sensor_manager:
             sensor = self.corr.sensor_manager.sensor_get('n-accs')
-            sensor.set(time.time(), Sensor.NOMINAL, self.corr.accumulation_len)
+            sensor.set_value(self.corr.accumulation_len)
         self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))

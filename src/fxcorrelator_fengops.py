@@ -186,8 +186,8 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return True, feng_times, feng_times_unix
 
-    def _prepare_delay_vals(self, delay=0, delta_delay=0, phase_offset=0,
-                            delta_phase_offset=0, ld_time=None, ld_check=True):
+    def _prepare_delay_vals(self, delay=0, delay_delta=0, phase_offset=0,
+                            phase_offset_delta=0, ld_time=None, ld_check=True):
         # convert delay in time into delay in clock cycles
         delay_s = float(delay) * self.corr.sample_rate_hz
 
@@ -195,7 +195,7 @@ class FEngineOperations(object):
         phase_offset_s = float(phase_offset)/float(numpy.pi)
 
         # convert from radians per second to fractions of sample per sample
-        delta_phase_offset_s = (float(delta_phase_offset) / float(numpy.pi) /
+        delta_phase_offset_s = (float(phase_offset_delta) / float(numpy.pi) /
                                 self.corr.sample_rate_hz)
 
         if ld_time is not None:
@@ -215,19 +215,19 @@ class FEngineOperations(object):
                 load_wait_delay = (ld_time - time.time() +
                                    self.corr.min_load_time)
 
-        return {'delay': delay_s, 'delta_delay': delta_delay,
+        return {'delay': delay_s, 'delay_delta': delay_delta,
                 'phase_offset': phase_offset_s,
-                'delta_phase_offset': delta_phase_offset_s,
+                'phase_offset_delta': delta_phase_offset_s,
                 'load_time': ld_time_mcnt,
                 'load_wait': load_wait_delay}
 
     def _prepare_actual_delay_vals(self, actual_vals):
         return {
             'act_delay': actual_vals['act_delay'] / self.corr.sample_rate_hz,
-            'act_delta_delay': actual_vals['act_delta_delay'],
+            'act_delay_delta': actual_vals['act_delay_delta'],
             'act_phase_offset': actual_vals['act_phase_offset']*numpy.pi,
-            'act_delta_phase_offset': actual_vals['act_delta_phase_offset'] *
-                                      numpy.pi * self.corr.sample_rate_hz
+            'act_phase_offset_delta': (actual_vals['act_phase_offset_delta'] *
+                                       numpy.pi * self.corr.sample_rate_hz)
         }
 
     # def delays_process(self, loadtime, delays):
@@ -269,8 +269,8 @@ class FEngineOperations(object):
     #                              ant_delay[ctr][1][0], ant_delay[ctr][1][1],
     #                              loadtime, False)
     #         res_str = '%.3f,%.3f:%.3f,%.3f' % \
-    #                   (res['act_delay'], res['act_delta_delay'],
-    #                    res['act_phase_offset'], res['act_delta_phase_offset'])
+    #                   (res['act_delay'], res['act_delay_delta'],
+    #                    res['act_phase_offset'], res['act_phase_offset_delta'])
     #         rv = '%s %s' % (rv, res_str)
     #     return rv
 
@@ -289,8 +289,9 @@ class FEngineOperations(object):
         dlist = delays
         _n_fsource = len(self.corr.fengine_sources)
         if len(dlist) != _n_fsource:
-            _err = 'Too few delay setup parameters given. Need as' \
-                   ' many as there are f-sources = %i' % _n_fsource
+            _err = 'Too few delay setup parameters given. Need as ' \
+                   'many as there are f-sources(%i), given %i delay ' \
+                   'settings' % (_n_fsource, len(dlist))
             self.logger.error(_err)
             raise ValueError(_err)
 
@@ -309,12 +310,13 @@ class FEngineOperations(object):
             fringe = (float(fringe[0]), float(fringe[1]))
             ant_delay.append((delay, fringe))
 
+        # set them in the objects and then write them to hardware
         actual_vals = self.set_delays_all(loadtime, ant_delay)
         rv = []
         for val in actual_vals:
             res_str = '{},{}:{},{}'.format(
-                val['act_delay'], val['act_delta_delay'],
-                val['act_phase_offset'], val['act_delta_phase_offset'])
+                val['act_delay'], val['act_delay_delta'],
+                val['act_phase_offset'], val['act_phase_offset_delta'])
             rv.append(res_str)
         return rv
     
@@ -325,50 +327,43 @@ class FEngineOperations(object):
         :param coeffs:
         :return:
         """
-        for count, src in enumerate(self.corr.fengine_sources):
-            vals = self._prepare_delay_vals(coeffs[count][0][0], 
-                                            coeffs[count][0][1],
-                                            coeffs[count][1][0],
-                                            coeffs[count][1][1],
+        # set the delays in all the data source objects
+        for src in self.corr.fengine_sources.values():
+            srcnum = src.source_number
+            vals = self._prepare_delay_vals(coeffs[srcnum][0][0],
+                                            coeffs[srcnum][0][1],
+                                            coeffs[srcnum][1][0],
+                                            coeffs[srcnum][1][1],
                                             loadtime, False)
-            host = src['host']
-            offset = src['numonhost']
-            host.set_delay(offset, vals['delay'], vals['delta_delay'],
-                           vals['phase_offset'], vals['delta_phase_offset'],
-                           vals['load_time'], None, False)
+            src.set_delay(vals['delay'], vals['delay_delta'],
+                          vals['phase_offset'], vals['phase_offset_delta'],
+                          vals['load_time'], None, False)
 
         # spawn threads to write values out, giving a maximum time of 0.75
         # seconds to do them all
         actual_vals = THREADED_FPGA_FUNC(self.corr.fhosts, timeout=0.75,
                                          target_function='write_delays_all')
-        if len(actual_vals) != len(self.corr.fhosts):
-            _err = 'Number of delay values returned (%i) does not match ' \
-                   'number of sources (%i)' % \
-                   (len(actual_vals), len(self.corr.fhosts))
-            self.logger.error(_err)
-            raise ValueError(_err)
-
         act_vals = []
-        for count, src in enumerate(self.corr.fengine_sources):
-            host = src['host'].host
-            offset = src['numonhost']
-            vals = self._prepare_actual_delay_vals(actual_vals[host][offset])
+        for count, src in enumerate(self.corr.fengine_sources.values()):
+            hostname = src.host.host
+            src_actual_value = actual_vals[hostname][src.offset]
+            vals = self._prepare_actual_delay_vals(src_actual_value)
             act_vals.append(vals)
             self.logger.info(
                 '[%s] Phase offset actually set to %6.3f rad with rate %e '
                 'rad/s.' %
-                (src['source'].name,
-                 actual_vals[host][offset]['act_phase_offset'],
-                 actual_vals[host][offset]['act_delta_phase_offset']))
+                (src.name,
+                 actual_vals[hostname][src.offset]['act_phase_offset'],
+                 actual_vals[hostname][src.offset]['act_phase_offset_delta']))
             self.logger.info(
                 '[%s] Delay actually set to %e samples with rate %e.' %
-                (src['source'].name,
-                 actual_vals[host][offset]['act_delay'],
-                 actual_vals[host][offset]['act_delta_delay']))
+                (src.name,
+                 actual_vals[hostname][src.offset]['act_delay'],
+                 actual_vals[hostname][src.offset]['act_delay_delta']))
         return act_vals
 
-    # def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,
-    #               delta_phase_offset=0, ld_time=None, ld_check=True):
+    # def set_delay(self, source_name, delay=0, delay_delta=0, phase_offset=0,
+    #               phase_offset_delta=0, ld_time=None, ld_check=True):
     #     """
     #     Set delay correction values for specified source.
     #     This is a blocking call.
@@ -381,12 +376,12 @@ class FEngineOperations(object):
     #     self.logger.info('Setting delay correction values for '
     #                      'source %s' % source_name)
     #
-    #     vals = self._prepare_delay_vals(delay, delta_delay, phase_offset, delta_phase_offset,
+    #     vals = self._prepare_delay_vals(delay, delay_delta, phase_offset, phase_offset_delta,
     #                                 ld_time, ld_check)
     #     f_delay = vals['delay']
-    #     f_delta_delay = vals['delta_delay']
+    #     f_delta_delay = vals['delay_delta']
     #     f_phase_offset = vals['phase_offset']
-    #     f_delta_phase_offset = vals['delta_phase_offset']
+    #     f_delta_phase_offset = vals['phase_offset_delta']
     #     f_load_time = vals['load_time']
     #     f_load_wait = vals['load_wait']
     #
@@ -420,13 +415,13 @@ class FEngineOperations(object):
     #         (actual_values['act_phase_offset']))
     #     self.logger.info(
     #         'Phase offset change actually set to %e radians per second.' %
-    #         (actual_values['act_delta_phase_offset']))
+    #         (actual_values['act_phase_offset_delta']))
     #     self.logger.info(
     #         'Delay actually set to %e samples.' %
     #         (actual_values['act_delay']))
     #     self.logger.info(
     #         'Delay rate actually set to %e seconds per second.' %
-    #         (actual_values['act_delta_delay']))
+    #         (actual_values['act_delay_delta']))
     #
     #     return actual_values
 
@@ -468,14 +463,14 @@ class FEngineOperations(object):
     def eq_get(self, source_name=None):
         """
         Return the EQ arrays in a dictionary, arranged by source name.
+        :param source_name: if this is given, return only this source's eq
         :return:
         """
-        eq_table = {}
-        for fhost in self.hosts:
-            eq_table.update(fhost.eqs)
-            if source_name is not None and source_name in eq_table:
-                return {source_name: eq_table[source_name]}
-        return eq_table
+        if source_name is not None:
+            return {source_name: self.corr.fengine_sources[source_name].eq_poly}
+        return {
+            src.name: src.eq_poly for src in self.corr.fengine_sources.values()
+        }
 
     def eq_set(self, write=True, source_name=None, new_eq=None):
         """
@@ -491,30 +486,28 @@ class FEngineOperations(object):
         if source_name is None:
             self.logger.info('Setting EQ on all sources to new given EQ.')
             for fhost in self.hosts:
-                for src_nm in fhost.eqs:
-                    self.eq_set(write=False, source_name=src_nm, new_eq=new_eq)
+                for src in fhost.data_sources:
+                    self.eq_set(write=False, source_name=src.name,
+                                new_eq=new_eq)
             if write:
                 self.eq_write_all()
         else:
-            for fhost in self.hosts:
-                if source_name in fhost.eqs:
-                    old_eq = fhost.eqs[source_name]['eq'][:]
-                    try:
-                        neweq = utils.process_new_eq(new_eq)
-                        fhost.eqs[source_name]['eq'] = neweq
-                        self.logger.info(
-                            'Updated EQ value for source %s: %s...' % (
-                                source_name, neweq[0:min(10, len(neweq))]))
-                        if write:
-                            fhost.write_eq(eq_name=source_name)
-                    except Exception as e:
-                        fhost.eqs[source_name]['eq'] = old_eq[:]
-                        self.logger.error('New EQ error - REVERTED to '
-                                          'old value! - %s' % e.message)
-                        raise ValueError('New EQ error - REVERTED to '
-                                         'old value! - %s' % e.message)
-                    return
-            raise ValueError('Unknown source name %s' % source_name)
+            src = self.corr.fengine_sources[source_name]
+            old_eq = src.eq_poly[:]
+            try:
+                neweq = utils.process_new_eq(new_eq)
+                src.eq_poly = neweq
+                self.logger.info(
+                    'Updated EQ value for source %s: %s...' % (
+                        source_name, neweq[0:min(10, len(neweq))]))
+                if write:
+                    src.host.write_eq(source_name=source_name)
+            except Exception as e:
+                src.eq_poly = old_eq[:]
+                self.logger.error('New EQ error - REVERTED to '
+                                  'old value! - %s' % e.message)
+                raise ValueError('New EQ error - REVERTED to '
+                                 'old value! - %s' % e.message)
 
     def eq_write_all(self, new_eq_dict=None):
         """
@@ -654,12 +647,8 @@ class FEngineOperations(object):
                                  {'loadtime_system': loadtime,
                                   'localtime': localtime}))
             rv = {}
-            for source in self.corr.fengine_sources:
-                host = source['host'].host
-                num = source['source_num']
-                name = source['source'].name
-                assert num % 2 == source['numonhost']
-                rv[name] = res[host]['p%i' % (num % 2)]
+            for source in self.corr.fengine_sources.values():
+                rv[source.name] = res[source.host.host]['p%i' % source.offset]
             return rv
         else:
             # return the data only for one given source

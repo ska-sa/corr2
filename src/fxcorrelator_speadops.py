@@ -49,8 +49,7 @@ class SpeadOperations(object):
                 self.corr.sensor_manager.metasensors[kwargs['id']] = sensor
             if 'value' in kwargs:
                 svalue = str(kwargs['value'])
-                sensor.set(timestamp=time.time(), status=Corr2Sensor.NOMINAL,
-                           value=svalue)
+                sensor.set_value(svalue)
 
     def update_metadata(self, ids):
         """
@@ -96,11 +95,11 @@ class SpeadOperations(object):
             value=self.corr.n_antennas)
 
     def item_0x100e(self, sig, stx=None):
-        metalist = [(fsrc['source'].name,
-                     fsrc['source_num'],
-                     fsrc['host'].host,
-                     fsrc['numonhost'])
-                    for fsrc in self.corr.fengine_sources]
+        metalist = [(fsrc.name,
+                     fsrc.source_number,
+                     fsrc.host.host,
+                     fsrc.offset)
+                    for fsrc in self.corr.fengine_sources.values()]
         metalist = numpy.array(metalist)
         self.add_item(
             sig=sig, stx=stx,
@@ -190,9 +189,9 @@ class SpeadOperations(object):
 
     def item_0x1400(self, sig, stx=None):
         all_eqs = self.corr.fops.eq_get()
-        for source in self.corr.fengine_sources:
-            _srcname = source['source'].name
-            _srcnum = source['source_num']
+        for source in self.corr.fengine_sources.values():
+            _srcname = source.name
+            _srcnum = source.source_number
             eq = [[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
                   for eq_coeff in all_eqs[_srcname]['eq']]
             eq = numpy.array(eq, dtype=numpy.int32)

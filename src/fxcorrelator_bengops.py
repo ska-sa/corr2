@@ -192,8 +192,7 @@ class BEngineOperations(object):
                 beam=beam_name.replace('_', '-'))
             sensor = sman.sensor_get(sensor_name)
             beam_weights = sman.instrument.bops.get_beam_weights(beam_name)
-            sensor.set(timestamp=time.time(), status=Sensor.NOMINAL,
-                       value=str(beam_weights))
+            sensor.set_value(str(beam_weights))
 
     def get_beam_weights(self, beam_name=None, input_name=None):
         """
@@ -228,8 +227,7 @@ class BEngineOperations(object):
                 beam=beam_name.replace('_', '-'))
             sensor = sman.sensor_get(sensor_name)
             beam_gain = sman.instrument.bops.get_beam_quant_gains(beam_name)
-            sensor.set(timestamp=time.time(), status=Sensor.NOMINAL,
-                       value=beam_gain)
+            sensor.set_value(beam_gain)
 
     def get_beam_quant_gains(self, beam_name=None):
         """
