@@ -229,8 +229,9 @@ class FxCorrelator(Instrument):
             raise RuntimeError('The timestamps received by the f-engines '
                                'are not okay. Check the logs')
 
-        # check the f-engine corner turners for party errors
-        if not self.fops.check_ct_parity():
+        # check the f-engine QDR uses for parity errors
+        if ((not self.fops.check_ct_parity()) or
+                (not self.fops.check_cd_parity())):
             raise RuntimeError('The f-engine QDRs are reporting errors.')
 
         # check that the F-engines are transmitting data correctly
@@ -497,6 +498,10 @@ class FxCorrelator(Instrument):
             self.qdr_ct_error_threshold = int(_feng_d['qdr_ct_error_threshold'])
         except KeyError:
             self.qdr_ct_error_threshold = 100
+        try:
+            self.qdr_cd_error_threshold = int(_feng_d['qdr_cd_error_threshold'])
+        except KeyError:
+            self.qdr_cd_error_threshold = 100
 
         _xeng_d = self.configd['xengine']
         self.x_per_fpga = int(_xeng_d['x_per_fpga'])

@@ -666,35 +666,61 @@ class FEngineOperations(object):
 
     def check_ct_parity(self):
         """
-        Check the corner turner parity error counters
+        Check the QDR corner turner parity error counters
         :return:
         """
-        self.logger.info('Checking CT parity errors (QDR test)')
-        _required_bits = int(numpy.ceil(numpy.log2(
-            self.corr.qdr_ct_error_threshold)))
+        return self._check_qdr_parity(
+            qdr_id='CT',
+            threshold=self.corr.qdr_ct_error_threshold,
+            reg_name='ct_ctrs',
+            reg_field_name='ct_parerr_cnt'
+        )
+
+    def check_cd_parity(self):
+        """
+        Check the QDR coarse delay parity error counters
+        :return:
+        """
+        if 'cd_ctrs' not in self.hosts[0].registers.names():
+            self.logger.info('check_qdr_parity: CD - no QDR-based coarse '
+                             'delay found')
+            return True
+        return self._check_qdr_parity(
+            qdr_id='CD',
+            threshold=self.corr.qdr_cd_error_threshold,
+            reg_name='cd_ctrs',
+            reg_field_name='cd_parerr_cnt'
+        )
+
+    def _check_qdr_parity(self, qdr_id, threshold, reg_name, reg_field_name,):
+        """
+        Check QDR parity error counters
+        :return:
+        """
+        self.logger.info('Checking %s parity errors (QDR test)' % qdr_id)
+        _required_bits = int(numpy.ceil(numpy.log2(threshold)))
         # do the bitstreams have wide-enough counters?
-        bitwidth = self.hosts[0].registers.ct_ctrs.field_get_by_name(
-            'ct_parerr_cnt0').width_bits
+        bitwidth = self.hosts[0].registers[reg_name].field_get_by_name(reg_field_name + '0').width_bits
         if bitwidth < _required_bits:
             self.logger.warn(
-                '\tCT parity error counter is too narrow: {bw} < {rbw}. NOT '
-                'running test.'.format(bw=bitwidth, rbw=_required_bits))
+                '\t{qdrid} parity error counter is too narrow: {bw} < {rbw}. '
+                'NOT running test.'.format(
+                    qdrid=qdr_id, bw=bitwidth, rbw=_required_bits))
             return True
-        thresh = self.corr.qdr_ct_error_threshold
 
         def _check_host(host):
-            ctrs = host.registers.ct_ctrs.read()['data']
+            ctrs = host.registers[reg_name].read()['data']
             note_errors = False
             for pol in [0, 1]:
-                fname = 'ct_parerr_cnt' + str(pol)
-                if (ctrs[fname] > 0) and (ctrs[fname] < thresh):
+                fname = reg_field_name + str(pol)
+                if (ctrs[fname] > 0) and (ctrs[fname] < threshold):
                     self.logger.warn('\t{h}: {thrsh} > {nm} > 0. Que '
                                      'pasa?'.format(h=host.host, nm=fname,
-                                                    thrsh=thresh))
+                                                    thrsh=threshold))
                     note_errors = True
-                elif (ctrs[fname] > 0) and (ctrs[fname] >= thresh):
+                elif (ctrs[fname] > 0) and (ctrs[fname] >= threshold):
                     self.logger.error('\t{h}: {nm} > {thrsh}. Problems.'.format(
-                        h=host.host, nm=fname, thrsh=thresh))
+                        h=host.host, nm=fname, thrsh=threshold))
                     return False, False
             return True, note_errors
         res = THREADED_FPGA_OP(
@@ -707,10 +733,9 @@ class FEngineOperations(object):
             if results[1]:
                 note_errors = True
         if note_errors:
-            self.logger.info('\tcheck_ct_parity: mostly okay, some errors')
+            self.logger.info('\tcheck_qdr_parity: {} - mostly okay, some '
+                             'errors'.format(qdr_id))
         else:
-            self.logger.info('\tcheck_ct_parity: all okay')
+            self.logger.info('\tcheck_qdr_parity: {} - all okay'.format(qdr_id))
         return True
-
-
 
