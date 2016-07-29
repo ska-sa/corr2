@@ -508,6 +508,7 @@ class FEngineOperations(object):
                                   'old value! - %s' % e.message)
                 raise ValueError('New EQ error - REVERTED to '
                                  'old value! - %s' % e.message)
+        self.corr.speadops.update_metadata(0x1400)
 
     def eq_write_all(self, new_eq_dict=None):
         """

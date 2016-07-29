@@ -59,6 +59,10 @@ class SpeadOperations(object):
         :param ids: a list of ids to update
         :return:
         """
+        try:
+            iter(ids)
+        except TypeError:
+            ids = [ids]
         # loop through known products and match spead IDs to those products
         for name, product in self.corr.data_products.items():
             changes = False
