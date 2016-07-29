@@ -494,6 +494,8 @@ class FxCorrelator(Instrument):
         self.true_cf = float(_feng_d['true_cf'])
         self.quant_format = _feng_d['quant_format']
         self.adc_bitwidth = int(_feng_d['sample_bits'])
+        self.fft_shift = int(_feng_d['fft_shift'])
+
         try:
             self.qdr_ct_error_threshold = int(_feng_d['qdr_ct_error_threshold'])
         except KeyError:
@@ -683,15 +685,20 @@ class FxCorrelator(Instrument):
                 product_name, self.data_products))
         self.data_products[product_name].tx_disable()
 
-    def product_issue_metadata(self, product_name):
+    def product_issue_metadata(self, product_name=None):
         """
 
         :param product_name:
         :return:
         """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        self.data_products[product_name].meta_issue()
+        if product_name is None:
+            prods = self.data_products.keys()
+        else:
+            prods = [product_name]
+        for product in prods:
+            if product not in self.data_products:
+                raise ValueError('product %s is not in product list: %s' % (
+                    product, self.data_products))
+            self.data_products[product].meta_issue()
 
 # end

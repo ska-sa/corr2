@@ -33,16 +33,17 @@ class SpeadOperations(object):
         :param kwargs:
         :return:
         """
+        sid = kwargs['id']
         # spead2 metadata create (and send)
-        if sig:
+        if sig is not None:
             sig.add_item(**kwargs)
-        if stx:
+        if stx is not None:
             stx.send_heap(sig.get_heap())
         # add or update a sensor
         if self.corr.sensor_manager:
             # does the sensor exist?
             try:
-                sensor = self.corr.sensor_manager.metasensors[kwargs['id']]
+                sensor = self.corr.sensor_manager.metasensors[sid]
             except KeyError:
                 sensor = create_sensor_from_meta(self.corr.sensor_manager,
                                                  **kwargs)
@@ -62,7 +63,7 @@ class SpeadOperations(object):
         for name, product in self.corr.data_products.items():
             changes = False
             for speadid in ids:
-                idfunc = getattr(self, 'item_0x%x' % speadid)
+                idfunc = getattr(self, 'item_0x%04x' % speadid)
                 if speadid in product.meta_ig.ids():
                     idfunc(product.meta_ig)
                     changes = True
@@ -144,7 +145,7 @@ class SpeadOperations(object):
             description='The FFT bitshift pattern. F-engine '
                         'correlator internals.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=int(self.corr.configd['fengine']['fft_shift']))
+            value=self.corr.fft_shift)
 
     def item_0x1020(self, sig, stx=None):
         quant_str = self.corr.configd['fengine']['quant_format']
@@ -193,7 +194,7 @@ class SpeadOperations(object):
             _srcname = source.name
             _srcnum = source.source_number
             eq = [[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
-                  for eq_coeff in all_eqs[_srcname]['eq']]
+                  for eq_coeff in all_eqs[_srcname]]
             eq = numpy.array(eq, dtype=numpy.int32)
             self.add_item(
                 sig=sig, stx=stx,

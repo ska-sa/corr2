@@ -126,6 +126,7 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.sensor_manager = sensor_manager
             sensor_manager.sensors_clear()
             sensors.setup_mainloop_sensors(sensor_manager)
+            self.instrument.product_issue_metadata()
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',

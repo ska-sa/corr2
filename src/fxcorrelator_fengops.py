@@ -532,12 +532,13 @@ class FEngineOperations(object):
         :return:
         """
         if shift_value is None:
-            shift_value = int(self.corr.configd['fengine']['fft_shift'])
+            shift_value = self.corr.fft_shift
         if shift_value < 0:
             raise RuntimeError('Shift value cannot be less than zero')
         self.logger.info('Setting FFT shift to %i on all f-engine '
                          'boards...' % shift_value)
         THREADED_FPGA_FUNC(self.hosts, 10, ('set_fft_shift', (shift_value,),))
+        self.corr.fft_shift = shift_value
         self.logger.info('done.')
         self.corr.speadops.update_metadata([0x101e])
         return shift_value
@@ -548,7 +549,12 @@ class FEngineOperations(object):
         :return:
         """
         # get the fft shift values
-        return THREADED_FPGA_FUNC(self.hosts, 10, 'get_fft_shift')
+        rv = THREADED_FPGA_FUNC(self.hosts, 10, 'get_fft_shift')
+        if rv[rv.keys()[0]] != self.corr.fft_shift:
+            self.logger.warning('FFT shift read from fhosts disagrees with '
+                                'stored value. Correcting.')
+            self.corr.fft_shift = rv[rv.keys()[0]]
+        return rv
 
     def clear_status_all(self):
         """

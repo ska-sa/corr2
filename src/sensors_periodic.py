@@ -12,7 +12,8 @@ from sensors import Corr2Sensor
 
 LOGGER = logging.getLogger(__name__)
 
-FHOST_REGS = ['spead_ctrs', 'reorder_ctrs', 'sync_ctrs', 'pfb_ctrs', 'ct_ctrs']
+FHOST_REGS = ['spead_ctrs', 'reorder_ctrs', 'sync_ctrs', 'pfb_ctrs', 'ct_ctrs',
+              'cd_ctrs']
 FHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(4)])
 FHOST_REGS.extend(['gbe%i_txerrctr' % ctr for ctr in range(4)])
 FHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(4)])
@@ -53,8 +54,9 @@ def read_all_counters(fpga_host):
         reglist = XHOST_REGS
     rs = {}
     for reg in reglist:
-        d = fpga_host.registers[reg].read()['data']
-        rs[reg] = d
+        if reg in fpga_host.registers.names():
+            d = fpga_host.registers[reg].read()['data']
+            rs[reg] = d
     rvdict = {}
     for reg in rs:
         for key in rs[reg]:
