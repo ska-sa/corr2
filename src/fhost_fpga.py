@@ -7,6 +7,7 @@ import casperfpga.memory as caspermem
 from host_fpga import FpgaHost
 from data_source import DataSource
 from sensors import Corr2Sensor, create_source_delay_sensors
+from utils import parse_slx_params
 
 LOGGER = logging.getLogger(__name__)
 
@@ -517,8 +518,8 @@ class FpgaFHost(DigitiserDataReceiver):
         # TODO check register parameters to get delay range
 
         reg_info = delay_reg.block_info
-        reg_bw = int(reg_info['bitwidths'])
-        reg_bp = int(reg_info['bin_pts'])
+        reg_bw = int(parse_slx_params(reg_info['bitwidths'])[0])
+        reg_bp = int(parse_slx_params(reg_info['bin_pts'])[0])
         max_delay = 2**(reg_bw - reg_bp) - 1/float(2**reg_bp)
 
         LOGGER.info('%s attempting initial delay of %f samples.' %
@@ -590,12 +591,10 @@ class FpgaFHost(DigitiserDataReceiver):
                                      delta_phase_offset_shifted))
         # setup the phase offset
         reg_info = phase_reg.block_info
-        # bw_str = reg_info['bitwidths']
-        # bw = int(bw_str[1:len(bw_str)-1].rsplit(' ')[0])
-        b_str = reg_info['bin_pts']
-        b = int(b_str[1:len(b_str)-1].rsplit(' ')[0])
-        max_positive_phase_offset = 1 - 1/float(2**b)
-        max_negative_phase_offset = -1 + 1/float(2**b)
+        bps = parse_slx_params(reg_info['bin_pts'])
+        b = float(2**int(bps[0]))
+        max_positive_phase_offset = 1 - 1/b
+        max_negative_phase_offset = -1 + 1/b
         if phase_offset > max_positive_phase_offset:
             phase_offset = max_positive_phase_offset
             LOGGER.warn('%s largest possible positive phase offset is '
@@ -609,17 +608,12 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.warn('%s setting phase offset to %e pi' % (
                 infostr, phase_offset))
 
-        reg_info = phase_reg.block_info
-        # bw_str = reg_info['bitwidths']
-        # bw = int(bw_str[1:len(bw_str)-1].rsplit(' ')[1])
-        b_str = reg_info['bin_pts']
-        b = int(b_str[1:len(b_str)-1].rsplit(' ')[1])
-        max_positive_delta_phase = 1 - 1/float(2**b)
-        max_negative_delta_phase = -1 + 1/float(2**b)
-
+        # phase delta
+        b = float(2**int(bps[1]))
+        max_positive_delta_phase = 1 - 1/b
+        max_negative_delta_phase = -1 + 1/b
         dpos = delta_phase_offset_shifted
         dp = dpos / bitshift
-
         if dpos > max_positive_delta_phase:
             dpos = max_positive_delta_phase
             dp = dpos / bitshift

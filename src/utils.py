@@ -56,6 +56,18 @@ class AdcData(object):
         return words80
 
 
+def parse_slx_params(string):
+    """
+    Given a Matlab Simulink parameter field, return its contents
+    as a list
+    :param string:
+    :return: list
+    """
+    string = string.replace('[', '').replace(']', '')
+    string = string.replace(', ', ' ').replace('  ', ' ')
+    return string.split()
+
+
 def parse_ini_file(ini_file='', required_sections=None):
     """
     Parse an ini file into a dictionary. No checking done at all.
