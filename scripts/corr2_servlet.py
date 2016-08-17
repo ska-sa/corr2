@@ -5,11 +5,12 @@ import sys
 import argparse
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
-import tornado
 import signal
 from tornado import gen
+from tornado.ioloop import IOLoop
 import Queue
 import time
+from concurrent import futures
 
 from corr2 import fxcorrelator, sensors
 
@@ -61,6 +62,8 @@ class Corr2Server(katcp.DeviceServer):
             self.set_concurrency_options(thread_safe=False,
                                          handler_thread=False)
         self.instrument = None
+        self.metadata_cadence = 5
+        self.executor = futures.ThreadPoolExecutor(max_workers=1)
 
     @request()
     @return_reply()
@@ -126,7 +129,7 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.sensor_manager = sensor_manager
             sensor_manager.sensors_clear()
             sensors.setup_mainloop_sensors(sensor_manager)
-            self.instrument.product_issue_metadata()
+            IOLoop.current().add_callback(self.periodic_send_metadata)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',
@@ -662,6 +665,22 @@ class Corr2Server(katcp.DeviceServer):
         sys.stderr.write('This should go to standard error. %s\n' % ts)
         return 'ok',
 
+    @gen.coroutine
+    def periodic_send_metadata(self):
+        """
+        Periodically send all instrument metadata.
+
+        :return:
+        """
+        _logger = self.instrument.logger
+        try:
+            yield self.executor.submit(self.instrument.product_issue_metadata)
+        except Exception as e:
+            _logger.exception('Error sending metadata - {}'.format(e.message))
+        _logger.debug('self.periodic_send_metadata ran')
+        IOLoop.current().call_later(self.metadata_cadence,
+                                    self.periodic_send_metadata)
+
 # @gen.coroutine
 # def send_test_informs(server):
 #     supdate_inform = katcp.Message.inform('test-mass-inform',
@@ -728,7 +747,7 @@ if __name__ == '__main__':
     print 'Server listening on port %d,' % args.port,
 
     if not args.no_tornado:
-        ioloop = tornado.ioloop.IOLoop.current()
+        ioloop = IOLoop.current()
         signal.signal(
             signal.SIGINT,
             lambda sig, frame: ioloop.add_callback_from_signal(
