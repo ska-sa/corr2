@@ -7,7 +7,7 @@ from katcp import Sensor
 
 from casperfpga import utils as fpgautils
 
-import data_product
+import data_stream
 from net_address import NetAddress
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
 
@@ -35,7 +35,7 @@ class XEngineOperations(object):
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
-        self.data_product = None
+        self.data_stream = None
 
         self.vacc_synch_running = IOLoopEvent()
         self.vacc_synch_running.clear()
@@ -63,8 +63,8 @@ class XEngineOperations(object):
             f.registers.board_id.write(reg=board_id)
             board_id += 1
 
-        # write the data product destination to the registers
-        self.write_data_product_destination(None)
+        # write the data stream destination to the registers
+        self.write_data_stream_destination(None)
 
         # clear gbe status
         THREADED_FPGA_OP(
@@ -154,15 +154,15 @@ class XEngineOperations(object):
         is instantiated.
         :return:
         """
-        # set up the xengine data product
-        self._setup_data_product()
+        # set up the xengine data stream
+        self._setup_data_stream()
 
-    def _setup_data_product(self):
+    def _setup_data_stream(self):
         """
-        Set up the data product for the xengine output
+        Set up the data stream for the xengine output
         :return:
         """
-        # the x-engine output data product setup
+        # the x-engine output data stream setup
         _xeng_d = self.corr.configd['xengine']
 
         data_addr = NetAddress(_xeng_d['output_destination_ip'],
@@ -170,18 +170,18 @@ class XEngineOperations(object):
         meta_addr = NetAddress(_xeng_d['output_destination_ip'],
                                _xeng_d['output_destination_port'])
 
-        xeng_prod = data_product.DataProduct(
+        xeng_stream = data_stream.DataStream(
             name=_xeng_d['output_products'][0],
-            category=data_product.XENGINE_CROSS_PRODUCTS,
+            category=data_stream.XENGINE_CROSS_PRODUCTS,
             destination=data_addr,
             meta_destination=meta_addr,
-            destination_cb=self.write_data_product_destination,
+            destination_cb=self.write_data_stream_destination,
             meta_destination_cb=self.spead_meta_issue_all,
             tx_enable_method=self.xeng_tx_enable,
             tx_disable_method=self.xeng_tx_disable)
 
-        self.data_product = xeng_prod
-        self.corr.register_data_product(xeng_prod)
+        self.data_stream = xeng_stream
+        self.corr.register_data_stream(xeng_stream)
         self.vacc_check_enabled.clear()
         self.vacc_synch_running.clear()
         if self.vacc_check_cb is not None:
@@ -307,15 +307,15 @@ class XEngineOperations(object):
         self.vacc_check_cb.start()
         self.corr.logger.info('vacc check timer started')
 
-    def write_data_product_destination(self, data_product):
+    def write_data_stream_destination(self, data_stream):
         """
         Write the x-engine data stream destination to the hosts.
-        :param data_product - the data product on which to act
+        :param data_stream - the data stream on which to act
         :return:
         """
-        dprod = data_product or self.data_product
-        txip = int(dprod.destination.ip)
-        txport = dprod.destination.port
+        dstrm = data_stream or self.data_stream
+        txip = int(dstrm.destination.ip)
+        txport = dstrm.destination.port
         try:
             THREADED_FPGA_OP(
                 self.hosts, timeout=10,
@@ -326,15 +326,15 @@ class XEngineOperations(object):
                 target_function=(lambda fpga_:
                                  fpga_.registers.gbe_porttx.write(reg=txport),))
         except AttributeError:
-            self.logger.warning('Writing product %s destination to '
-                                'hardware failed!' % dprod.name)
+            self.logger.warning('Writing stream %s destination to '
+                                'hardware failed!' % dstrm.name)
 
-        # update meta data on product destination change
-        self.spead_meta_update_product_destination()
-        dprod.meta_transmit()
+        # update meta data on stream destination change
+        self.spead_meta_update_stream_destination()
+        dstrm.meta_transmit()
 
-        self.logger.info('Wrote product %s destination to %s in hardware' % (
-            dprod.name, dprod.destination))
+        self.logger.info('Wrote stream %s destination to %s in hardware' % (
+            dstrm.name, dstrm.destination))
 
     def clear_status_all(self):
         """
@@ -880,13 +880,13 @@ class XEngineOperations(object):
         if reenable_timer:
             self.vacc_check_timer_start()
 
-    def xeng_tx_enable(self, data_product):
+    def xeng_tx_enable(self, data_stream):
         """
-        Start transmission of data products from the x-engines
-        :param data_product - the data product on which to act
+        Start transmission of data streams from the x-engines
+        :param data_stream - the data stream on which to act
         :return:
         """
-        dprod = data_product or self.data_product
+        dstrm = data_stream or self.data_stream
         THREADED_FPGA_OP(
                 self.hosts, timeout=5,
                 target_function=(
@@ -894,13 +894,13 @@ class XEngineOperations(object):
                     fpga_.registers.control.write(gbe_txen=True),))
         self.logger.info('X-engine output enabled')
 
-    def xeng_tx_disable(self, data_product):
+    def xeng_tx_disable(self, data_stream):
         """
-        Start transmission of data products from the x-engines
-        :param data_product - the data product on which to act
+        Start transmission of data streams from the x-engines
+        :param data_stream - the data stream on which to act
         :return:
         """
-        dprod = data_product or self.data_product
+        dstrm = data_stream or self.data_stream
         THREADED_FPGA_OP(
                 self.hosts, timeout=5,
                 target_function=(
@@ -908,26 +908,26 @@ class XEngineOperations(object):
                     fpga_.registers.control.write(gbe_txen=False),))
         self.logger.info('X-engine output disabled')
 
-    def spead_meta_update_product_destination(self):
+    def spead_meta_update_stream_destination(self):
         """
 
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
         self.corr.speadops.add_item(
             meta_ig,
             name='rx_udp_port', id=0x1022,
             description='Destination UDP port for %s data '
-                        'output.' % self.data_product.name,
+                        'output.' % self.data_stream.name,
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.data_product.destination.port)
+            value=self.data_stream.destination.port)
 
-        ipstr = numpy.array(str(self.data_product.destination.ip))
+        ipstr = numpy.array(str(self.data_stream.destination.ip))
         self.corr.speadops.add_item(
             meta_ig,
             name='rx_udp_ip_str', id=0x1024,
             description='Destination IP address for %s data '
-                        'output.' % self.data_product.name,
+                        'output.' % self.data_stream.name,
             shape=ipstr.shape,
             dtype=ipstr.dtype,
             value=ipstr)
@@ -938,14 +938,14 @@ class XEngineOperations(object):
         Update metadata for this correlator's xengine output.
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
 
         self.corr.speadops.item_0x1007(meta_ig)
 
         self.corr.speadops.add_item(
             meta_ig,
             name='n_bls', id=0x1008,
-            description='Number of baselines in the data product.',
+            description='Number of baselines in the data stream.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=len(self.corr.baselines))
 
@@ -962,11 +962,11 @@ class XEngineOperations(object):
 
         bls_ordering = numpy.array(
             [baseline for baseline in self.corr.baselines])
-        # this is a list of the baseline product pairs, e.g. ['ant0x' 'ant0y']
+        # this is a list of the baseline stream pairs, e.g. ['ant0x' 'ant0y']
         self.corr.speadops.add_item(
             meta_ig,
             name='bls_ordering', id=0x100C,
-            description='The baseline ordering in the output data product.',
+            description='The baseline ordering in the output data stream.',
             shape=bls_ordering.shape,
             dtype=bls_ordering.dtype,
             value=bls_ordering)
@@ -1014,7 +1014,7 @@ class XEngineOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=pkt_len)
 
-        self.spead_meta_update_product_destination()
+        self.spead_meta_update_stream_destination()
 
         port = int(self.corr.configd['fengine']['10gbe_port'])
         self.corr.speadops.add_item(
@@ -1107,17 +1107,17 @@ class XEngineOperations(object):
             shape=[self.corr.n_chans, len(self.corr.baselines), 2])
             # shape=[self.corr.n_chans * len(self.corr.baselines), 2])
 
-    def spead_meta_issue_all(self, data_product):
+    def spead_meta_issue_all(self, data_stream):
         """
         Issue = update the metadata then send it.
-        :param data_product: The DataProduct object for which to send metadata
+        :param data_stream: The DataStream object for which to send metadata
         :return:
         """
-        dprod = data_product or self.data_product
+        dstrm = data_stream or self.data_stream
         self.spead_meta_update_all()
-        dprod.meta_transmit()
-        self.logger.info('Issued SPEAD data descriptor for data product %s '
-                         'to %s.' % (dprod.name,
-                                     dprod.meta_destination))
+        dstrm.meta_transmit()
+        self.logger.info('Issued SPEAD data descriptor for data stream %s '
+                         'to %s.' % (dstrm.name,
+                                     dstrm.meta_destination))
 
 # end

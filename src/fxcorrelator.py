@@ -39,7 +39,7 @@ class FxCorrelator(Instrument):
     A generic FxCorrelator composed of fengines that channelise antenna inputs
     and xengines that each produce cross products from a continuous portion
     of the channels and accumulate the result.
-    SPEAD data products are produced.
+    SPEAD data streams are produced.
     """
     def __init__(self, descriptor, identifier=-1, config_source=None,
                  logger=LOGGER):
@@ -561,12 +561,10 @@ class FxCorrelator(Instrument):
         # what data sources have we been allocated?
         self._handle_sources()
 
-        # turn the product names into a list
+        # turn the stream names into a list
         prodlist = _xeng_d['output_products'].replace('[', '')
         prodlist = prodlist.replace(']', '').split(',')
-        _xeng_d['output_products'] = []
-        for prod in prodlist:
-            _xeng_d['output_products'].append(prod.strip(''))
+        _xeng_d['output_products'] = [prod.strip(' ') for prod in prodlist]
 
     def _handle_sources(self):
         """
@@ -640,65 +638,24 @@ class FxCorrelator(Instrument):
         """
         raise NotImplementedError('_read_config_server not implemented')
 
-    def product_set_destination(self, product_name, txip_str=None, txport=None):
+    def stream_set_destination(self, stream_name, txip_str=None, txport=None):
         """
-        Set the destination for a data product.
-        :param product_name:
+        Set the destination for a data stream.
+        :param stream_name:
         :param txip_str: A dotted-decimal string representation of the
         IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.
         :return: <nothing>
         """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        product = self.data_products[product_name]
-        product.set_destination(txip_str, txport)
-        product.set_meta_destination(txip_str, txport)
+        stream = self.get_data_stream(stream_name)
+        stream.set_destination(txip_str, txport)
+        stream.set_meta_destination(txip_str, txport)
         if self.sensor_manager:
-            sensor_name = '%s-destination' % product.name
+            sensor_name = '%s-destination' % stream.name
             sensor = self.sensor_manager.sensor_get(sensor_name)
-            sensor.set_value(str(product.destination))
-            sensor_name = '%s-meta-destination' % product.name
+            sensor.set_value(str(stream.destination))
+            sensor_name = '%s-meta-destination' % stream.name
             sensor = self.sensor_manager.sensor_get(sensor_name)
-            sensor.set_value(str(product.meta_destination))
-
-    def product_tx_enable(self, product_name):
-        """
-        Enable tranmission for a product
-        :param product_name:
-        :return:
-        """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        self.data_products[product_name].tx_enable()
-
-    def product_tx_disable(self, product_name):
-        """
-        Disable tranmission for a product
-        :param product_name:
-        :return:
-        """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        self.data_products[product_name].tx_disable()
-
-    def product_issue_metadata(self, product_name=None):
-        """
-
-        :param product_name:
-        :return:
-        """
-        if product_name is None:
-            prods = self.data_products.keys()
-        else:
-            prods = [product_name]
-        for product in prods:
-            if product not in self.data_products:
-                raise ValueError('product %s is not in product list: %s' % (
-                    product, self.data_products))
-            self.data_products[product].meta_issue()
+            sensor.set_value(str(stream.meta_destination))
 
 # end

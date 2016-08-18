@@ -3,7 +3,7 @@ import logging
 from casperfpga import utils as fpgautils
 
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
-from data_product import DataProduct, BEAMFORMER_FREQUENCY_DOMAIN
+from data_stream import DataStream, BEAMFORMER_FREQUENCY_DOMAIN
 from net_address import NetAddress
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
@@ -24,7 +24,7 @@ class Beam(object):
         self.index = beam_index
         self.hosts = []
 
-        self.data_product = None
+        self.data_stream = None
         self.speadops = None
 
         self.partitions_total = -1
@@ -75,7 +75,7 @@ class Beam(object):
 
         data_addr = NetAddress(beam_dict['data_ip'], beam_dict['data_port'])
         meta_addr = NetAddress(beam_dict['meta_ip'], beam_dict['meta_port'])
-        obj.data_product = DataProduct(
+        obj.data_stream = DataStream(
             name=beam_name,
             category=BEAMFORMER_FREQUENCY_DOMAIN,
             destination=data_addr,
@@ -99,7 +99,7 @@ class Beam(object):
         return obj
 
     def __str__(self):
-        return 'Beam %i:%s - %s' % (self.index, self.name, self.data_product)
+        return 'Beam %i:%s - %s' % (self.index, self.name, self.data_stream)
 
     def initialise(self):
         """
@@ -137,9 +137,9 @@ class Beam(object):
         # set the active partitions to the partitions set in hardware
         self.partitions_active = self.partitions_current()
 
-    def tx_enable(self, data_product):
+    def tx_enable(self, data_stream):
         """
-        Start transmission of data products from the b-engines
+        Start transmission of data streams from the b-engines
         :return:
         """
         if len(self.partitions_active) <= 0:
@@ -154,9 +154,9 @@ class Beam(object):
                 fpga_.registers[reg_name].write(txen=True), [], {}))
         LOGGER.info('Beam %i:%s output enabled.' % (self.index, self.name))
 
-    def tx_disable(self, data_product):
+    def tx_disable(self, data_stream):
         """
-        Stop transmission of data products from the b-engines
+        Stop transmission of data streams from the b-engines
         :return:
         """
         if len(self.partitions_active) == 0:
@@ -171,7 +171,7 @@ class Beam(object):
                 fpga_.registers[reg_name].write(txen=False), [], {}))
         LOGGER.info('Beam %i:%s output disabled.' % (self.index, self.name))
 
-    def set_beam_destination(self, data_product):
+    def set_beam_destination(self, data_stream):
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_destination_set', [self], {}))
         self.spead_meta_update_destination()
         self.spead_meta_transmit_all()
@@ -471,11 +471,11 @@ class Beam(object):
         :return:
         """
         bw, cf = self.get_beam_bandwidth()
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
         self.speadops.add_item(
             meta_ig,
             name='bandwidth', id=0x1013,
-            description='The analogue bandwidth in this beam data product.',
+            description='The analogue bandwidth in this beam data stream.',
             shape=[], format=[('f', 64)],
             value=bw)
 
@@ -484,7 +484,7 @@ class Beam(object):
         Update meta information about the beamformer data heap
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
         n_bhosts = len(self.hosts)
         chans_per_host = self.n_chans / n_bhosts
         chans_per_partition = chans_per_host / self.beng_per_host
@@ -512,7 +512,7 @@ class Beam(object):
         and options descriptors and unpack sequences.
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
 
         # calculate a few things for this beam
         n_bhosts = len(self.hosts)
@@ -560,15 +560,15 @@ class Beam(object):
         Update the SPEAD IGs to notify the receiver of changes to destination
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
         self.speadops.add_item(
             meta_ig,
             name='rx_udp_port', id=0x1022,
             description='Destination UDP port for B engine output.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.data_product.destination.port)
+            value=self.data_stream.destination.port)
 
-        ipstr = numpy.array(str(self.data_product.destination.ip))
+        ipstr = numpy.array(str(self.data_stream.destination.ip))
         self.speadops.add_item(
             meta_ig,
             name='rx_udp_ip_str', id=0x1024,
@@ -585,7 +585,7 @@ class Beam(object):
         Update the weights in the BEAM SPEAD ItemGroups.
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
         self.speadops.add_item(
             meta_ig,
             name='beamweight',
@@ -605,7 +605,7 @@ class Beam(object):
         Update the labels in the BEAM SPEAD ItemGroups.
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
         self.speadops.item_0x100e(sig=meta_ig)
         LOGGER.info('Beam %i:%s - updated label metadata' % (
             self.index, self.name))
@@ -626,9 +626,9 @@ class Beam(object):
         Transmit SPEAD metadata for all beams
         :return:
         """
-        self.data_product.meta_transmit()
+        self.data_stream.meta_transmit()
 
-    def spead_meta_issue_all(self, data_product):
+    def spead_meta_issue_all(self, data_stream):
         """
         Issue = update + transmit
         """

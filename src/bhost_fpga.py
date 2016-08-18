@@ -35,11 +35,11 @@ class FpgaBHost(FpgaXHost):
         """
         beam_cfgreg = self.registers['bf%i_config' % beam.index]
         beam_ipreg = self.registers['bf%i_ip' % beam.index]
-        beam_cfgreg.write(port=beam.data_product.destination.port)
-        beam_ipreg.write(ip=int(beam.data_product.destination.ip))
+        beam_cfgreg.write(port=beam.data_stream.destination.port)
+        beam_ipreg.write(ip=int(beam.data_stream.destination.ip))
         LOGGER.info('%s:%i: Beam %i:%s destination set to %s' % (
             self.host, self.index, beam.index, beam.name,
-            beam.data_product.destination))
+            beam.data_stream.destination))
 
     def beam_index_set(self, beam):
         """

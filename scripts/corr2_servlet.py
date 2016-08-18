@@ -170,21 +170,13 @@ class Corr2Server(katcp.DeviceServer):
                                '%s' % e.message
         return 'ok', self.instrument.get_synch_time()
 
-    def _check_product_name(self, product_name):
-        """
-        Does a given product name exist on this instrument?
-        :param product_name: an instrument data product name
-        :return:
-        """
-        return product_name in self.instrument.data_products
-
     @request(Str(), Str())
     @return_reply()
-    def request_meta_destination(self, sock, product_name, ipportstr):
+    def request_meta_destination(self, sock, stream_name, ipportstr):
         """
         Set/Get the capture AND meta destination for this instrument
         :param sock:
-        :param product_name: an instrument data product name
+        :param stream_name: an instrument data stream name
         :param ipportstr: ip and port, in the form 1.2.3.4:7890
         :return:
         """
@@ -193,11 +185,11 @@ class Corr2Server(katcp.DeviceServer):
 
     @request(Str(), Str(default=''))
     @return_reply(Str(multiple=True))
-    def request_capture_destination(self, sock, product_name, ipportstr):
+    def request_capture_destination(self, sock, stream_name, ipportstr):
         """
         Set/Get the capture AND meta destination for this instrument
         :param sock:
-        :param product_name: an instrument data product name
+        :param stream_name: an instrument data stream name
         :param ipportstr: ip and port, in the form 1.2.3.4:7890
         :return:
         """
@@ -206,89 +198,89 @@ class Corr2Server(katcp.DeviceServer):
                 temp = ipportstr.split(':')
                 txipstr = temp[0]
                 txport = int(temp[1])
-                self.instrument.product_set_destination(
-                    product_name, txipstr, txport)
+                self.instrument.stream_set_destination(
+                    stream_name, txipstr, txport)
             except Exception as e:
                 return 'fail', 'Failed to set capture AND meta destination ' \
-                               'for %s: %s' % (product_name, e.message)
+                               'for %s: %s' % (stream_name, e.message)
         else:
-            dprod = self.instrument.data_products[product_name]
-            ipportstr = '%s:%d' % (dprod.destination.ip, dprod.destination.port)
-        return 'ok', product_name, ipportstr
+            dstrm = self.instrument.data_streams[stream_name]
+            ipportstr = '%s:%d' % (dstrm.destination.ip, dstrm.destination.port)
+        return 'ok', stream_name, ipportstr
 
     @request(Str(default=''))
     @return_reply()
-    def request_capture_list(self, sock, product_name):
+    def request_capture_list(self, sock, stream_name):
         """
-        List available products and their destination IP:port
+        List available streams and their destination IP:port
         :param sock:
-        :param product_name: an instrument data product name
+        :param stream_name: an instrument data stream name
         :return:
         """
-        product_names = []
-        if product_name != '':
-            product_names.append(product_name)
+        stream_names = []
+        if stream_name != '':
+            stream_names.append(stream_name)
         else:
-            product_names.extend(self.instrument.data_products.keys())
-        for prod in product_names:
-            if not self._check_product_name(prod):
-                return 'fail', 'Failed: product %s not in instrument data ' \
-                               'products: %s' % (prod,
-                                                 self.instrument.data_products)
-            dprod = self.instrument.data_products[prod]
-            sock.inform(prod, '%s:%d' % (
-                dprod.destination.ip,
-                dprod.destination.port))
+            stream_names.extend(self.instrument.data_streams.keys())
+        for strm in stream_names:
+            if not self.instrument.check_data_stream(strm):
+                return 'fail', 'Failed: stream %s not in instrument data ' \
+                               'streams: %s' % (strm,
+                                                self.instrument.data_streams)
+            dstrm = self.instrument.data_streams[strm]
+            sock.inform(strm, '%s:%d' % (
+                dstrm.destination.ip,
+                dstrm.destination.port))
         return 'ok',
 
     @request(Str(default=''))
     @return_reply(Str())
-    def request_capture_start(self, sock, product_name):
+    def request_capture_start(self, sock, stream_name):
         """
-        Start transmission of a data product.
+        Start transmission of a data stream.
         :param sock:
-        :param product_name: an instrument data product name
+        :param stream_name: an instrument data stream name
         :return:
         """
-        if not self._check_product_name(product_name):
-            return 'fail', 'Failed: product %s not in instrument data ' \
-                           'products: %s' % (product_name,
-                                             self.instrument.data_products)
-        self.instrument.product_issue_metadata(product_name)
-        self.instrument.product_tx_enable(product_name)
-        return 'ok', product_name
+        if not self.instrument.check_data_stream(stream_name):
+            return 'fail', 'Failed: stream %s not in instrument data ' \
+                           'streams: %s' % (stream_name,
+                                            self.instrument.data_streams)
+        self.instrument.stream_issue_metadata(stream_name)
+        self.instrument.stream_tx_enable(stream_name)
+        return 'ok', stream_name
 
     @request(Str(default=''))
     @return_reply(Str())
-    def request_capture_stop(self, sock, product_name):
+    def request_capture_stop(self, sock, stream_name):
         """
-        Stop transmission of a data product.
+        Stop transmission of a data stream.
         :param sock:
-        :param product_name: an instrument data product name
+        :param stream_name: an instrument data stream name
         :return:
         """
-        if not self._check_product_name(product_name):
-            return 'fail', 'Failed: product %s not in instrument data ' \
-                           'products: %s' % (product_name,
-                                             self.instrument.data_products)
-        self.instrument.product_tx_disable(product_name)
-        return 'ok', product_name
+        if not self.instrument.check_data_stream(stream_name):
+            return 'fail', 'Failed: stream %s not in instrument data ' \
+                           'streams: %s' % (stream_name,
+                                            self.instrument.data_streams)
+        self.instrument.stream_tx_disable(stream_name)
+        return 'ok', stream_name
 
     @request(Str(default=''))
     @return_reply(Str())
-    def request_capture_meta(self, sock, product_name):
+    def request_capture_meta(self, sock, stream_name):
         """
-        Issue metadata for a data product
+        Issue metadata for a data stream
         :param sock:
-        :param product_name: an instrument data product name
+        :param stream_name: an instrument data stream name
         :return:
         """
-        if not self._check_product_name(product_name):
-            return 'fail', 'Failed: product %s not in instrument data ' \
-                           'products: %s' % (product_name,
-                                             self.instrument.data_products)
-        self.instrument.product_issue_metadata(product_name)
-        return 'ok', product_name
+        if not self.instrument.check_data_stream(stream_name):
+            return 'fail', 'Failed: stream %s not in instrument data ' \
+                           'streams: %s' % (stream_name,
+                                            self.instrument.data_streams)
+        self.instrument.stream_issue_metadata(stream_name)
+        return 'ok', stream_name
 
     @request(Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -436,7 +428,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         Set the weight for an input
         :param sock:
-        :param beam_name: required beam product
+        :param beam_name: required beam stream
         :param input_name: required input
         :param weight_list: list of weights to set, one per input
         :return:
@@ -465,7 +457,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         Set the quantiser gain for an input
         :param sock:
-        :param beam_name: required beam product
+        :param beam_name: required beam stream
         :param new_gain: the new gain to apply - a real float
         :return:
         """
@@ -490,7 +482,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         Set the beamformer bandwidth/partitions
         :param sock:
-        :param beam_name: required beam product
+        :param beam_name: required beam stream
         :param bandwidth: required spectrum, in hz
         :param centerfreq: required cf of spectrum bandwidth chunk
         :return:
@@ -674,7 +666,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         _logger = self.instrument.logger
         try:
-            yield self.executor.submit(self.instrument.product_issue_metadata)
+            yield self.executor.submit(self.instrument.stream_issue_metadata)
         except Exception as e:
             _logger.exception('Error sending metadata - {}'.format(e.message))
         _logger.debug('self.periodic_send_metadata ran')

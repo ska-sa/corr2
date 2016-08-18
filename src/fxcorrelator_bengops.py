@@ -85,9 +85,9 @@ class BEngineOperations(object):
         for beam in self.beams.values():
             beam.configure()
 
-        # add the beam data products to the instrument list
+        # add the beam data streams to the instrument list
         for beam in self.beams.values():
-            self.corr.register_data_product(beam.data_product)
+            self.corr.register_data_stream(beam.data_stream)
 
     def tx_enable(self, beams=None):
         """
@@ -796,7 +796,7 @@ class BEngineOperations(object):
     #
     # def tx_start(corr, beams):
     #     """
-    #     Start outputting SPEAD products on all boards.
+    #     Start outputting SPEAD streams on all boards.
     #     Only works for systems with 10GbE output atm.
     #     :param beams:
     #     :return:

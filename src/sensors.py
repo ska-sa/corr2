@@ -366,20 +366,20 @@ def setup_mainloop_sensors(sensor_manager):
         initial_status=Sensor.UNKNOWN, manager=sensor_manager)
     sensor.set_value(sensor_manager.instrument.quant_format)
 
-    # product destination sensors - CAN CHANGE
-    for product in sensor_manager.instrument.data_products.values():
+    # stream destination sensors - CAN CHANGE
+    for stream in sensor_manager.instrument.data_streams.values():
         sensor = Corr2Sensor.string(
-            name='%s-destination' % product.name,
+            name='%s-destination' % stream.name,
             description='The output IP and port of the '
-                        'data product %s' % product.name,
+                        'data stream %s' % stream.name,
             initial_status=Sensor.UNKNOWN, manager=sensor_manager)
-        sensor.set_value(str(product.destination))
+        sensor.set_value(str(stream.destination))
         sensor = Corr2Sensor.string(
-            name='%s-meta-destination' % product.name,
+            name='%s-meta-destination' % stream.name,
             description='The output IP and port of the '
-                        'metadata for product %s' % product.name,
+                        'metadata for stream %s' % stream.name,
             initial_status=Sensor.UNKNOWN, manager=sensor_manager)
-        sensor.set_value(str(product.meta_destination))
+        sensor.set_value(str(stream.meta_destination))
 
     # beamformer weights and gains - CAN CHANGE
     beam_weights = sensor_manager.instrument.bops.get_beam_weights()

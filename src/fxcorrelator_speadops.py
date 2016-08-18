@@ -63,16 +63,16 @@ class SpeadOperations(object):
             iter(ids)
         except TypeError:
             ids = [ids]
-        # loop through known products and match spead IDs to those products
-        for name, product in self.corr.data_products.items():
+        # loop through known streams and match spead IDs to those streams
+        for name, stream in self.corr.data_streams.items():
             changes = False
             for speadid in ids:
                 idfunc = getattr(self, 'item_0x%04x' % speadid)
-                if speadid in product.meta_ig.ids():
-                    idfunc(product.meta_ig)
+                if speadid in stream.meta_ig.ids():
+                    idfunc(stream.meta_ig)
                     changes = True
             if changes:
-                product.meta_transmit()
+                stream.meta_transmit()
 
     def item_0x1007(self, sig, stx=None):
         self.add_item(
