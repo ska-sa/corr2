@@ -192,6 +192,14 @@ class SpeadOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.n_chans * 2)
 
+    def item_0x104b(self, sig, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='fengine_chans', id=0x104B,
+            description='Number of channels in the f-engine spectra.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.corr.n_chans)
+
     def item_0x1400(self, sig, stx=None):
         all_eqs = self.corr.fops.eq_get()
         for source in self.corr.fengine_sources.values():
