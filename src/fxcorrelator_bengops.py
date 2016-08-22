@@ -124,7 +124,8 @@ class BEngineOperations(object):
 
     def partitions_activate(self, partitions_to_activate=None):
         """
-        Activate partitions for all beams
+        Activate partitions for all beams.
+        :param partitions_to_activate: a list of partitions to activate
         """
         for beam in self.beams.values():
             beam.partitions_activate(partitions_to_activate)
@@ -132,6 +133,7 @@ class BEngineOperations(object):
     def partitions_deactivate(self, partitions_to_deactivate=None):
         """
         Deactivate partitions for all beams
+        :param partitions_to_deactivate: a list of partitions to activate
         """
         for beam in self.beams.values():
             beam.partitions_deactivate(partitions_to_deactivate)

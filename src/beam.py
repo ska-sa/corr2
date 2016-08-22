@@ -37,8 +37,9 @@ class Beam(object):
         self.bandwidth = None
 
         self.xeng_acc_len = None
-        self.n_chans = None
+        self.chans_total = None
         self.beng_per_host = None
+        self.chans_per_partition = None
 
         self.source_weights = None
         self.quant_gain = None
@@ -70,8 +71,10 @@ class Beam(object):
         obj.bandwidth = float(beam_dict['bandwidth'])
 
         obj.xeng_acc_len = int(config['xengine']['xeng_accumulation_len'])
-        obj.n_chans = int(config['fengine']['n_chans'])
+        obj.chans_total = int(config['fengine']['n_chans'])
         obj.beng_per_host = int(config['xengine']['x_per_fpga'])
+        chans_per_host = obj.chans_total / len(obj.hosts)
+        obj.chans_per_partition = chans_per_host / obj.beng_per_host
 
         data_addr = NetAddress(beam_dict['data_ip'], beam_dict['data_port'])
         meta_addr = NetAddress(beam_dict['meta_ip'], beam_dict['meta_port'])
@@ -194,6 +197,13 @@ class Beam(object):
         if min(partitions) < min(self.partitions):
             raise ValueError('Partitions < 0 make no sense')
 
+    def active_channels(self):
+        """
+        How many channels are active in this beam?
+        :return:
+        """
+        return self.chans_per_partition * len(self.partitions_active)
+
     def partitions_deactivate(self, partitions=None):
         """
         Deactive one or more partitions
@@ -239,12 +249,7 @@ class Beam(object):
             return False
         self._check_partitions(partitions)
         self.partitions_active = partitions[:]
-
-        # TODO - send SPEAD metadata about bandwidth and cf
-
-        # update the bhosts control registers
         self._partitions_control_update()
-
         LOGGER.info('Beam %i:%s - active partitions: %s' % (
                 self.index, self.name, self.partitions_active))
         return True
@@ -474,6 +479,12 @@ class Beam(object):
         meta_ig = self.data_stream.meta_ig
         self.speadops.add_item(
             meta_ig,
+            name='n_chans', id=0x1009,
+            description='Number of frequency channels selected in this beam.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.active_channels())
+        self.speadops.add_item(
+            meta_ig,
             name='bandwidth', id=0x1013,
             description='The analogue bandwidth in this beam data stream.',
             shape=[], format=[('f', 64)],
@@ -485,10 +496,6 @@ class Beam(object):
         :return:
         """
         meta_ig = self.data_stream.meta_ig
-        n_bhosts = len(self.hosts)
-        chans_per_host = self.n_chans / n_bhosts
-        chans_per_partition = chans_per_host / self.beng_per_host
-        beam_chans = chans_per_partition * len(self.partitions_active)
         # id is 0x5 + 12 least sig bits id of each beam
         beam_data_id = 0x5000
         self.speadops.add_item(
@@ -502,7 +509,7 @@ class Beam(object):
                         'value is a complex number -- two (real and '
                         'imaginary) signed integers.',
             dtype=numpy.int8,
-            shape=[beam_chans, self.xeng_acc_len, 2])
+            shape=[self.active_channels(), self.xeng_acc_len, 2])
         LOGGER.info('Beam %i:%s - updated dataheap metadata' % (
             self.index, self.name))
 
@@ -519,7 +526,9 @@ class Beam(object):
         n_bengs = self.beng_per_host * n_bhosts
 
         self.speadops.item_0x1007(sig=meta_ig)
-        self.speadops.item_0x1009(sig=meta_ig)
+
+        self.spead_meta_update_bandwidth()
+
         self.speadops.item_0x100a(sig=meta_ig)
 
         self.speadops.add_item(
@@ -631,6 +640,7 @@ class Beam(object):
     def spead_meta_issue_all(self, data_stream):
         """
         Issue = update + transmit
+        :param data_stream: the DataStrem for which to issue metadata
         """
         self.spead_meta_update_all()
         self.spead_meta_transmit_all()

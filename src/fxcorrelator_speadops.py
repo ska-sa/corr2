@@ -83,14 +83,6 @@ class SpeadOperations(object):
             shape=[], format=[('u', 64)],
             value=self.corr.sample_rate_hz)
 
-    def item_0x1009(self, sig, stx=None):
-        self.add_item(
-            sig=sig, stx=stx,
-            name='n_chans', id=0x1009,
-            description='Number of frequency channels in an integration.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.corr.n_chans)
-
     def item_0x100a(self, sig, stx=None):
         self.add_item(
             sig=sig, stx=stx,
@@ -119,7 +111,7 @@ class SpeadOperations(object):
             sig=sig, stx=stx,
             name='bandwidth', id=0x1013,
             description='The analogue bandwidth of the digitally processed '
-                        'signal in Hz.',
+                        'signal, in Hz.',
             shape=[], format=[('f', 64)],
             value=self.corr.analogue_bandwidth)
 
@@ -191,6 +183,14 @@ class SpeadOperations(object):
                         'back to seconds since last sync.',
             shape=[], format=[('f', 64)],
             value=self.corr.sample_rate_hz)
+
+    def item_0x104a(self, sig, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='ticks_between_spectra', id=0x104A,
+            description='Number of sample ticks between spectra.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.corr.n_chans * 2)
 
     def item_0x1400(self, sig, stx=None):
         all_eqs = self.corr.fops.eq_get()

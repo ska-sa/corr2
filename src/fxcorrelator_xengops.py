@@ -811,7 +811,7 @@ class XEngineOperations(object):
         Set the vacc accumulation length based on a required dump time,
         in seconds
         :param acc_time_s: new dump time, in seconds
-        :param vacc_resync:
+        :param vacc_resync: force a vacc resynchronisation
         :return:
         """
         if use_xeng_sim:
@@ -851,6 +851,7 @@ class XEngineOperations(object):
         """
         Set the QDR vector accumulation length.
         :param acc_len:
+        :param vacc_resync: force a vacc resynchronisation
         :return:
         """
         if (acc_len is not None) and (acc_len <= 0):
@@ -949,7 +950,13 @@ class XEngineOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=len(self.corr.baselines))
 
-        self.corr.speadops.item_0x1009(meta_ig)
+        self.corr.speadops.add_item(
+            meta_ig,
+            name='n_chans', id=0x1009,
+            description='Number of frequency channels in an integration.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.corr.n_chans)
+
         self.corr.speadops.item_0x100a(meta_ig)
 
         n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
