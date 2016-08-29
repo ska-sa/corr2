@@ -143,6 +143,7 @@ class Beam(object):
     def tx_enable(self, data_stream):
         """
         Start transmission of data streams from the b-engines
+        :param data_stream: The DataStream to enable.
         :return:
         """
         if len(self.partitions_active) <= 0:
@@ -160,6 +161,7 @@ class Beam(object):
     def tx_disable(self, data_stream):
         """
         Stop transmission of data streams from the b-engines
+        :param data_stream: The DataStream to disable.
         :return:
         """
         if len(self.partitions_active) == 0:
@@ -452,6 +454,8 @@ class Beam(object):
     def update_labels(self, oldnames, newnames):
         """
         Update the input labels
+        :param oldnames: a list of tuples of old input names and positions
+        :param newnames: a list of tuples of the new input names
         :return: True if anything changed, False if not
         """
         changes = False
@@ -550,6 +554,9 @@ class Beam(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.beng_per_host)
 
+        self.speadops.item_0x104a(meta_ig)
+        self.speadops.item_0x104b(meta_ig)
+
         self.speadops.add_item(
             meta_ig,
             name='beng_out_bits_per_sample', id=0x1050,
@@ -644,4 +651,3 @@ class Beam(object):
         """
         self.spead_meta_update_all()
         self.spead_meta_transmit_all()
-

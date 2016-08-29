@@ -1085,6 +1085,9 @@ class XEngineOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.f_per_fpga)
 
+        self.corr.speadops.item_0x104a(meta_ig)
+        self.corr.speadops.item_0x104b(meta_ig)
+
         self.corr.speadops.item_0x1400(meta_ig)
 
         self.corr.speadops.item_0x1600(meta_ig)
