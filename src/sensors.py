@@ -185,7 +185,8 @@ class SensorManager(object):
         """
         assert self.kcs_sensors
         supdate_inform = Message.inform('sensor-status', time.time(), 1,
-                                        sensor.name, sensor.status(),
+                                        sensor.name,
+                                        sensor.STATUSES[sensor.status()],
                                         sensor.value())
         self.katcp_server.mass_inform(supdate_inform)
 
