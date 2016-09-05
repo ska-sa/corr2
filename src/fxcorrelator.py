@@ -8,7 +8,6 @@ Created on Feb 28, 2013
 
 import logging
 import time
-from katcp import Sensor
 
 from casperfpga import utils as fpgautils
 
@@ -257,10 +256,10 @@ class FxCorrelator(Instrument):
 
     def get_scale_factor(self):
         """
-
+        By what number do we divide timestamps to get seconds?
         :return:
         """
-        return 1.0 / self.sample_rate_hz
+        return self.sample_rate_hz
 
     def set_synch_time(self, new_synch_time):
         """

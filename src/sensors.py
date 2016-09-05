@@ -62,7 +62,7 @@ class Corr2Sensor(Sensor):
 
     def set(self, timestamp, status, value):
         """
-
+        Set the value of a sensor.
         :param timestamp:
         :param status:
         :param value:
@@ -340,11 +340,13 @@ def setup_mainloop_sensors(sensor_manager):
     sensor.set_value(sensor_manager.instrument.analogue_bandwidth)
 
     # n_accs - CAN CHANGE
+    spec_acclen = (sensor_manager.instrument.accumulation_len *
+                   sensor_manager.instrument.xeng_accumulation_len)
     sensor = Corr2Sensor.integer(
         name='n-accs',
         description='Number of accumulations to perform in the VACC',
         initial_status=Sensor.UNKNOWN, manager=sensor_manager)
-    sensor.set_value(sensor_manager.instrument.accumulation_len)
+    sensor.set_value(spec_acclen)
 
     # integration time - CAN CHANGE
     sensor = Corr2Sensor.float(
