@@ -203,7 +203,7 @@ class FEngineOperations(object):
             if ld_time < (time.time() + self.corr.min_load_time):
                 self.logger.error('Time given is in the past or does not allow '
                                   'for enough time to set values')
-        
+
         ld_time_mcnt = None
         if ld_time is not None:
             ld_time_mcnt = self.corr.mcnt_from_time(ld_time)
@@ -319,7 +319,7 @@ class FEngineOperations(object):
                 val['act_phase_offset'], val['act_phase_offset_delta'])
             rv.append(res_str)
         return rv
-    
+
     def set_delays_all(self, loadtime, coeffs):
         """
         Set delays on all fhosts
@@ -518,7 +518,7 @@ class FEngineOperations(object):
         """
         if new_eq_dict is not None:
             self.logger.info('Updating some EQ values before writing.')
-            for src, new_eq in new_eq_dict:
+            for src, new_eq in new_eq_dict.iteritems():
                 self.eq_set(write=False, source_name=src, new_eq=new_eq)
         self.logger.info('Writing EQ on all fhosts based on stored '
                          'per-source EQ values...')
@@ -759,4 +759,3 @@ class FEngineOperations(object):
         else:
             self.logger.info('\tcheck_qdr_parity: {} - all okay'.format(qdr_id))
         return True
-
