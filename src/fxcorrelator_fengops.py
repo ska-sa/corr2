@@ -542,6 +542,8 @@ class FEngineOperations(object):
         self.corr.fft_shift = shift_value
         self.logger.info('done.')
         self.corr.speadops.update_metadata([0x101e])
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensor_set('fft_shift', shift_value)
         return shift_value
 
     def get_fft_shift_all(self):
@@ -556,6 +558,18 @@ class FEngineOperations(object):
                                 'stored value. Correcting.')
             self.corr.fft_shift = rv[rv.keys()[0]]
         return rv
+
+    def fengine_to_host_mapping(self):
+        """
+        Return a mapping of hostnames to engine numbers
+        :return:
+        """
+        mapping = {}
+        for host in self.hosts:
+            rv = ['feng{0}'.format(dsrc.source_number)
+                  for dsrc in host.data_sources]
+            mapping[host.host] = rv
+        return mapping
 
     def clear_status_all(self):
         """
