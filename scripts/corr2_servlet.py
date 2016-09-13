@@ -100,19 +100,21 @@ class Corr2Server(katcp.DeviceServer):
         rv = rv.replace(',', '')
         return rv.split(' ')
 
-    @request(Str(), Int(default=1000))
+    @request(Str(), Str(default=''), Int(default=1000))
     @return_reply()
-    def request_create(self, sock, config_file, log_len):
+    def request_create(self, sock, config_file, instrument_name, log_len):
         """
         Create the instrument using the detail in config_file
         :param sock:
         :param config_file: The instrument config file to use
-        :param log_len:
+        :param instrument_name: a sub-array-unique instrument name
+        :param log_len: how many lines should the log keep
         :return:
         """
         try:
+            iname = instrument_name or 'corr_%s' % str(time.time())
             self.instrument = fxcorrelator.FxCorrelator(
-                'corr_%s' % str(time.time()), config_source=config_file)
+                iname, config_source=config_file)
             return 'ok',
         except Exception as ex:
             return self._log_excep(ex, 'Failed to create instrument.')
@@ -149,8 +151,8 @@ class Corr2Server(katcp.DeviceServer):
             sensor_manager.sensors_clear()
             sensors.setup_mainloop_sensors(sensor_manager)
             # IOLoop.current().add_callback(self.periodic_send_metadata)
-            # if monitor_vacc:
-            #     self.instrument.xops.vacc_check_timer_start()
+            if monitor_vacc:
+                self.instrument.xops.vacc_check_timer_start()
             return 'ok',
         except Exception as ex:
             return self._log_excep(ex, 'Failed to initialise '

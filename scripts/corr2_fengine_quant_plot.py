@@ -12,6 +12,7 @@ import sys
 import signal
 import numpy
 from matplotlib import pyplot
+import math
 
 from corr2.fhost_fpga import FpgaFHost
 from corr2 import utils
@@ -116,10 +117,9 @@ snapshot_bytes = (2**nsamples) * (dwidth/8)
 print 'Snapshot is %i bytes long' % snapshot_bytes
 snapshot_samples = (2**nsamples) * 4
 print 'Snapshot is %i samples long' % snapshot_samples
-#loops_necessary = EXPECTED_FREQS / snapshot_samples
-#print 'Will need to read the snapshot %i times' % loops_necessary
+# loops_necessary = EXPECTED_FREQS / snapshot_samples
+# print 'Will need to read the snapshot %i times' % loops_necessary
 
-import math
 print 'Range:', plotrange
 numtoplot = plotrange[1] - plotrange[0]
 print 'Chans to plot:', numtoplot
@@ -128,12 +128,12 @@ loopstart = plotrange[0] / snapshot_samples
 loopstop = loopstart + loopnec
 plotrange_shifted = (plotrange[0] - (loopstart * snapshot_samples), plotrange[1] - (loopstart * snapshot_samples))
 
-#print 'loopsnec:', loopnec
-#print 'loopstart:', loopstart
-#print 'loopstop:', loopstop
-#print 'plotrange:', plotrange
-#print 'plotrange_shifted:', plotrange_shifted
-#raise RuntimeError
+# print 'loopsnec:', loopnec
+# print 'loopstart:', loopstart
+# print 'loopstop:', loopstop
+# print 'plotrange:', plotrange
+# print 'plotrange_shifted:', plotrange_shifted
+# raise RuntimeError
 
 print 'Will need to read the snapshot %i times' % (loopstop - loopstart)
 
@@ -208,8 +208,8 @@ def plot_spectrum(figure, sub_plots, idata, ictr, pctr):
     for ctr in range(0, len(p0_data)):
         idata[0][ctr] += p0_data[ctr]
         idata[1][ctr] += p1_data[ctr]
-    #print '\tMean:   %.10f' % numpy.mean(p0_data[100:4000])
-    #print '\tStddev: %.10f' % numpy.std(p0_data[100:4000])
+    # print '\tMean:   %.10f' % numpy.mean(p0_data[100:4000])
+    # print '\tStddev: %.10f' % numpy.std(p0_data[100:4000])
     if args.printvals:
         print idata
     if args.noplot:
