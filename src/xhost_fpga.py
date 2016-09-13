@@ -199,7 +199,7 @@ class FpgaXHost(FpgaHost):
         if xnum > -1:
             xnums = [xnum]
         else:
-            xnums = range(0, self.x_per_fpga)
+            xnums = range(self.x_per_fpga)
         # is this an older bitstream with old registers?
         if 'vaccerr0' in _regs.names():
             for xnum in xnums:
@@ -333,3 +333,81 @@ class FpgaXHost(FpgaHost):
     #     acc_len = self.config['acc_len']
     #     vacc_len = self.vacc_len.read()['data']['reg']
     #     return vacc_len * acc_len
+
+
+class FpgaXHostVaccDebug(FpgaXHost):
+    """
+    Some extra debug functionality to help with VACC development.
+    """
+
+    # methods enable TVG operations
+    TVG_KEY_ORIGINAL = {
+        'en': 0,
+        'data_sel': 1,
+        'valid_sel': 2,
+        'inj_vector': 3,
+        'inj_counter': 4,
+        'rst': 5,
+    }
+
+    @staticmethod
+    def encode_tvg_control(**kwargs):
+        """
+        Encode arguments to the old tvg_control register.
+        :param kwargs:
+        :return:
+        """
+        rv = 0
+        for k, p in FpgaXHostVaccDebug.TVG_KEY_ORIGINAL.items():
+            if k in kwargs:
+                if kwargs[k]:
+                    rv |= (1 << p)
+        return rv
+
+    @staticmethod
+    def decode_tvg_control(raw):
+        """
+        Decode the raw int from the old tvg_control register to its fields.
+        :param raw:
+        :return:
+        """
+        return {
+            k: ((raw >> p) & 0x01)
+            for k, p in FpgaXHostVaccDebug.TVG_KEY_ORIGINAL.items()
+        }
+
+    def tvg_vector(self, location, value):
+        """
+
+        :param location: Where should the vector be replaced?
+        :param value: What should its value be?
+        :return:
+        """
+        for nx in range(self.x_per_fpga):
+            locname = 'sys%i_vacc_tvg0_ins_vect_loc' % nx
+            valname = 'sys%i_vacc_tvg0_ins_vect_val' % nx
+            self.registers[locname].write_int(location)
+            self.registers[valname].write_int(value)
+
+    def tvg_data_value(self, value):
+        """
+
+        :param value:
+        :return:
+        """
+        for nx in range(self.x_per_fpga):
+            regname = 'sys%i_vacc_tvg0_write' % nx
+            self.registers[regname].write_int(value)
+
+    def tvg_control(self, **kwargs):
+        """
+
+        :param kwargs:
+        :return:
+        """
+        rawval = self.encode_tvg_control(**kwargs)
+        self.registers.tvg_control.write(vacc=rawval)
+        rd = self.registers.tvg_control.read()['data']['vacc']
+        return self.decode_tvg_control(rd)
+
+# end

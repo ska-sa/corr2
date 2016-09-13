@@ -543,7 +543,7 @@ class FEngineOperations(object):
         self.logger.info('done.')
         self.corr.speadops.update_metadata([0x101e])
         if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensor_set('fft_shift', shift_value)
+            self.corr.sensor_manager.sensor_set('fft-shift', shift_value)
         return shift_value
 
     def get_fft_shift_all(self):

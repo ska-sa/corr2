@@ -13,7 +13,6 @@ class FpgaHost(Host, KatcpFpga):
     """
     A Host that is a CASPER KATCP FPGA.
     """
-
     def __init__(self, host, katcp_port=7147, boffile=None, connect=False):
         Host.__init__(self, host, katcp_port)
         KatcpFpga.__init__(self, host, katcp_port, connect=connect)

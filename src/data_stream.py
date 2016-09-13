@@ -58,14 +58,14 @@ class DataStream(object):
         :param name: the name of this data stream
         :param destination: a NetAddress for the stream data destination
         :param meta_destination: a NetAddress for the meta information
-        :param destination_cb: a callback to run when this data stream
-        destination is updated
-        :param meta_destination_cb: a callback to run when this data
-        stream meta destination is updated
         :param tx_enable_method: method to call to start transmission of this
         stream
         :param tx_disable_method: method to call to stop transmission of this
         stream
+        :param destination_cb: a callback to run when this data stream
+        destination is updated
+        :param meta_destination_cb: a callback to run when this data
+        stream meta destination is updated
         :return:
         """
         self.name = name

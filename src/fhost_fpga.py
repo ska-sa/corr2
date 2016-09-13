@@ -33,8 +33,8 @@ class DelaysUnsetError(Exception):
 
 class DigitiserDataReceiver(FpgaHost):
     """
-    The RX section of a fengine and filter engine are
-    the same - receive the digitiser data
+    The RX section of a fengine and filter engine are the same - receive
+    the digitiser data
     """
 
     def __init__(self, host, katcp_port=7147, boffile=None, connect=True):
@@ -258,16 +258,14 @@ class FengineSource(DataSource):
         if self.sensor_manager is not None:
             self.sensor_manager.sensor_set(
                 sensor=('%s-delay-set' % self.name).replace('_', '-'),
-                status=Corr2Sensor.NOMINAL,
                 value='%.5f,%.5f' % (self.delay.delay, self.delay.delay_delta))
             self.sensor_manager.sensor_set(
                 sensor=('%s-phase-set' % self.name).replace('_', '-'),
-                status=Corr2Sensor.NOMINAL,
                 value='%.5f,%.5f' % (self.delay.phase_offset,
                                      self.delay.phase_offset_delta))
             self.sensor_manager.sensor_set(
                 sensor=('%s-loadtime' % self.name).replace('_', '-'),
-                status=Corr2Sensor.NOMINAL, value=self.delay.load_time)
+                value=self.delay.load_time)
 
 
 class FpgaFHost(DigitiserDataReceiver):

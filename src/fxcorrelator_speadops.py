@@ -1,19 +1,19 @@
 import numpy
-import time
 
 from sensors import Corr2Sensor
 
 SPEAD_ADDRSIZE = 48
 
 
-def create_sensor_from_meta(sensor_manager, **kwargs):
-    sid = kwargs['id']
-    sname = kwargs['name'].replace('_', '-')
-    sensor = Corr2Sensor.string(
-        name='speadmeta-0x{id:04x}-{name}'.format(id=sid, name=sname),
-        description=kwargs['description'],
-        initial_status=Corr2Sensor.UNKNOWN, manager=sensor_manager)
-    return sensor
+# def create_sensor_from_meta(sensor_manager, **kwargs):
+#     sid = kwargs['id']
+#     sname = kwargs['name'].replace('_', '-')
+#     sname = 'speadmeta-0x{id:04x}-{name}'.format(id=sid, name=sname)
+#     sensor = Corr2Sensor.string(
+#         name=sname,
+#         description=kwargs['description'],
+#         initial_status=Corr2Sensor.UNKNOWN, manager=sensor_manager)
+#     return sensor
 
 
 class SpeadOperations(object):
@@ -39,18 +39,18 @@ class SpeadOperations(object):
             sig.add_item(**kwargs)
         if stx is not None:
             stx.send_heap(sig.get_heap())
-        # add or update a sensor
-        if self.corr.sensor_manager:
-            # does the sensor exist?
-            try:
-                sensor = self.corr.sensor_manager.metasensors[sid]
-            except KeyError:
-                sensor = create_sensor_from_meta(self.corr.sensor_manager,
-                                                 **kwargs)
-                self.corr.sensor_manager.metasensors[kwargs['id']] = sensor
-            if 'value' in kwargs:
-                svalue = str(kwargs['value'])
-                sensor.set_value(svalue)
+        # # add or update a sensor
+        # if self.corr.sensor_manager:
+        #     # does the sensor exist?
+        #     try:
+        #         sensor = self.corr.sensor_manager.metasensors[sid]
+        #     except KeyError:
+        #         sensor = create_sensor_from_meta(self.corr.sensor_manager,
+        #                                          **kwargs)
+        #         self.corr.sensor_manager.metasensors[kwargs['id']] = sensor
+        #     if 'value' in kwargs:
+        #         svalue = str(kwargs['value'])
+        #         sensor.set_value(svalue)
 
     def update_metadata(self, ids):
         """
@@ -83,6 +83,10 @@ class SpeadOperations(object):
             shape=[], format=[('u', 64)],
             value=self.corr.sample_rate_hz)
 
+    # 0x1008 - fxcorrelator_xengops.py
+
+    # 0x1009 - fxcorrelator_xengops.py
+
     def item_0x100a(self, sig, stx=None):
         self.add_item(
             sig=sig, stx=stx,
@@ -90,6 +94,12 @@ class SpeadOperations(object):
             description='The number of antennas in the system.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.n_antennas)
+
+    # 0x100b - fxcorrelator_xengops.py
+
+    # 0x100c - fxcorrelator_xengops.py
+
+    # 0x100d - DEPRECATED
 
     def item_0x100e(self, sig, stx=None):
         metalist = [(fsrc.name,
@@ -106,6 +116,12 @@ class SpeadOperations(object):
             dtype=metalist.dtype,
             value=metalist)
 
+    # 0x100f - beam.py
+
+    # 0x1011 - fxcorrelator_xengops.py
+
+    # 0x1012 - UNUSED
+
     def item_0x1013(self, sig, stx=None):
         self.add_item(
             sig=sig, stx=stx,
@@ -114,6 +130,8 @@ class SpeadOperations(object):
                         'signal, in Hz.',
             shape=[], format=[('f', 64)],
             value=self.corr.analogue_bandwidth)
+
+    # 0x1014 - UNUSED
 
     def item_0x1015(self, sig, stx=None):
         spec_acclen = (self.corr.accumulation_len *
@@ -134,6 +152,48 @@ class SpeadOperations(object):
             shape=[], format=[('f', 64)],
             value=self.corr.xops.get_acc_time())
 
+    def item_0x1017(self, sig, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='coarse_chans', id=0x1017,
+            description='Number of channels in the first PFB in a cascaded-PFB'
+                        ' design.',
+            shape=[], format=[('f', 64)],
+            value=-1)
+
+    def item_0x1018(self, sig, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='current_coarse_chan', id=0x1018,
+            description='The currently selected coarse channel in a cascaded-'
+                        'PFB design.',
+            shape=[], format=[('f', 64)],
+            value=-1)
+
+    # 0x1019 - UNUSED
+
+    # 0x101a - UNUSED
+
+    # 0x101b - UNUSED
+
+    def item_0x101c(self, sig, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='fft_shift_fine', id=0x101C,
+            description='The FFT bitshift pattern for the second (fine) '
+                        'PFB in a cascaded-PFB design.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=0)
+
+    def item_0x101d(self, sig, stx=None):
+        self.add_item(
+            sig=sig, stx=stx,
+            name='fft_shift_coarse', id=0x101D,
+            description='The FFT bitshift pattern for the first (coarse) '
+                        'PFB in a cascaded-PFB design.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=0)
+
     def item_0x101e(self, sig, stx=None):
         self.add_item(
             sig=sig, stx=stx,
@@ -142,6 +202,8 @@ class SpeadOperations(object):
                         'correlator internals.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.fft_shift)
+
+    # 0x101F - fxcorrelator_xengops.py
 
     def item_0x1020(self, sig, stx=None):
         quant_str = self.corr.configd['fengine']['quant_format']
@@ -154,6 +216,18 @@ class SpeadOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=quant_bits)
 
+    # 0x1021 - fxcorrelator_xengops.py
+
+    # 0x1022 - fxcorrelator_xengops.py
+
+    # 0x1023 - fxcorrelator_xengops.py
+
+    # 0x1024 - fxcorrelator_xengops.py
+
+    # 0x1025 - fxcorrelator_xengops.py
+
+    # 0x1026 - fxcorrelator_xengops.py
+
     def item_0x1027(self, sig, stx=None):
         val = self.corr.get_synch_time()
         val = 0 if val < 0 else val
@@ -164,6 +238,16 @@ class SpeadOperations(object):
                         'Seconds since the Unix Epoch.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=val)
+
+    # 0x1040 - fxcorrelator_xengops.py
+
+    # 0x1041 - fxcorrelator_xengops.py
+
+    # 0x1042 - DEPRECATED
+
+    # 0x1043 - fxcorrelator_xengops.py
+
+    # 0x1044 - DEPRECATED
 
     def item_0x1045(self, sig, stx=None):
         sample_bits = int(self.corr.configd['fengine']['sample_bits'])
@@ -182,7 +266,13 @@ class SpeadOperations(object):
                         'data packet timestamp by this number to get '
                         'back to seconds since last sync.',
             shape=[], format=[('f', 64)],
-            value=self.corr.sample_rate_hz)
+            value=self.corr.get_scale_factor())
+
+    # 0x1047 - beam.py
+
+    # 0x1048 - fxcorrelator_xengops.py
+
+    # 0x1049 - fxcorrelator_xengops.py
 
     def item_0x104a(self, sig, stx=None):
         self.add_item(
@@ -199,6 +289,10 @@ class SpeadOperations(object):
             description='Number of channels in the f-engine spectra.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.n_chans)
+
+    # 0x1050 - beam.py
+
+    # 0x1200 - DEPRECATED
 
     def item_0x1400(self, sig, stx=None):
         all_eqs = self.corr.fops.eq_get()
@@ -232,85 +326,9 @@ class SpeadOperations(object):
             shape=[],
             format=[('u', SPEAD_ADDRSIZE)])
 
-    # self.spead_meta_ig.add_item(
-    #     name='crosspol_ordering', id=0x100D,
-    #     description='',
-    #     shape=[], format=[('u', SPEAD_ADDRSIZE)],
-    #     value=)
-    #
-    # self.meta_ig.add_item(
-    #     name='coarse_chans', id=0x1017,
-    #     description='',
-    #     shape=[], format=[('u', SPEAD_ADDRSIZE)],
-    #     value=)
-    #
-    # self.meta_ig.add_item(
-    #     name='current_coarse_chan', id=0x1018,
-    #     description='',
-    #     shape=[], format=[('u', SPEAD_ADDRSIZE)],
-    #     value=)
-    #
-    # self.meta_ig.add_item(
-    #     name='fft_shift_fine', id=0x101C,
-    #     description='',
-    #     shape=[], format=[('u', SPEAD_ADDRSIZE)],
-    #     value=)
-    #
-    # self.meta_ig.add_item(
-    #     name='fft_shift_coarse', id=0x101D,
-    #     description='',
-    #     shape=[], format=[('u', SPEAD_ADDRSIZE)],
-    #     value=)
-    #
-    # port = int(self.corr.configd['xengine']['output_destination_port'])
-    # self.meta_ig.add_item(
-    #     name='rx_udp_port', id=0x1022,
-    #     description='Destination UDP port for X engine output.',
-    #     shape=[], format=[('u', SPEAD_ADDRSIZE)],
-    #     value=port)
+    # 0x1800 - fxcorrelator_xengops.py
 
-    # ip = self.corr.configd['xengine']['output_destination_ip']
-    # self.meta_ig.add_item(
-    #     name='rx_udp_ip_str', id=0x1024,
-    #     description='Destination UDP IP for X engine output.',
-    #     shape=[-1], fmt=spead.STR_FMT,
-    #     value=ip)
-    # self.meta_ig.add_item(
-    #     name='n_stokes', id=0x1040,
-    #     description='',
-    #     shape=[], format=[('u', SPEAD_ADDRSIZE)],
-    #     value=)
-    # n_ants_per_xaui = 1
-    # self.meta_ig.add_item(
-    #     name='n_ants_per_xaui', id=0x1042,
-    #     description='',
-    #     shape=[], format=[('u', SPEAD_ADDRSIZE)],
-    #     value=n_ants_per_xaui)
-    #
-    # self.meta_ig.add_item(
-    #     name='ddc_mix_freq', id=0x1043,
-    #     description='',
-    #     shape=[],format=[('f', 64)],
-    #     value=)
-    #
-    # self.meta_ig.add_item(
-    #     name='ddc_bandwidth', id=0x1044,
-    #     description='',
-    #     shape=[],format=[('f', 64)],
-    #     value=)
-    # spead_ig.add_item(name='rf_gain_MyAntStr ', id=0x1200+inputN,
-    #                        description='',
-    #                        shape=[], format=[('f', 64)],
-    #                        value=)
-    # spead_ig.add_item(name='eq_coef_MyAntStr', id=0x1400+inputN,
-    #                        description='',
-    #                        shape=[], format=[('u', 32)],
-    #                        value=)
-
-    # spead_ig.add_item(name='beamweight_MyAntStr', id=0x2000+inputN,
-    #                        description='',
-    #                        shape=[], format=[('u', 32)],
-    #                        value=)
+    # 0x2000 - beam.py
 
     # spead_ig.add_item(name='incoherent_sum', id=0x3000,
     #                        description='',

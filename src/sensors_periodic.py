@@ -550,7 +550,7 @@ def setup_sensors(sensor_manager):
     # f-engine received timestamps okay and per-host received timestamps
     sensor_ok = Corr2Sensor.boolean(
         name='feng-rxtime-ok',
-        description='Are the times received by f-engines in the system okay',
+        description='Are the times received by f-engines in the system okay?',
         initial_status=Corr2Sensor.UNKNOWN,
         manager=sensor_manager, executor=general_executor)
     sensor_values = {}
@@ -561,7 +561,7 @@ def setup_sensors(sensor_manager):
                         'the digitisers' % _f.host,
             initial_status=Corr2Sensor.UNKNOWN,
             manager=sensor_manager)
-        sensor_u = Corr2Sensor.integer(
+        sensor_u = Corr2Sensor.float(
             name='%s-feng-rxtime-unix' % _f.host,
             description='F-engine %s - UNIX timestamps received from '
                         'the digitisers' % _f.host,
@@ -721,14 +721,14 @@ def setup_sensors(sensor_manager):
         executor = host_executors[_h.host]
         for tengbe in _h.tengbes:
             sensor = Corr2Sensor.integer(
-                name='%s-%s-tx-pps-ctr' % (_h.host, tengbe.name),
+                name='%s-%s-tx-pkt-per-s' % (_h.host, tengbe.name),
                 description='%s %s TX packet-per-second counter' % (
                     _h.host, tengbe.name),
                 initial_status=Corr2Sensor.UNKNOWN,
                 manager=sensor_manager, executor=executor)
             sensor.previous_value = 0
             sensor = Corr2Sensor.integer(
-                name='%s-%s-rx-pps-ctr' % (_h.host, tengbe.name),
+                name='%s-%s-rx-pkt-per-s' % (_h.host, tengbe.name),
                 description='%s %s RX packet-per-second counter' % (
                     _h.host, tengbe.name),
                 initial_status=Corr2Sensor.UNKNOWN,

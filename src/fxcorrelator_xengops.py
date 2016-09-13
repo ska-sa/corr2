@@ -37,6 +37,8 @@ class XEngineOperations(object):
         self.logger = corr_obj.logger
         self.data_stream = None
 
+        self.board_ids = {}
+
         self.vacc_synch_running = IOLoopEvent()
         self.vacc_synch_running.clear()
         self.vacc_check_enabled = IOLoopEvent()
@@ -60,6 +62,7 @@ class XEngineOperations(object):
         # write the board IDs to the xhosts
         board_id = 0
         for f in self.hosts:
+            self.board_ids[f.host] = board_id
             f.registers.board_id.write(reg=board_id)
             board_id += 1
 
@@ -156,6 +159,19 @@ class XEngineOperations(object):
         """
         # set up the xengine data stream
         self._setup_data_stream()
+
+    def xengine_to_host_mapping(self):
+        """
+        Return a mapping of hostnames to engine numbers
+        :return:
+        """
+        mapping = {}
+        for host in self.hosts:
+            board_id = self.board_ids[host.host]
+            rv = ['xeng{0}'.format(board_id + ctr)
+                  for ctr in range(self.corr.x_per_fpga)]
+            mapping[host.host] = rv
+        return mapping
 
     def _setup_data_stream(self):
         """
@@ -1049,13 +1065,12 @@ class XEngineOperations(object):
 
         self.corr.speadops.item_0x1027(meta_ig)
 
-        x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
         self.corr.speadops.add_item(
             meta_ig,
             name='x_per_fpga', id=0x1041,
             description='Number of X engines per FPGA host.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=x_per_fpga)
+            value=self.corr.x_per_fpga)
 
         self.corr.speadops.add_item(
             meta_ig,

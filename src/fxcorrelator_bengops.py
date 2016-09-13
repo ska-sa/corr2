@@ -21,6 +21,7 @@ class BEngineOperations(object):
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
         self.beams = {}
+        self.beng_per_host = corr_obj.x_per_fpga
 
     def initialise(self):
         """
@@ -79,7 +80,8 @@ class BEngineOperations(object):
                                            self.corr.speadops)
                 self.beams[newbeam.name] = newbeam
                 beam_names.append(bmnm.strip())
-        self.logger.info('Found beams: %s' % beam_names)
+        self.logger.info('Found {} beams: {}'.format(len(beam_names),
+                                                     beam_names))
 
         # configure the beams
         for beam in self.beams.values():

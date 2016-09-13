@@ -429,7 +429,8 @@ class FxCorrelator(Instrument):
             except Exception as ve:
                 self.logger.warning('Could not update input_mapping '
                                     'sensors!\n%s' % ve.message)
-            sm.sensor_get('baseline-ordering').set_value(str(self.baselines))
+            sm.sensor_set('baseline-ordering',
+                          str(self.baselines))
 
         # update the beam input labels
         if self.found_beamformer:
