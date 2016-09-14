@@ -282,8 +282,8 @@ class FxCorrelator(Instrument):
             raise RuntimeError(_err)
         self._synchronisation_epoch = new_synch_time
         if self.sensor_manager:
-            sensor = self.sensor_manager.sensor_get('synch-epoch')
-            sensor.set_value(self._synchronisation_epoch)
+            self.sensor_manager.sensor_set(
+                'sync-time', self.get_synch_time())
         self.logger.info('Set synch epoch to %.5f' % new_synch_time)
 
     def est_synch_epoch(self):
