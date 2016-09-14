@@ -11,6 +11,11 @@ import os
 import sys
 import signal
 import numpy
+
+# force the use of the TkAgg backend
+import matplotlib
+matplotlib.use('TkAgg')
+
 from matplotlib import pyplot
 
 from corr2.fhost_fpga import FpgaFHost
