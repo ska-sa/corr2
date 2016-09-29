@@ -344,7 +344,9 @@ class FEngineOperations(object):
         actual_vals = THREADED_FPGA_FUNC(self.corr.fhosts, timeout=0.75,
                                          target_function='write_delays_all')
         act_vals = []
-        for count, src in enumerate(self.corr.fengine_sources.values()):
+        source_labels = self.corr.get_labels()
+        for count, srclabel in enumerate(source_labels):
+            src = self.corr.fengine_sources[srclabel]
             hostname = src.host.host
             src_actual_value = actual_vals[hostname][src.offset]
             vals = self._prepare_actual_delay_vals(src_actual_value)
