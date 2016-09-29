@@ -127,15 +127,21 @@ class FpgaBHost(FpgaXHost):
         :param new_gain: the new gain value to apply, float
         :return the value actually written to the host
         """
-        self.registers.bf_value_in1.write(quant=new_gain)
-        for beng_ctr in range(0, self.beng_per_host):
-            self.registers.bf_control.write(
-                stream=beam.index, beng=beng_ctr, antenna=0)
-            self.registers.bf_value_ctrl.write(quant='pulse')
-            LOGGER.info(
-                '%s:%i: Beam %i:%s set beng(%i) quant_gain(%.5f)' % (
-                    self.host, self.index, beam.index, beam.name,
-                    beng_ctr, new_gain))
+        if hasattr(self.registers, 'bf0_gain'):
+            # new style gain setting
+            reg = self.registers['bf{}_gain'.format(beam.index)]
+            reg.write(gain=new_gain)
+        else:
+            LOGGER.warning('OLD STYLE B-ENGINE GAIN SETTING DEPRECATED.')
+            self.registers.bf_value_in1.write(quant=new_gain)
+            for beng_ctr in range(0, self.beng_per_host):
+                self.registers.bf_control.write(
+                    stream=beam.index, beng=beng_ctr, antenna=0)
+                self.registers.bf_value_ctrl.write(quant='pulse')
+                LOGGER.info(
+                    '%s:%i: Beam %i:%s set beng(%i) quant_gain(%.5f)' % (
+                        self.host, self.index, beam.index, beam.name,
+                        beng_ctr, new_gain))
         return self.beam_quant_gains_get(beam)
 
     def beam_quant_gains_get(self, beam):
@@ -144,19 +150,29 @@ class FpgaBHost(FpgaXHost):
         :param beam: The Beam() on which to act
         :return one value for the quant gain set on all b-engines on this host
         """
-        self.registers.bf_control.write(stream=beam.index, beng=0, antenna=0)
-        d = self.registers.bf_valout_quant0.read()['data']
-        d.update(self.registers.bf_valout_quant1.read()['data'])
-        drv = [d['quant%i' % beng_ctr]
-               for beng_ctr in range(self.x_per_fpga)]
-        for v in drv:
-            if v != drv[0]:
-                errstr = 'Host({host}) Beam({bidx}:{beam}): quantiser gains ' \
-                         'differ across b-engines on this host: {vals}'.format(
-                    host=self.host, bidx=beam.index, beam=beam.name, vals=drv)
-                LOGGER.error(errstr)
-                raise ValueError(errstr)
-        return drv[0]
+        if hasattr(self.registers, 'bf0_gain'):
+            # new style gain setting
+            reg = self.registers['bf{}_gain'.format(beam.index)]
+            return reg.read()['data']['gain']
+        else:
+            LOGGER.warning('OLD STYLE B-ENGINE GAIN SETTING DEPRECATED.')
+            self.registers.bf_control.write(stream=beam.index, beng=0,
+                                            antenna=0)
+            d = self.registers.bf_valout_quant0.read()['data']
+            d.update(self.registers.bf_valout_quant1.read()['data'])
+            drv = [d['quant%i' % beng_ctr]
+                   for beng_ctr in range(self.x_per_fpga)]
+            for v in drv:
+                if v != drv[0]:
+                    errstr = 'Host({host}) Beam({bidx}:{beam}): quantiser ' \
+                             'gains differ across b-engines on ' \
+                             'this host: {vals}'.format(host=self.host,
+                                                        bidx=beam.index,
+                                                        beam=beam.name,
+                                                        vals=drv)
+                    LOGGER.error(errstr)
+                    raise ValueError(errstr)
+            return drv[0]
 
     def beam_partitions_read(self, beam):
         """

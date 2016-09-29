@@ -140,6 +140,9 @@ class Beam(object):
         # set the active partitions to the partitions set in hardware
         self.partitions_active = self.partitions_current()
 
+        # set the default gain to one
+        self.set_quant_gains(1.0)
+
     def tx_enable(self, data_stream):
         """
         Start transmission of data streams from the b-engines
