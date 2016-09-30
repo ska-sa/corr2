@@ -27,6 +27,10 @@ class AdcData(object):
         self.data = data
 
 
+class InputNotFoundError(ValueError):
+    pass
+
+
 class DelaysUnsetError(Exception):
     pass
 
@@ -388,8 +392,9 @@ class FpgaFHost(DigitiserDataReceiver):
         for src in self.data_sources:
             if src.name == source_name:
                 return src
-        raise ValueError('{host}: source {src} not found on this host.'.format(
-            host=self.host, src=source_name))
+        raise InputNotFoundError(
+            '{host}: source {src} not found on this host.'.format(
+                host=self.host, src=source_name))
 
     def read_eq(self, source_name=None, eq_bram=None):
         """

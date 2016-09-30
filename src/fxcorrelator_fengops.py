@@ -629,6 +629,31 @@ class FEngineOperations(object):
                 pass
         raise ValueError('Could not find source %s anywhere.' % source_name)
 
+    def _get_adc_snapshot_compat(self, input_name):
+        """
+
+        :return:
+        """
+        if input_name is None:
+            res = THREADED_FPGA_FUNC(
+                self.hosts, timeout=10,
+                target_function=('get_adc_snapshots', [], {}))
+            rv = {}
+            for lbl in self.corr.get_labels():
+                src = self.corr.fengine_sources[lbl]
+                rv[lbl] = res[src.host.host]['p%i' % src.offset]
+            return rv
+        else:
+            # return the data only for one given input
+            try:
+                src = self.corr.fengine_sources[input_name]
+                d = src.host.get_adc_snapshots()
+                return {input_name: d['p%i' % src.offset]}
+            except KeyError:
+                pass
+            raise RuntimeError('Could not get ADC compat snapshot for input '
+                               '%s' % input_name)
+
     def get_adc_snapshot(self, source_name=None, unix_time=-1):
         """
         Read the small voltage buffer for a source from a host.
@@ -638,6 +663,18 @@ class FEngineOperations(object):
                   src_name1: AdcData(),
                  }
         """
+        # check for compatibility for really old f-engines
+        ctrl_reg = self.hosts[0].registers.control
+        old_fengines = 'adc_snap_trig_select' not in ctrl_reg.field_names()
+        if old_fengines:
+            if unix_time == -1:
+                self.logger.warning('REALLY OLD F-ENGINES ENCOUNTERED, USING '
+                                    'IMMEDIATE ADC SNAPSHOTS')
+                return self._get_adc_snapshot_compat(source_name)
+            else:
+                raise RuntimeError('Timed snapshots are not supported on '
+                                   'older f-engines. Try again without '
+                                   'specifying the time.')
         if source_name is None:
             # get data for all f-engines triggered at the same time
             localtime = self.hosts[0].get_local_time()
