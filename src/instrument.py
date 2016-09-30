@@ -37,6 +37,9 @@ class Instrument(object):
         self.configd = None
         self.logger = logger or LOGGER
 
+        # The instrument might well have a sensor manager
+        self.sensor_manager = None
+
         # an instrument knows about hosts, but specifics are left to
         # child classes
         self.hosts = []
@@ -45,7 +48,7 @@ class Instrument(object):
         self._synchronisation_epoch = -1
 
         # an instrument provides data streams, keyed on unique name
-        self.data_streams = {}
+        self.data_streams = []
 
         self._initialised = False
 
@@ -80,28 +83,6 @@ class Instrument(object):
         raise RuntimeError('Supplied config_source %s is '
                            'invalid' % self.config_source)
 
-    def set_synch_time(self, new_synch_time):
-        """
-        Set the last sync time for this system
-        :param new_synch_time: UNIX time
-        :return: <nothing>
-        """
-        time_now = time.time()
-        if new_synch_time > time_now:
-            _err = 'Synch time in the future makes no sense? %d > %d' % (
-                new_synch_time, time_now)
-            self.logger.error(_err)
-            raise RuntimeError(_err)
-        self._synchronisation_epoch = new_synch_time
-        self.logger.info('Set synch epoch to %d' % new_synch_time)
-
-    def get_synch_time(self):
-        """
-        Get the last sync time for this system
-        :return: the current UNIX-time synch epoch
-        """
-        return self._synchronisation_epoch
-
     def _read_config_file(self):
         """
         To be implemented by the child class.
@@ -130,17 +111,17 @@ class Instrument(object):
         """
         return self._initialised
 
-    def register_data_stream(self, data_stream):
+    def add_data_stream(self, data_stream):
         """
-        Register a data stream produced by this instrument
-        :param data_stream - the DataStream to be registered
+        Add a data stream produced by this instrument.
+        :param data_stream - the DataStream to be added
         :return:
         """
-        if data_stream.name in self.data_streams:
+        if self.check_data_stream(data_stream.name):
             raise RuntimeError('DataStream %s already in self.data_streams' %
                                data_stream.name)
-        self.data_streams[data_stream.name] = data_stream
-        self.logger.info('DataStream %s registered.' % data_stream.name)
+        self.data_streams.append(data_stream)
+        self.logger.info('DataStream %s added.' % data_stream.name)
 
     def check_data_stream(self, stream_name):
         """
@@ -148,7 +129,11 @@ class Instrument(object):
         :param stream_name: an instrument data stream name
         :return: True if found
         """
-        return stream_name in self.data_streams
+        try:
+            self.get_data_stream(stream_name)
+            return True
+        except ValueError:
+            return False
 
     def get_data_stream(self, stream_name):
         """
@@ -156,10 +141,23 @@ class Instrument(object):
         :param stream_name:
         :return:
         """
-        if stream_name not in self.data_streams:
-            raise ValueError('stream %s is not in stream list: %s' % (
-                stream_name, self.data_streams))
-        return self.data_streams[stream_name]
+        for stream in self.data_streams:
+            if stream.name == stream_name:
+                return stream
+        raise ValueError('stream %s is not in stream list: %s' % (
+            stream_name, self.data_streams))
+
+    def get_data_streams_by_type(self, stream_type):
+        """
+        Get all streams of this type
+        :param stream_type:
+        :return:
+        """
+        rv = []
+        for stream in self.data_streams:
+            if stream.category == stream_type:
+                rv.append(stream)
+        return rv
 
     def stream_set_destination(self, stream_name, txip_str=None, txport=None):
         """
@@ -195,10 +193,38 @@ class Instrument(object):
         :return:
         """
         if stream_name is None:
-            streams = self.data_streams.keys()
+            streams = self.data_streams
         else:
-            streams = [stream_name]
+            streams = [self.get_data_stream(stream_name)]
         for stream in streams:
-            self.get_data_stream(stream).meta_issue()
+            if hasattr(stream, 'meta_issue'):
+                stream.meta_issue()
+            else:
+                self.logger.warning('Stream {} has no meta_issue() '
+                                    'method'.format(stream.name))
+
+    @property
+    def synchronisation_epoch(self):
+        # LOGGER.info('@synchronisation_epoch getter')
+        return self._synchronisation_epoch
+
+    @synchronisation_epoch.setter
+    def synchronisation_epoch(self, new_synch_time):
+        """
+        Set the last sync time for this system
+        :param new_synch_time: UNIX time
+        :return: <nothing>
+        """
+        # LOGGER.info('@synchronisation_epoch setter')
+        time_now = time.time()
+        if new_synch_time > time_now:
+            _err = 'Synch time in the future makes no sense? %d > %d' % (
+                new_synch_time, time_now)
+            self.logger.error(_err)
+            raise RuntimeError(_err)
+        self._synchronisation_epoch = new_synch_time
+        if self.sensor_manager:
+            self.sensor_manager.sensors_sync_time()
+        self.logger.info('Set synch epoch to %d.' % new_synch_time)
 
 # end

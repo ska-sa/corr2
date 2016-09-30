@@ -3,8 +3,8 @@ import logging
 from casperfpga import utils as fpgautils
 
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
-from data_stream import DataStream, BEAMFORMER_FREQUENCY_DOMAIN
-from net_address import NetAddress
+from data_stream import DataMetaStream, BEAMFORMER_FREQUENCY_DOMAIN
+from utils import parse_output_products
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -41,19 +41,22 @@ class Beam(object):
         self.beng_per_host = None
         self.chans_per_partition = None
 
-        self.source_weights = None
+        self.source_streams = None
         self.quant_gain = None
-        self.source_labels = None
         self.source_poly = None
 
         LOGGER.info('Beam %i:%s created okay' % (
             self.index, self.name))
 
     @classmethod
-    def from_config(cls, beam_key, bhosts, config, speadops):
+    def from_config(cls, beam_key, bhosts, config, fengops, speadops):
         # look for the section matching the name
         beam_dict = config[beam_key]
-        beam_name = beam_dict['output_products'].strip()
+
+        beam_product, beam_stream_address = parse_output_products(beam_dict)
+        assert len(beam_product) == 1, 'Currently only single beam products ' \
+                                       'supported.'
+        beam_name = beam_product[0]
         obj = cls(beam_name, int(beam_dict['stream_index']))
         obj.hosts = bhosts
         obj.speadops = speadops
@@ -76,27 +79,48 @@ class Beam(object):
         chans_per_host = obj.chans_total / len(obj.hosts)
         obj.chans_per_partition = chans_per_host / obj.beng_per_host
 
-        data_addr = NetAddress(beam_dict['data_ip'], beam_dict['data_port'])
-        meta_addr = NetAddress(beam_dict['meta_ip'], beam_dict['meta_port'])
-        obj.data_stream = DataStream(
+        data_addr = beam_stream_address[0]
+        obj.data_stream = DataMetaStream(
             name=beam_name,
             category=BEAMFORMER_FREQUENCY_DOMAIN,
             destination=data_addr,
-            meta_destination=meta_addr,
             destination_cb=obj.set_beam_destination,
-            meta_destination_cb=obj.spead_meta_issue_all,
             tx_enable_method=obj.tx_enable,
             tx_disable_method=obj.tx_disable)
+        obj.data_stream.set_meta_destination(data_addr)
+        obj.data_stream.meta_destination_cb = obj.spead_meta_issue_all
 
-        weight_list = beam_dict['source_weights'].strip().split(',')
-        obj.source_weights = []
-        obj.source_labels = []
-        for weight in weight_list:
-            _split = weight.strip().split(':')
-            input_name = _split[0]
-            input_weight = float(_split[1])
-            obj.source_labels.append(input_name)
-            obj.source_weights.append(input_weight)
+        # link source streams to weights
+        weights = {}
+        if 'source_weights' in beam_dict:
+            # OLD STYLE
+            for weight in beam_dict['source_weights'].strip().split(','):
+                _split = weight.strip().split(':')
+                input_name = _split[0]
+                input_weight = float(_split[1])
+                weights[input_name] = input_weight
+        else:
+            # NEW STYLE - same as eqs for F-engines
+            for key in beam_dict:
+                if key.startswith('weight_'):
+                    input_name = key.replace('weight_', '')
+                    input_weight = float(beam_dict[key])
+                    weights[input_name] = input_weight
+        obj.source_streams = {}
+        source_index = 0
+        for input_name, input_weight in weights.items():
+            match = None
+            for fengine in fengops.fengines:
+                if fengine.name == input_name:
+                    match = fengine
+                    break
+            if match is None:
+                raise RuntimeError('beam %s has a weight given for input %s,'
+                                   'but no matching F-engine output found'
+                                   'with that name.' % (obj.name, input_name))
+            obj.source_streams[match] = {'weight': input_weight,
+                                         'index': source_index}
+            source_index += 1
         obj.quant_gain = 1
         obj.source_poly = []
         return obj
@@ -139,6 +163,9 @@ class Beam(object):
         """
         # set the active partitions to the partitions set in hardware
         self.partitions_active = self.partitions_current()
+
+        # set the default gain to one
+        self.set_quant_gains(1.0)
 
     def tx_enable(self, data_stream):
         """
@@ -276,17 +303,21 @@ class Beam(object):
                 rv.append(ctr)
         return rv
 
-    def get_source_index(self, source_name):
+    @property
+    def source_names(self):
+        return [source.name for source in self.source_streams.keys()]
+
+    def get_source(self, source_name):
         """
-        Given a source/input name, return its position in the input list
-        :param source_name: which source/input we're looking for
+        Get an input source for this beam, given a name.
+        :param source_name:
         :return:
         """
-        if source_name not in self.source_labels:
-            raise ValueError('No such input, %s. Available inputs: %s' % (
-                source_name, self.source_labels
-            ))
-        return self.source_labels.index(source_name)
+        for source in self.source_streams.keys():
+            if source.name == source_name:
+                return source
+        raise ValueError('No such input: %s. Available inputs to this beam: '
+                         '%s' % (source_name, self.source_names))
 
     def set_weights(self, input_name, new_weight, force=False):
         """
@@ -296,14 +327,17 @@ class Beam(object):
         :param force: force the write, even if the stored value is the same
         :return:
         """
-        input_index = self.get_source_index(input_name)
-        if (new_weight == self.source_weights[input_index]) and (not force):
+        input_source = self.get_source(input_name)
+        source_info = self.source_streams[input_source]
+        source_weight = source_info['weight']
+        if (new_weight == source_weight) and (not force):
             LOGGER.info('Beam %i:%s: %s weight already %.3f' % (
                 self.index, self.name, input_name, new_weight))
             return False
-        self.source_weights[input_index] = new_weight
+        source_info['weight'] = new_weight
         THREADED_FPGA_FUNC(
-            self.hosts, 5, ('beam_weights_set', [self, [input_index]], {}))
+            self.hosts, 5, ('beam_weights_set',
+                            [self, [input_source.name]], {}))
         LOGGER.info('Beam %i:%s: %s weight set to %.3f' % (
             self.index, self.name, input_name, new_weight))
         return True
@@ -316,10 +350,11 @@ class Beam(object):
         """
         if input_name is None:
             return {nptnm: self.get_weights(nptnm)
-                    for nptnm in self.source_labels}
-        input_index = self.get_source_index(input_name)
+                    for nptnm in self.source_names}
+        input_source = self.get_source(input_name)
         d = THREADED_FPGA_FUNC(
-            self.hosts, 5, ('beam_weights_get', [self, [input_index]], {}))
+            self.hosts, 5, ('beam_weights_get',
+                            [self, [input_source.name]], {}))
         ref = d[d.keys()[0]][0]
         for dhost, dval in d.items():
             for vctr, v in enumerate(dval[0]):
@@ -331,7 +366,8 @@ class Beam(object):
             if v != ref[0]:
                 raise RuntimeError('Beamweights for beam %s input %s differ '
                                    'across b-engs!?' % (self.name, input_name))
-        self.source_weights[input_index] = ref[0]
+        source_info = self.source_streams[input_source]
+        source_info['weight'] = ref[0]
         return ref[0]
 
     def set_quant_gains(self, new_quant_gain, force=False):
@@ -451,29 +487,6 @@ class Beam(object):
                     (self.partitions_active, bw, cf))
         return bw, cf
 
-    def update_labels(self, oldnames, newnames):
-        """
-        Update the input labels
-        :param oldnames: a list of tuples of old input names and positions
-        :param newnames: a list of tuples of the new input names
-        :return: True if anything changed, False if not
-        """
-        changes = False
-        for oldname_pos, oldname in enumerate(oldnames):
-            for ctr, srcname in enumerate(self.source_labels):
-                if srcname == oldname:
-                    LOGGER.info('Beam %i:%s: changed input %i label from '
-                                '%s to %s' % (self.index, self.name, ctr,
-                                              oldname, newnames[oldname_pos]))
-                    self.source_labels[ctr] = newnames[oldname_pos]
-                    changes = True
-                    continue
-        if changes:
-            self.spead_meta_update_weights()
-            self.spead_meta_update_labels()
-            self.spead_meta_transmit_all()
-        return changes
-
     def spead_meta_update_bandwidth(self):
         """
         Update the metadata regarding this beam's bandwidth
@@ -584,7 +597,7 @@ class Beam(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.data_stream.destination.port)
 
-        ipstr = numpy.array(str(self.data_stream.destination.ip))
+        ipstr = numpy.array(str(self.data_stream.destination.ip_address))
         self.speadops.add_item(
             meta_ig,
             name='rx_udp_ip_str', id=0x1024,
@@ -601,6 +614,7 @@ class Beam(object):
         Update the weights in the BEAM SPEAD ItemGroups.
         :return:
         """
+        weights = self.get_weights().values()
         meta_ig = self.data_stream.meta_ig
         self.speadops.add_item(
             meta_ig,
@@ -611,8 +625,8 @@ class Beam(object):
                         'antenna signals during beamforming for input '
                         'beam %s. Complex number real 32 bit '
                         'floats.' % self.name,
-            shape=[len(self.source_weights)], format=[('i', 32)],
-            value=self.source_weights)
+            shape=[len(weights)], format=[('i', 32)],
+            value=weights)
         LOGGER.info('Beam %i:%s - updated weights metadata' % (
             self.index, self.name))
 
@@ -647,7 +661,7 @@ class Beam(object):
     def spead_meta_issue_all(self, data_stream):
         """
         Issue = update + transmit
-        :param data_stream: the DataStrem for which to issue metadata
+        :param data_stream: the DataStream for which to issue metadata
         """
         self.spead_meta_update_all()
         self.spead_meta_transmit_all()

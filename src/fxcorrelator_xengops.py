@@ -8,8 +8,8 @@ from katcp import Sensor
 from casperfpga import utils as fpgautils
 
 import data_stream
-from net_address import NetAddress
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
+from utils import parse_output_products
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -37,7 +37,7 @@ class XEngineOperations(object):
         self.logger = corr_obj.logger
         self.data_stream = None
 
-        self.board_ids = {}
+        self._board_ids = {}
 
         self.vacc_synch_running = IOLoopEvent()
         self.vacc_synch_running.clear()
@@ -54,6 +54,15 @@ class XEngineOperations(object):
                 lambda fpga_:
                 fpga_.registers.control.write(gbe_rst=state),))
 
+    @property
+    def board_ids(self):
+        if len(self._board_ids) == 0:
+            self._board_ids = {
+                f.host: f.registers.board_id.read()['data']['reg']
+                for f in self.hosts
+            }
+        return self._board_ids
+
     def initialise_post_gbe(self):
         """
         Perform post-gbe setup initialisation steps
@@ -62,7 +71,7 @@ class XEngineOperations(object):
         # write the board IDs to the xhosts
         board_id = 0
         for f in self.hosts:
-            self.board_ids[f.host] = board_id
+            self._board_ids[f.host] = board_id
             f.registers.board_id.write(reg=board_id)
             board_id += 1
 
@@ -168,7 +177,7 @@ class XEngineOperations(object):
         mapping = {}
         for host in self.hosts:
             board_id = self.board_ids[host.host]
-            rv = ['xeng{0}'.format(board_id + ctr)
+            rv = ['xeng{0}'.format((board_id * self.corr.x_per_fpga) + ctr)
                   for ctr in range(self.corr.x_per_fpga)]
             mapping[host.host] = rv
         return mapping
@@ -179,25 +188,25 @@ class XEngineOperations(object):
         :return:
         """
         # the x-engine output data stream setup
-        _xeng_d = self.corr.configd['xengine']
-
-        data_addr = NetAddress(_xeng_d['output_destination_ip'],
-                               _xeng_d['output_destination_port'])
-        meta_addr = NetAddress(_xeng_d['output_destination_ip'],
-                               _xeng_d['output_destination_port'])
-
-        xeng_stream = data_stream.DataStream(
-            name=_xeng_d['output_products'][0],
+        xeng_d = self.corr.configd['xengine']
+        output_name, output_address = parse_output_products(xeng_d)
+        assert len(output_name) == 1, 'Currently only single xeng products ' \
+                                      'supported.'
+        output_name = output_name[0]
+        output_address = output_address[0]
+        xeng_stream = data_stream.DataMetaStream(
+            name=output_name,
             category=data_stream.XENGINE_CROSS_PRODUCTS,
-            destination=data_addr,
-            meta_destination=meta_addr,
+            destination=output_address,
             destination_cb=self.write_data_stream_destination,
-            meta_destination_cb=self.spead_meta_issue_all,
             tx_enable_method=self.xeng_tx_enable,
             tx_disable_method=self.xeng_tx_disable)
 
+        xeng_stream.set_meta_destination(output_address)
+        xeng_stream.meta_destination_cb = self.spead_meta_issue_all
+
         self.data_stream = xeng_stream
-        self.corr.register_data_stream(xeng_stream)
+        self.corr.add_data_stream(xeng_stream)
         self.vacc_check_enabled.clear()
         self.vacc_synch_running.clear()
         if self.vacc_check_cb is not None:
@@ -330,7 +339,7 @@ class XEngineOperations(object):
         :return:
         """
         dstrm = data_stream or self.data_stream
-        txip = int(dstrm.destination.ip)
+        txip = int(dstrm.destination.ip_address)
         txport = dstrm.destination.port
         try:
             THREADED_FPGA_OP(
@@ -362,14 +371,14 @@ class XEngineOperations(object):
 
     def subscribe_to_multicast(self):
         """
-        Subscribe the x-engines to the f-engine output multicast groups -
+        Subscribe the x-engines to the F-engine output multicast groups -
         each one subscribes to only one group, with data meant only for it.
         :return:
         """
-        if self.corr.fengine_output.is_multicast():
-            self.logger.info('F > X is multicast from base %s' %
-                             self.corr.fengine_output)
-            source_address = str(self.corr.fengine_output.ip_address)
+        source_address = self.corr.fops.data_stream.destination
+        if source_address.is_multicast():
+            self.logger.info('F > X is multicast from base %s' % source_address)
+            source_address = str(source_address.ip_address)
             source_bits = source_address.split('.')
             source_base = int(source_bits[3])
             source_prefix = '%s.%s.%s.' % (source_bits[0],
@@ -389,8 +398,7 @@ class XEngineOperations(object):
                     self.logger.info('\txhost %s %s subscribing to address %s' %
                                      (host.host, gbe.name, rxaddress))
         else:
-            self.logger.info('F > X is unicast from base %s' %
-                             self.corr.fengine_output)
+            self.logger.info('F > X is unicast from base %s' % source_address)
 
     def check_rx(self, max_waittime=30):
         """
@@ -609,7 +617,7 @@ class XEngineOperations(object):
             self.logger.error('    This is wonky - why is the wait_time '
                               'less than zero? %.3f' % wait_time)
             self.logger.error('    corr synch epoch: %i' %
-                              self.corr.get_synch_time())
+                              self.corr.synchronisation_epoch)
             self.logger.error('    time.time(): %.10f' % t_now)
             self.logger.error('    time_from_mcnt: %.10f' % time_from_mcnt)
             self.logger.error('    ldmcnt: %i' % load_mcount)
@@ -840,8 +848,7 @@ class XEngineOperations(object):
                               (acc_time_s, new_acc_len))
         self.set_acc_len(new_acc_len, vacc_resync)
         if self.corr.sensor_manager:
-            sensor = self.corr.sensor_manager.sensor_get('integration-time')
-            sensor.set_value(self.get_acc_time())
+            self.corr.sensor_manager.sensors_xeng_acc_time()
 
     def get_acc_time(self):
         """
@@ -939,7 +946,7 @@ class XEngineOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.data_stream.destination.port)
 
-        ipstr = numpy.array(str(self.data_stream.destination.ip))
+        ipstr = numpy.array(str(self.data_stream.destination.ip_address))
         self.corr.speadops.add_item(
             meta_ig,
             name='rx_udp_ip_str', id=0x1024,

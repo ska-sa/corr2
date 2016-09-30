@@ -145,12 +145,12 @@ class Corr2Server(katcp.DeviceServer):
                                        qdr_cal=qdr_cal,
                                        require_epoch=require_epoch)
             # add a sensor manager
-            sensor_manager = sensors.SensorManager(self, self.instrument)
+            sensor_manager = sensors.Corr2SensorManager(self, self.instrument)
             self.instrument.sensor_manager = sensor_manager
             # set up the main loop sensors
             sensor_manager.sensors_clear()
-            sensors.setup_mainloop_sensors(sensor_manager)
-            # IOLoop.current().add_callback(self.periodic_send_metadata)
+            sensor_manager.setup_mainloop_sensors()
+            IOLoop.current().add_callback(self.periodic_send_metadata)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',
@@ -246,16 +246,15 @@ class Corr2Server(katcp.DeviceServer):
         if stream_name != '':
             stream_names.append(stream_name)
         else:
-            stream_names.extend(self.instrument.data_streams.keys())
+            stream_names.extend([stream.name
+                                 for stream in self.instrument.data_streams])
         for strm in stream_names:
             if not self.instrument.check_data_stream(strm):
                 failmsg = 'Failed: stream {0} not in instrument data streams:' \
                           ' {1}'.format(strm, self.instrument.data_streams)
                 return self._log_excep(None, failmsg)
             dstrm = self.instrument.data_streams[strm]
-            sock.inform(strm, '%s:%d' % (
-                dstrm.destination.ip,
-                dstrm.destination.port))
+            sock.inform(strm, '{0}'.format(str(dstrm.destination)))
         return 'ok',
 
     @request(Str(default=''))
@@ -320,12 +319,12 @@ class Corr2Server(katcp.DeviceServer):
                 newlist = []
         if len(newlist) > 0:
             try:
-                self.instrument.set_labels(newlist)
-                return tuple(['ok'] + self.instrument.get_labels())
+                self.instrument.set_input_labels(newlist)
+                return tuple(['ok'] + self.instrument.get_input_labels())
             except Exception as ex:
                 return self._log_excep(ex, 'Failed to set input labels.')
         else:
-            return tuple(['ok'] + self.instrument.get_labels())
+            return tuple(['ok'] + self.instrument.get_input_labels())
 
     @request(Str(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))

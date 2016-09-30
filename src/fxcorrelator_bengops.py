@@ -69,17 +69,18 @@ class BEngineOperations(object):
         # get beam names from config
         beam_names = []
         self.beams = {}
-        for k in self.corr.configd:
-            if k.startswith('beam'):
-                bmnm = self.corr.configd[k]['output_products']
-                if bmnm in beam_names:
+        for section_name in self.corr.configd:
+            if section_name.startswith('beam'):
+                beam = Beam.from_config(section_name, self.hosts,
+                                        self.corr.configd,
+                                        self.corr.fops,
+                                        self.corr.speadops,)
+                if beam.name in beam_names:
                     raise ValueError('Cannot have more than one beam with '
                                      'the name %s. Please check the '
-                                     'config file.' % bmnm)
-                newbeam = Beam.from_config(k, self.hosts, self.corr.configd,
-                                           self.corr.speadops)
-                self.beams[newbeam.name] = newbeam
-                beam_names.append(bmnm.strip())
+                                     'config file.' % beam.name)
+                self.beams[beam.name] = beam
+                beam_names.append(beam.name)
         self.logger.info('Found {} beams: {}'.format(len(beam_names),
                                                      beam_names))
 
@@ -89,7 +90,7 @@ class BEngineOperations(object):
 
         # add the beam data streams to the instrument list
         for beam in self.beams.values():
-            self.corr.register_data_stream(beam.data_stream)
+            self.corr.add_data_stream(beam.data_stream)
 
     def tx_enable(self, beams=None):
         """
@@ -161,7 +162,10 @@ class BEngineOperations(object):
         :return: tuple, the set (bw, cf) for that beam
         """
         beam = self.get_beam_by_name(beam_name)
-        return beam.set_beam_bandwidth(bandwidth, centerfreq)
+        rv = beam.set_beam_bandwidth(bandwidth, centerfreq)
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_beng_passband()
+        return rv
 
     def get_beam_bandwidth(self, beam_name=None):
         """
@@ -189,14 +193,8 @@ class BEngineOperations(object):
             return
         beam = self.get_beam_by_name(beam_name)
         self.beams[beam_name].set_weights(input_name, new_weight)
-        # update the sensor associated with this beam weight
         if self.corr.sensor_manager:
-            sman = self.corr.sensor_manager
-            sensor_name = '{beam}-weights'.format(
-                beam=beam_name.replace('_', '-'))
-            sensor = sman.sensor_get(sensor_name)
-            beam_weights = sman.instrument.bops.get_beam_weights(beam_name)
-            sensor.set_value(str(beam_weights))
+            self.corr.sensor_manager.sensors_beng_weights()
 
     def get_beam_weights(self, beam_name=None, input_name=None):
         """
@@ -224,14 +222,8 @@ class BEngineOperations(object):
             return
         beam = self.get_beam_by_name(beam_name)
         self.beams[beam_name].set_quant_gains(new_gain)
-        # update the sensor associated with this beam quant gain
         if self.corr.sensor_manager:
-            sman = self.corr.sensor_manager
-            sensor_name = '{beam}-quantiser-gains'.format(
-                beam=beam_name.replace('_', '-'))
-            sensor = sman.sensor_get(sensor_name)
-            beam_gain = sman.instrument.bops.get_beam_quant_gains(beam_name)
-            sensor.set_value(beam_gain)
+            self.corr.sensor_manager.sensors_beng_gains()
 
     def get_beam_quant_gains(self, beam_name=None):
         """
@@ -244,16 +236,6 @@ class BEngineOperations(object):
                     for bm in self.beams}
         beam = self.get_beam_by_name(beam_name)
         return beam.get_quant_gains()
-
-    def update_labels(self, oldnames, newnames):
-        """
-        Update the input labels
-        :param oldnames - a list of the old input labels
-        :param newnames - a list of the new input labels
-        :return:
-        """
-        for beam in self.beams.values():
-            beam.update_labels(oldnames, newnames)
 
     # def spead_meta_update_dataheap(self):
     #     """

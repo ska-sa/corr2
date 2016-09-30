@@ -29,7 +29,7 @@ parser.add_argument('-d', '--deprogram', dest='deprogram', action='store_true',
                     help='deprogram all the roaches')
 parser.add_argument('-u', '--unicast', dest='unicast', action='store_true',
                     default=False,
-                    help='transmit unicast to the first f-engine, not multicast to all of them')
+                    help='transmit unicast to the first F-engine, not multicast to all of them')
 args = parser.parse_args()
 
 boffile = '/srv/bofs/deng/r2_deng_tvg_2014_Jul_21_0838.fpg'

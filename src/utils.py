@@ -7,6 +7,8 @@ import threading
 
 from casperfpga.memory import bin2fp
 
+from data_stream import StreamAddress
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -491,5 +493,22 @@ def hosts_from_dhcp_leases(host_pref='roach',
                 break
     masqfile.close()
     return hosts, leases_file
+
+
+def parse_output_products(dictionary):
+    """
+    Parse a config dictionary section for output products and addresses.
+    :param dictionary:
+    :return:
+    """
+    prods = dictionary['output_products'].split(',')
+    addresses = dictionary['output_destinations'].split(',')
+    if len(prods) != len(addresses):
+        raise RuntimeError('Need the same number of output products and '
+                           'addresses: %s, %s' % (prods, addresses))
+    for ctr, addr in enumerate(addresses):
+        addresses[ctr] = StreamAddress.from_address_string(addr)
+    return prods, addresses
+
 
 # end

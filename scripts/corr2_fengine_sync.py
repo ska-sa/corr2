@@ -18,7 +18,7 @@ from casperfpga import katcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Sync MeerKAT f-engines.',
+    description='Sync MeerKAT F-engines.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',
@@ -74,12 +74,12 @@ def check_sync(all_fpgas):
 
 # check the current sync times
 synced, times = check_sync(fpgas)
-print 'Current f-engine sync times:'
+print 'Current F-engine sync times:'
 for host, synctime in times.items():
     print '\t%s: %i' % (host, synctime)
 
 if ((not synced) or args.force) and (not args.checkonly):
-    # sync the f-engines
+    # sync the F-engines
     tries = 0
     while tries < args.retry:
         print 'Syncing...',

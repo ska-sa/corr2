@@ -3,7 +3,7 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-Plot the ADC data on one or more f-engines
+Plot the ADC data on one or more F-engines
 """
 import time
 import argparse
@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     dest='host', type=str, action='store', default='',
-    help='the f-engine host to query, if an int, will be taken positionally '
+    help='the F-engine host to query, if an int, will be taken positionally '
          'from the config file list of f-hosts')
 parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',

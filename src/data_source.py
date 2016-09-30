@@ -3,6 +3,7 @@ import logging
 
 LOGGER = logging.getLogger(__name__)
 
+raise DeprecationWarning
 
 class DataSource(object):
     """
@@ -29,8 +30,12 @@ class DataSource(object):
         try:
             _bits = mcast_string.split(':')
             port = int(_bits[1])
-            address, number = _bits[0].split('+')
-            number = int(number) + 1
+            if '+' in _bits[0]:
+                address, number = _bits[0].split('+')
+                number = int(number) + 1
+            else:
+                address = _bits[0]
+                number = 1
             assert(len(address.split('.')) == 4)
         except ValueError:
             raise RuntimeError('The address %s is not correctly formed. Expect '

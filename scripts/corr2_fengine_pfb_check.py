@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',
-    help='comma-delimited list of f-engine hosts')
+    help='comma-delimited list of F-engine hosts')
 parser.add_argument(
     '-p', '--polltime', dest='polltime', action='store',
     default=1, type=int,

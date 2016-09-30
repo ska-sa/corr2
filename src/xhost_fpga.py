@@ -21,6 +21,8 @@ class FpgaXHost(FpgaHost):
             self.x_per_fpga = int(self.config['x_per_fpga'])
         else:
             self.x_per_fpga = -1
+        self._vaccs_per_sec_last_readtime = None
+        self._vaccs_per_sec_last_values = None
 
     def get_system_information(self, filename=None, fpg_info=None):
         """
@@ -32,6 +34,7 @@ class FpgaXHost(FpgaHost):
         """
         super(FpgaXHost, self).get_system_information()
         self.x_per_fpga = self._determine_x_per_fpga()
+        self._vaccs_per_sec_last_values = [0] * self.x_per_fpga
 
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port, config_source):
@@ -162,32 +165,50 @@ class FpgaXHost(FpgaHost):
             rv.append((counter, error))
         return rv
 
-    def vacc_accumulations_per_second(self, xnum=-1):
+    def vacc_counters_get(self, xnums=None):
         """
-        Get the number of accumulatons per second.
-        :param xnum: specify an xengine, by index number, otherwise read from
-                     all of them
-        :return: the vaccs per second for the specified xengines on this host
+        Read the VACC counters for one or more X-engines on this host.
+        :param xnums: a list of x-engine indices to read, all if None
+        :return: a list of the VACC counters
         """
         _regs = self.registers
-        if xnum > -1:
-            xnums = [xnum]
-        else:
+        if xnums is None:
             xnums = range(0, self.x_per_fpga)
 
-        def accspersec(_xengnum):
-            # is this an older bitstream with old registers?
+        def read_reg(_xengnum):
             if 'vacccnt0' in _regs.names():
-                tic = _regs['vacccnt%d' % _xengnum].read()['data']['reg']
-                time.sleep(1)
-                toc = _regs['vacccnt%d' % _xengnum].read()['data']['reg']
+                return _regs['vacccnt%d' % _xengnum].read()['data']['reg']
             else:
-                tic = _regs['vacc_cnt%d' % _xengnum].read()['data']['cnt']
-                time.sleep(1)
-                toc = _regs['vacc_cnt%d' % _xengnum].read()['data']['cnt']
-            return toc - tic
+                return _regs['vacc_cnt%d' % _xengnum].read()['data']['cnt']
 
-        return [accspersec(xnum) for xnum in xnums]
+        return [read_reg(xnum) for xnum in xnums]
+
+    def vacc_accumulations_per_second(self, xnums=None):
+        """
+        Get the number of accumulatons per second.
+        :param xnums: a list of x-engine indices to read, all if None
+        :return: the vaccs per second for the specified xengines on this host
+        NOTE: this will be WRONG if the counters wrap!!
+        """
+        if xnums is None:
+            xnums = range(0, self.x_per_fpga)
+        counts = self.vacc_counters_get(xnums)
+
+        time1 = time.time()
+        vals = [0] * len(counts)
+        time2 = time.time()
+        newtime = (time1 + time2) / 2.0
+        oldtime = self._vaccs_per_sec_last_readtime
+        self._vaccs_per_sec_last_readtime = newtime
+        if oldtime is None:
+            return [-1] * self.x_per_fpga
+        timediff = newtime - oldtime
+        for xidx in xnums:
+            tic = counts[xidx]
+            toc = self._vaccs_per_sec_last_values[xidx]
+            self._vaccs_per_sec_last_values[xidx] = tic
+            vals[xidx] = tic - toc
+        return [v / timediff for v in vals]
 
     def vacc_okay(self, xnum=-1):
         """

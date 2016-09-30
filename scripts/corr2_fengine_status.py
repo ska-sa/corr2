@@ -21,14 +21,14 @@ import casperfpga.scroll as scroll
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Display information about a MeerKAT f-engine.',
+    description='Display information about a MeerKAT F-engine.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',
     help='comma-delimited list of hosts, or a corr2 config file')
 parser.add_argument(
     '-p', '--polltime', dest='polltime', action='store', default=1, type=int,
-    help='time at which to poll f-engine data, in seconds')
+    help='time at which to poll F-engine data, in seconds')
 parser.add_argument(
     '-r', '--reset_count', dest='rstcnt', action='store_true', default=False,
     help='reset all counters at script startup')
@@ -61,7 +61,7 @@ fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 for fpga_ in fpgas:
     numgbes = len(fpga_.tengbes)
     if numgbes < 1:
-        raise RuntimeError('Cannot have an f-engine with no 10gbe cores? %s' % fpga_.host)
+        raise RuntimeError('Cannot have an F-engine with no 10gbe cores? %s' % fpga_.host)
     print '%s: found %i 10gbe core%s.' % (fpga_.host, numgbes, '' if numgbes == 1 else 's')
     if args.rstcnt:
         fpga_.registers.control.write(cnt_rst='pulse')
@@ -153,7 +153,7 @@ try:
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
             scroller.add_string(
-                'Polling %i f-engine%s every %s - %is elapsed.' % (
+                'Polling %i F-engine%s every %s - %is elapsed.' % (
                     len(fpgas),
                     '' if len(fpgas) == 1 else 's',
                     'second' if polltime == 1 else ('%i seconds' % polltime),

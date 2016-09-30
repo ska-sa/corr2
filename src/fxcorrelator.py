@@ -12,18 +12,18 @@ import time
 from casperfpga import utils as fpgautils
 
 import utils
+import sensors
 import xhost_fpga
 import fhost_fpga
 import bhost_fpga
-
 from instrument import Instrument
-from fhost_fpga import FengineSource
-
 from fxcorrelator_fengops import FEngineOperations
 from fxcorrelator_xengops import XEngineOperations
 from fxcorrelator_bengops import BEngineOperations
 from fxcorrelator_filterops import FilterOperations
 from fxcorrelator_speadops import SpeadOperations
+from data_stream import StreamAddress
+from digitiser import DigitiserStream
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -73,10 +73,7 @@ class FxCorrelator(Instrument):
         self.x_per_fpga = None
         self.accumulation_len = None
         self.xeng_accumulation_len = None
-        self.fengine_sources = None
         self.baselines = None
-
-        self.sensor_manager = None
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
@@ -91,7 +88,7 @@ class FxCorrelator(Instrument):
         """
         # check that the instrument's synch epoch has been set
         if require_epoch:
-            if self.get_synch_time() == -1:
+            if self.synchronisation_epoch == -1:
                 raise RuntimeError('System synch epoch has not been set prior'
                                    ' to initialisation!')
 
@@ -140,7 +137,7 @@ class FxCorrelator(Instrument):
         self.configure()
 
         # run post-programming initialisation
-        self._initialise(program, qdr_cal)
+        self.post_program_initialise(program, qdr_cal)
 
         # reset all counters on fhosts and xhosts
         self.fops.clear_status_all()
@@ -165,13 +162,15 @@ class FxCorrelator(Instrument):
                 target_function=('setup_host_gbes',
                                  (self.logger, info_dict), {}))
 
-    def _initialise(self, program, qdr_cal):
+    def post_program_initialise(self, programming_done, qdr_cal):
         """
         Run this if boards in the system have been programmed. Basic setup
         of devices.
+        :param programming_done: True if the boards were newly programmed
+        :param qdr_cal: should we attempt to calibrate the QDRs on the boards?
         :return:
         """
-        if not program:
+        if not programming_done:
             # only run the contents of this function after programming.
             return
 
@@ -180,8 +179,8 @@ class FxCorrelator(Instrument):
         if qdr_cal:
             self.qdr_calibrate()
         else:
-            self.logger.info('Skipping QDR cal - are you sure you '
-                             'want to do this?')
+            self.logger.info(
+                'Skipping QDR cal - are you sure you want to do this?')
 
         # init the engines
         self.fops.initialise_pre_gbe()
@@ -200,11 +199,11 @@ class FxCorrelator(Instrument):
         self.fops.subscribe_to_multicast()
         self.xops.subscribe_to_multicast()
 
-        # start f-engine TX
-        self.logger.info('Starting f-engine datastream')
+        # start F-engine TX
+        self.logger.info('Starting F-engine datastream')
         self.fops.tx_enable()
 
-        # jason's hack to force a reset on the f-engines
+        # jason's hack to force a reset on the F-engines
         for ctr in range(0, 2):
             time.sleep(1)
             self.fops.sys_reset()
@@ -220,22 +219,22 @@ class FxCorrelator(Instrument):
 
         # check to see if the f engines are receiving all their data
         if not self.fops.check_rx():
-            raise RuntimeError('The f-engines RX have a problem.')
+            raise RuntimeError('The F-engines RX have a problem.')
 
-        # check that the timestamps received on the f-engines make sense
+        # check that the timestamps received on the F-engines make sense
         result, times, times_unix = self.fops.check_rx_timestamps()
         if not result:
-            raise RuntimeError('The timestamps received by the f-engines '
+            raise RuntimeError('The timestamps received by the F-engines '
                                'are not okay. Check the logs')
 
-        # check the f-engine QDR uses for parity errors
+        # check the F-engine QDR uses for parity errors
         if ((not self.fops.check_ct_parity()) or
                 (not self.fops.check_cd_parity())):
-            raise RuntimeError('The f-engine QDRs are reporting errors.')
+            raise RuntimeError('The F-engine QDRs are reporting errors.')
 
         # check that the F-engines are transmitting data correctly
         if not self.fops.check_tx():
-            raise RuntimeError('The f-engines TX have a problem.')
+            raise RuntimeError('The F-engines TX have a problem.')
 
         # check that the X-engines are receiving data
         if not self.xops.check_rx():
@@ -249,10 +248,18 @@ class FxCorrelator(Instrument):
         Operations to run to configure the instrument, after programming.
         :return:
         """
+        self.configure_digitiser_streams()
         self.fops.configure()
         self.xops.configure()
         if self.found_beamformer:
             self.bops.configure()
+
+    def configure_digitiser_streams(self):
+        """
+        Set up the digitiser streams available to this correlator.
+        :return:
+        """
+        pass
 
     def get_scale_factor(self):
         """
@@ -268,22 +275,13 @@ class FxCorrelator(Instrument):
         :return: <nothing>
         """
         time_now = time.time()
-        # future?
-        if new_synch_time > time_now:
-            _err = 'Synch time in the future makes no sense? %.3f > %.3f' % (
-                new_synch_time, time_now)
-            self.logger.error(_err)
-            raise RuntimeError(_err)
         # too far in the past?
         if new_synch_time < time_now - (2**self.timestamp_bits):
             _err = 'Synch epoch supplied is too far in the past: now(%.3f) ' \
                    'epoch(%.3f)' % (time_now, new_synch_time)
             self.logger.error(_err)
             raise RuntimeError(_err)
-        self._synchronisation_epoch = new_synch_time
-        if self.sensor_manager:
-            self.sensor_manager.sensor_set(
-                'sync-time', self.get_synch_time())
+        self.synchronisation_epoch = new_synch_time
         self.logger.info('Set synch epoch to %.5f' % new_synch_time)
 
     def est_synch_epoch(self):
@@ -292,17 +290,17 @@ class FxCorrelator(Instrument):
         timestamp, and the system time.
         """
         self.logger.info('Estimating synchronisation epoch:')
-        # get current time from an f-engine
+        # get current time from an F-engine
         feng_mcnt = self.fhosts[0].get_local_time()
-        self.logger.info('\tcurrent f-engine mcnt: %i' % feng_mcnt)
+        self.logger.info('\tcurrent F-engine mcnt: %i' % feng_mcnt)
         if feng_mcnt & 0xfff != 0:
-            _err = 'Bottom 12 bits of timestamp from f-engine are not ' \
+            _err = 'Bottom 12 bits of timestamp from F-engine are not ' \
                    'zero?! feng_mcnt(%i)' % feng_mcnt
             self.logger.error(_err)
             raise RuntimeError(_err)
         t_now = time.time()
         self.set_synch_time(t_now - feng_mcnt / float(self.sample_rate_hz))
-        self.logger.info('\tnew epoch: %.3f' % self.get_synch_time())
+        self.logger.info('\tnew epoch: %.3f' % self.synchronisation_epoch)
 
     def time_from_mcnt(self, mcnt):
         """
@@ -310,10 +308,10 @@ class FxCorrelator(Instrument):
         NOT account for wrapping timestamps.
         :param mcnt: the time from system boards (ADC ticks since startup)
         """
-        if self.get_synch_time() < 0:
+        if self.synchronisation_epoch < 0:
             self.logger.info('time_from_mcnt: synch epoch unset, estimating')
             self.est_synch_epoch()
-        return self.get_synch_time() + (
+        return self.synchronisation_epoch + (
             float(mcnt) / float(self.sample_rate_hz))
 
     def mcnt_from_time(self, time_seconds):
@@ -322,10 +320,10 @@ class FxCorrelator(Instrument):
         (seconds since Unix Epoch). Accounts for wrapping timestamps.
         :param time_seconds: UNIX time
         """
-        if self.get_synch_time() < 0:
+        if self.synchronisation_epoch < 0:
             self.logger.info('mcnt_from_time: synch epoch unset, estimating')
             self.est_synch_epoch()
-        time_diff_from_synch_epoch = time_seconds - self.get_synch_time()
+        time_diff_from_synch_epoch = time_seconds - self.synchronisation_epoch
         time_diff_in_samples = int(time_diff_from_synch_epoch *
                                    self.sample_rate_hz)
         _tmp = 2**self.timestamp_bits
@@ -395,68 +393,69 @@ class FxCorrelator(Instrument):
         #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111,
         # -1)
 
-    def set_labels(self, newlist):
+    def set_input_labels(self, new_labels):
         """
         Apply new source labels to the configured fengine sources.
-        :param newlist:
+        :param new_labels: a list of new input labels
         :return:
         """
-        old_labels = self.get_labels()
-        if len(newlist) != len(old_labels):
+        old_labels = self.get_input_labels()
+        if len(new_labels) != len(old_labels):
             errstr = 'Number of supplied source labels (%i) does not match ' \
                      'number of configured sources (%i).' % \
-                     (len(newlist), len(old_labels))
+                     (len(new_labels), len(old_labels))
             self.logger.error(errstr)
             raise ValueError(errstr)
-        new_dict = {}
-        for ctr, source_name in enumerate(old_labels):
-            _source = self.fengine_sources[source_name]
-            _source.update_name(newlist[ctr])
-            new_dict[newlist[ctr]] = _source
-        self.fengine_sources = new_dict
+        all_the_same = True
+        for ctr, new_label in enumerate(new_labels):
+            if new_label != old_labels[ctr]:
+                all_the_same = False
+                break
+        if all_the_same:
+            self.logger.info('New list of labels is the same as old labels.')
+            return
+
+        # match old labels to input streams
+        for ctr, old_label in enumerate(old_labels):
+            self.get_data_stream(old_label).name = new_labels[ctr]
 
         # update the list of baselines
-        self.baselines = utils.baselines_from_source_list(newlist)
+        self.baselines = utils.baselines_from_source_list(new_labels)
 
-        # update the hostname and baseline sensors
         if self.sensor_manager:
-            sm = self.sensor_manager
-            try:
-                for fhost in self.fhosts:
-                    sensor = sm.sensor_get('%s-input-mapping' % fhost.host)
-                    rv = [dsrc.name for dsrc in fhost.data_sources]
-                    sensor.set_value(str(rv))
-            except Exception as ve:
-                self.logger.warning('Could not update input_mapping '
-                                    'sensors!\n%s' % ve.message)
-            sm.sensor_set('baseline-ordering',
-                          str(self.baselines))
-
-        # update the beam input labels
-        if self.found_beamformer:
-            self.bops.update_labels(old_labels, self.get_labels())
-        self.speadops.update_metadata([0x100e])
+            self.sensor_manager.sensors_input_labels()
+            self.sensor_manager.sensors_baseline_ordering()
 
         self.logger.info('Source labels updated from %s to %s' % (
-            old_labels, self.get_labels()))
+            old_labels, self.get_input_labels()))
 
-    def get_labels(self):
+    def get_input_mapping(self):
+        """
+        Get a more complete input mapping of inputs to positions and boards
+        :return:
+        """
+        fengsorted = sorted(self.fops.fengines,
+                            key=lambda fengine: fengine.input_number)
+        return [
+            (f.input.name, f.input_number, f.host.host, f.offset)
+            for f in fengsorted
+        ]
+
+    def get_input_labels(self):
         """
         Get the current fengine source labels as a list of label names.
         :return:
         """
-        return sorted(self.fengine_sources,
-                      key=lambda k: self.fengine_sources[k].source_number)
+        fengsorted = sorted(self.fops.fengines,
+                            key=lambda fengine: fengine.input_number)
+        return [feng.name for feng in fengsorted]
 
-    def _read_config(self):
+    def _check_bitstreams(self):
         """
-        Read the instrument configuration from self.config_source.
+        Are the bitstreams from the config accessible?
         :return:
         """
-        Instrument._read_config(self)
         _d = self.configd
-
-        # check that the bitstream names are present
         try:
             open(_d['fengine']['bitstream'], 'r').close()
             open(_d['xengine']['bitstream'], 'r').close()
@@ -468,8 +467,52 @@ class FxCorrelator(Instrument):
             self.logger.error('One or more bitstream files not found.')
             raise IOError('One or more bitstream files not found.')
 
-        # TODO: Load config values from the bitstream meta information -
-        # f per fpga, x per fpga, etc
+    def _create_hosts(self):
+        """
+        Set up the different kind of hosts that make up this correlator.
+        :return:
+        """
+        _feng_d = self.configd['fengine']
+        _target_class = fhost_fpga.FpgaFHost
+        self.fhosts = []
+        for host in _feng_d['hosts'].split(','):
+            host = host.strip()
+            fpgahost = _target_class.from_config_source(
+                host, self.katcp_port, config_source=_feng_d)
+            self.fhosts.append(fpgahost)
+        # choose class (b-engine inherits x-engine functionality)
+        if self.found_beamformer:
+            _target_class = bhost_fpga.FpgaBHost
+        else:
+            _target_class = xhost_fpga.FpgaXHost
+        self.xhosts = []
+        _xeng_d = self.configd['xengine']
+        hostlist = _xeng_d['hosts'].split(',')
+        for hostindex, host in enumerate(hostlist):
+            host = host.strip()
+            fpgahost = _target_class.from_config_source(
+                host, hostindex, self.katcp_port, config_source=_xeng_d)
+            self.xhosts.append(fpgahost)
+        # check that no hosts overlap
+        for _fh in self.fhosts:
+            for _xh in self.xhosts:
+                if _fh.host == _xh.host:
+                    self.logger.error('Host %s is assigned to '
+                                      'both X- and F-engines' % _fh.host)
+                    raise RuntimeError
+
+    def _read_config(self):
+        """
+        Read the instrument configuration from self.config_source.
+        :return:
+        """
+        Instrument._read_config(self)
+        _d = self.configd
+
+        # do the bitstreams exist?
+        self._check_bitstreams()
+
+        # TODO: Load config values from the bitstream meta information - f per fpga, x per fpga, etc
         _fxcorr_d = self.configd['FxCorrelator']
         self.arp_wait_time = int(_fxcorr_d['arp_wait_time'])
         self.sensor_poll_time = int(_fxcorr_d['sensor_poll_time'])
@@ -515,7 +558,7 @@ class FxCorrelator(Instrument):
         except KeyError:
             self.qdr_vacc_error_threshold = 100
 
-        # get this from the running x-engines?
+        # TODO - get this from the running x-engines?
         self.xeng_clk = int(_xeng_d['x_fpga_clock'])
         self.xeng_outbits = int(_xeng_d['xeng_outbits'])
 
@@ -525,46 +568,32 @@ class FxCorrelator(Instrument):
             self.found_beamformer = True
             self.beng_outbits = 8
 
-        # set up hosts and engines based on the configuration in the ini file
-        _targetClass = fhost_fpga.FpgaFHost
-        self.fhosts = []
-        for host in _feng_d['hosts'].split(','):
-            host = host.strip()
-            fpgahost = _targetClass.from_config_source(host, self.katcp_port,
-                                                       config_source=_feng_d)
-            self.fhosts.append(fpgahost)
-
-        # choose class (b-engine inherits x-engine functionality)
-        if self.found_beamformer:
-            _targetClass = bhost_fpga.FpgaBHost
-        else:
-            _targetClass = xhost_fpga.FpgaXHost
-        self.xhosts = []
-        hostlist = _xeng_d['hosts'].split(',')
-        for hostindex, host in enumerate(hostlist):
-            host = host.strip()
-            fpgahost = _targetClass.from_config_source(
-                host, hostindex, self.katcp_port, config_source=_xeng_d)
-            self.xhosts.append(fpgahost)
-
-        # check that no hosts overlap
-        for _fh in self.fhosts:
-            for _xh in self.xhosts:
-                if _fh.host == _xh.host:
-                    self.logger.error('Host %s is assigned to '
-                                      'both X- and F-engines' % _fh.host)
-                    raise RuntimeError
+        # create the host objects
+        self._create_hosts()
 
         # update the list of baselines on this system
         self.baselines = utils.baselines_from_config(config=self.configd)
 
-        # what data sources have we been allocated?
-        self._handle_sources()
+        # what digitiser data streams have we been allocated?
+        self._create_digitiser_streams()
 
-        # turn the stream names into a list
-        prodlist = _xeng_d['output_products'].replace('[', '')
-        prodlist = prodlist.replace(']', '').split(',')
-        _xeng_d['output_products'] = [prod.strip(' ') for prod in prodlist]
+    def _create_digitiser_streams(self):
+        """
+        Parse the config of the given digitiser streams.
+        :return:
+        """
+        _fengd = self.configd['fengine']
+        source_names = utils.sources_from_config(config=self.configd)
+        source_mcast = _fengd['source_mcast_ips'].strip().split(',')
+        for ctr, src in enumerate(source_mcast):
+            source_mcast[ctr] = src.strip()
+        assert len(source_mcast) == len(source_names), (
+            'Source names (%d) must be paired with multicast source '
+            'addresses (%d)' % (len(source_names), len(source_mcast)))
+        for ctr, source in enumerate(source_names):
+            addr = StreamAddress.from_address_string(source_mcast[ctr])
+            dig_src = DigitiserStream(source, ctr, addr)
+            self.add_data_stream(dig_src)
 
     def _handle_sources(self):
         """
@@ -572,23 +601,21 @@ class FxCorrelator(Instrument):
         :return:
         """
         assert len(self.fhosts) > 0
-        _feng_cfg = self.configd['fengine']
-        source_names = utils.sources_from_config(config=self.configd)
-        source_mcast = _feng_cfg['source_mcast_ips'].strip().split(',')
-        assert len(source_mcast) == len(source_names), (
-            'Source names (%d) must be paired with multicast source '
-            'addresses (%d)' % (len(source_names), len(source_mcast)))
+        _fengd = self.configd['fengine']
 
         # match eq polys to source names
         eq_polys = {}
         for src_name in source_names:
             eq_polys[src_name] = utils.process_new_eq(
                 _feng_cfg['eq_poly_%s' % src_name])
+        assert len(eq_polys) == len(source_names), (
+            'Digitiser source names (%d) must be paired with EQ polynomials '
+            '(%d).' % (len(source_names), len(source_mcast)))
 
         # assemble the sources given into a list
         _feng_src_temp = []
         for source_ctr, address in enumerate(source_mcast):
-            new_source = FengineSource.from_mcast_string(address)
+            new_source = fhost_fpga.FengineSource.from_address_string(address)
             new_source.name = source_names[source_ctr]
             new_source.source_number = source_ctr
             new_source.offset = source_ctr % self.f_per_fpga
@@ -602,7 +629,7 @@ class FxCorrelator(Instrument):
         # check that the sources all have the same IP ranges
         for _source in _feng_src_temp:
             assert _source.ip_range == _feng_src_temp[0].ip_range, (
-                'All f-engines should be receiving from %d streams.' %
+                'All F-engines should be receiving from %d streams.' %
                 self.ports_per_fengine)
 
         # assign sources to fhosts
@@ -620,7 +647,7 @@ class FxCorrelator(Instrument):
                 _src_ctr += 1
         if _src_ctr != len(self.fhosts) * self.f_per_fpga:
             raise RuntimeError('We have different numbers of sources (%d) and '
-                               'f-engines (%d). Problem.', _src_ctr,
+                               'F-engines (%d). Problem.', _src_ctr,
                                len(self.fhosts) * self.f_per_fpga)
         self.logger.info('done.')
 
@@ -649,13 +676,9 @@ class FxCorrelator(Instrument):
         """
         stream = self.get_data_stream(stream_name)
         stream.set_destination(txip_str, txport)
-        stream.set_meta_destination(txip_str, txport)
+        if hasattr(stream, 'set_meta_destination'):
+            stream.set_meta_destination(txip_str, txport)
         if self.sensor_manager:
-            sensor_name = '%s-destination' % stream.name
-            sensor = self.sensor_manager.sensor_get(sensor_name)
-            sensor.set_value(str(stream.destination))
-            sensor_name = '%s-meta-destination' % stream.name
-            sensor = self.sensor_manager.sensor_get(sensor_name)
-            sensor.set_value(str(stream.meta_destination))
+            self.sensor_manager.sensors_stream_destinations()
 
 # end

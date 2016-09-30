@@ -559,11 +559,21 @@ if __name__ == '__main__':
 
     # find out where the data is going. if it's a multicast address, then
     # subscribe to multicast
-    output = {
-        'product': config['xengine']['output_products'],
-        'src_ip': tengbe.IpAddress(config['xengine']['output_destination_ip']),
-        'port': int(config['xengine']['output_destination_port']),
-    }
+    if 'output_destination_ip' in config['xengine']:
+
+        output = {
+            'product': config['xengine']['output_products'],
+            'src_ip': tengbe.IpAddress(config['xengine']['output_destination_ip']),
+            'port': int(config['xengine']['output_destination_port']),
+        }
+    else:
+        prods, addresses = utils.parse_output_products(config['xengine'])
+        output = {
+            'product': prods[0],
+            'src_ip': addresses[0].ip_address,
+            'port': int(addresses[0].port),
+        }
+
     data_port = output['port']
     if output['src_ip'].is_multicast():
         import socket

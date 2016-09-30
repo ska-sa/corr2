@@ -64,15 +64,20 @@ class SpeadOperations(object):
         except TypeError:
             ids = [ids]
         # loop through known streams and match spead IDs to those streams
-        for name, stream in self.corr.data_streams.items():
-            changes = False
-            for speadid in ids:
-                idfunc = getattr(self, 'item_0x%04x' % speadid)
-                if speadid in stream.meta_ig.ids():
-                    idfunc(stream.meta_ig)
-                    changes = True
-            if changes:
-                stream.meta_transmit()
+        for stream in self.corr.data_streams:
+            try:
+                if stream.meta_ig:
+                    changes = False
+                    for speadid in ids:
+                        idfunc = getattr(self, 'item_0x%04x' % speadid)
+                        if speadid in stream.meta_ig.ids():
+                            idfunc(stream.meta_ig)
+                            changes = True
+                    if changes:
+                        stream.meta_transmit()
+            except AttributeError as e:
+                # DataStreams don't necessarily have an associated SPEAD stream
+                pass
 
     def item_0x1007(self, sig, stx=None):
         self.add_item(
@@ -102,11 +107,7 @@ class SpeadOperations(object):
     # 0x100d - DEPRECATED
 
     def item_0x100e(self, sig, stx=None):
-        metalist = [(fsrc.name,
-                     fsrc.source_number,
-                     fsrc.host.host,
-                     fsrc.offset)
-                    for fsrc in self.corr.fengine_sources.values()]
+        metalist = self.corr.get_input_mapping()
         metalist = numpy.array(metalist)
         self.add_item(
             sig=sig, stx=stx,
@@ -229,7 +230,7 @@ class SpeadOperations(object):
     # 0x1026 - fxcorrelator_xengops.py
 
     def item_0x1027(self, sig, stx=None):
-        val = self.corr.get_synch_time()
+        val = self.corr.synchronisation_epoch
         val = 0 if val < 0 else val
         self.add_item(
             sig=sig, stx=stx,
@@ -286,7 +287,7 @@ class SpeadOperations(object):
         self.add_item(
             sig=sig, stx=stx,
             name='fengine_chans', id=0x104B,
-            description='Number of channels in the f-engine spectra.',
+            description='Number of channels in the F-engine spectra.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.n_chans)
 
@@ -296,9 +297,9 @@ class SpeadOperations(object):
 
     def item_0x1400(self, sig, stx=None):
         all_eqs = self.corr.fops.eq_get()
-        for source in self.corr.fengine_sources.values():
-            _srcname = source.name
-            _srcnum = source.source_number
+        for feng in self.corr.fops.fengines:
+            _srcname = feng.name
+            _srcnum = feng.input_number
             eq = [[numpy.real(eq_coeff), numpy.imag(eq_coeff)]
                   for eq_coeff in all_eqs[_srcname]]
             eq = numpy.array(eq, dtype=numpy.int32)
