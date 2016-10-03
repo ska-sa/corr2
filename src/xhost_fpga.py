@@ -318,6 +318,15 @@ class FpgaXHost(FpgaHost):
         self.registers.vacc_time_lsw.write(lsw=ldtime_lsw)
         self.registers.vacc_time_msw.write(msw=ldtime_msw)
 
+    def vacc_get_loadtime(self):
+        """
+        Get the last VACC loadtime that was set
+        :return: a sample clock time
+        """
+        msw = self.registers.vacc_time_msw.read()['data']['msw'] << 32
+        lsw = self.registers.vacc_time_lsw.read()['data']['lsw']
+        return msw | lsw
+
     def qdr_okay(self):
         """
         Checks if parity bits on x-eng are zero

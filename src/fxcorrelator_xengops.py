@@ -255,7 +255,7 @@ class XEngineOperations(object):
                     status1 = d1[host.host][xeng]
                     if ((status1['errors'] > status0['errors']) or
                             (status0['errors'] != 0)):
-                        self.logger.error('    vacc %i on %s has '
+                        self.logger.error('\tvacc %i on %s has '
                                           'errors' % (xeng, host.host))
                         return False
             # check that the accumulations are ticking over
@@ -264,7 +264,7 @@ class XEngineOperations(object):
                     status0 = d0[host.host][xeng]
                     status1 = d1[host.host][xeng]
                     if status1['count'] == status0['count']:
-                        self.logger.error('    vacc %i on %s is not '
+                        self.logger.error('\tvacc %i on %s is not '
                                           'incrementing' % (xeng, host.host))
                         return False
             return True
@@ -274,7 +274,7 @@ class XEngineOperations(object):
                 for ctr in range(0, host.x_per_fpga):
                     reg = 'etim%i' % ctr
                     if d0[host.host][reg] != d1[host.host][reg]:
-                        self.logger.error('    %s - vacc check reorder '
+                        self.logger.error('\t%s - vacc check reorder '
                                           'reg %s error' % (host.host, reg))
                         return False
             return True
@@ -294,7 +294,7 @@ class XEngineOperations(object):
                                            new_data['reorder']):
                     force_sync = True
             if force_sync:
-                self.logger.error('    forcing vacc sync')
+                self.logger.error('\tforcing vacc sync')
                 self.vacc_sync()
 
         self.corr.logger.debug('scheduled check done @ %s' % time.ctime())
@@ -479,7 +479,7 @@ class XEngineOperations(object):
                     time.strftime('%H:%M:%S', time.gmtime(t_now)),
                     (t_now-int(t_now))*100))
 
-        self.logger.info('    xeng vaccs will sync at %s (in %2.2fs)'
+        self.logger.info('\txeng vaccs will sync at %s (in %2.2fs)'
                          % (time.ctime(t_now), vacc_load_time-t_now))
         return vacc_load_time
 
@@ -512,7 +512,7 @@ class XEngineOperations(object):
         time_from_mcnt = self.corr.time_from_mcnt(ldmcnt)
         t_now = time.time()
         if time_from_mcnt <= t_now:
-            self.logger.warn('    Warning: the board timestamp has probably'
+            self.logger.warn('\tWarning: the board timestamp has probably'
                              ' wrapped! mcnt_time(%.3f) time.time(%.3f)' %
                              (time_from_mcnt, t_now))
         return ldmcnt
@@ -525,9 +525,9 @@ class XEngineOperations(object):
         """
         self.logger.info('vacc statii:')
         for _host in self.hosts:
-            self.logger.info('    %s:' % _host.host)
+            self.logger.info('\t%s:' % _host.host)
             for _ctr, _status in enumerate(vstatus[_host.host]):
-                self.logger.info('        %i: %s' % (_ctr, _status))
+                self.logger.info('\t\t%i: %s' % (_ctr, _status))
 
     def _vacc_sync_check_counts_initial(self):
         """
@@ -549,7 +549,7 @@ class XEngineOperations(object):
                     self.logger.error(_err)
                     self._vacc_sync_print_vacc_statuses(vacc_status)
                     raise RuntimeError(_err)
-        self.logger.info('    Before arming: arm_count(%i) load_count(%i)' %
+        self.logger.info('\tBefore arming: arm_count(%i) load_count(%i)' %
                          (arm_count0, load_count0))
         return arm_count0, load_count0
 
@@ -570,7 +570,7 @@ class XEngineOperations(object):
                     self.logger.error(_err)
                     self._vacc_sync_print_vacc_statuses(vacc_status)
                     return False
-        self.logger.info('    Done arming')
+        self.logger.info('\tDone arming')
         return True
 
     def _vacc_sync_check_loadtimes(self):
@@ -601,7 +601,7 @@ class XEngineOperations(object):
         lsw = lsws[self.hosts[0].host]['lsw']
         msw = msws[self.hosts[0].host]['msw']
         xldtime = (msw << 32) | lsw
-        self.logger.info('    x engines have vacc ld time %i' % xldtime)
+        self.logger.info('\tx engines have vacc ld time %i' % xldtime)
         return True
 
     def _vacc_sync_wait_for_arm(self, load_mcount):
@@ -614,17 +614,17 @@ class XEngineOperations(object):
         time_from_mcnt = self.corr.time_from_mcnt(load_mcount)
         wait_time = time_from_mcnt - t_now + 0.2
         if wait_time <= 0:
-            self.logger.error('    This is wonky - why is the wait_time '
+            self.logger.error('\tThis is wonky - why is the wait_time '
                               'less than zero? %.3f' % wait_time)
-            self.logger.error('    corr synch epoch: %i' %
+            self.logger.error('\tcorr synch epoch: %i' %
                               self.corr.synchronisation_epoch)
-            self.logger.error('    time.time(): %.10f' % t_now)
-            self.logger.error('    time_from_mcnt: %.10f' % time_from_mcnt)
-            self.logger.error('    ldmcnt: %i' % load_mcount)
+            self.logger.error('\ttime.time(): %.10f' % t_now)
+            self.logger.error('\ttime_from_mcnt: %.10f' % time_from_mcnt)
+            self.logger.error('\tldmcnt: %i' % load_mcount)
             # hack
             wait_time = t_now + 4
 
-        self.logger.info('    Waiting %2.2f seconds for arm to '
+        self.logger.info('\tWaiting %2.2f seconds for arm to '
                          'trigger.' % wait_time)
         time.sleep(wait_time)
 
@@ -643,7 +643,7 @@ class XEngineOperations(object):
                     self.logger.error('vacc did not trigger!')
                     self._vacc_sync_print_vacc_statuses(vacc_status)
                     return False
-        self.logger.info('    All vaccs triggered correctly.')
+        self.logger.info('\tAll vaccs triggered correctly.')
         return True
 
     def _vacc_sync_final_check(self):
@@ -771,7 +771,7 @@ class XEngineOperations(object):
                 load_mcount = self._vacc_sync_calc_load_mcount(vacc_load_time)
 
                 # set the load mcount on the x-engines
-                self.logger.info('    Applying load time: %i.' % load_mcount)
+                self.logger.info('\tApplying load time: %i.' % load_mcount)
                 THREADED_FPGA_FUNC(
                     self.hosts, timeout=10,
                     target_function=('vacc_set_loadtime', (load_mcount,),))
@@ -800,17 +800,17 @@ class XEngineOperations(object):
                     continue
 
                 # allow vacc to flush and correctly populate parity bits:
-                self.logger.info('    Waiting %2.2fs for an accumulation to '
+                self.logger.info('\tWaiting %2.2fs for an accumulation to '
                                  'flush, to correctly populate parity bits.' %
                                  self.get_acc_time())
                 time.sleep(self.get_acc_time() + 0.2)
 
-                self.logger.info('    Clearing status and reseting counters.')
+                self.logger.info('\tClearing status and reseting counters.')
                 THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                    target_function='clear_status')
 
                 # wait for a good accumulation to finish.
-                self.logger.info('    Waiting %2.2fs for an accumulation to '
+                self.logger.info('\tWaiting %2.2fs for an accumulation to '
                                  'flush before checking counters.' %
                                  self.get_acc_time())
                 time.sleep(self.get_acc_time() + 0.2)

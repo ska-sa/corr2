@@ -976,6 +976,13 @@ class FpgaFHost(DigitiserStreamReceiver):
         return {'p0': AdcData(-1, rvp0),
                 'p1': AdcData(-1, rvp1)}
 
+    def get_rx_reorder_status(self):
+        """
+        Read the reorder block counters
+        :return:
+        """
+        return self.registers.reorder_ctrs.read()['data']
+
 '''
     def _get_fengine_fpga_config(self):
 
@@ -1010,21 +1017,21 @@ class FpgaFHost(DigitiserStreamReceiver):
         # fft_shift is same for all fengine_fpgas of this type on device
         # (overload in child class if this changes)
         if name == 'fft_shift':
-            return self.host.device_by_name( '%sfft_shift'   %self.tag)
+            return self.host.device_by_name( '%sfft_shift' % self.tag)
         # we can't access Shared BRAMs in the same way as we access registers
         # at the moment, so we access the name and use read/write
         elif name == 'eq0_name':
-            return  '%seq  %s'  % (self.tag, self.pol0_offset)
+            return  '%seq  %s' %' (self.tag, self.pol0_offset)
         elif name == 'eq1_name':
-            return  '%seq  %s'  % (self.tag, self.pol1_offset)
+            return  '%seq  %s' %' (self.tag, self.pol1_offset)
         # fengines transmit to multiple xengines. Each xengine processes a continuous band of
         # frequencies with the lowest numbered band from all antennas being processed by the first xengine
         # and so on. The xengines have IP addresses starting a txip_base and increasing linearly. Some xengines
         # may share IP addresses
         elif name == 'txip_base':
-            return self.host.device_by_name( '%stxip_base  %s'  % (self.tag, self.offset))
+            return self.host.device_by_name( '%stxip_base  %s' %' (self.tag, self.offset))
         elif name == 'txport':
-            return self.host.device_by_name( '%stxport  %s'  % (self.tag, self.offset))
+            return self.host.device_by_name( '%stxport  %s' %' (self.tag, self.offset))
         # two polarisations
         elif name == 'snap_adc0':
             return self.host.device_by_name( '%ssnap_adc  %s_ss' % (self.tag, self.pol0_offset))
@@ -1073,7 +1080,7 @@ class FpgaFHost(DigitiserStreamReceiver):
         n_chans = self.config['n_chans']
         n_coeffs = n_chans/decimation
 
-        poly = self.config['equalisation']['poly  %s'  % pol_index]
+        poly = self.config['equalisation']['poly  %s' %' pol_index]
         eq_coeffs = numpy.polyval(poly, range(n_chans))[decimation/2::decimation]
         eq_coeffs = numpy.array(eq_coeffs, dtype=complex)
 

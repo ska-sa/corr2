@@ -101,6 +101,9 @@ class SensorManager(object):
         self._sensors = {}
         self._debug_mode = False
 
+    def sensors(self):
+        return self._sensors
+
     def sensors_clear(self):
         """
         Clear the current sensors
