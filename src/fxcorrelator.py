@@ -8,19 +8,16 @@ Created on Feb 28, 2013
 
 import logging
 import time
-from katcp import Sensor
-
 
 from casperfpga import utils as fpgautils
 
-import log
 import utils
 import xhost_fpga
 import fhost_fpga
 import bhost_fpga
 
 from instrument import Instrument
-from data_source import DataSource
+from fhost_fpga import FengineSource
 
 from fxcorrelator_fengops import FEngineOperations
 from fxcorrelator_xengops import XEngineOperations
@@ -41,7 +38,7 @@ class FxCorrelator(Instrument):
     A generic FxCorrelator composed of fengines that channelise antenna inputs
     and xengines that each produce cross products from a continuous portion
     of the channels and accumulate the result.
-    SPEAD data products are produced.
+    SPEAD data streams are produced.
     """
     def __init__(self, descriptor, identifier=-1, config_source=None,
                  logger=LOGGER):
@@ -57,7 +54,6 @@ class FxCorrelator(Instrument):
 
         """
         self.logger = logger
-        self.loghandler = None
 
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
@@ -80,29 +76,10 @@ class FxCorrelator(Instrument):
         self.fengine_sources = None
         self.baselines = None
 
-        self._sensors = {}
+        self.sensor_manager = None
 
         # parent constructor
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
-
-    def standard_log_config(self, log_level=logging.INFO, silence_spead=True):
-        """Convenience method for setting up logging in scripts etc.
-        :param log_level: The loglevel to use by default, logging.INFO.
-        :param silence_spead: Set 'spead' logger to level WARNING if True
-
-        """
-        # Set the root logging handler - submodules loggers will automatically
-        # use it
-        self.loghandler = log.Corr2LogHandler()
-        logging.root.addHandler(self.loghandler)
-        logging.root.setLevel(log_level)
-        self.logger.setLevel(log_level)
-        self.logger.addHandler(self.loghandler)
-
-        if silence_spead:
-            # set the SPEAD logger to warning only
-            spead_logger = logging.getLogger('spead')
-            spead_logger.setLevel(logging.WARNING)
 
     def initialise(self, program=True, qdr_cal=True, require_epoch=False):
         """
@@ -185,7 +162,8 @@ class FxCorrelator(Instrument):
         timeout = len(self.fhosts[0].tengbes) * 30 * 1.1
         THREADED_FPGA_FUNC(
                 self.fhosts + self.xhosts, timeout=timeout,
-                target_function=('setup_host_gbes', (self.logger, info_dict), {}))
+                target_function=('setup_host_gbes',
+                                 (self.logger, info_dict), {}))
 
     def _initialise(self, program, qdr_cal):
         """
@@ -245,9 +223,15 @@ class FxCorrelator(Instrument):
             raise RuntimeError('The f-engines RX have a problem.')
 
         # check that the timestamps received on the f-engines make sense
-        if not self.fops.check_rx_timestamps():
+        result, times, times_unix = self.fops.check_rx_timestamps()
+        if not result:
             raise RuntimeError('The timestamps received by the f-engines '
                                'are not okay. Check the logs')
+
+        # check the f-engine QDR uses for parity errors
+        if ((not self.fops.check_ct_parity()) or
+                (not self.fops.check_cd_parity())):
+            raise RuntimeError('The f-engine QDRs are reporting errors.')
 
         # check that the F-engines are transmitting data correctly
         if not self.fops.check_tx():
@@ -270,32 +254,12 @@ class FxCorrelator(Instrument):
         if self.found_beamformer:
             self.bops.configure()
 
-    def sensors_clear(self):
+    def get_scale_factor(self):
         """
-        Clear the current sensors
+        By what number do we divide timestamps to get seconds?
         :return:
         """
-        self._sensors = {}
-
-    def sensors_add(self, sensor):
-        """
-        Add a sensor to the dictionary of instrument sensors
-        :param sensor:
-        :return:
-        """
-        if sensor.name in self._sensors.keys():
-            raise KeyError('Sensor {} already exists'.format(sensor.name))
-        self._sensors[sensor.name] = sensor
-
-    def sensors_get(self, sensor_name):
-        """
-        Get a sensor from the dictionary of instrument sensors
-        :param sensor_name:
-        :return:
-        """
-        if sensor_name not in self._sensors.keys():
-            raise KeyError('Sensor {} does not exist'.format(sensor_name))
-        return self._sensors[sensor_name]
+        return self.sample_rate_hz
 
     def set_synch_time(self, new_synch_time):
         """
@@ -317,6 +281,9 @@ class FxCorrelator(Instrument):
             self.logger.error(_err)
             raise RuntimeError(_err)
         self._synchronisation_epoch = new_synch_time
+        if self.sensor_manager:
+            sensor = self.sensor_manager.sensor_get('synch-epoch')
+            sensor.set_value(self._synchronisation_epoch)
         self.logger.info('Set synch epoch to %.5f' % new_synch_time)
 
     def est_synch_epoch(self):
@@ -327,7 +294,7 @@ class FxCorrelator(Instrument):
         self.logger.info('Estimating synchronisation epoch:')
         # get current time from an f-engine
         feng_mcnt = self.fhosts[0].get_local_time()
-        self.logger.info('    current f-engine mcnt: %i' % feng_mcnt)
+        self.logger.info('\tcurrent f-engine mcnt: %i' % feng_mcnt)
         if feng_mcnt & 0xfff != 0:
             _err = 'Bottom 12 bits of timestamp from f-engine are not ' \
                    'zero?! feng_mcnt(%i)' % feng_mcnt
@@ -335,12 +302,13 @@ class FxCorrelator(Instrument):
             raise RuntimeError(_err)
         t_now = time.time()
         self.set_synch_time(t_now - feng_mcnt / float(self.sample_rate_hz))
-        self.logger.info('    new epoch: %.3f' % self.get_synch_time())
+        self.logger.info('\tnew epoch: %.3f' % self.get_synch_time())
 
     def time_from_mcnt(self, mcnt):
         """
         Returns the unix time UTC equivalent to the board timestamp. Does
         NOT account for wrapping timestamps.
+        :param mcnt: the time from system boards (ADC ticks since startup)
         """
         if self.get_synch_time() < 0:
             self.logger.info('time_from_mcnt: synch epoch unset, estimating')
@@ -352,6 +320,7 @@ class FxCorrelator(Instrument):
         """
         Returns the board timestamp from a given UTC system time
         (seconds since Unix Epoch). Accounts for wrapping timestamps.
+        :param time_seconds: UNIX time
         """
         if self.get_synch_time() < 0:
             self.logger.info('mcnt_from_time: synch epoch unset, estimating')
@@ -432,59 +401,51 @@ class FxCorrelator(Instrument):
         :param newlist:
         :return:
         """
-        if len(newlist) != len(self.fengine_sources):
+        old_labels = self.get_labels()
+        if len(newlist) != len(old_labels):
             errstr = 'Number of supplied source labels (%i) does not match ' \
                      'number of configured sources (%i).' % \
-                     (len(newlist), len(self.fengine_sources))
+                     (len(newlist), len(old_labels))
             self.logger.error(errstr)
             raise ValueError(errstr)
-        oldnames = []
-        newnames = []
-        for ctr, source in enumerate(self.fengine_sources):
-            _source = source['source']
-            # update the source name
-            old_name = _source.name
-            _source.name = newlist[ctr]
-            oldnames.append(old_name)
-            newnames.append(newlist[ctr])
-            # update the eq associated with that name
-            found_eq = False
-            for fhost in self.fhosts:
-                if old_name in fhost.eqs.keys():
-                    fhost.eqs[_source.name] = fhost.eqs.pop(old_name)
-                    found_eq = True
-                    break
-            if not found_eq:
-                raise ValueError(
-                    'Could not find the old EQ value, %s, to update '
-                    'to new name, %s.' % (old_name, _source.name))
-
-        # update the hostname sensors
-        try:
-            for fhost in self.fhosts:
-                sensor = self.sensors_get('%s_input_mapping' % fhost.host)
-                rv = [dsrc.name for dsrc in fhost.data_sources]
-                sensor.set(time.time(), Sensor.NOMINAL, str(rv))
-        except Exception as ve:
-            self.logger.WARNING('Could not update input_mapping '
-                                'sensors!\n\n%s' % ve.message)
+        new_dict = {}
+        for ctr, source_name in enumerate(old_labels):
+            _source = self.fengine_sources[source_name]
+            _source.update_name(newlist[ctr])
+            new_dict[newlist[ctr]] = _source
+        self.fengine_sources = new_dict
 
         # update the list of baselines
         self.baselines = utils.baselines_from_source_list(newlist)
 
-        self.logger.info('Source labels updated from %s to %s' % (
-            oldnames, newnames))
+        # update the hostname and baseline sensors
+        if self.sensor_manager:
+            sm = self.sensor_manager
+            try:
+                for fhost in self.fhosts:
+                    sensor = sm.sensor_get('%s-input-mapping' % fhost.host)
+                    rv = [dsrc.name for dsrc in fhost.data_sources]
+                    sensor.set_value(str(rv))
+            except Exception as ve:
+                self.logger.warning('Could not update input_mapping '
+                                    'sensors!\n%s' % ve.message)
+            sm.sensor_get('baseline-ordering').set_value(str(self.baselines))
+
         # update the beam input labels
         if self.found_beamformer:
-            self.bops.update_labels(oldnames, newnames)
+            self.bops.update_labels(old_labels, self.get_labels())
         self.speadops.update_metadata([0x100e])
+
+        self.logger.info('Source labels updated from %s to %s' % (
+            old_labels, self.get_labels()))
 
     def get_labels(self):
         """
         Get the current fengine source labels as a list of label names.
         :return:
         """
-        return [src['source'].name for src in self.fengine_sources]
+        return sorted(self.fengine_sources,
+                      key=lambda k: self.fengine_sources[k].source_number)
 
     def _read_config(self):
         """
@@ -529,11 +490,29 @@ class FxCorrelator(Instrument):
         self.f_per_fpga = int(_feng_d['f_per_fpga'])
         self.ports_per_fengine = int(_feng_d['ports_per_fengine'])
         self.analogue_bandwidth = int(_feng_d['bandwidth'])
+        self.true_cf = float(_feng_d['true_cf'])
+        self.quant_format = _feng_d['quant_format']
+        self.adc_bitwidth = int(_feng_d['sample_bits'])
+        self.fft_shift = int(_feng_d['fft_shift'])
+
+        try:
+            self.qdr_ct_error_threshold = int(_feng_d['qdr_ct_error_threshold'])
+        except KeyError:
+            self.qdr_ct_error_threshold = 100
+        try:
+            self.qdr_cd_error_threshold = int(_feng_d['qdr_cd_error_threshold'])
+        except KeyError:
+            self.qdr_cd_error_threshold = 100
 
         _xeng_d = self.configd['xengine']
         self.x_per_fpga = int(_xeng_d['x_per_fpga'])
         self.accumulation_len = int(_xeng_d['accumulation_len'])
         self.xeng_accumulation_len = int(_xeng_d['xeng_accumulation_len'])
+        try:
+            self.qdr_vacc_error_threshold = int(
+                _xeng_d['qdr_vacc_error_threshold'])
+        except KeyError:
+            self.qdr_vacc_error_threshold = 100
 
         # get this from the running x-engines?
         self.xeng_clk = int(_xeng_d['x_fpga_clock'])
@@ -543,6 +522,7 @@ class FxCorrelator(Instrument):
         self.found_beamformer = False
         if 'bengine' in self.configd.keys():
             self.found_beamformer = True
+            self.beng_outbits = 8
 
         # set up hosts and engines based on the configuration in the ini file
         _targetClass = fhost_fpga.FpgaFHost
@@ -580,12 +560,10 @@ class FxCorrelator(Instrument):
         # what data sources have we been allocated?
         self._handle_sources()
 
-        # turn the product names into a list
+        # turn the stream names into a list
         prodlist = _xeng_d['output_products'].replace('[', '')
         prodlist = prodlist.replace(']', '').split(',')
-        _xeng_d['output_products'] = []
-        for prod in prodlist:
-            _xeng_d['output_products'].append(prod.strip(''))
+        _xeng_d['output_products'] = [prod.strip(' ') for prod in prodlist]
 
     def _handle_sources(self):
         """
@@ -607,41 +585,41 @@ class FxCorrelator(Instrument):
                 _feng_cfg['eq_poly_%s' % src_name])
 
         # assemble the sources given into a list
-        _fengine_sources = []
+        _feng_src_temp = []
         for source_ctr, address in enumerate(source_mcast):
-            new_source = DataSource.from_mcast_string(address)
+            new_source = FengineSource.from_mcast_string(address)
             new_source.name = source_names[source_ctr]
+            new_source.source_number = source_ctr
+            new_source.offset = source_ctr % self.f_per_fpga
+            new_source.eq_poly = eq_polys[new_source.name]
+            new_source.eq_bram_name = 'eq%i' % new_source.offset
             assert new_source.ip_range == self.ports_per_fengine, (
                 'F-engines should be receiving from %d streams.' %
                 self.ports_per_fengine)
-            _fengine_sources.append(new_source)
+            _feng_src_temp.append(new_source)
 
-        # assign sources and eqs to fhosts
-        self.logger.info('Assigning DataSources, EQs and DelayTrackers to '
-                         'f-engines...')
-        source_ctr = 0
-        self.fengine_sources = []
+        # check that the sources all have the same IP ranges
+        for _source in _feng_src_temp:
+            assert _source.ip_range == _feng_src_temp[0].ip_range, (
+                'All f-engines should be receiving from %d streams.' %
+                self.ports_per_fengine)
+
+        # assign sources to fhosts
+        self.logger.info('Assigning FengineSources to f-hosts')
+        _src_ctr = 0
+        self.fengine_sources = {}
         for fhost in self.fhosts:
             self.logger.info('\t%s:' % fhost.host)
-            _eq_dict = {}
             for fengnum in range(0, self.f_per_fpga):
-                _source = _fengine_sources[source_ctr]
-                _eq_dict[_source.name] = {'eq': eq_polys[_source.name],
-                                          'bram_num': fengnum}
-                assert _source.ip_range == _fengine_sources[0].ip_range, (
-                    'All f-engines should be receiving from %d streams.' %
-                    self.ports_per_fengine)
-                self.fengine_sources.append({'source': _source,
-                                             'source_num': source_ctr,
-                                             'host': fhost,
-                                             'numonhost': fengnum})
-                fhost.add_source(_source)
-                self.logger.info('\t\t%s' % _source)
-                source_ctr += 1
-            fhost.eqs = _eq_dict
-        if source_ctr != len(self.fhosts) * self.f_per_fpga:
+                _src = _feng_src_temp[_src_ctr]
+                _src.host = fhost
+                self.fengine_sources[_src.name] = _src
+                fhost.add_source(_src)
+                self.logger.info('\t\t%s' % _src)
+                _src_ctr += 1
+        if _src_ctr != len(self.fhosts) * self.f_per_fpga:
             raise RuntimeError('We have different numbers of sources (%d) and '
-                               'f-engines (%d). Problem.', source_ctr,
+                               'f-engines (%d). Problem.', _src_ctr,
                                len(self.fhosts) * self.f_per_fpga)
         self.logger.info('done.')
 
@@ -659,66 +637,24 @@ class FxCorrelator(Instrument):
         """
         raise NotImplementedError('_read_config_server not implemented')
 
-    def product_set_destination(self, product_name, txip_str=None, txport=None):
+    def stream_set_destination(self, stream_name, txip_str=None, txport=None):
         """
-        Set the destination for a data product.
-        :param product_name:
+        Set the destination for a data stream.
+        :param stream_name:
         :param txip_str: A dotted-decimal string representation of the
         IP address. e.g. '1.2.3.4'
         :param txport: An integer port number.
         :return: <nothing>
         """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        self.data_products[product_name].set_destination(txip_str, txport)
-
-    def product_set_meta_destination(self, product_name,
-                                     txip_str=None, txport=None):
-        """
-        Set the meta destination for a data product.
-        :param product_name:
-        :param txip_str: A dotted-decimal string representation of the
-        IP address. e.g. '1.2.3.4'
-        :param txport: An integer port number.
-        :return: <nothing>
-        """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        self.data_products[product_name].set_meta_destination(txip_str, txport)
-
-    def product_tx_enable(self, product_name):
-        """
-        Enable tranmission for a product
-        :param product_name:
-        :return:
-        """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        self.data_products[product_name].tx_enable()
-
-    def product_tx_disable(self, product_name):
-        """
-        Disable tranmission for a product
-        :param product_name:
-        :return:
-        """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        self.data_products[product_name].tx_disable()
-
-    def product_issue_metadata(self, product_name):
-        """
-
-        :param product_name:
-        :return:
-        """
-        if product_name not in self.data_products:
-            raise ValueError('product %s is not in product list: %s' % (
-                product_name, self.data_products))
-        self.data_products[product_name].meta_issue()
+        stream = self.get_data_stream(stream_name)
+        stream.set_destination(txip_str, txport)
+        stream.set_meta_destination(txip_str, txport)
+        if self.sensor_manager:
+            sensor_name = '%s-destination' % stream.name
+            sensor = self.sensor_manager.sensor_get(sensor_name)
+            sensor.set_value(str(stream.destination))
+            sensor_name = '%s-meta-destination' % stream.name
+            sensor = self.sensor_manager.sensor_get(sensor_name)
+            sensor.set_value(str(stream.meta_destination))
 
 # end

@@ -21,7 +21,7 @@ import casperfpga.scroll as scroll
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Display information about a MeerKAT x-engine.',
+    description='Display information about a MeerKAT b-engine.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--hosts', dest='hosts', type=str,
                     action='store', default='',
@@ -29,7 +29,7 @@ parser.add_argument('--hosts', dest='hosts', type=str,
                          'config file')
 parser.add_argument('-p', '--polltime', dest='polltime',
                     action='store', default=1, type=int,
-                    help='time at which to poll x-engine data, in seconds')
+                    help='time at which to poll b-engine data, in seconds')
 parser.add_argument('--comms', dest='comms', action='store',
                     default='katcp', type=str,
                     help='katcp (default) or dcp?')
@@ -92,11 +92,13 @@ for fpga_ in fpgas:
         if 'bf%i_out_count' % ctr not in fpga_.registers.names():
             print 'ERROR: host %s does not have necessary beamformer ' \
                   'register %s' % (fpga_.host, 'bf%i_out_count' % ctr)
-            signal_handler(None, None)
-        if 'bf%i_ot_count' % ctr not in fpga_.registers.names():
+            print fpga_.registers.names()
+            raise RuntimeError
+        if 'bf%i_of_count' % ctr not in fpga_.registers.names():
             print 'ERROR: host %s does not have necessary beamformer ' \
                   'register %s' % (fpga_.host, 'bf%i_of_count' % ctr)
-            signal_handler(None, None)
+            print fpga_.registers.names()
+            raise RuntimeError
 
 
 def get_fpga_data(fpga_):
@@ -106,9 +108,6 @@ def get_fpga_data(fpga_):
                'of': fpga_.registers['bf%i_of_count' % ctr].read()['data']}
         rv[ctr] = rvt
     return rv
-
-headers = ['out%i' % ctr for ctr in range(4)]
-headers.extend(['of%i' % ctr for ctr in range(4)])
 
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
@@ -126,16 +125,15 @@ try:
             scroller.draw_screen()
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
-            scroller.add_line('Polling %i x-engine%s every %s - %is elapsed.' %
-                              (len(fpgas), '' if len(fpgas) == 1 else 's',
-                               'second' if polltime == 1 else ('%i seconds' % polltime),
-                               time.time() - STARTTIME), 0, 0, absolute=True)
-#            scroller.add_line('hdr1', 10)
-#            scroller.add_line('hdr2', 30, scroller.get_current_line())
-            scroller.add_line('Host - out(0,1,2,3) of(0,1,2,3)',
-                              0, 1, absolute=True)
-            scroller.set_ypos(2)
-            scroller.set_ylimits(ymin=2)
+            scroller.add_string(
+                'Polling %i x-engine%s every %s - %is elapsed.' % (
+                    len(fpgas), '' if len(fpgas) == 1 else 's',
+                    'second' if polltime == 1 else ('%i seconds' % polltime),
+                    time.time() - STARTTIME), 0, 0, fixed=True)
+            scroller.add_string('Host - out(0,1,2,3) of(0,1,2,3)',
+                                0, 1, fixed=True)
+            scroller.set_current_line(2)
+            scroller.set_ylimits(2)
             all_fpga_data = fpgautils.threaded_fpga_operation(
                 fpgas, 10, get_fpga_data)
             for ctr, fpga_ in enumerate(fpgas):
@@ -143,16 +141,17 @@ try:
                 scroller.add_line(fpga_.host)
                 for beam_num, beam_data in fpga_data.items():
                     beamd = fpga_data[beam_num]
-                    scroller.add_line('beam%i%10i%10i%10i%10i%10i%10i%10i%10i'
-                                      % (beam_num,
-                                         beamd['out']['count0'],
-                                         beamd['out']['count1'],
-                                         beamd['out']['count2'],
-                                         beamd['out']['count3'],
-                                         beamd['of']['count0'],
-                                         beamd['of']['count1'],
-                                         beamd['of']['count2'],
-                                         beamd['of']['count3']), 5)
+                    scroller.add_line(
+                        '     beam%i%10i%10i%10i%10i%10i%10i%10i%10i' % (
+                            beam_num,
+                            beamd['out']['count0'],
+                            beamd['out']['count1'],
+                            beamd['out']['count2'],
+                            beamd['out']['count3'],
+                            beamd['of']['count0'],
+                            beamd['of']['count1'],
+                            beamd['of']['count2'],
+                            beamd['of']['count3']))
             scroller.draw_screen()
             last_refresh = time.time()
 except KeyboardInterrupt:

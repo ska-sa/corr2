@@ -20,7 +20,7 @@ class NetAddress(object):
 
     def is_multicast(self):
         """
-        Does the data product's IP address begin with 239?
+        Does this IP address begin with 239?
         :return:
         """
         return (int(self.ip) >> 24) == 239

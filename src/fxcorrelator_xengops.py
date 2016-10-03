@@ -3,10 +3,11 @@ import numpy
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
+from katcp import Sensor
 
 from casperfpga import utils as fpgautils
 
-import data_product
+import data_stream
 from net_address import NetAddress
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
 
@@ -34,7 +35,7 @@ class XEngineOperations(object):
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
         self.logger = corr_obj.logger
-        self.data_product = None
+        self.data_stream = None
 
         self.vacc_synch_running = IOLoopEvent()
         self.vacc_synch_running.clear()
@@ -62,8 +63,8 @@ class XEngineOperations(object):
             f.registers.board_id.write(reg=board_id)
             board_id += 1
 
-        # write the data product destination to the registers
-        self.write_data_product_destination(None)
+        # write the data stream destination to the registers
+        self.write_data_stream_destination(None)
 
         # clear gbe status
         THREADED_FPGA_OP(
@@ -153,15 +154,15 @@ class XEngineOperations(object):
         is instantiated.
         :return:
         """
-        # set up the xengine data product
-        self._setup_data_product()
+        # set up the xengine data stream
+        self._setup_data_stream()
 
-    def _setup_data_product(self):
+    def _setup_data_stream(self):
         """
-        Set up the data product for the xengine output
+        Set up the data stream for the xengine output
         :return:
         """
-        # the x-engine output data product setup
+        # the x-engine output data stream setup
         _xeng_d = self.corr.configd['xengine']
 
         data_addr = NetAddress(_xeng_d['output_destination_ip'],
@@ -169,18 +170,18 @@ class XEngineOperations(object):
         meta_addr = NetAddress(_xeng_d['output_destination_ip'],
                                _xeng_d['output_destination_port'])
 
-        xeng_prod = data_product.DataProduct(
+        xeng_stream = data_stream.DataStream(
             name=_xeng_d['output_products'][0],
-            category=data_product.XENGINE_CROSS_PRODUCTS,
+            category=data_stream.XENGINE_CROSS_PRODUCTS,
             destination=data_addr,
             meta_destination=meta_addr,
-            destination_cb=self.write_data_product_destination,
+            destination_cb=self.write_data_stream_destination,
             meta_destination_cb=self.spead_meta_issue_all,
             tx_enable_method=self.xeng_tx_enable,
             tx_disable_method=self.xeng_tx_disable)
 
-        self.data_product = xeng_prod
-        self.corr.register_data_product(xeng_prod)
+        self.data_stream = xeng_stream
+        self.corr.register_data_stream(xeng_stream)
         self.vacc_check_enabled.clear()
         self.vacc_synch_running.clear()
         if self.vacc_check_cb is not None:
@@ -306,15 +307,15 @@ class XEngineOperations(object):
         self.vacc_check_cb.start()
         self.corr.logger.info('vacc check timer started')
 
-    def write_data_product_destination(self, data_product):
+    def write_data_stream_destination(self, data_stream):
         """
         Write the x-engine data stream destination to the hosts.
-        :param data_product - the data product on which to act
+        :param data_stream - the data stream on which to act
         :return:
         """
-        dprod = data_product or self.data_product
-        txip = int(dprod.destination.ip)
-        txport = dprod.destination.port
+        dstrm = data_stream or self.data_stream
+        txip = int(dstrm.destination.ip)
+        txport = dstrm.destination.port
         try:
             THREADED_FPGA_OP(
                 self.hosts, timeout=10,
@@ -325,15 +326,15 @@ class XEngineOperations(object):
                 target_function=(lambda fpga_:
                                  fpga_.registers.gbe_porttx.write(reg=txport),))
         except AttributeError:
-            self.logger.warning('Writing product %s destination to '
-                                'hardware failed!' % dprod.name)
+            self.logger.warning('Writing stream %s destination to '
+                                'hardware failed!' % dstrm.name)
 
-        # update meta data on product destination change
-        self.spead_meta_update_product_destination()
-        dprod.meta_transmit()
+        # update meta data on stream destination change
+        self.spead_meta_update_stream_destination()
+        dstrm.meta_transmit()
 
-        self.logger.info('Wrote product %s destination to %s in hardware' % (
-            dprod.name, dprod.destination))
+        self.logger.info('Wrote stream %s destination to %s in hardware' % (
+            dstrm.name, dstrm.destination))
 
     def clear_status_all(self):
         """
@@ -626,23 +627,90 @@ class XEngineOperations(object):
         Check the vacc status, errors and accumulations
         :return:
         """
-        vac_okay = self.vacc_check_okay_initial()
+        self.logger.info('\tChecking for errors & accumulations...')
+        vac_okay = self._vacc_check_okay_initial()
         if not vac_okay:
             vacc_status = self.vacc_status()
             vacc_error_detail = THREADED_FPGA_FUNC(
                 self.hosts, timeout=5,
                 target_function='vacc_get_error_detail')
-            self.logger.error('xeng_vacc_sync: exited on vacc error')
-            self.logger.error('xeng_vacc_sync: vacc statii:')
+            self.logger.error('\t\txeng_vacc_sync: exited on vacc error')
+            self.logger.error('\t\txeng_vacc_sync: vacc statii:')
             for host, item in vacc_status.items():
-                self.logger.error('    %s: %s' % (host, str(item)))
-            self.logger.error('xeng_vacc_sync: vacc errors:')
+                self.logger.error('\t\t\t%s: %s' % (host, str(item)))
+            self.logger.error('\t\txeng_vacc_sync: vacc errors:')
             for host, item in vacc_error_detail.items():
-                self.logger.error('    %s: %s' % (host, str(item)))
-            self.logger.error('xeng_vacc_sync: exited on vacc error')
+                self.logger.error('\t\t\t%s: %s' % (host, str(item)))
+            self.logger.error('\t\txeng_vacc_sync: exited on vacc error')
             return False
-        self.logger.info('    ...accumulations rolling in without error.')
+        self.logger.info('\t...accumulations rolling in without error.')
         return True
+
+    def _vacc_check_okay_initial(self):
+        """
+        After an initial setup, is the vacc okay?
+        Are the error counts zero and the counters
+        ticking over?
+        :return: True or False
+        """
+        vacc_status = self.vacc_status()
+        note_errors = False
+        for host in self.hosts:
+            for xeng_ctr, status in enumerate(vacc_status[host.host]):
+                _msgpref = '{h}:{x} - '.format(h=host, x=xeng_ctr)
+                errs = status['errors']
+                thresh = self.corr.qdr_vacc_error_threshold
+                if (errs > 0) and (errs < thresh):
+                    self.logger.warn(
+                        '\t\t{pref}{thresh} > vacc errors > 0. Que '
+                        'pasa?'.format(pref=_msgpref, thresh=thresh))
+                    note_errors = True
+                elif (errs > 0) and (errs >= thresh):
+                    self.logger.error(
+                        '\t\t{pref}vacc errors > {thresh}. Problems.'.format(
+                            pref=_msgpref, thresh=thresh))
+                    return False
+                if status['count'] <= 0:
+                    self.logger.error(
+                        '\t\t{}vacc counts <= 0. Que pasa?'.format(_msgpref))
+                    return False
+        if note_errors:
+            # investigate the errors further, what caused them?
+            if self._vacc_non_parity_errors():
+                self.logger.error('\t\t\tsome vacc errors, but they\'re not '
+                                  'parity errors. Problems.')
+                return False
+            self.logger.info('\t\tvacc_check_okay_initial: mostly okay, some '
+                             'QDR parity errors')
+        else:
+            self.logger.info('\t\tvacc_check_okay_initial: all okay')
+        return True
+
+    def _vacc_non_parity_errors(self):
+        """
+        Are VACC errors other than parity errors occuring?
+        :return:
+        """
+        _loops = 2
+        parity_errors = 0
+        for ctr in range(_loops):
+            detail = THREADED_FPGA_FUNC(
+                self.hosts, timeout=5, target_function='vacc_get_error_detail')
+            for xhost in detail:
+                for vals in detail[xhost]:
+                    for field in vals:
+                        if vals[field] > 0:
+                            if field != 'parity':
+                                return True
+                            else:
+                                parity_errors += 1
+            if ctr < _loops - 1:
+                time.sleep(self.get_acc_time() * 1.1)
+        if parity_errors == 0:
+            self.logger.error('\t\tThat\'s odd, VACC errors reported but '
+                              'nothing caused them?')
+            return True
+        return False
 
     def vacc_sync(self):
         """
@@ -738,41 +806,12 @@ class XEngineOperations(object):
             self.logger.error(e.message)
             raise e
 
-    def vacc_check_okay_initial(self):
-        """
-        After an initial setup, is the vacc okay?
-        Are the error counts zero and the counters
-        ticking over?
-        :return: True or False
-        """
-        self.logger.info('\tChecking for errors & accumulations...')
-        vacc_status = self.vacc_status()
-        note_errors = False
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                if status['errors'] > 0:
-                    if status['errors'] < 100:
-                        self.logger.warn('\t\t100 > vacc errors > 0. Que pasa?')
-                        note_errors = True
-                    elif status['errors'] >= 100:
-                        self.logger.error('\t\tvacc errors > 100. Problems?')
-                        return False
-                if status['count'] <= 0:
-                    self.logger.error('\t\tvacc counts <= 0. Que pasa?')
-                    return False
-        if note_errors:
-            self.logger.debug('\t\txeng_vacc_check_status: mostly okay, some '
-                              'reorder errors')
-        else:
-            self.logger.debug('\t\txeng_vacc_check_status: all okay')
-        return True
-
     def set_acc_time(self, acc_time_s, vacc_resync=True):
         """
         Set the vacc accumulation length based on a required dump time,
         in seconds
         :param acc_time_s: new dump time, in seconds
-        :param vacc_resync:
+        :param vacc_resync: force a vacc resynchronisation
         :return:
         """
         if use_xeng_sim:
@@ -784,6 +823,9 @@ class XEngineOperations(object):
         self.corr.logger.info('set_acc_time: %.3fs -> new_acc_len(%i)' %
                               (acc_time_s, new_acc_len))
         self.set_acc_len(new_acc_len, vacc_resync)
+        if self.corr.sensor_manager:
+            sensor = self.corr.sensor_manager.sensor_get('integration-time')
+            sensor.set_value(self.get_acc_time())
 
     def get_acc_time(self):
         """
@@ -809,6 +851,7 @@ class XEngineOperations(object):
         """
         Set the QDR vector accumulation length.
         :param acc_len:
+        :param vacc_resync: force a vacc resynchronisation
         :return:
         """
         if (acc_len is not None) and (acc_len <= 0):
@@ -826,6 +869,9 @@ class XEngineOperations(object):
             target_function=(
                 lambda fpga_:
                 fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
+        if self.corr.sensor_manager:
+            sensor = self.corr.sensor_manager.sensor_get('n-accs')
+            sensor.set_value(self.corr.accumulation_len)
         self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
@@ -835,13 +881,13 @@ class XEngineOperations(object):
         if reenable_timer:
             self.vacc_check_timer_start()
 
-    def xeng_tx_enable(self, data_product):
+    def xeng_tx_enable(self, data_stream):
         """
-        Start transmission of data products from the x-engines
-        :param data_product - the data product on which to act
+        Start transmission of data streams from the x-engines
+        :param data_stream - the data stream on which to act
         :return:
         """
-        dprod = data_product or self.data_product
+        dstrm = data_stream or self.data_stream
         THREADED_FPGA_OP(
                 self.hosts, timeout=5,
                 target_function=(
@@ -849,13 +895,13 @@ class XEngineOperations(object):
                     fpga_.registers.control.write(gbe_txen=True),))
         self.logger.info('X-engine output enabled')
 
-    def xeng_tx_disable(self, data_product):
+    def xeng_tx_disable(self, data_stream):
         """
-        Start transmission of data products from the x-engines
-        :param data_product - the data product on which to act
+        Start transmission of data streams from the x-engines
+        :param data_stream - the data stream on which to act
         :return:
         """
-        dprod = data_product or self.data_product
+        dstrm = data_stream or self.data_stream
         THREADED_FPGA_OP(
                 self.hosts, timeout=5,
                 target_function=(
@@ -863,19 +909,26 @@ class XEngineOperations(object):
                     fpga_.registers.control.write(gbe_txen=False),))
         self.logger.info('X-engine output disabled')
 
-    def spead_meta_update_product_destination(self):
-        self.data_product.meta_ig.add_item(
+    def spead_meta_update_stream_destination(self):
+        """
+
+        :return:
+        """
+        meta_ig = self.data_stream.meta_ig
+        self.corr.speadops.add_item(
+            meta_ig,
             name='rx_udp_port', id=0x1022,
             description='Destination UDP port for %s data '
-                        'output.' % self.data_product.name,
+                        'output.' % self.data_stream.name,
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.data_product.destination.port)
+            value=self.data_stream.destination.port)
 
-        ipstr = numpy.array(str(self.data_product.destination.ip))
-        self.data_product.meta_ig.add_item(
+        ipstr = numpy.array(str(self.data_stream.destination.ip))
+        self.corr.speadops.add_item(
+            meta_ig,
             name='rx_udp_ip_str', id=0x1024,
             description='Destination IP address for %s data '
-                        'output.' % self.data_product.name,
+                        'output.' % self.data_stream.name,
             shape=ipstr.shape,
             dtype=ipstr.dtype,
             value=ipstr)
@@ -886,21 +939,29 @@ class XEngineOperations(object):
         Update metadata for this correlator's xengine output.
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
 
         self.corr.speadops.item_0x1007(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='n_bls', id=0x1008,
-            description='Number of baselines in the data product.',
+            description='Number of baselines in the data stream.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=len(self.corr.baselines))
 
-        self.corr.speadops.item_0x1009(meta_ig)
+        self.corr.speadops.add_item(
+            meta_ig,
+            name='n_chans', id=0x1009,
+            description='Number of frequency channels in an integration.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.corr.n_chans)
+
         self.corr.speadops.item_0x100a(meta_ig)
 
         n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='n_xengs', id=0x100B,
             description='The number of x-engines in the system.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
@@ -908,23 +969,26 @@ class XEngineOperations(object):
 
         bls_ordering = numpy.array(
             [baseline for baseline in self.corr.baselines])
-        # this is a list of the baseline product pairs, e.g. ['ant0x' 'ant0y']
-        meta_ig.add_item(
+        # this is a list of the baseline stream pairs, e.g. ['ant0x' 'ant0y']
+        self.corr.speadops.add_item(
+            meta_ig,
             name='bls_ordering', id=0x100C,
-            description='The baseline ordering in the output data product.',
+            description='The baseline ordering in the output data stream.',
             shape=bls_ordering.shape,
             dtype=bls_ordering.dtype,
             value=bls_ordering)
 
         self.corr.speadops.item_0x100e(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='center_freq', id=0x1011,
             description='The on-sky centre-frequency.',
             shape=[], format=[('f', 64)],
             value=int(self.corr.configd['fengine']['true_cf']))
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='bandwidth', id=0x1013,
             description='The input (analogue) bandwidth of the system.',
             shape=[], format=[('f', 64)],
@@ -934,7 +998,8 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1016(meta_ig)
         self.corr.speadops.item_0x101e(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='xeng_acc_len', id=0x101F,
             description='Number of spectra accumulated inside X engine. '
                         'Determines minimum integration time and '
@@ -946,7 +1011,8 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1020(meta_ig)
 
         pkt_len = int(self.corr.configd['fengine']['10gbe_pkt_len'])
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='feng_pkt_len', id=0x1021,
             description='Payload size of 10GbE packet exchange between '
                         'F and X engines in 64 bit words. Usually equal '
@@ -955,24 +1021,27 @@ class XEngineOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=pkt_len)
 
-        self.spead_meta_update_product_destination()
+        self.spead_meta_update_stream_destination()
 
         port = int(self.corr.configd['fengine']['10gbe_port'])
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='feng_udp_port', id=0x1023,
             description='Port for F-engines 10Gbe links in the system.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=port)
 
         ipstr = numpy.array(self.corr.configd['fengine']['10gbe_start_ip'])
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='feng_start_ip', id=0x1025,
             description='Start IP address for F-engines in the system.',
             shape=ipstr.shape,
             dtype=ipstr.dtype,
             value=ipstr)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='xeng_rate', id=0x1026,
             description='Target clock rate of processing engines (xeng).',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
@@ -981,13 +1050,15 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1027(meta_ig)
 
         x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='x_per_fpga', id=0x1041,
             description='Number of X engines per FPGA host.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=x_per_fpga)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='ddc_mix_freq', id=0x1043,
             description='Digital downconverter mixing frequency as a fraction '
                         'of the ADC sampling frequency. eg: 0.25. Set to zero '
@@ -998,7 +1069,8 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1045(meta_ig)
         self.corr.speadops.item_0x1046(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='xeng_out_bits_per_sample', id=0x1048,
             description='The number of bits per value of the xeng '
                         'accumulator output. Note this is for a '
@@ -1006,17 +1078,22 @@ class XEngineOperations(object):
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.xeng_outbits)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='f_per_fpga', id=0x1049,
             description='Number of F engines per FPGA host.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.corr.f_per_fpga)
 
+        self.corr.speadops.item_0x104a(meta_ig)
+        self.corr.speadops.item_0x104b(meta_ig)
+
         self.corr.speadops.item_0x1400(meta_ig)
 
         self.corr.speadops.item_0x1600(meta_ig)
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='flags_xeng_raw', id=0x1601,
             description='Flags associated with xeng_raw data output. '
                         'bit 34 - corruption or data missing during integration'
@@ -1025,7 +1102,8 @@ class XEngineOperations(object):
                         'bits 0 - 31 reserved for internal debugging',
             shape=[], format=[('u', SPEAD_ADDRSIZE)])
 
-        meta_ig.add_item(
+        self.corr.speadops.add_item(
+            meta_ig,
             name='xeng_raw', id=0x1800,
             description='Raw data for %i xengines in the system. This item '
                         'represents a full spectrum (all frequency channels) '
@@ -1039,16 +1117,17 @@ class XEngineOperations(object):
             shape=[self.corr.n_chans, len(self.corr.baselines), 2])
             # shape=[self.corr.n_chans * len(self.corr.baselines), 2])
 
-    def spead_meta_issue_all(self, data_product):
+    def spead_meta_issue_all(self, data_stream):
         """
         Issue = update the metadata then send it.
+        :param data_stream: The DataStream object for which to send metadata
         :return:
         """
-        dprod = data_product or self.data_product
+        dstrm = data_stream or self.data_stream
         self.spead_meta_update_all()
-        dprod.meta_transmit()
-        self.logger.info('Issued SPEAD data descriptor for data product %s '
-                         'to %s.' % (dprod.name,
-                                     dprod.meta_destination))
+        dstrm.meta_transmit()
+        self.logger.info('Issued SPEAD data descriptor for data stream %s '
+                         'to %s.' % (dstrm.name,
+                                     dstrm.meta_destination))
 
 # end

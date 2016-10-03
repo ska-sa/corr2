@@ -82,6 +82,23 @@ def exit_gracefully(sig, frame):
 signal.signal(signal.SIGINT, exit_gracefully)
 signal.signal(signal.SIGHUP, exit_gracefully)
 
+data = get_fpga_data(fpgas[0])[0]
+fld_names = data.keys()
+fld_names.sort()
+
+# work out the maximum host & field name widths
+max_1st_col_offset = -1
+for fpga in fpgas:
+    max_1st_col_offset = max(max_1st_col_offset, len(fpga.host))
+max_fldname = -1
+max_flddata = -1
+for fldname in fld_names:
+    max_fldname = max(max_fldname, len(fldname))
+    max_flddata = max(max_flddata, len(str(data[fldname])))
+max_1st_col_offset += 5
+max_fldname += 2
+max_flddata += 2
+
 # set up the curses scroll screen
 scroller = scroll.Scroll(debug=False)
 scroller.screen_setup()
@@ -98,23 +115,27 @@ try:
             scroller.draw_screen()
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
-            scroller.add_line('Polling %i fengine%s every %s - %is elapsed.' % (
+            scroller.add_string('Polling %i fengine%s every %s - %is '
+                                'elapsed.' % (
                 len(fpgas), '' if len(fpgas) == 1 else 's',
                 'second' if polltime == 1 else ('%i seconds' % polltime),
-                time.time() - STARTTIME), 0, 0, absolute=True)
-            start_pos = 20
-            pos_increment = 20
-            scroller.set_ypos(newpos=1)
-            all_fpga_data = fpgautils.threaded_fpga_operation(fpgas, 10,
-                                                              get_fpga_data)
+                time.time() - STARTTIME), 0, 0, fixed=True)
+            start_pos = max_1st_col_offset
+            scroller.set_current_line(1)
+            scroller.set_ylimits(1)
+            all_fpga_data = fpgautils.threaded_fpga_operation(
+                fpgas, 10, get_fpga_data)
             for ctr, fpga in enumerate(fpgas):
                 fpga_data = all_fpga_data[fpga.host]
-                scroller.add_line(fpga.host)
+                scroller.add_string(fpga.host, cr=True)
                 for data in fpga_data:
                     printline = ''
                     for key in sorted(data.iterkeys()):
                         value = data[key]
-                        printline += '\t%s[%i]' % (key, value)
+                        printline += '  {fldname:>{fldwidth}}' \
+                                     '[{val:>{valwidth}}]'.format(
+                            fldname=key, fldwidth=max_fldname,
+                            val=value, valwidth=max_flddata)
                     scroller.add_line(printline)
             scroller.draw_screen()
             last_refresh = time.time()

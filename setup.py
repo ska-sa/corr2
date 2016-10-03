@@ -27,7 +27,9 @@ setup(name='corr2',
       provides=['corr2'],
       packages=['corr2'],
       package_dir={'corr2': 'src'},
-      scripts=glob.glob('scripts/*')
+      scripts=glob.glob('scripts/*'),
+      setup_requires=['katversion'],
+      use_katversion=True,
       )
 
 # end

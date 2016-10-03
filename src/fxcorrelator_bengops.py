@@ -1,4 +1,6 @@
 import logging
+import time
+from katcp import Sensor
 from casperfpga import utils as fpgautils
 
 from beam import Beam
@@ -83,9 +85,9 @@ class BEngineOperations(object):
         for beam in self.beams.values():
             beam.configure()
 
-        # add the beam data products to the instrument list
+        # add the beam data streams to the instrument list
         for beam in self.beams.values():
-            self.corr.register_data_product(beam.data_product)
+            self.corr.register_data_stream(beam.data_stream)
 
     def tx_enable(self, beams=None):
         """
@@ -122,7 +124,8 @@ class BEngineOperations(object):
 
     def partitions_activate(self, partitions_to_activate=None):
         """
-        Activate partitions for all beams
+        Activate partitions for all beams.
+        :param partitions_to_activate: a list of partitions to activate
         """
         for beam in self.beams.values():
             beam.partitions_activate(partitions_to_activate)
@@ -130,9 +133,21 @@ class BEngineOperations(object):
     def partitions_deactivate(self, partitions_to_deactivate=None):
         """
         Deactivate partitions for all beams
+        :param partitions_to_deactivate: a list of partitions to activate
         """
         for beam in self.beams.values():
             beam.partitions_deactivate(partitions_to_deactivate)
+
+    def get_beam_by_name(self, beam_name):
+        """
+        Given a string beam_name, return the corresponding Beam
+        :param beam_name:
+        :return:
+        """
+        if beam_name not in self.beams:
+            raise KeyError('No such beam: %s, available beams: %s' % (
+                beam_name, self.beams))
+        return self.beams[beam_name]
 
     def set_beam_bandwidth(self, beam_name, bandwidth, centerfreq):
         """
@@ -143,50 +158,96 @@ class BEngineOperations(object):
         :param centerfreq: the center freq of this band, in hz
         :return: tuple, the set (bw, cf) for that beam
         """
-        if beam_name not in self.beams:
-            raise RuntimeError('No such beam: %s, available beams: %s' % (
-                beam_name, self.beams))
-        beam = self.beams[beam_name]
+        beam = self.get_beam_by_name(beam_name)
         return beam.set_beam_bandwidth(bandwidth, centerfreq)
 
-    def get_beam_bandwidth(self, beam_name):
+    def get_beam_bandwidth(self, beam_name=None):
         """
         Get the partitions for a given beam i.t.o. bandwidth
         and center frequency.
         :param beam_name: the name of the beam to set
         :return: (beam bandwidth, beam_cf)
         """
-        if beam_name not in self.beams:
-            raise RuntimeError('No such beam: %s, available beams: %s' % (
-                beam_name, self.beams))
-        beam = self.beams[beam_name]
+        if beam_name is None:
+            return {bm: self.get_beam_bandwidth(bm) for bm in self.beams}
+        beam = self.get_beam_by_name(beam_name)
         return beam.get_beam_bandwidth()
 
-    def set_beam_weights(self, beam_name, input_name, new_weight):
+    def set_beam_weights(self, new_weight, beam_name=None, input_name=None):
         """
         Set the beam weights for a given beam and input.
-        :param beam_name str: the beam name
-        :param input_name str: the input name
+        :param new_weight: the new weight to apply to this beam & input
+        :param beam_name: the beam name
+        :param input_name: the input name
         :return:
         """
-        if beam_name not in self.beams:
-            raise RuntimeError('No such beam: %s, available beams: %s' % (
-                beam_name, self.beams))
+        if beam_name is None:
+            for bm in self.beams:
+                self.set_beam_weights(new_weight, bm, input_name)
+            return
+        beam = self.get_beam_by_name(beam_name)
         self.beams[beam_name].set_weights(input_name, new_weight)
+        # update the sensor associated with this beam weight
+        if self.corr.sensor_manager:
+            sman = self.corr.sensor_manager
+            sensor_name = '{beam}-weights'.format(
+                beam=beam_name.replace('_', '-'))
+            sensor = sman.sensor_get(sensor_name)
+            beam_weights = sman.instrument.bops.get_beam_weights(beam_name)
+            sensor.set_value(str(beam_weights))
 
-    def get_beam_weights(self, beam_name, input_name):
+    def get_beam_weights(self, beam_name=None, input_name=None):
         """
         Get the current beam weights for a given beam and input.
-        :param beam_name str: the beam name
-        :param input_name str: the input name
+        :param beam_name: the beam name
+        :param input_name: the input name
         :return: the beam weight(s) for this combination
         """
-        beam = self.beams[beam_name]
+        if beam_name is None:
+            return {bm: self.get_beam_weights(bm, input_name)
+                    for bm in self.beams}
+        beam = self.get_beam_by_name(beam_name)
         return beam.get_weights(input_name)
+
+    def set_beam_quant_gains(self, new_gain, beam_name=None):
+        """
+        Set the beam weights for a given beam and input.
+        :param new_gain: the new gain to apply to this beam & input
+        :param beam_name: the beam name
+        :return:
+        """
+        if beam_name is None:
+            for bm in self.beams:
+                self.set_beam_quant_gains(new_gain, bm)
+            return
+        beam = self.get_beam_by_name(beam_name)
+        self.beams[beam_name].set_quant_gains(new_gain)
+        # update the sensor associated with this beam quant gain
+        if self.corr.sensor_manager:
+            sman = self.corr.sensor_manager
+            sensor_name = '{beam}-quantiser-gains'.format(
+                beam=beam_name.replace('_', '-'))
+            sensor = sman.sensor_get(sensor_name)
+            beam_gain = sman.instrument.bops.get_beam_quant_gains(beam_name)
+            sensor.set_value(beam_gain)
+
+    def get_beam_quant_gains(self, beam_name=None):
+        """
+        Get the current beam weights for a given beam and input.
+        :param beam_name: the beam name
+        :return: the beam weight(s) for this combination
+        """
+        if beam_name is None:
+            return {bm: self.get_beam_quant_gains(bm)
+                    for bm in self.beams}
+        beam = self.get_beam_by_name(beam_name)
+        return beam.get_quant_gains()
 
     def update_labels(self, oldnames, newnames):
         """
         Update the input labels
+        :param oldnames - a list of the old input labels
+        :param newnames - a list of the new input labels
         :return:
         """
         for beam in self.beams.values():
@@ -737,7 +798,7 @@ class BEngineOperations(object):
     #
     # def tx_start(corr, beams):
     #     """
-    #     Start outputting SPEAD products on all boards.
+    #     Start outputting SPEAD streams on all boards.
     #     Only works for systems with 10GbE output atm.
     #     :param beams:
     #     :return:

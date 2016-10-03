@@ -41,9 +41,9 @@ def _setup_spead(meta_address):
     return meta_ig, meta_tx
 
 
-class DataProduct(object):
+class DataStream(object):
     """
-    A data product produced by some instrument function. A name, a category,
+    A data stream produced by some instrument function. A name, a category,
     a NetAddress for data and one for metadata. Some callbacks to do things
     when these addresses change.
     """
@@ -55,17 +55,17 @@ class DataProduct(object):
                  destination_cb=None,
                  meta_destination_cb=None):
         """
-        :param name: the name of this data product
+        :param name: the name of this data stream
         :param destination: a NetAddress for the stream data destination
         :param meta_destination: a NetAddress for the meta information
-        :param destination_cb: a callback to run when this data product
+        :param destination_cb: a callback to run when this data stream
         destination is updated
         :param meta_destination_cb: a callback to run when this data
-        product meta destination is updated
+        stream meta destination is updated
         :param tx_enable_method: method to call to start transmission of this
-        product
+        stream
         :param tx_disable_method: method to call to stop transmission of this
-        product
+        stream
         :return:
         """
         self.name = name
@@ -84,7 +84,7 @@ class DataProduct(object):
 
     def set_destination(self, ip, port):
         """
-        Change the destination IP and port for this data product
+        Change the destination IP and port for this data stream
         :param ip:
         :param port:
         :return:
@@ -101,7 +101,7 @@ class DataProduct(object):
 
     def set_meta_destination(self, ip, port):
         """
-        Change the meta destination IP and port for this data product
+        Change the meta destination IP and port for this data stream
         :param ip:
         :param port:
         :return:
@@ -128,40 +128,40 @@ class DataProduct(object):
 
     def meta_transmit(self):
         """
-        Send the metadata for this data product.
+        Send the metadata for this data stream.
         :return:
         """
-        if not self.meta_ig:
-            LOGGER.info('SPEAD meta itemgroup for data product %s is '
+        if self.meta_ig is None:
+            LOGGER.info('SPEAD meta itemgroup for data stream %s is '
                         'unavailable, not sending metadata.' %
                         self.name)
             return
-        if not self.meta_tx:
-            LOGGER.info('SPEAD meta transmitter for data product %s is '
+        if self.meta_tx is None:
+            LOGGER.info('SPEAD meta transmitter for data stream %s is '
                         'unavailable, not sending metadata.' %
                         self.name)
             return
         self.meta_tx.send_heap(self.meta_ig.get_heap())
-        LOGGER.info('DataProduct %s sent SPEAD metadata to %s' % (
+        LOGGER.info('DataStream %s sent SPEAD metadata to %s' % (
             self.name, self.meta_destination))
 
     def tx_enable(self):
         """
-        Enable TX for this data product
+        Enable TX for this data stream
         :return:
         """
         try:
             heapgen = sptx.HeapGenerator(self.meta_ig)
             self.meta_tx.send_heap(heapgen.get_start())
         except AttributeError:
-            LOGGER.warning('Installed version of SPEAD2 doesn\'t seem to'
+            LOGGER.warning('Installed version of SPEAD2 does not seem to'
                            'support stream start packets?')
         self.en_cb(self)
-        LOGGER.info('DataProduct %s - output enabled' % self.name)
+        LOGGER.info('DataStream %s - output enabled' % self.name)
 
     def tx_disable(self):
         """
-        Disable TX for this data product
+        Disable TX for this data stream
         :return:
         """
         self.dis_cb(self)
@@ -169,13 +169,13 @@ class DataProduct(object):
             heapgen = sptx.HeapGenerator(self.meta_ig)
             self.meta_tx.send_heap(heapgen.get_end())
         except AttributeError:
-            LOGGER.warning('Installed version of SPEAD2 doesn\'t seem to'
+            LOGGER.warning('Installed version of SPEAD2 does not seem to'
                            'support stream stop packets?')
-        LOGGER.info('DataProduct %s - output disabled' % self.name)
+        LOGGER.info('DataStream %s - output disabled' % self.name)
 
     def __repr__(self):
         return self.__str__()
 
     def __str__(self):
-        return 'DataProduct(%s:%i), data(%s) meta(%s)' % (
+        return 'DataStream(%s:%i), data(%s) meta(%s)' % (
             self.name, self.category, self.destination, self.meta_destination)

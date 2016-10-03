@@ -3,7 +3,7 @@ import logging
 from casperfpga import utils as fpgautils
 
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
-from data_product import DataProduct, BEAMFORMER_FREQUENCY_DOMAIN
+from data_stream import DataStream, BEAMFORMER_FREQUENCY_DOMAIN
 from net_address import NetAddress
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
@@ -24,7 +24,7 @@ class Beam(object):
         self.index = beam_index
         self.hosts = []
 
-        self.data_product = None
+        self.data_stream = None
         self.speadops = None
 
         self.partitions_total = -1
@@ -37,10 +37,12 @@ class Beam(object):
         self.bandwidth = None
 
         self.xeng_acc_len = None
-        self.n_chans = None
+        self.chans_total = None
         self.beng_per_host = None
+        self.chans_per_partition = None
 
         self.source_weights = None
+        self.quant_gain = None
         self.source_labels = None
         self.source_poly = None
 
@@ -69,12 +71,14 @@ class Beam(object):
         obj.bandwidth = float(beam_dict['bandwidth'])
 
         obj.xeng_acc_len = int(config['xengine']['xeng_accumulation_len'])
-        obj.n_chans = int(config['fengine']['n_chans'])
+        obj.chans_total = int(config['fengine']['n_chans'])
         obj.beng_per_host = int(config['xengine']['x_per_fpga'])
+        chans_per_host = obj.chans_total / len(obj.hosts)
+        obj.chans_per_partition = chans_per_host / obj.beng_per_host
 
         data_addr = NetAddress(beam_dict['data_ip'], beam_dict['data_port'])
         meta_addr = NetAddress(beam_dict['meta_ip'], beam_dict['meta_port'])
-        obj.data_product = DataProduct(
+        obj.data_stream = DataStream(
             name=beam_name,
             category=BEAMFORMER_FREQUENCY_DOMAIN,
             destination=data_addr,
@@ -93,11 +97,12 @@ class Beam(object):
             input_weight = float(_split[1])
             obj.source_labels.append(input_name)
             obj.source_weights.append(input_weight)
+        obj.quant_gain = 1
         obj.source_poly = []
         return obj
 
     def __str__(self):
-        return 'Beam %i:%s - %s' % (self.index, self.name, self.data_product)
+        return 'Beam %i:%s - %s' % (self.index, self.name, self.data_stream)
 
     def initialise(self):
         """
@@ -120,6 +125,10 @@ class Beam(object):
         # set the weights for this beam
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set', [self], {}))
 
+        # set the quantiser gains for this beam
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_quant_gains_set',
+                                           [self, self.quant_gain], {}))
+
         LOGGER.info('Beam %i:%s: initialised okay' % (
             self.index, self.name))
 
@@ -131,9 +140,13 @@ class Beam(object):
         # set the active partitions to the partitions set in hardware
         self.partitions_active = self.partitions_current()
 
-    def tx_enable(self, data_product):
+        # set the default gain to one
+        self.set_quant_gains(1.0)
+
+    def tx_enable(self, data_stream):
         """
-        Start transmission of data products from the b-engines
+        Start transmission of data streams from the b-engines
+        :param data_stream: The DataStream to enable.
         :return:
         """
         if len(self.partitions_active) <= 0:
@@ -148,9 +161,10 @@ class Beam(object):
                 fpga_.registers[reg_name].write(txen=True), [], {}))
         LOGGER.info('Beam %i:%s output enabled.' % (self.index, self.name))
 
-    def tx_disable(self, data_product):
+    def tx_disable(self, data_stream):
         """
-        Stop transmission of data products from the b-engines
+        Stop transmission of data streams from the b-engines
+        :param data_stream: The DataStream to disable.
         :return:
         """
         if len(self.partitions_active) == 0:
@@ -165,7 +179,7 @@ class Beam(object):
                 fpga_.registers[reg_name].write(txen=False), [], {}))
         LOGGER.info('Beam %i:%s output disabled.' % (self.index, self.name))
 
-    def set_beam_destination(self, data_product):
+    def set_beam_destination(self, data_stream):
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_destination_set', [self], {}))
         self.spead_meta_update_destination()
         self.spead_meta_transmit_all()
@@ -187,6 +201,13 @@ class Beam(object):
             raise ValueError('Partitions > max(partitions) make no sense')
         if min(partitions) < min(self.partitions):
             raise ValueError('Partitions < 0 make no sense')
+
+    def active_channels(self):
+        """
+        How many channels are active in this beam?
+        :return:
+        """
+        return self.chans_per_partition * len(self.partitions_active)
 
     def partitions_deactivate(self, partitions=None):
         """
@@ -233,12 +254,7 @@ class Beam(object):
             return False
         self._check_partitions(partitions)
         self.partitions_active = partitions[:]
-
-        # TODO - send SPEAD metadata about bandwidth and cf
-
-        # update the bhosts control registers
         self._partitions_control_update()
-
         LOGGER.info('Beam %i:%s - active partitions: %s' % (
                 self.index, self.name, self.partitions_active))
         return True
@@ -263,34 +279,103 @@ class Beam(object):
                 rv.append(ctr)
         return rv
 
-    def set_weights(self, input_name, new_weight):
+    def get_source_index(self, source_name):
         """
-        Set the weight for this beam for a given input
+        Given a source/input name, return its position in the input list
+        :param source_name: which source/input we're looking for
         :return:
         """
-        input_index = self.source_labels.index(input_name)
-        if new_weight == self.source_weights[input_index]:
+        if source_name not in self.source_labels:
+            raise ValueError('No such input, %s. Available inputs: %s' % (
+                source_name, self.source_labels
+            ))
+        return self.source_labels.index(source_name)
+
+    def set_weights(self, input_name, new_weight, force=False):
+        """
+        Set the weight for this beam for a given input
+        :param input_name: which source/input we're looking for
+        :param new_weight: the new weight to apply to this input/source
+        :param force: force the write, even if the stored value is the same
+        :return:
+        """
+        input_index = self.get_source_index(input_name)
+        if (new_weight == self.source_weights[input_index]) and (not force):
             LOGGER.info('Beam %i:%s: %s weight already %.3f' % (
                 self.index, self.name, input_name, new_weight))
             return False
         self.source_weights[input_index] = new_weight
-        THREADED_FPGA_FUNC(self.hosts, 5,
-                           ('beam_weights_set', [self], {}))
-
-        # TODO - send SPEAD metadata about weights
-
+        THREADED_FPGA_FUNC(
+            self.hosts, 5, ('beam_weights_set', [self, [input_index]], {}))
         LOGGER.info('Beam %i:%s: %s weight set to %.3f' % (
             self.index, self.name, input_name, new_weight))
         return True
 
-    def get_weights(self, input_name):
+    def get_weights(self, input_name=None):
         """
         Get the current weight(s) associated with an input on this beam.
-        :param input_name:
+        :param input_name: which source/input we're looking for
         :return:
         """
-        input_index = self.source_labels.index(input_name)
-        return self.source_weights[input_index]
+        if input_name is None:
+            return {nptnm: self.get_weights(nptnm)
+                    for nptnm in self.source_labels}
+        input_index = self.get_source_index(input_name)
+        d = THREADED_FPGA_FUNC(
+            self.hosts, 5, ('beam_weights_get', [self, [input_index]], {}))
+        ref = d[d.keys()[0]][0]
+        for dhost, dval in d.items():
+            for vctr, v in enumerate(dval[0]):
+                if v != ref[vctr]:
+                    raise RuntimeError(
+                        'Beamweights for beam %s input %s differ across '
+                        'hosts!?' % (self.name, input_name))
+        for v in ref:
+            if v != ref[0]:
+                raise RuntimeError('Beamweights for beam %s input %s differ '
+                                   'across b-engs!?' % (self.name, input_name))
+        self.source_weights[input_index] = ref[0]
+        return ref[0]
+
+    def set_quant_gains(self, new_quant_gain, force=False):
+        """
+        Set the quantiser gain for this beam for a given input
+        :param new_quant_gain: the new gain to apply to this input/source
+        :param force: force the write, even if the stored value is the same
+        :return:
+        """
+        if (new_quant_gain == self.quant_gain) and (not force):
+            LOGGER.info('Beam %i:%s: quantiser gain already %.3f' % (
+                self.index, self.name, new_quant_gain))
+            return False
+        rv = THREADED_FPGA_FUNC(
+            self.hosts, 5, ('beam_quant_gains_set', [self, new_quant_gain], {}))
+        gain_set = rv.values()[0]
+        self.quant_gain = gain_set
+        LOGGER.info('Beam %i:%s: quantiser gain: %.3f specified, set to '
+                    '%.3f' % (self.index, self.name, new_quant_gain, gain_set))
+        return True
+
+    def get_quant_gains(self):
+        """
+        Get the current quantiser gain(s) associated with an input on this beam.
+        :return:
+        """
+        d = THREADED_FPGA_FUNC(
+            self.hosts, 5, ('beam_quant_gains_get', [self], {}))
+        ref_gain = d[d.keys()[0]]
+        for dhost, dval in d.items():
+            if dval != ref_gain:
+                raise RuntimeError(
+                    'Quantiser gains for beam %s differ across '
+                    'hosts!? %.3f != %.3f' % (self.name, dval, ref_gain))
+        if self.quant_gain != ref_gain:
+            LOGGER.warning(
+                'Beam {idx}:{beam} quant gain variable set to {sw}, but '
+                'hardware says {hw}'.format(
+                    idx=self.index, beam=self.name,
+                    sw=self.quant_gain, hw=ref_gain))
+        return ref_gain
 
     def _bandwidth_to_partitions(self, bandwidth, centerfreq):
         """
@@ -372,6 +457,8 @@ class Beam(object):
     def update_labels(self, oldnames, newnames):
         """
         Update the input labels
+        :param oldnames: a list of tuples of old input names and positions
+        :param newnames: a list of tuples of the new input names
         :return: True if anything changed, False if not
         """
         changes = False
@@ -396,10 +483,17 @@ class Beam(object):
         :return:
         """
         bw, cf = self.get_beam_bandwidth()
-        meta_ig = self.data_product.meta_ig
-        meta_ig.add_item(
+        meta_ig = self.data_stream.meta_ig
+        self.speadops.add_item(
+            meta_ig,
+            name='n_chans', id=0x1009,
+            description='Number of frequency channels selected in this beam.',
+            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            value=self.active_channels())
+        self.speadops.add_item(
+            meta_ig,
             name='bandwidth', id=0x1013,
-            description='The analogue bandwidth in this beam data product.',
+            description='The analogue bandwidth in this beam data stream.',
             shape=[], format=[('f', 64)],
             value=bw)
 
@@ -408,14 +502,11 @@ class Beam(object):
         Update meta information about the beamformer data heap
         :return:
         """
-        meta_ig = self.data_product.meta_ig
-        n_bhosts = len(self.hosts)
-        chans_per_host = self.n_chans / n_bhosts
-        chans_per_partition = chans_per_host / self.beng_per_host
-        beam_chans = chans_per_partition * len(self.partitions_active)
+        meta_ig = self.data_stream.meta_ig
         # id is 0x5 + 12 least sig bits id of each beam
         beam_data_id = 0x5000
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='bf_raw', id=beam_data_id,
             description='Raw data for bengines in the system. Frequencies '
                         'are assembled from lowest frequency to highest '
@@ -425,7 +516,7 @@ class Beam(object):
                         'value is a complex number -- two (real and '
                         'imaginary) signed integers.',
             dtype=numpy.int8,
-            shape=[beam_chans, self.xeng_acc_len, 2])
+            shape=[self.active_channels(), self.xeng_acc_len, 2])
         LOGGER.info('Beam %i:%s - updated dataheap metadata' % (
             self.index, self.name))
 
@@ -435,17 +526,20 @@ class Beam(object):
         and options descriptors and unpack sequences.
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
 
         # calculate a few things for this beam
         n_bhosts = len(self.hosts)
         n_bengs = self.beng_per_host * n_bhosts
 
         self.speadops.item_0x1007(sig=meta_ig)
-        self.speadops.item_0x1009(sig=meta_ig)
+
+        self.spead_meta_update_bandwidth()
+
         self.speadops.item_0x100a(sig=meta_ig)
 
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='n_bengs', id=0x100F,
             description='The total number of B engines in the system.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
@@ -456,13 +550,18 @@ class Beam(object):
         self.speadops.item_0x1045(sig=meta_ig)
         self.speadops.item_0x1046(sig=meta_ig)
 
-        meta_ig.add_item(
+        self.speadops.add_item(
+            meta_ig,
             name='b_per_fpga', id=0x1047,
             description='The number of b-engines per fpga.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
             value=self.beng_per_host)
 
-        meta_ig.add_item(
+        self.speadops.item_0x104a(meta_ig)
+        self.speadops.item_0x104b(meta_ig)
+
+        self.speadops.add_item(
+            meta_ig,
             name='beng_out_bits_per_sample', id=0x1050,
             description='The number of bits per value in the beng output. '
                         'Note that this is for a single value, not the '
@@ -480,15 +579,17 @@ class Beam(object):
         Update the SPEAD IGs to notify the receiver of changes to destination
         :return:
         """
-        meta_ig = self.data_product.meta_ig
-        meta_ig.add_item(
+        meta_ig = self.data_stream.meta_ig
+        self.speadops.add_item(
+            meta_ig,
             name='rx_udp_port', id=0x1022,
             description='Destination UDP port for B engine output.',
             shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.data_product.destination.port)
+            value=self.data_stream.destination.port)
 
-        ipstr = numpy.array(str(self.data_product.destination.ip))
-        meta_ig.add_item(
+        ipstr = numpy.array(str(self.data_stream.destination.ip))
+        self.speadops.add_item(
+            meta_ig,
             name='rx_udp_ip_str', id=0x1024,
             description='Destination IP address for B engine output UDP '
                         'packets.',
@@ -503,8 +604,9 @@ class Beam(object):
         Update the weights in the BEAM SPEAD ItemGroups.
         :return:
         """
-        meta_ig = self.data_product.meta_ig
-        meta_ig.add_item(
+        meta_ig = self.data_stream.meta_ig
+        self.speadops.add_item(
+            meta_ig,
             name='beamweight',
             id=0x2000,
             description='The unitless per-channel digital scaling '
@@ -522,7 +624,7 @@ class Beam(object):
         Update the labels in the BEAM SPEAD ItemGroups.
         :return:
         """
-        meta_ig = self.data_product.meta_ig
+        meta_ig = self.data_stream.meta_ig
         self.speadops.item_0x100e(sig=meta_ig)
         LOGGER.info('Beam %i:%s - updated label metadata' % (
             self.index, self.name))
@@ -543,12 +645,12 @@ class Beam(object):
         Transmit SPEAD metadata for all beams
         :return:
         """
-        self.data_product.meta_transmit()
+        self.data_stream.meta_transmit()
 
-    def spead_meta_issue_all(self, data_product):
+    def spead_meta_issue_all(self, data_stream):
         """
         Issue = update + transmit
+        :param data_stream: the DataStrem for which to issue metadata
         """
         self.spead_meta_update_all()
         self.spead_meta_transmit_all()
-
