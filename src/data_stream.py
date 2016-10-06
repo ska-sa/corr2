@@ -27,7 +27,7 @@ def _setup_spead(meta_address):
     streamsocket = socket.socket(family=socket.AF_INET,
                                  type=socket.SOCK_DGRAM,
                                  proto=socket.IPPROTO_IP)
-    ttl_bin = struct.pack('@i', 2)
+    ttl_bin = struct.pack('@i', 4)
     streamsocket.setsockopt(
         socket.IPPROTO_IP,
         socket.IP_MULTICAST_TTL,
