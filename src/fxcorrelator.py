@@ -525,6 +525,9 @@ class FxCorrelator(Instrument):
             self.post_switch_delay = int(_fxcorr_d['switch_delay'])
         except KeyError:
             self.post_switch_delay = 10
+        if 'spead_metapacket_ttl' in _fxcorr_d:
+            import data_stream
+            data_stream.SPEAD_PKT_TTL = int(_fxcorr_d['spead_metapacket_ttl'])
 
         _feng_d = self.configd['fengine']
         self.adc_demux_factor = int(_feng_d['adc_demux_factor'])

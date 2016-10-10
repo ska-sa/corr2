@@ -16,6 +16,8 @@ XENGINE_CROSS_PRODUCTS = 2
 BEAMFORMER_FREQUENCY_DOMAIN = 3
 BEAMFORMER_TIME_DOMAIN = 4
 
+SPEAD_PKT_TTL = 2
+
 
 class StreamAddress(object):
     """
@@ -180,7 +182,7 @@ class DataStream(object):
 def _setup_spead(meta_address):
     """
     Set up a SPEAD ItemGroup and transmitter.
-    :param meta_address:
+    :param meta_address: where are messages on this socket sent?
     :return:
     """
     meta_ig = sptx.ItemGroup(flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
@@ -188,7 +190,7 @@ def _setup_spead(meta_address):
     streamsocket = socket.socket(family=socket.AF_INET,
                                  type=socket.SOCK_DGRAM,
                                  proto=socket.IPPROTO_IP)
-    ttl_bin = struct.pack('@i', 2)
+    ttl_bin = struct.pack('@i', SPEAD_PKT_TTL)
     streamsocket.setsockopt(
         socket.IPPROTO_IP,
         socket.IP_MULTICAST_TTL,
