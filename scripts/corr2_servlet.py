@@ -349,6 +349,23 @@ class Corr2Server(katcp.DeviceServer):
         return tuple(['ok'] +
                      Corr2Server.rv_to_liststr(_src[source_name]))
 
+    @request(Str(default='', multiple=True))
+    @return_reply(Str(multiple=True))
+    def request_gain_all(self, sock, *eq_vals):
+        """
+        Apply and/or get the gain settings for an input
+        :param sock:
+        :param eq_vals: the equaliser values
+        :return:
+        """
+        if len(eq_vals) > 0 and eq_vals[0] != '':
+            try:
+                self.instrument.fops.eq_set(True, None, list(eq_vals))
+            except Exception as ex:
+                return self._log_excep(ex, 'Failed setting eq for all sources')
+        _src = self.instrument.fops.eq_get(None).values()[0]
+        return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
+
     @request(Float(), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):

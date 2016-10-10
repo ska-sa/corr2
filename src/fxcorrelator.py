@@ -299,7 +299,7 @@ class FxCorrelator(Instrument):
             self.logger.error(_err)
             raise RuntimeError(_err)
         t_now = time.time()
-        self.set_synch_time(t_now - feng_mcnt / float(self.sample_rate_hz))
+        self.set_synch_time(t_now - feng_mcnt / self.sample_rate_hz)
         self.logger.info('\tnew epoch: %.3f' % self.synchronisation_epoch)
 
     def time_from_mcnt(self, mcnt):
@@ -312,7 +312,7 @@ class FxCorrelator(Instrument):
             self.logger.info('time_from_mcnt: synch epoch unset, estimating')
             self.est_synch_epoch()
         return self.synchronisation_epoch + (
-            float(mcnt) / float(self.sample_rate_hz))
+            float(mcnt) / self.sample_rate_hz)
 
     def mcnt_from_time(self, time_seconds):
         """
@@ -517,7 +517,7 @@ class FxCorrelator(Instrument):
         self.arp_wait_time = int(_fxcorr_d['arp_wait_time'])
         self.sensor_poll_time = int(_fxcorr_d['sensor_poll_time'])
         self.katcp_port = int(_fxcorr_d['katcp_port'])
-        self.sample_rate_hz = int(_fxcorr_d['sample_rate_hz'])
+        self.sample_rate_hz = float(_fxcorr_d['sample_rate_hz'])
         self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
         self.time_jitter_allowed_ms = int(_fxcorr_d['time_jitter_allowed_ms'])
         self.time_offset_allowed_s = int(_fxcorr_d['time_offset_allowed_s'])

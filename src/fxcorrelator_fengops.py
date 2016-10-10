@@ -226,7 +226,7 @@ class FEngineOperations(object):
             # compare the F-engine times to the local UNIX time
             if synch_epoch != -1:
                 # is the time in the future?
-                feng_time_s = feng_mcnt / float(self.corr.sample_rate_hz)
+                feng_time_s = feng_mcnt / self.corr.sample_rate_hz
                 feng_time = synch_epoch + feng_time_s
                 if feng_time > read_time:
                     _err = '%s: F-engine time cannot be in the future? ' \
@@ -249,7 +249,7 @@ class FEngineOperations(object):
 
         # are they all within 500ms of one another?
         diff = max(feng_times.values()) - min(feng_times.values())
-        diff_ms = diff / float(self.corr.sample_rate_hz) * 1000.0
+        diff_ms = diff / self.corr.sample_rate_hz * 1000.0
         if diff_ms > self.corr.time_jitter_allowed_ms:
             _err = 'F-engine timestamps are too far apart: %.3fms' % diff_ms
             self.logger.error(_err)
@@ -589,9 +589,11 @@ class FEngineOperations(object):
                                   'old value! - %s' % e.message)
                 raise ValueError('New EQ error - REVERTED to '
                                  'old value! - %s' % e.message)
-        self.corr.speadops.update_metadata(0x1400)
-        if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_feng_eq()
+        if write:
+            # only want this to happen after the values are written
+            self.corr.speadops.update_metadata(0x1400)
+            if self.corr.sensor_manager:
+                self.corr.sensor_manager.sensors_feng_eq()
 
     def eq_write_all(self, new_eq_dict=None):
         """
