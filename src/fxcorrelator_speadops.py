@@ -38,7 +38,7 @@ class SpeadOperations(object):
         if sig is not None:
             sig.add_item(**kwargs)
         if stx is not None:
-            stx.send_heap(sig.get_heap())
+            stx.send_heap(sig.get_heap(descriptors='all', data='all'))
         # add or update a sensor
         if self.corr.sensor_manager:
             # does the sensor exist?
