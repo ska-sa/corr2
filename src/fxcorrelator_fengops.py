@@ -54,8 +54,9 @@ class FEngineOperations(object):
         if 'x_setup' in self.hosts[0].registers.names():
             self.logger.info('Found num_x independent F-engines')
             # set up the x-engine information in the F-engine hosts
-            num_xhosts = len(self.corr.xhosts)
-            num_x = num_xhosts * int(self.corr.configd['xengine']['x_per_fpga'])
+            num_x_hosts = len(self.corr.xhosts)
+            x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
+            num_x = num_x_hosts * x_per_fpga
             f_per_x = self.corr.n_chans / num_x
             ip_per_x = 1.0
             THREADED_FPGA_OP(

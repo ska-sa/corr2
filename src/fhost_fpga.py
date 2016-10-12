@@ -397,10 +397,10 @@ class FpgaFHost(DigitiserStreamReceiver):
         LOGGER.info('%s attempting delay delta to %e (%e after shift)' %
                     (infostr, delay_delta, delta_delay_shifted))
         reg_info = delay_delta_reg.block_info
-        b = int(reg_info['bin_pts'])
+        reg_bp = int(parse_slx_params(reg_info['bin_pts'])[0])
 
-        max_positive_delta_delay = 1 - 1/float(2**b)
-        max_negative_delta_delay = -1 + 1/float(2**b)
+        max_positive_delta_delay = 1 - 1/float(2**reg_bp)
+        max_negative_delta_delay = -1 + 1/float(2**reg_bp)
         if delta_delay_shifted > max_positive_delta_delay:
             dds = max_positive_delta_delay
             dd = dds / bitshift
