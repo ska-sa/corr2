@@ -205,14 +205,17 @@ class FxCorrelator(Instrument):
         self.fops.tx_enable()
 
         # jason's hack to force a reset on the f-engines
-        for ctr in range(0, 2):
-            time.sleep(1)
-            self.fops.sys_reset()
+        time.sleep(1)
+        self.fops.sys_reset()
 
         # wait for switches to learn, um, stuff
         self.logger.info('post mess-with-the-switch delay of %is' %
                          self.post_switch_delay)
         time.sleep(self.post_switch_delay)
+
+        # jason's hack to force a reset on the f-engines
+        self.fops.sys_reset()
+        time.sleep(1)
 
         # reset all counters on fhosts and xhosts
         self.fops.clear_status_all()
