@@ -185,11 +185,11 @@ class Corr2Server(katcp.DeviceServer):
         #            'request_digitiser_synch_epoch'
         if synch_time > -1.0:
             try:
-                self.instrument.set_synch_time(synch_time)
+                self.instrument.synchronisation_epoch = synch_time
             except Exception as ex:
                 return self._log_excep(ex,
                                        'Failed to set digitiser synch epoch.')
-        return 'ok', self.instrument.get_synch_time()
+        return 'ok', self.instrument.synchronisation_epoch
 
     @request(Str(), Str())
     @return_reply()
@@ -253,7 +253,7 @@ class Corr2Server(katcp.DeviceServer):
                 failmsg = 'Failed: stream {0} not in instrument data streams:' \
                           ' {1}'.format(strm, self.instrument.data_streams)
                 return self._log_excep(None, failmsg)
-            dstrm = self.instrument.data_streams[strm]
+            dstrm = self.instrument.get_data_stream(strm)
             sock.inform(strm, '{0}'.format(str(dstrm.destination)))
         return 'ok',
 
@@ -586,14 +586,17 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        if self.instrument is None:
-            return self._log_excep(None, '... you have not connected yet!')
-        print '\nlog:'
-        self.instrument.loghandler.print_messages()
-        logstrings = self.instrument.loghandler.get_log_strings()
-        for logstring in logstrings:
-            sock.inform('log', logstring)
-        return 'ok', len(logstrings)
+        return self._log_excep(
+            None,
+            'Currently not working.')
+        # if self.instrument is None:
+        #     return self._log_excep(None, '... you have not connected yet!')
+        # print '\nlog:'
+        # self.instrument.loghandler.print_messages()
+        # logstrings = self.instrument.loghandler.get_log_strings()
+        # for logstring in logstrings:
+        #     sock.inform('log', logstring)
+        # return 'ok', len(logstrings)
 
     @request(Str(default=''), Int(default=-1))
     @return_reply(Str())

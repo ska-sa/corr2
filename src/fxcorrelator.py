@@ -12,7 +12,6 @@ import time
 from casperfpga import utils as fpgautils
 
 import utils
-import sensors
 import xhost_fpga
 import fhost_fpga
 import bhost_fpga
@@ -596,62 +595,6 @@ class FxCorrelator(Instrument):
             addr = StreamAddress.from_address_string(source_mcast[ctr])
             dig_src = DigitiserStream(source, ctr, addr)
             self.add_data_stream(dig_src)
-
-    def _handle_sources(self):
-        """
-        Sort out sources and eqs for them
-        :return:
-        """
-        assert len(self.fhosts) > 0
-        _fengd = self.configd['fengine']
-
-        # match eq polys to source names
-        eq_polys = {}
-        for src_name in source_names:
-            eq_polys[src_name] = utils.process_new_eq(
-                _feng_cfg['eq_poly_%s' % src_name])
-        assert len(eq_polys) == len(source_names), (
-            'Digitiser source names (%d) must be paired with EQ polynomials '
-            '(%d).' % (len(source_names), len(source_mcast)))
-
-        # assemble the sources given into a list
-        _feng_src_temp = []
-        for source_ctr, address in enumerate(source_mcast):
-            new_source = fhost_fpga.FengineSource.from_address_string(address)
-            new_source.name = source_names[source_ctr]
-            new_source.source_number = source_ctr
-            new_source.offset = source_ctr % self.f_per_fpga
-            new_source.eq_poly = eq_polys[new_source.name]
-            new_source.eq_bram_name = 'eq%i' % new_source.offset
-            assert new_source.ip_range == self.ports_per_fengine, (
-                'F-engines should be receiving from %d streams.' %
-                self.ports_per_fengine)
-            _feng_src_temp.append(new_source)
-
-        # check that the sources all have the same IP ranges
-        for _source in _feng_src_temp:
-            assert _source.ip_range == _feng_src_temp[0].ip_range, (
-                'All F-engines should be receiving from %d streams.' %
-                self.ports_per_fengine)
-
-        # assign sources to fhosts
-        self.logger.info('Assigning FengineSources to f-hosts')
-        _src_ctr = 0
-        self.fengine_sources = {}
-        for fhost in self.fhosts:
-            self.logger.info('\t%s:' % fhost.host)
-            for fengnum in range(0, self.f_per_fpga):
-                _src = _feng_src_temp[_src_ctr]
-                _src.host = fhost
-                self.fengine_sources[_src.name] = _src
-                fhost.add_source(_src)
-                self.logger.info('\t\t%s' % _src)
-                _src_ctr += 1
-        if _src_ctr != len(self.fhosts) * self.f_per_fpga:
-            raise RuntimeError('We have different numbers of sources (%d) and '
-                               'F-engines (%d). Problem.', _src_ctr,
-                               len(self.fhosts) * self.f_per_fpga)
-        self.logger.info('done.')
 
     def _read_config_file(self):
         """
