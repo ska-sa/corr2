@@ -1,6 +1,4 @@
 import logging
-import time
-from katcp import Sensor
 from casperfpga import utils as fpgautils
 
 from beam import Beam

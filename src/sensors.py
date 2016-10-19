@@ -236,9 +236,10 @@ class SensorManager(object):
         :return:
         """
         if '_' in name:
-            LOGGER.warning('Sensor names cannot have underscores in them, so '
-                           '{name} becomes {name_conv}'.format(
-                name=name, name_conv=name.replace('_', '-')))
+            LOGGER.warning(
+                'Sensor names cannot have underscores in them, so {name} '
+                'becomes {name_conv}'.format(
+                    name=name, name_conv=name.replace('_', '-')))
             name = name.replace('_', '-')
         try:
             sensor = self.sensor_get(name)

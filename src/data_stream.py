@@ -1,6 +1,6 @@
 import logging
 import spead2
-import spead2.send as sptx
+import spead2.send
 import struct
 import socket
 
@@ -179,28 +179,53 @@ class DataStream(object):
             self.name, self.category, self.destination)
 
 
+class SPEADStream(DataStream):
+    """
+    A DataStream that is also a SPEAD stream.
+    Sends SPEAD data descriptors on tx_enable.
+    """
+    def __init__(self,
+                 name,
+                 category,
+                 destination,
+                 tx_enable_method=None,
+                 tx_disable_method=None,
+                 destination_cb=None):
+        super(SPEADStream, self).__init__(
+            name, category, destination, tx_enable_method, tx_disable_method,
+            destination_cb)
+        self.descriptor_ig, self.descriptor_tx = _setup_spead(self.destination)
+        self.send_descriptors = None
+
+    def tx_enable(self):
+        if self.send_descriptors is None:
+            errmsg = 'SPEADStream({name}) must have a way to send relevant' \
+                     'data descriptors.'.format(name=self.name)
+            LOGGER.error(errmsg)
+            raise RuntimeError(errmsg)
+        self.send_descriptors()
+        super(SPEADStream, self).tx_enable()
+
+
 def _setup_spead(meta_address):
     """
     Set up a SPEAD ItemGroup and transmitter.
     :param meta_address: where are messages on this socket sent?
     :return:
     """
-    meta_ig = sptx.ItemGroup(flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
-    streamconfig = sptx.StreamConfig(max_packet_size=4096, max_heaps=8)
-    streamsocket = socket.socket(family=socket.AF_INET,
-                                 type=socket.SOCK_DGRAM,
-                                 proto=socket.IPPROTO_IP)
+    flavour = spead2.Flavour(4, 64, SPEAD_ADDRSIZE)
+    meta_ig = spead2.send.ItemGroup(flavour=flavour)
+    streamconfig = spead2.send.StreamConfig(max_packet_size=4096, max_heaps=8)
+    streamsocket = socket.socket(
+        family=socket.AF_INET, type=socket.SOCK_DGRAM, proto=socket.IPPROTO_IP)
     ttl_bin = struct.pack('@i', SPEAD_PKT_TTL)
     streamsocket.setsockopt(
         socket.IPPROTO_IP,
         socket.IP_MULTICAST_TTL,
         ttl_bin)
-    meta_tx = sptx.UdpStream(spead2.ThreadPool(),
-                             str(meta_address.ip_address),
-                             meta_address.port,
-                             streamconfig,
-                             51200000,
-                             streamsocket)
+    meta_tx = spead2.send.UdpStream(
+        spead2.ThreadPool(), str(meta_address.ip_address), meta_address.port,
+        streamconfig, 5120000, streamsocket)
     return meta_ig, meta_tx
 
 
@@ -284,7 +309,7 @@ class DataMetaStream(DataStream):
         :return:
         """
         try:
-            heapgen = sptx.HeapGenerator(self.meta_ig)
+            heapgen = spead2.send.HeapGenerator(self.meta_ig)
             self.meta_tx.send_heap(heapgen.get_start())
         except AttributeError:
             LOGGER.warning('Installed version of SPEAD2 does not seem to'
@@ -298,7 +323,7 @@ class DataMetaStream(DataStream):
         """
         super(DataMetaStream, self).tx_disable()
         try:
-            heapgen = sptx.HeapGenerator(self.meta_ig)
+            heapgen = spead2.send.HeapGenerator(self.meta_ig)
             self.meta_tx.send_heap(heapgen.get_end())
         except AttributeError:
             LOGGER.warning('Installed version of SPEAD2 does not seem to'

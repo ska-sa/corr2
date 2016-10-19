@@ -3,7 +3,7 @@ import time
 
 from casperfpga import utils as fpgautils
 
-from data_stream import DataStream, FENGINE_CHANNELISED_DATA, \
+from data_stream import SPEADStream, FENGINE_CHANNELISED_DATA, \
     DIGITISER_ADC_SAMPLES
 import utils
 import fhost_fpga
@@ -164,9 +164,9 @@ class FEngineOperations(object):
                                       'supported.'
         output_name = output_name[0]
         output_address = output_address[0]
-        self.data_stream = DataStream(output_name,
-                                      FENGINE_CHANNELISED_DATA,
-                                      output_address)
+        self.data_stream = SPEADStream(output_name,
+                                       FENGINE_CHANNELISED_DATA,
+                                       output_address)
         self.corr.add_data_stream(self.data_stream)
 
     def sys_reset(self, sleeptime=0):
