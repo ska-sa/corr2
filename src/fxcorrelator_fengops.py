@@ -3,8 +3,10 @@ import time
 
 from casperfpga import utils as fpgautils
 
-from data_source import DataSource
+from data_stream import DataStream, FENGINE_CHANNELISED_DATA, \
+    DIGITISER_ADC_SAMPLES
 import utils
+import fhost_fpga
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -14,7 +16,7 @@ class FEngineOperations(object):
 
     def __init__(self, corr_obj):
         """
-        A collection of f-engine operations that act on/with a
+        A collection of F-engine operations that act on/with a
         correlator instance.
         :param corr_obj:
         :return:
@@ -22,7 +24,8 @@ class FEngineOperations(object):
         self.corr = corr_obj
         self.hosts = corr_obj.fhosts
         self.logger = corr_obj.logger
-        # do config things
+        self.fengines = []
+        self.data_stream = None
 
     def initialise_post_gbe(self):
         """
@@ -30,10 +33,11 @@ class FEngineOperations(object):
         :return:
         """
         # write the board IDs to the fhosts
+        output_port = self.data_stream.destination.port
         board_id = 0
         for f in self.hosts:
             f.registers.tx_metadata.write(board_id=board_id,
-                                          porttx=self.corr.fengine_output.port)
+                                          porttx=output_port)
             board_id += 1
 
         # release from reset
@@ -42,14 +46,14 @@ class FEngineOperations(object):
 
     def initialise_pre_gbe(self):
         """
-        Set up f-engines on this device. This is done after programming the
+        Set up F-engines on this device. This is done after programming the
         devices in the instrument.
         :return:
         """
 
         if 'x_setup' in self.hosts[0].registers.names():
-            self.logger.info('Found num_x independent f-engines')
-            # set up the x-engine information in the f-engine hosts
+            self.logger.info('Found num_x independent F-engines')
+            # set up the x-engine information in the F-engine hosts
             num_x_hosts = len(self.corr.xhosts)
             x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
             num_x = num_x_hosts * x_per_fpga
@@ -64,7 +68,7 @@ class FEngineOperations(object):
                                                   num_x=num_x,),))
             time.sleep(1)
         else:
-            self.logger.info('Found FIXED num_x f-engines')
+            self.logger.info('Found FIXED num_x F-engines')
 
         # set eq and shift
         self.eq_write_all()
@@ -78,11 +82,8 @@ class FEngineOperations(object):
                 lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
         self.clear_status_all()
 
-        # where does the f-engine data go?
-        self.corr.fengine_output = DataSource.from_mcast_string(
-            self.corr.configd['fengine']['destination_mcast_ips'])
-        self.corr.fengine_output.name = 'fengine_destination'
-        fdest_ip = int(self.corr.fengine_output.ip_address)
+        # where does the F-engine data go?
+        fdest_ip = int(self.data_stream.destination.ip_address)
         THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
             lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),))
 
@@ -96,7 +97,77 @@ class FEngineOperations(object):
         is instantiated.
         :return:
         """
-        return
+        assert len(self.corr.fhosts) > 0
+        _fengd = self.corr.configd['fengine']
+
+        dig_streams = []
+        for stream in self.corr.data_streams:
+            if stream.category == DIGITISER_ADC_SAMPLES:
+                dig_streams.append((stream.name, stream.input_number))
+        dig_streams = sorted(dig_streams,
+                             key=lambda stream: stream[1])
+        # match eq polys to input names
+        eq_polys = {}
+        for dig_stream in dig_streams:
+            stream_name = dig_stream[0]
+            eq_polys[stream_name] = utils.process_new_eq(
+                _fengd['eq_poly_%s' % stream_name])
+        assert len(eq_polys) == len(dig_streams), (
+            'Digitiser input names (%d) must be paired with EQ polynomials '
+            '(%d).' % (len(dig_streams), len(eq_polys)))
+
+        # assemble the inputs given into a list
+        _feng_temp = []
+        for stream in dig_streams:
+            new_feng = fhost_fpga.Fengine(
+                input_stream=self.corr.get_data_stream(stream[0]),
+                host=None,
+                offset=stream[1] % self.corr.f_per_fpga,
+                sensor_manager=None)
+            new_feng.eq_poly = eq_polys[new_feng.name]
+            new_feng.eq_bram_name = 'eq%i' % new_feng.offset
+            dest_ip_range = new_feng.input.destination.ip_range
+            assert dest_ip_range == self.corr.ports_per_fengine, (
+                'F-engines should be receiving from %d streams.' %
+                self.corr.ports_per_fengine)
+            _feng_temp.append(new_feng)
+
+        # check that the inputs all have the same IP ranges
+        _ip_range0 = _feng_temp[0].input.destination.ip_range
+        for _feng in _feng_temp:
+            _ip_range = _feng.input.destination.ip_range
+            assert _ip_range == _ip_range0, (
+                'All F-engines should be receiving from %d streams.' %
+                self.corr.ports_per_fengine)
+
+        # assign inputs to fhosts
+        self.logger.info('Assigning Fengines to f-hosts')
+        _feng_ctr = 0
+        self.fengines = []
+        for fhost in self.hosts:
+            self.logger.info('\t%s:' % fhost.host)
+            for fengnum in range(0, self.corr.f_per_fpga):
+                _feng = _feng_temp[_feng_ctr]
+                _feng.host = fhost
+                self.fengines.append(_feng)
+                fhost.add_fengine(_feng)
+                self.logger.info('\t\t%s' % _feng)
+                _feng_ctr += 1
+        if _feng_ctr != len(self.hosts) * self.corr.f_per_fpga:
+            raise RuntimeError('We have different numbers of inputs (%d) and '
+                               'F-engines (%d). Problem.', _feng_ctr,
+                               len(self.hosts) * self.corr.f_per_fpga)
+        self.logger.info('done.')
+
+        output_name, output_address = utils.parse_output_products(_fengd)
+        assert len(output_name) == 1, 'Currently only single feng products ' \
+                                      'supported.'
+        output_name = output_name[0]
+        output_address = output_address[0]
+        self.data_stream = DataStream(output_name,
+                                      FENGINE_CHANNELISED_DATA,
+                                      output_address)
+        self.corr.add_data_stream(self.data_stream)
 
     def sys_reset(self, sleeptime=0):
         """
@@ -104,7 +175,7 @@ class FEngineOperations(object):
         :param sleeptime:
         :return:
         """
-        self.logger.info('Forcing an f-engine resync')
+        self.logger.info('Forcing an F-engine resync')
         THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
             lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
         if sleeptime > 0:
@@ -112,7 +183,7 @@ class FEngineOperations(object):
 
     def check_rx(self, max_waittime=30):
         """
-        Check that the f-engines are receiving data correctly
+        Check that the F-engines are receiving data correctly
         :param max_waittime:
         :return:
         """
@@ -130,8 +201,8 @@ class FEngineOperations(object):
 
     def check_rx_timestamps(self):
         """
-        Are the timestamps being received by the f-engines okay?
-        :return: (a boolean, the f-engine times as 48-bit counts,
+        Are the timestamps being received by the F-engines okay?
+        :return: (a boolean, the F-engine times as 48-bit counts,
         their unix representations)
         """
         self.logger.info('Checking timestamps on F hosts...')
@@ -139,9 +210,9 @@ class FEngineOperations(object):
             self.hosts, timeout=5,
             target_function='get_local_time')
         read_time = time.time()
-        synch_epoch = self.corr.get_synch_time()
+        synch_epoch = self.corr.synchronisation_epoch
         if synch_epoch == -1:
-            self.logger.warning('System synch epoch unset, skipping f-engine '
+            self.logger.warning('System synch epoch unset, skipping F-engine '
                                 'future time test.')
         feng_times = {}
         feng_times_unix = {}
@@ -149,17 +220,17 @@ class FEngineOperations(object):
             feng_mcnt = results[host.host]
             # are the count bits okay?
             if feng_mcnt & 0xfff != 0:
-                _err = '%s: bottom 12 bits of timestamp from f-engine are ' \
+                _err = '%s: bottom 12 bits of timestamp from F-engine are ' \
                        'not zero?! feng_mcnt(%i)' % (host.host, feng_mcnt)
                 self.logger.error(_err)
                 return False, feng_times, feng_times_unix
-            # compare the f-engine times to the local UNIX time
+            # compare the F-engine times to the local UNIX time
             if synch_epoch != -1:
                 # is the time in the future?
-                feng_time_s = feng_mcnt / float(self.corr.sample_rate_hz)
+                feng_time_s = feng_mcnt / self.corr.sample_rate_hz
                 feng_time = synch_epoch + feng_time_s
                 if feng_time > read_time:
-                    _err = '%s: f-engine time cannot be in the future? ' \
+                    _err = '%s: F-engine time cannot be in the future? ' \
                            'now(%.3f) feng_time(%.3f)' % (host.host, read_time,
                                                           feng_time)
                     self.logger.error(_err)
@@ -179,7 +250,7 @@ class FEngineOperations(object):
 
         # are they all within 500ms of one another?
         diff = max(feng_times.values()) - min(feng_times.values())
-        diff_ms = diff / float(self.corr.sample_rate_hz) * 1000.0
+        diff_ms = diff / self.corr.sample_rate_hz * 1000.0
         if diff_ms > self.corr.time_jitter_allowed_ms:
             _err = 'F-engine timestamps are too far apart: %.3fms' % diff_ms
             self.logger.error(_err)
@@ -256,8 +327,8 @@ class FEngineOperations(object):
     #         ant_delay.append((delay, fringe))
     #
     #     labels = []
-    #     for src in self.corr.fengine_sources:
-    #         labels.append(src['source'].name)
+    #     for feng in self.corr.fengines:
+    #         labels.append(feng['input'].name)
     #     if len(ant_delay) != len(labels):
     #         raise ValueError(
     #             'Too few values provided: expected(%i) got(%i)' %
@@ -288,11 +359,11 @@ class FEngineOperations(object):
             raise ValueError(_err)
 
         dlist = delays
-        _n_fsource = len(self.corr.fengine_sources)
-        if len(dlist) != _n_fsource:
+        _numfeng = len(self.fengines)
+        if len(dlist) != _numfeng:
             _err = 'Too few delay setup parameters given. Need as ' \
-                   'many as there are f-sources(%i), given %i delay ' \
-                   'settings' % (_n_fsource, len(dlist))
+                   'many as there are inputs (%i), given %i delay ' \
+                   'settings' % (_numfeng, len(dlist))
             self.logger.error(_err)
             raise ValueError(_err)
 
@@ -319,6 +390,10 @@ class FEngineOperations(object):
                 val['act_delay'], val['act_delay_delta'],
                 val['act_phase_offset'], val['act_phase_offset_delta'])
             rv.append(res_str)
+
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_feng_delays()
+
         return rv
 
     def set_delays_all(self, loadtime, coeffs):
@@ -328,39 +403,39 @@ class FEngineOperations(object):
         :param coeffs:
         :return:
         """
-        # set the delays in all the data source objects
-        for src in self.corr.fengine_sources.values():
-            srcnum = src.source_number
-            vals = self._prepare_delay_vals(coeffs[srcnum][0][0],
-                                            coeffs[srcnum][0][1],
-                                            coeffs[srcnum][1][0],
-                                            coeffs[srcnum][1][1],
+        # set the delays in all the fengine objects
+        for feng in self.fengines:
+            fengnum = feng.input_number
+            vals = self._prepare_delay_vals(coeffs[fengnum][0][0],
+                                            coeffs[fengnum][0][1],
+                                            coeffs[fengnum][1][0],
+                                            coeffs[fengnum][1][1],
                                             loadtime, False)
-            src.set_delay(vals['delay'], vals['delay_delta'],
-                          vals['phase_offset'], vals['phase_offset_delta'],
-                          vals['load_time'], None, False)
+            feng.set_delay(vals['delay'], vals['delay_delta'],
+                           vals['phase_offset'], vals['phase_offset_delta'],
+                           vals['load_time'], None, False)
 
         # spawn threads to write values out, giving a maximum time of 0.75
         # seconds to do them all
         actual_vals = THREADED_FPGA_FUNC(self.corr.fhosts, timeout=0.75,
                                          target_function='write_delays_all')
         act_vals = []
-        for count, src in enumerate(self.corr.fengine_sources.values()):
-            hostname = src.host.host
-            src_actual_value = actual_vals[hostname][src.offset]
-            vals = self._prepare_actual_delay_vals(src_actual_value)
+        for count, feng in enumerate(self.fengines):
+            hostname = feng.host.host
+            feng_actual_value = actual_vals[hostname][feng.offset]
+            vals = self._prepare_actual_delay_vals(feng_actual_value)
             act_vals.append(vals)
             self.logger.info(
                 '[%s] Phase offset actually set to %6.3f rad with rate %e '
                 'rad/s.' %
-                (src.name,
-                 actual_vals[hostname][src.offset]['act_phase_offset'],
-                 actual_vals[hostname][src.offset]['act_phase_offset_delta']))
+                (feng.name,
+                 actual_vals[hostname][feng.offset]['act_phase_offset'],
+                 actual_vals[hostname][feng.offset]['act_phase_offset_delta']))
             self.logger.info(
                 '[%s] Delay actually set to %e samples with rate %e.' %
-                (src.name,
-                 actual_vals[hostname][src.offset]['act_delay'],
-                 actual_vals[hostname][src.offset]['act_delay_delta']))
+                (feng.name,
+                 actual_vals[hostname][feng.offset]['act_delay'],
+                 actual_vals[hostname][feng.offset]['act_delay_delta']))
         return act_vals
 
     # def set_delay(self, source_name, delay=0, delay_delta=0, phase_offset=0,
@@ -388,10 +463,10 @@ class FEngineOperations(object):
     #
     #     # determine fhost to write to
     #     write_hosts = []
-    #     for src in self.corr.fengine_sources:
-    #         if source_name in src['source'].name:
-    #             offset = src['numonhost']
-    #             write_hosts.append(src['host'])
+    #     for feng in self.corr.fengines:
+    #         if source_name in feng['source'].name:
+    #             offset = feng['numonhost']
+    #             write_hosts.append(feng['host'])
     #     if len(write_hosts) == 0:
     #         raise ValueError('Unknown source name %s' % source_name)
     #     elif len(write_hosts) > 1:
@@ -428,7 +503,7 @@ class FEngineOperations(object):
 
     def check_tx(self):
         """
-        Check that the f-engines are sending data correctly
+        Check that the F-engines are sending data correctly
         :return:
         """
         self.logger.info('Checking F hosts are transmitting data...')
@@ -461,68 +536,78 @@ class FEngineOperations(object):
             self.hosts, 5,
             (lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
 
-    def eq_get(self, source_name=None):
+    def get_fengine(self, input_name):
+        for feng in self.fengines:
+            if input_name == feng.name:
+                return feng
+        raise ValueError('Could not find F-engine with input %s' % input_name)
+
+    def eq_get(self, input_name=None):
         """
-        Return the EQ arrays in a dictionary, arranged by source name.
-        :param source_name: if this is given, return only this source's eq
+        Return the EQ arrays in a dictionary, arranged by input name.
+        :param input_name: if this is given, return only this input's eq
         :return:
         """
-        if source_name is not None:
-            return {source_name: self.corr.fengine_sources[source_name].eq_poly}
+        if input_name is not None:
+            return {input_name: self.get_fengine(input_name).eq_poly}
         return {
-            src.name: src.eq_poly for src in self.corr.fengine_sources.values()
+            feng.name: feng.eq_poly for feng in self.fengines
         }
 
-    def eq_set(self, write=True, source_name=None, new_eq=None):
+    def eq_set(self, write=True, input_name=None, new_eq=None):
         """
-        Set the EQ for a specific source
+        Set the EQ for a specific input
         :param write: should the value be written to BRAM on the device?
-        :param source_name: the source name
+        :param input_name: the input name
         :param new_eq: an eq list or value or poly
         :return:
         """
         if new_eq is None:
             raise ValueError('New EQ of nothing makes no sense.')
-        # if no source is given, apply the new eq to all sources
-        if source_name is None:
-            self.logger.info('Setting EQ on all sources to new given EQ.')
+        # if no input is given, apply the new eq to all inputs
+        if input_name is None:
+            self.logger.info('Setting EQ on all inputs to new given EQ.')
             for fhost in self.hosts:
-                for src in fhost.data_sources:
-                    self.eq_set(write=False, source_name=src.name,
+                for feng in fhost.fengines:
+                    self.eq_set(write=False, input_name=feng.name,
                                 new_eq=new_eq)
             if write:
                 self.eq_write_all()
         else:
-            src = self.corr.fengine_sources[source_name]
-            old_eq = src.eq_poly[:]
+            feng = self.get_fengine(input_name)
+            old_eq = feng.eq_poly[:]
             try:
                 neweq = utils.process_new_eq(new_eq)
-                src.eq_poly = neweq
+                feng.eq_poly = neweq
                 self.logger.info(
-                    'Updated EQ value for source %s: %s...' % (
-                        source_name, neweq[0:min(10, len(neweq))]))
+                    'Updated EQ value for input %s: %s...' % (
+                        input_name, neweq[0:min(10, len(neweq))]))
                 if write:
-                    src.host.write_eq(source_name=source_name)
+                    feng.host.write_eq(input_name=input_name)
             except Exception as e:
-                src.eq_poly = old_eq[:]
+                feng.eq_poly = old_eq[:]
                 self.logger.error('New EQ error - REVERTED to '
                                   'old value! - %s' % e.message)
                 raise ValueError('New EQ error - REVERTED to '
                                  'old value! - %s' % e.message)
-        self.corr.speadops.update_metadata(0x1400)
+        if write:
+            # only want this to happen after the values are written
+            self.corr.speadops.update_metadata(0x1400)
+            if self.corr.sensor_manager:
+                self.corr.sensor_manager.sensors_feng_eq()
 
     def eq_write_all(self, new_eq_dict=None):
         """
-        Set the EQ gain for given sources and write the changes to memory.
+        Set the EQ gain for given inputs and write the changes to memory.
         :param new_eq_dict: a dictionary of new eq values to store
         :return:
         """
         if new_eq_dict is not None:
             self.logger.info('Updating some EQ values before writing.')
-            for src, new_eq in new_eq_dict.iteritems():
-                self.eq_set(write=False, source_name=src, new_eq=new_eq)
+            for feng, new_eq in new_eq_dict.iteritems():
+                self.eq_set(write=False, input_name=feng, new_eq=new_eq)
         self.logger.info('Writing EQ on all fhosts based on stored '
-                         'per-source EQ values...')
+                         'per-input EQ values...')
         THREADED_FPGA_FUNC(self.hosts, 10, 'write_eq_all')
         self.corr.speadops.update_metadata([0x1400])
         self.logger.info('done.')
@@ -537,14 +622,14 @@ class FEngineOperations(object):
             shift_value = self.corr.fft_shift
         if shift_value < 0:
             raise RuntimeError('Shift value cannot be less than zero')
-        self.logger.info('Setting FFT shift to %i on all f-engine '
+        self.logger.info('Setting FFT shift to %i on all F-engine '
                          'boards...' % shift_value)
         THREADED_FPGA_FUNC(self.hosts, 10, ('set_fft_shift', (shift_value,),))
         self.corr.fft_shift = shift_value
         self.logger.info('done.')
         self.corr.speadops.update_metadata([0x101e])
         if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensor_set('fft-shift', shift_value)
+            self.corr.sensor_manager.sensors_feng_fft_shift()
         return shift_value
 
     def get_fft_shift_all(self):
@@ -567,8 +652,8 @@ class FEngineOperations(object):
         """
         mapping = {}
         for host in self.hosts:
-            rv = ['feng{0}'.format(dsrc.source_number)
-                  for dsrc in host.data_sources]
+            rv = ['feng{0}'.format(feng.input_number)
+                  for feng in host.fengines]
             mapping[host.host] = rv
         return mapping
 
@@ -581,29 +666,30 @@ class FEngineOperations(object):
 
     def subscribe_to_multicast(self):
         """
-        Subscribe all f-engine data sources to their multicast data
+        Subscribe all F-engine data inputs to their multicast data
         :return:
         """
-        self.logger.info('Subscribing f-engine datasources...')
+        self.logger.info('Subscribing F-engine inputs...')
         for fhost in self.hosts:
             self.logger.info('\t%s:' % fhost.host)
             gbe_ctr = 0
-            for source in fhost.data_sources:
-                if not source.is_multicast():
+            for feng in fhost.fengines:
+                input_addr = feng.input.destination
+                if not input_addr.is_multicast():
                     self.logger.info('\t\tsource address %s is not '
-                                     'multicast?' % source.ip_address)
+                                     'multicast?' % input_addr.ip_address)
                 else:
-                    rxaddr = str(source.ip_address)
+                    rxaddr = str(input_addr.ip_address)
                     rxaddr_bits = rxaddr.split('.')
                     rxaddr_base = int(rxaddr_bits[3])
                     rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0],
                                                    rxaddr_bits[1],
                                                    rxaddr_bits[2])
-                    if (len(fhost.tengbes) / self.corr.f_per_fpga) != source.ip_range:
+                    if (len(fhost.tengbes) / self.corr.f_per_fpga) != input_addr.ip_range:
                         raise RuntimeError(
                             '10Gbe ports (%d) do not match sources IPs (%d)' %
-                            (len(fhost.tengbes), source.ip_range))
-                    for ctr in range(0, source.ip_range):
+                            (len(fhost.tengbes), input_addr.ip_range))
+                    for ctr in range(0, input_addr.ip_range):
                         gbename = fhost.tengbes.names()[gbe_ctr]
                         gbe = fhost.tengbes[gbename]
                         rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
@@ -629,30 +715,67 @@ class FEngineOperations(object):
         _chan_index = numpy.floor(freq / _hz_per_chan)
         return _chan_index
 
-    def get_quant_snap(self, source_name):
+    def get_quant_snap(self, input_name):
         """
-        Get the quantiser snapshot for this source_name
-        :param source_name:
+        Get the quantiser snapshot for this input_name
+        :param input_name:
         :return:
         """
         for host in self.hosts:
             try:
-                return host.get_quant_snapshot(source_name)
+                return host.get_quant_snapshot(input_name)
             except ValueError:
                 pass
-        raise ValueError('Could not find source %s anywhere.' % source_name)
+        raise ValueError('Could not find input %s anywhere.' % input_name)
 
-    def get_adc_snapshot(self, source_name=None, unix_time=-1):
+    def _get_adc_snapshot_compat(self, input_name):
         """
-        Read the small voltage buffer for a source from a host.
-        :param source_name: the source name, if None, will return all sources
+
+        :return:
+        """
+        if input_name is None:
+            res = THREADED_FPGA_FUNC(
+                self.hosts, timeout=10,
+                target_function=('get_adc_snapshots', [], {}))
+            rv = {}
+            for feng in self.fengines:
+                rv[feng.name] = res[feng.host.host]['p%i' % feng.offset]
+            return rv
+        else:
+            # return the data only for one given input
+            try:
+                feng = self.get_fengine(input_name)
+                d = feng.host.get_adc_snapshots()
+                return {input_name: d['p%i' % feng.offset]}
+            except ValueError:
+                pass
+            raise RuntimeError('Could not get ADC compat snapshot for input '
+                               '%s' % input_name)
+
+    def get_adc_snapshot(self, input_name=None, unix_time=-1):
+        """
+        Read the small voltage buffer for a input from a host.
+        :param input_name: the input name, if None, will return all inputs
         :param unix_time: the time at which to read
-        :return: {src_name0: AdcData(),
-                  src_name1: AdcData(),
+        :return: {feng_name0: AdcData(),
+                  feng_name1: AdcData(),
                  }
         """
-        if source_name is None:
-            # get data for all f-engines triggered at the same time
+        # check for compatibility for really old f-engines
+        ctrl_reg = self.hosts[0].registers.control
+        old_fengines = 'adc_snap_trig_select' not in ctrl_reg.field_names()
+        if old_fengines:
+            if unix_time == -1:
+                self.logger.warning('REALLY OLD F-ENGINES ENCOUNTERED, USING '
+                                    'IMMEDIATE ADC SNAPSHOTS')
+                return self._get_adc_snapshot_compat(input_name)
+            else:
+                raise RuntimeError('Timed ADC snapshots are not supported by '
+                                   'the F-engine hardware. Please try again '
+                                   'without specifying the snapshot trigger '
+                                   'time.')
+        if input_name is None:
+            # get data for all F-engines triggered at the same time
             localtime = self.hosts[0].get_local_time()
             _sample_rate = self.hosts[0].rx_data_sample_rate_hz
             if unix_time == -1:
@@ -669,94 +792,33 @@ class FEngineOperations(object):
                                  {'loadtime_system': loadtime,
                                   'localtime': localtime}))
             rv = {}
-            for source in self.corr.fengine_sources.values():
-                rv[source.name] = res[source.host.host]['p%i' % source.offset]
+            for feng in self.fengines:
+                rv[feng.name] = res[feng.host.host]['p%i' % feng.offset]
             return rv
         else:
-            # return the data only for one given source
+            # return the data only for one given input
             rv = None
             for host in self.hosts:
                 try:
-                    rv = host.get_adc_snapshot_for_source(
-                        source_name, unix_time)
+                    rv = host.get_adc_snapshot_for_input(
+                        input_name, unix_time)
+                    break
                 except ValueError:
                     pass
             if rv is None:
                 raise ValueError(
-                    'Could not find source %s on any host.' % source_name)
-            return {source_name: rv}
+                    'Could not find input %s on any host.' % input_name)
+            return {input_name: rv}
 
-    def check_ct_parity(self):
+    def check_qdr_devices(self):
         """
-        Check the QDR corner turner parity error counters
+        Are the QDR devices behaving?
         :return:
         """
-        return self._check_qdr_parity(
-            qdr_id='CT',
-            threshold=self.corr.qdr_ct_error_threshold,
-            reg_name='ct_ctrs',
-            reg_field_name='ct_parerr_cnt'
-        )
-
-    def check_cd_parity(self):
-        """
-        Check the QDR coarse delay parity error counters
-        :return:
-        """
-        if 'cd_ctrs' not in self.hosts[0].registers.names():
-            self.logger.info('check_qdr_parity: CD - no QDR-based coarse '
-                             'delay found')
-            return True
-        return self._check_qdr_parity(
-            qdr_id='CD',
-            threshold=self.corr.qdr_cd_error_threshold,
-            reg_name='cd_ctrs',
-            reg_field_name='cd_parerr_cnt'
-        )
-
-    def _check_qdr_parity(self, qdr_id, threshold, reg_name, reg_field_name,):
-        """
-        Check QDR parity error counters
-        :return:
-        """
-        self.logger.info('Checking %s parity errors (QDR test)' % qdr_id)
-        _required_bits = int(numpy.ceil(numpy.log2(threshold)))
-        # do the bitstreams have wide-enough counters?
-        bitwidth = self.hosts[0].registers[reg_name].field_get_by_name(reg_field_name + '0').width_bits
-        if bitwidth < _required_bits:
-            self.logger.warn(
-                '\t{qdrid} parity error counter is too narrow: {bw} < {rbw}. '
-                'NOT running test.'.format(
-                    qdrid=qdr_id, bw=bitwidth, rbw=_required_bits))
-            return True
-
-        def _check_host(host):
-            ctrs = host.registers[reg_name].read()['data']
-            note_errors = False
-            for pol in [0, 1]:
-                fname = reg_field_name + str(pol)
-                if (ctrs[fname] > 0) and (ctrs[fname] < threshold):
-                    self.logger.warn('\t{h}: {thrsh} > {nm} > 0. Que '
-                                     'pasa?'.format(h=host.host, nm=fname,
-                                                    thrsh=threshold))
-                    note_errors = True
-                elif (ctrs[fname] > 0) and (ctrs[fname] >= threshold):
-                    self.logger.error('\t{h}: {nm} > {thrsh}. Problems.'.format(
-                        h=host.host, nm=fname, thrsh=threshold))
-                    return False, False
-            return True, note_errors
-        res = THREADED_FPGA_OP(
+        res = THREADED_FPGA_FUNC(
             self.hosts, 5,
-            (_check_host, [], {}))
-        note_errors = False
-        for host, results in res.items():
-            if not results[0]:
+            ('check_qdr_devices', [self.corr.qdr_ct_error_threshold], {}))
+        for host, result in res.items():
+            if not result:
                 return False
-            if results[1]:
-                note_errors = True
-        if note_errors:
-            self.logger.info('\tcheck_qdr_parity: {} - mostly okay, some '
-                             'errors'.format(qdr_id))
-        else:
-            self.logger.info('\tcheck_qdr_parity: {} - all okay'.format(qdr_id))
         return True

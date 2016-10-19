@@ -4,7 +4,7 @@ from casperfpga import utils as fpgautils
 from casperfpga import tengbe
 
 import filthost_fpga
-from data_source import DataSource
+from data_stream import StreamAddress
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -13,6 +13,8 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 def parse_sources(name_string, ip_string):
     """
     Parse lists of source name and IPs into a list of DataSource objects.
+    :param name_string
+    :param ip_string
     :return:
     """
     source_names = name_string.strip().split(',')
@@ -23,7 +25,7 @@ def parse_sources(name_string, ip_string):
     _sources = []
     source_ctr = 0
     for counter, address in enumerate(source_mcast):
-        new_source = DataSource.from_mcast_string(address)
+        new_source = StreamAddress.from_mcast_string(address)
         new_source.name = source_names[counter]
         new_source.source_number = source_ctr
         _sources.append(new_source)

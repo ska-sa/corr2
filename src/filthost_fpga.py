@@ -1,12 +1,13 @@
 import logging
 
-from fhost_fpga import DigitiserDataReceiver
+from digitiser_receiver import DigitiserStreamReceiver
+
 import utils as c2_utils
 
 LOGGER = logging.getLogger(__name__)
 
 
-class FpgaFilterHost(DigitiserDataReceiver):
+class FpgaFilterHost(DigitiserStreamReceiver):
     """
     A Host, that hosts SNB filter engines, that is a CASPER KATCP FPGA.
     """

@@ -9,6 +9,7 @@ import spead2.recv as s2rx
 
 LOGGER = logging.getLogger(__name__)
 
+
 class CorrRx(threading.Thread):
     """Run a spead receiver in a thread; provide a Queue.Queue interface
 

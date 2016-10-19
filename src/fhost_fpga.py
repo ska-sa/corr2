@@ -1,15 +1,19 @@
 import time
 import logging
 import struct
-from threading import Event
+import numpy
 
 import casperfpga.memory as caspermem
-from host_fpga import FpgaHost
-from data_source import DataSource
-from sensors import Corr2Sensor, create_source_delay_sensors
+
+from delay import Delay
 from utils import parse_slx_params
+from digitiser_receiver import DigitiserStreamReceiver
 
 LOGGER = logging.getLogger(__name__)
+
+
+class InputNotFoundError(ValueError):
+    pass
 
 
 class AdcData(object):
@@ -27,210 +31,51 @@ class AdcData(object):
         self.data = data
 
 
-class DelaysUnsetError(Exception):
-    pass
-
-
-class DigitiserDataReceiver(FpgaHost):
+class Fengine(object):
     """
-    The RX section of a fengine and filter engine are the same - receive
-    the digitiser data
+    An F-engine, acting on a source DataStream
     """
-
-    def __init__(self, host, katcp_port=7147, boffile=None, connect=True):
-        super(DigitiserDataReceiver, self).__init__(host,
-                                                    katcp_port=katcp_port,
-                                                    boffile=boffile,
-                                                    connect=connect)
-
-    def _get_rxreg_data(self):
-        """
-        Get the rx register data for this host
-        :return:
-        """
-        data = {}
-        if 'reorder_ctrs1' in self.registers.names():
-            reorder_ctrs = self.registers.reorder_ctrs.read()['data']
-            reorder_ctrs.update(self.registers.reorder_ctrs1.read()['data'])
-        else:
-            reorder_ctrs = self.registers.reorder_ctrs.read()['data']
-        data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
-        data['timerror'] = reorder_ctrs['timestep_error']
-        data['discard'] = reorder_ctrs['discard']
-        num_tengbes = len(self.tengbes)
-        for gbe in range(num_tengbes):
-            data['pktof_ctr%i' % gbe] = reorder_ctrs['pktof%i' % gbe]
-        for pol in range(0, 2):
-            data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]
-        return data
-
-    def check_rx_reorder(self):
-        """
-        Is this F host reordering received data correctly?
-        :return:
-        """
-        _required_repetitions = 5
-        _sleeptime = 0.2
-
-        num_tengbes = len(self.tengbes)
-        if num_tengbes < 1:
-            raise RuntimeError('F-host with no 10gbe cores %s?' % self.host)
-
-        test_data = []
-        for _ctr in range(0, _required_repetitions):
-            test_data.append(self._get_rxreg_data())
-            time.sleep(_sleeptime)
-
-        got_errors = False
-        for _ctr in range(1, _required_repetitions):
-            for gbe in range(num_tengbes):
-                _key = 'pktof_ctr%i' % gbe
-                if test_data[_ctr][_key] != test_data[0][_key]:
-                    LOGGER.error(
-                        'F host %s packet overflow on interface gbe%i. '
-                        '%i -> %i' % (self.host, gbe, test_data[_ctr][_key],
-                                      test_data[0][_key]))
-                    got_errors = True
-            for pol in range(0, 2):
-                _key = 'recverr_ctr%i' % pol
-                if test_data[_ctr][_key] != test_data[0][_key]:
-                    LOGGER.error('F host %s pol %i reorder count error. %i '
-                                 '-> %i' % (self.host, pol,
-                                            test_data[_ctr][_key],
-                                            test_data[0][_key]))
-                    got_errors = True
-            if test_data[_ctr]['mcnt_relock'] != test_data[0]['mcnt_relock']:
-                LOGGER.error('F host %s mcnt_relock is changing. %i -> %i' % (
-                    self.host, test_data[_ctr]['mcnt_relock'],
-                    test_data[0]['mcnt_relock']))
-                got_errors = True
-            if test_data[_ctr]['timerror'] != test_data[0]['timerror']:
-                LOGGER.error('F host %s timestep error is changing. %i -> %i' %
-                             (self.host, test_data[_ctr]['timerror'],
-                              test_data[0]['timerror']))
-                got_errors = True
-            if test_data[_ctr]['discard'] != test_data[0]['discard']:
-                LOGGER.error('F host %s discarding packets. %i -> %i' % (
-                    self.host, test_data[_ctr]['discard'],
-                    test_data[0]['discard']))
-                got_errors = True
-        if got_errors:
-            LOGGER.error('One or more errors detected, check logs.')
-            return False
-        LOGGER.info('%s: is reordering data okay.' % self.host)
-        return True
-
-    def read_spead_counters(self):
-        """
-        Read the SPEAD rx and error counters for this F host
-        :return:
-        """
-        rv = []
-        spead_ctrs = self.registers.spead_ctrs.read()['data']
-        for core_ctr in range(0, len(self.tengbes)):
-            counter = spead_ctrs['rx_cnt%i' % core_ctr]
-            error = spead_ctrs['err_cnt%i' % core_ctr]
-            rv.append((counter, error))
-        return rv
-
-    def get_local_time(self):
-        """
-        Get the local timestamp of this board, received from the digitiser
-        :return: time in samples since the digitiser epoch
-        """
-        _msw = self.registers.local_time_msw
-        _lsw = self.registers.local_time_lsw
-        first_msw = _msw.read()['data']['timestamp_msw']
-        while _msw.read()['data']['timestamp_msw'] == first_msw:
-            time.sleep(0.01)
-        lsw = _lsw.read()['data']['timestamp_lsw']
-        msw = _msw.read()['data']['timestamp_msw']
-        assert msw == first_msw + 1  # if this fails the network is waaaaay slow
-        return (msw << 32) | lsw
-
-    def clear_status(self):
-        """
-        Clear the status registers and counters on this host
-        :return:
-        """
-        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
-                                     cnt_rst='pulse')
-        LOGGER.debug('{}: status cleared.'.format(self.host))
-
-
-class Delay(object):
-    def __init__(self, delay=0, delay_delta=0,
-                 phase_offset=0, phase_offset_delta=0,
-                 load_time=None, load_wait=None, load_check=True):
-        """
-        :param delay is in samples
-        :param delay_delta is in samples per sample
-        :param phase_offset is in fractions of a sample
-        :param phase_offset_delta is in samples per sample
-        :param load_time is in samples since epoch
-        :param load_wait is seconds to wait for delay values to load
-        :param load_check whether to check if load happened
-        """
-        self.delay = delay
-        self.delay_delta = delay_delta
-        self.phase_offset = phase_offset
-        self.phase_offset_delta = phase_offset_delta
-        self.load_time = load_time
-        self.load_wait = load_wait
-        self.load_check = load_check
-        self.load_count = -1
-        self.error = Event()
-
-
-class FengineSource(DataSource):
-    """
-    A data source that is received by an f-engine. 
-    """
-    def __init__(self, name, ip_string, ip_range, port,
-                 host=None, offset=-1, source_number=-1,
+    def __init__(self, input_stream,
+                 host=None, offset=-1,
                  sensor_manager=None):
         """
 
-        :param name: the name of this data source
-        :param ip_string: the ip address at which it can be found - a dotted
-        decimal STRING
-        :param ip_range: the consecutive number of IPs over which it is spread
-        :param port: the port to which it is sent
-        :param host: the Fpga host on which this source is received
-        :param offset: which source on that host is this?
-        :param source_number: in the system, which source is this?
+        :param input_stream: the DigitiserStream input for this F-engine
+        :param host: the Fpga host on which this input is received
+        :param offset: which input on that host is this?
         :param sensor_manager: a SensorManager instance
         :return:
         """
+        self.input = input_stream
         self.host = host
         self.offset = offset
-        self.source_number = source_number
         self.eq_poly = None
         self.eq_bram_name = 'eq%i' % offset
         self.delay = Delay()
         self.sensor_manager = sensor_manager
-        super(FengineSource, self).__init__(name, ip_string, ip_range, port)
-        if sensor_manager is not None:
-            create_source_delay_sensors(self)
 
-    def update_name(self, new_name):
-        """
-        Update the name of this FengineSource
-        :param new_name: the new name for this source
-        :return:
-        """
+        # TODO - sensors, sensors, sensors - does this level of object know about them?! I should think not...
+        # if sensor_manager is not None:
+        #     create_input_delay_sensors(self)
+
+    @property
+    def name(self):
+        return self.input.name
+
+    @name.setter
+    def name(self, new_name):
         if new_name == self.name:
             return
-        old_name = self.name
-        self.name = new_name
-        if self.sensor_manager is not None:
-            sensor_names = ['%s-delay-set' % old_name,
-                            '%s-phase-set' % old_name,
-                            '%s-loadtime' % old_name]
-            for sensor_name in sensor_names:
-                sensor_name = sensor_name.replace('_', '-')
-                self.sensor_manager.sensor_deactivate(sensor_name)
-            create_source_delay_sensors(self)
+        self.input.name = new_name
+        # TODO - update delay sensors?
+
+    @property
+    def input_number(self):
+        return self.input.input_number
+
+    @input_number.setter
+    def input_number(self, value):
+        raise NotImplementedError('This is not currently defined.')
     
     def set_delay(self, delay=0.0, delay_delta=0.0,
                   phase_offset=0.0, phase_offset_delta=0.0,
@@ -267,8 +112,16 @@ class FengineSource(DataSource):
                 sensor=('%s-loadtime' % self.name).replace('_', '-'),
                 value=self.delay.load_time)
 
+    def __repr__(self):
+        return self.__str__()
 
-class FpgaFHost(DigitiserDataReceiver):
+    def __str__(self):
+        return 'Fengine @ input(%s:%i:%i) @ %s -> %s' % (
+            self.name, self.input_number, self.offset, self.host,
+            self.input)
+
+
+class FpgaFHost(DigitiserStreamReceiver):
     """
     A Host, that hosts Fengines, that is a CASPER KATCP FPGA.
     """
@@ -281,8 +134,8 @@ class FpgaFHost(DigitiserDataReceiver):
 
         self._config = config
 
-        # list of DataSources received by this f-engine host
-        self.data_sources = []
+        # list of Fengines received by this F-engine host
+        self.fengines = []
 
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
@@ -363,43 +216,43 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('%s: host_okay() - TRUE.' % self.host)
         return True
 
-    def add_source(self, data_source):
+    def add_fengine(self, fengine):
         """
-        Add a new data source to this fengine host
-        :param data_source: A DataSource object
+        Add a new fengine to this fengine host
+        :param fengine: A Fengine object
         :return:
         """
         # check that it doesn't already exist before adding it
-        for src in self.data_sources:
-            if src.name == data_source.name:
+        for feng in self.fengines:
+            if feng.name == fengine.name:
                 raise ValueError(
-                    '%s == %s - cannot have two sources with the same name '
-                    'on one fhost' % (src.name, data_source.name))
-        self.data_sources.append(data_source)
+                    '%s == %s - cannot have two fengines with the same name '
+                    'on one fhost' % (feng.name, fengine.name))
+        self.fengines.append(fengine)
 
-    def get_source(self, source_name):
+    def get_fengine(self, feng_name):
         """
-        Get a source based on its name
-        :param source_name:
+        Get a fengine based on its input's name
+        :param feng_name: name of the fengine to get
         :return:
         """
-        for src in self.data_sources:
-            if src.name == source_name:
-                return src
-        raise ValueError('{host}: source {src} not found on this host.'.format(
-            host=self.host, src=source_name))
+        for feng in self.fengines:
+            if feng.name == feng_name:
+                return feng
+        raise InputNotFoundError('{host}: Fengine {feng} not found on this '
+                         'host.'.format(host=self.host, feng=feng_name))
 
-    def read_eq(self, source_name=None, eq_bram=None):
+    def read_eq(self, input_name=None, eq_bram=None):
         """
         Read a given EQ BRAM.
-        :param source_name: the source name
+        :param input_name: the input name
         :param eq_bram: the name of the EQ BRAM to read
         :return: a list of the complex EQ values from RAM
         """
-        if eq_bram is None and source_name is None:
+        if eq_bram is None and input_name is None:
             raise RuntimeError('Cannot have both tuple and name None')
-        if source_name is not None:
-            eq_bram = self.get_source(source_name).eq_bram_name
+        if input_name is not None:
+            eq_bram = self.get_fengine(input_name).eq_bram_name
         # eq vals are packed as 32-bit complex (16 real, 16 imag)
         eqvals = self.read(eq_bram, self.n_chans*4)
         eqvals = struct.unpack('>%ih' % (self.n_chans*2), eqvals)
@@ -413,29 +266,29 @@ class FpgaFHost(DigitiserDataReceiver):
         Write the EQ variables to the device SBRAMs
         :return:
         """
-        for src in self.data_sources:
-            LOGGER.debug('%s: writing EQ %s' % (self.host, src.name))
-            self.write_eq(source_name=src.name)
+        for feng in self.fengines:
+            LOGGER.debug('%s: writing EQ %s' % (self.host, feng.name))
+            self.write_eq(input_name=feng.name)
 
-    def write_eq(self, source_name=None, eq_tuple=None):
+    def write_eq(self, input_name=None, eq_tuple=None):
         """
         Write a given complex eq to the given SBRAM.
 
         Specify either eq_tuple, a combination of sbram_name and value(s),
-        OR source_name, but not both. If source_name is specified, the
-        sbram_name and eq value(s) are read from the sources.
+        OR input_name, but not both. If input_name is specified, the
+        sbram_name and eq value(s) are read from the inputs.
 
-        :param source_name: the name of the source that has the EQ to write
+        :param input_name: the name of the input that has the EQ to write
         :param eq_tuple: a tuple of an integer, complex number or list or
         integers or complex numbers and a sbram name
         :return:
         """
-        if eq_tuple is None and source_name is None:
+        if eq_tuple is None and input_name is None:
             raise RuntimeError('Cannot have both tuple and name None')
-        if source_name is not None:
-            src = self.get_source(source_name)
-            eq_bram = src.eq_bram_name
-            eq_poly = src.eq_poly
+        if input_name is not None:
+            feng = self.get_fengine(input_name)
+            eq_bram = feng.eq_bram_name
+            eq_poly = feng.eq_poly
         else:
             eq_poly = eq_tuple[0]
             eq_bram = eq_tuple[1]
@@ -463,7 +316,7 @@ class FpgaFHost(DigitiserDataReceiver):
         Get the status registers for the delay operations on this f-host
         :return:
         """
-        num_pols = len(self.data_sources)
+        num_pols = len(self.fengines)
         rv = []
         for pol in range(num_pols):
             rv.append(self.registers['tl_cd%i_status' % pol].read()['data'])
@@ -476,13 +329,13 @@ class FpgaFHost(DigitiserDataReceiver):
         """
         new_status = self._delay_get_status_registers()
         rv = True
-        for src in self.data_sources:
-            new_val = new_status[src.offset]['load_count']
-            old_val = src.delay.load_count
+        for feng in self.fengines:
+            new_val = new_status[feng.offset]['load_count']
+            old_val = feng.delay.load_count
             if old_val != -1:
                 if old_val == new_val:
                     rv = False
-            src.delay.load_count = new_val
+            feng.delay.load_count = new_val
         return rv
 
     def check_delays(self):
@@ -491,8 +344,8 @@ class FpgaFHost(DigitiserDataReceiver):
         :return: True for all okay, False for errors present
         """
         okay = True
-        for src in self.data_sources:
-            okay = okay and (not src.delay.error.is_set())
+        for feng in self.fengines:
+            okay = okay and (not feng.delay.error.is_set())
         return okay
 
     def write_delays_all(self):
@@ -500,9 +353,8 @@ class FpgaFHost(DigitiserDataReceiver):
         Goes through all offsets and writes delays with stored delay settings
         """
         act_vals = []
-
-        for src in self.data_sources:
-            act_val = self.write_delay(source=src)
+        for feng in self.fengines:
+            act_val = self.write_delay(fengine=feng)
             act_vals.append(act_val)
         return act_vals
 
@@ -660,7 +512,7 @@ class FpgaFHost(DigitiserDataReceiver):
         phase_reg = self.registers['phase%i' % offset]
         return delay_reg, delay_delta_reg, phase_reg
 
-    def write_delay(self, source):
+    def write_delay(self, fengine):
         """
         Configures a given stream to a delay in samples and phase in degrees.
 
@@ -671,12 +523,12 @@ class FpgaFHost(DigitiserDataReceiver):
         By default, it will load immediately and verify that things worked
         as expected.
 
-        :param source: the source for which to apply delays
+        :param fengine: the fengine for which to apply delays
         :return actual values to be loaded
         """
         bitshift = self._get_delay_bitshift()
-        offset = source.offset
-        dly = source.delay
+        offset = fengine.offset
+        dly = fengine.delay
 
         delay_reg, delay_delta_reg, phase_reg = self._get_delay_regs(offset)
 
@@ -796,10 +648,6 @@ class FpgaFHost(DigitiserDataReceiver):
         status_before = {}
         status_after = {}
 
-        if mcnt is not None:
-            load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
-            load_time_msw = int(mcnt/(2**32))
-
         for name in names:
             control_reg = self.registers['%s_control' % name]
             control0_reg = self.registers['%s_control0' % name]
@@ -810,6 +658,8 @@ class FpgaFHost(DigitiserDataReceiver):
             if mcnt is None:
                 control0_reg.write(arm='pulse', load_immediate='pulse')
             else:
+                load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
+                load_time_msw = int(mcnt/(2**32))
                 control_reg.write(load_time_lsw=load_time_lsw)
                 control0_reg.write(arm='pulse', load_time_msw=load_time_msw,
                                    load_immediate=0)
@@ -850,23 +700,23 @@ class FpgaFHost(DigitiserDataReceiver):
 
     def get_quant_snapshots(self):
         """
-        Get the quant snapshots for all the sources on this host.
+        Get the quant snapshots for all the inputs on this host.
         :return:
         """
         return {
-            src.name: self.get_quant_snapshot(src.name)
-            for src in self.data_sources
+            feng.name: self.get_quant_snapshot(feng.name)
+            for feng in self.fengines
         }
 
-    def get_quant_snapshot(self, source_name):
+    def get_quant_snapshot(self, input_name):
         """
-        Read the post-quantisation snapshot for a given source
-        :param source_name: the source name for which to read the quantiser
+        Read the post-quantisation snapshot for a given input
+        :param input_name: the input name for which to read the quantiser
         snapshot data.
         :return:
         """
-        src = self.get_source(source_name)
-        if src.offset == 0:
+        feng = self.get_fengine(input_name)
+        if feng.offset == 0:
             snapshot = self.snapshots.snap_quant0_ss
         else:
             snapshot = self.snapshots.snap_quant1_ss
@@ -903,20 +753,75 @@ class FpgaFHost(DigitiserDataReceiver):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
-    def qdr_okay(self):
+    def check_qdr_devices(self, threshold=0):
         """
-        Checks if parity bits on f-eng are zero
-        :return: True/False
+        Are the QDR devices behaving?
+        :param threshold: how many errors are permisible?
+        :return:
         """
-        err_data = self.registers.ct_ctrs.read()['data']
-        for cnt in range(0, 1):
-            err = err_data['ct_parerr_cnt%d' % cnt]
-            if err == 0:
-                LOGGER.info('%s: ct_parerr_cnt%d okay.' % (self.host, cnt))
-            else:
-                LOGGER.error('%s: ct_parerr_cnt%d not zero.' % (self.host, cnt))
+        return (self.check_ct_parity(threshold) and
+                self.check_cd_parity(threshold))
+
+    def check_ct_parity(self, threshold):
+        """
+        Check the QDR corner turner parity error counters
+        :param threshold: how many errors are permisible?
+        :return:
+        """
+        return self._check_qdr_parity(
+            qdr_id='CT',
+            threshold=threshold,
+            reg_name='ct_ctrs',
+            reg_field_name='ct_parerr_cnt'
+        )
+
+    def check_cd_parity(self, threshold):
+        """
+        Check the QDR coarse delay parity error counters
+        :param threshold: how many errors are permisible?
+        :return:
+        """
+        if 'cd_ctrs' not in self.registers.names():
+            LOGGER.info('check_qdr_parity: CD - no QDR-based coarse '
+                        'delay found')
+            return True
+        return self._check_qdr_parity(
+            qdr_id='CD',
+            threshold=threshold,
+            reg_name='cd_ctrs',
+            reg_field_name='cd_parerr_cnt'
+        )
+
+    def _check_qdr_parity(self, qdr_id, threshold, reg_name, reg_field_name,):
+        """
+        Check QDR parity error counters
+        :return:
+        """
+        LOGGER.info('%s: checking %s parity errors (QDR test)' % (
+            self.host, qdr_id))
+        if threshold == 0:
+            _required_bits = 1
+        else:
+            _required_bits = int(numpy.ceil(numpy.log2(threshold)))
+        # does the loaded bitstream have wide-enough counters?
+        _register = self.registers[reg_name]
+        bitwidth = _register.field_get_by_name(reg_field_name + '0').width_bits
+        if bitwidth < _required_bits:
+            LOGGER.warn(
+                '\t{qdrid} parity error counter is too narrow: {bw} < {rbw}. '
+                'NOT running test.'.format(
+                    qdrid=qdr_id, bw=bitwidth, rbw=_required_bits))
+            return True
+        ctrs = self.registers[reg_name].read()['data']
+        for pol in [0, 1]:
+            fname = reg_field_name + str(pol)
+            if (ctrs[fname] > 0) and (ctrs[fname] < threshold):
+                LOGGER.warn('\t{h}: {thrsh} > {nm} > 0. Que pasa?'.format(
+                    h=self.host, nm=fname, thrsh=threshold))
+            elif (ctrs[fname] > 0) and (ctrs[fname] >= threshold):
+                LOGGER.error('\t{h}: {nm} > {thrsh}. Problems.'.format(
+                    h=self.host, nm=fname, thrsh=threshold))
                 return False
-        LOGGER.info('%s: QDR okay.' % self.host)
         return True
 
     def check_fft_overflow(self, wait_time=2e-3):
@@ -941,19 +846,19 @@ class FpgaFHost(DigitiserDataReceiver):
         LOGGER.info('%s: PFB okay.' % self.host)
         return True
 
-    def get_adc_snapshot_for_source(self, source_name, unix_time=-1):
+    def get_adc_snapshot_for_input(self, input_name, unix_time=-1):
         """
-        Read the small voltage buffer for a source from a host.
-        :param source_name: the source name
+        Read the small voltage buffer for a input from a host.
+        :param input_name: the input name
         :param unix_time: the time at which to read
         :return: AdcData()
         """
-        src = self.get_source(source_name)
+        feng = self.get_fengine(input_name)
         if unix_time == -1:
             d = self.get_adc_snapshots_timed(from_now=2)
         else:
             d = self.get_adc_snapshots_timed(loadtime_unix=unix_time)
-        return d['p%i' % src.offset]
+        return d['p%i' % feng.offset]
 
     def _get_adc_timed_convert_times(
             self, from_now=2, loadtime_unix=-1,
@@ -1006,13 +911,13 @@ class FpgaFHost(DigitiserDataReceiver):
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
         if self.rx_data_sample_rate_hz == -1:
-            raise ValueError('Cannot continue with unknown source sample '
+            raise ValueError('Cannot continue with unknown input sample '
                              'rate. Please set this with: '
                              '\'host.rx_data_sample_rate_hz = xxxx\' first.')
 
         if 'adc_snap_trig_select' not in self.registers.control.field_names():
             raise NotImplementedError('Timed ADC snapshot support does '
-                                      'not exist on older f-engines.')
+                                      'not exist on older F-engines.')
 
         tic = time.time()
         localtime, loadtime = self._get_adc_timed_convert_times(
@@ -1127,6 +1032,13 @@ class FpgaFHost(DigitiserDataReceiver):
         return {'p0': AdcData(-1, rvp0),
                 'p1': AdcData(-1, rvp1)}
 
+    def get_rx_reorder_status(self):
+        """
+        Read the reorder block counters
+        :return:
+        """
+        return self.registers.reorder_ctrs.read()['data']
+
 '''
     def _get_fengine_fpga_config(self):
 
@@ -1161,21 +1073,21 @@ class FpgaFHost(DigitiserDataReceiver):
         # fft_shift is same for all fengine_fpgas of this type on device
         # (overload in child class if this changes)
         if name == 'fft_shift':
-            return self.host.device_by_name( '%sfft_shift'   %self.tag)
+            return self.host.device_by_name( '%sfft_shift' % self.tag)
         # we can't access Shared BRAMs in the same way as we access registers
         # at the moment, so we access the name and use read/write
         elif name == 'eq0_name':
-            return  '%seq  %s'  % (self.tag, self.pol0_offset)
+            return  '%seq  %s' %' (self.tag, self.pol0_offset)
         elif name == 'eq1_name':
-            return  '%seq  %s'  % (self.tag, self.pol1_offset)
+            return  '%seq  %s' %' (self.tag, self.pol1_offset)
         # fengines transmit to multiple xengines. Each xengine processes a continuous band of
         # frequencies with the lowest numbered band from all antennas being processed by the first xengine
         # and so on. The xengines have IP addresses starting a txip_base and increasing linearly. Some xengines
         # may share IP addresses
         elif name == 'txip_base':
-            return self.host.device_by_name( '%stxip_base  %s'  % (self.tag, self.offset))
+            return self.host.device_by_name( '%stxip_base  %s' %' (self.tag, self.offset))
         elif name == 'txport':
-            return self.host.device_by_name( '%stxport  %s'  % (self.tag, self.offset))
+            return self.host.device_by_name( '%stxport  %s' %' (self.tag, self.offset))
         # two polarisations
         elif name == 'snap_adc0':
             return self.host.device_by_name( '%ssnap_adc  %s_ss' % (self.tag, self.pol0_offset))
@@ -1224,7 +1136,7 @@ class FpgaFHost(DigitiserDataReceiver):
         n_chans = self.config['n_chans']
         n_coeffs = n_chans/decimation
 
-        poly = self.config['equalisation']['poly  %s'  % pol_index]
+        poly = self.config['equalisation']['poly  %s' %' pol_index]
         eq_coeffs = numpy.polyval(poly, range(n_chans))[decimation/2::decimation]
         eq_coeffs = numpy.array(eq_coeffs, dtype=complex)
 

@@ -10,6 +10,8 @@ import tornado
 import time
 
 from tornado.ioloop import IOLoop
+import tornado.gen
+
 from corr2 import sensors, sensors_periodic, fxcorrelator
 
 
@@ -51,7 +53,8 @@ class Corr2SensorServer(katcp.DeviceServer):
 
         """
         self.instrument = instrument
-        self.instrument.initialise(program=False)
+        self.instrument.initialise(program=False, qdr_cal=False,
+                                   require_epoch=False)
         sensor_manager = sensors.SensorManager(self, self.instrument)
         self.instrument.sensor_manager = sensor_manager
         sensors_periodic.setup_sensors(sensor_manager)

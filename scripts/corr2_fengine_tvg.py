@@ -14,7 +14,7 @@ fpga_throps = fpgautils.threaded_fpga_operation
 fpga_thrfunc = fpgautils.threaded_fpga_function
 
 parser = argparse.ArgumentParser(
-    description='Display information about a MeerKAT f-engine.',
+    description='Display information about a MeerKAT F-engine.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',

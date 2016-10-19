@@ -18,14 +18,14 @@ from corr2.fhost_fpga import FpgaFHost
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Display the output of the quantiser on an f-engine.',
+    description='Display the output of the quantiser on an F-engine.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--fftshift', dest='fftshift', action='store', default=-1, type=int,
     help='the FFT shift to set')
 parser.add_argument(
     dest='host', type=str, action='store', default='',
-    help='the f-engine host to query, if an int, will be taken positionally '
+    help='the F-engine host to query, if an int, will be taken positionally '
          'from the config file list of f-hosts')
 parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',
