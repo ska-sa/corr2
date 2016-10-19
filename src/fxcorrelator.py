@@ -228,8 +228,7 @@ class FxCorrelator(Instrument):
                                'are not okay. Check the logs')
 
         # check the F-engine QDR uses for parity errors
-        if ((not self.fops.check_ct_parity()) or
-                (not self.fops.check_cd_parity())):
+        if not self.fops.check_qdr_devices():
             raise RuntimeError('The F-engine QDRs are reporting errors.')
 
         # check that the F-engines are transmitting data correctly

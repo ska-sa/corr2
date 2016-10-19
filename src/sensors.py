@@ -496,41 +496,20 @@ class Corr2SensorManager(SensorManager):
             for feng in self.instrument.fops.fengines:
                 pref = '{strm}-input{npt}'.format(strm=strmnm,
                                                   npt=feng.input_number)
-            sensor = self.do_sensor(
-                Corr2Sensor.float, '{}-delay-set'.format(pref),
-                'The last delay values set for this input.',
-                Sensor.UNKNOWN)
-            if feng.delay.load_time:
-                sensor.set_value(feng.delay.delay)
-
-            sensor = self.do_sensor(
-                Corr2Sensor.float, '{}-delay-delta-set'.format(pref),
-                'The last delay delta values set for this input.',
-                Sensor.UNKNOWN)
-            if feng.delay.load_time:
-                sensor.set_value(feng.delay.delay_delta)
-
-            sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-loadtime'.format(pref),
-                'The given load time for a set of delay-tracking '
-                'coefficients for this input.',
-                Sensor.UNKNOWN)
-            if feng.delay.load_time:
-                sensor.set_value(feng.delay.load_time)
-
-            sensor = self.do_sensor(
-                Corr2Sensor.float, '{}-phase-set'.format(pref),
-                'The last phase values set for this input.',
-                Sensor.UNKNOWN)
-            if feng.delay.load_time:
-                sensor.set_value(feng.delay.phase_offset)
-
-            sensor = self.do_sensor(
-                Corr2Sensor.float, '{}-phase-delta-set'.format(pref),
-                'The last phase delta values set for this input.',
-                Sensor.UNKNOWN)
-            if feng.delay.load_time:
-                sensor.set_value(feng.delay.phase_offset_delta)
+                sensor = self.do_sensor(
+                    Corr2Sensor.string, '{}-delay'.format(pref),
+                    'The delay settings for this input: (loadtime, delay, '
+                    'delay-rate, phase, phase-rate)',
+                    Sensor.UNKNOWN)
+                if feng.delay.load_time:
+                    _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
+                        feng.delay.load_time,
+                        feng.delay.delay,
+                        feng.delay.delay_delta,
+                        feng.delay.phase_offset,
+                        feng.delay.phase_offset_delta
+                    )
+                    sensor.set_value(_val)
 
     def sensors_feng_streams(self):
         """
@@ -547,12 +526,11 @@ class Corr2SensorManager(SensorManager):
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-feng-pkt-len'.format(strmnm),
-                'Payload size of 10GbE packet exchange between F and X '
-                'engines in 64 bit words. Usually equal to the number of '
-                'spectra accumulated inside X engine. F-engine correlator '
-                'internals.',
+                'Payload size of packet exchange between F and X '
+                'engines in bytes. F-engine correlator internals.',
                 Sensor.UNKNOWN)
-            pkt_len = int(self.instrument.configd['fengine']['10gbe_pkt_len'])
+            pkt_len_words = self.instrument.configd['fengine']['10gbe_pkt_len']
+            pkt_len = int(pkt_len_words) * 8
             sensor.set_value(pkt_len)
 
             # TODO - per engine, not just hardcoded
@@ -592,9 +570,16 @@ class Corr2SensorManager(SensorManager):
 
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-ddc-mix-freq'.format(strmnm),
-                'The F-engine DDC mixer frequency, where used. -1 when n/a.',
+                'The F-engine DDC mixer frequency, where used. 1 when n/a.',
                 Sensor.UNKNOWN)
-            sensor.set_value(-1)
+            sensor.set_value(1)
+
+            sensor = Corr2Sensor.integer(
+                name='{}-n-samples-between-spectra'.format(strmnm),
+                description='Number of samples between spectra.',
+                initial_status=Sensor.UNKNOWN, manager=self)
+            self.sensor_create(sensor)
+            sensor.set_value(self.instrument.n_chans * 2)
 
         self.sensors_feng_fft_shift()
         self.sensors_feng_eq()
@@ -775,32 +760,36 @@ class Corr2SensorManager(SensorManager):
 
         self.sensors_input_labels()
 
-        sensor = Corr2Sensor.integer(
-            name='ticks-between-spectra',
-            description='Number of sample ticks between spectra.',
-            initial_status=Sensor.UNKNOWN, manager=self)
-        self.sensor_create(sensor)
-        sensor.set_value(self.instrument.n_chans * 2)
+        # # DEPRECATED AND MOVED TO FENGINE STREAMS
+        # sensor = Corr2Sensor.integer(
+        #     name='n-samples-between-spectra',
+        #     description='Number of samples between spectra.',
+        #     initial_status=Sensor.UNKNOWN, manager=self)
+        # self.sensor_create(sensor)
+        # sensor.set_value(self.instrument.n_chans * 2)
 
-        sensor = Corr2Sensor.integer(
-            name='f-per-fpga', description='The number of F-engines per host.',
-            initial_status=Sensor.UNKNOWN, manager=self)
-        self.sensor_create(sensor)
-        sensor.set_value(self.instrument.f_per_fpga)
+        # DEPRECATED
+        # sensor = Corr2Sensor.integer(
+        #     name='f-per-fpga', description='The number of F-engines per host.',
+        #     initial_status=Sensor.UNKNOWN, manager=self)
+        # self.sensor_create(sensor)
+        # sensor.set_value(self.instrument.f_per_fpga)
 
-        sensor = Corr2Sensor.integer(
-            name='x-per-fpga', description='The number of X-engines per host.',
-            initial_status=Sensor.UNKNOWN, manager=self)
-        self.sensor_create(sensor)
-        sensor.set_value(self.instrument.x_per_fpga)
+        # DEPRECATED
+        # sensor = Corr2Sensor.integer(
+        #     name='x-per-fpga', description='The number of X-engines per host.',
+        #     initial_status=Sensor.UNKNOWN, manager=self)
+        # self.sensor_create(sensor)
+        # sensor.set_value(self.instrument.x_per_fpga)
 
-        sensor = Corr2Sensor.integer(
-            name='b-per-fpga', description='The number of B-engines per host.',
-            initial_status=Sensor.UNKNOWN, manager=self)
-        if self.instrument.found_beamformer:
-            sensor.set_value(self.instrument.bops.beng_per_host)
-        else:
-            sensor.set_value(-1)
+        # DEPRECATED
+        # sensor = Corr2Sensor.integer(
+        #     name='b-per-fpga', description='The number of B-engines per host.',
+        #     initial_status=Sensor.UNKNOWN, manager=self)
+        # if self.instrument.found_beamformer:
+        #     sensor.set_value(self.instrument.bops.beng_per_host)
+        # else:
+        #     sensor.set_value(-1)
 
         sensor = Corr2Sensor.integer(
             name='n-fengs',
@@ -860,7 +849,7 @@ class Corr2SensorManager(SensorManager):
         for _x in self.instrument.xhosts:
             bid = self.instrument.xops.board_ids[_x.host]
             sensor = Corr2Sensor.string(
-                name='xeng-host{}-rx-fchan-range'.format(bid),
+                name='xeng-host{}-chan-range'.format(bid),
                 description='The range of frequency channels processed '
                             'by {host}:{brd}.'.format(host=_x.host, brd=bid),
                 initial_status=Sensor.UNKNOWN,

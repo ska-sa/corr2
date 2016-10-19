@@ -1,6 +1,7 @@
 import time
 import logging
 import struct
+import numpy
 
 import casperfpga.memory as caspermem
 
@@ -752,20 +753,75 @@ class FpgaFHost(DigitiserStreamReceiver):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
-    def qdr_okay(self):
+    def check_qdr_devices(self, threshold=0):
         """
-        Checks if parity bits on f-eng are zero
-        :return: True/False
+        Are the QDR devices behaving?
+        :param threshold: how many errors are permisible?
+        :return:
         """
-        err_data = self.registers.ct_ctrs.read()['data']
-        for cnt in range(0, 1):
-            err = err_data['ct_parerr_cnt%d' % cnt]
-            if err == 0:
-                LOGGER.info('%s: ct_parerr_cnt%d okay.' % (self.host, cnt))
-            else:
-                LOGGER.error('%s: ct_parerr_cnt%d not zero.' % (self.host, cnt))
+        return (self.check_ct_parity(threshold) and
+                self.check_cd_parity(threshold))
+
+    def check_ct_parity(self, threshold):
+        """
+        Check the QDR corner turner parity error counters
+        :param threshold: how many errors are permisible?
+        :return:
+        """
+        return self._check_qdr_parity(
+            qdr_id='CT',
+            threshold=threshold,
+            reg_name='ct_ctrs',
+            reg_field_name='ct_parerr_cnt'
+        )
+
+    def check_cd_parity(self, threshold):
+        """
+        Check the QDR coarse delay parity error counters
+        :param threshold: how many errors are permisible?
+        :return:
+        """
+        if 'cd_ctrs' not in self.registers.names():
+            LOGGER.info('check_qdr_parity: CD - no QDR-based coarse '
+                        'delay found')
+            return True
+        return self._check_qdr_parity(
+            qdr_id='CD',
+            threshold=threshold,
+            reg_name='cd_ctrs',
+            reg_field_name='cd_parerr_cnt'
+        )
+
+    def _check_qdr_parity(self, qdr_id, threshold, reg_name, reg_field_name,):
+        """
+        Check QDR parity error counters
+        :return:
+        """
+        LOGGER.info('%s: checking %s parity errors (QDR test)' % (
+            self.host, qdr_id))
+        if threshold == 0:
+            _required_bits = 1
+        else:
+            _required_bits = int(numpy.ceil(numpy.log2(threshold)))
+        # does the loaded bitstream have wide-enough counters?
+        _register = self.registers[reg_name]
+        bitwidth = _register.field_get_by_name(reg_field_name + '0').width_bits
+        if bitwidth < _required_bits:
+            LOGGER.warn(
+                '\t{qdrid} parity error counter is too narrow: {bw} < {rbw}. '
+                'NOT running test.'.format(
+                    qdrid=qdr_id, bw=bitwidth, rbw=_required_bits))
+            return True
+        ctrs = self.registers[reg_name].read()['data']
+        for pol in [0, 1]:
+            fname = reg_field_name + str(pol)
+            if (ctrs[fname] > 0) and (ctrs[fname] < threshold):
+                LOGGER.warn('\t{h}: {thrsh} > {nm} > 0. Que pasa?'.format(
+                    h=self.host, nm=fname, thrsh=threshold))
+            elif (ctrs[fname] > 0) and (ctrs[fname] >= threshold):
+                LOGGER.error('\t{h}: {nm} > {thrsh}. Problems.'.format(
+                    h=self.host, nm=fname, thrsh=threshold))
                 return False
-        LOGGER.info('%s: QDR okay.' % self.host)
         return True
 
     def check_fft_overflow(self, wait_time=2e-3):
