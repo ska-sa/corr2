@@ -342,7 +342,6 @@ class CorrReceiver(threading.Thread):
         self.logger.setLevel(log_level)
         self.logger = logging.getLogger(__name__)
         spead2._logger.setLevel(spead_log_level)
-        spead2._logger.setLevel(logging.FATAL)
 
         self._target = self.rx_cont
 
