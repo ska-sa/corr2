@@ -141,7 +141,8 @@ class DataStream(object):
                         'unavailable, not sending metadata.' %
                         self.name)
             return
-        self.meta_tx.send_heap(self.meta_ig.get_heap())
+        heap = self.meta_ig.get_heap(descriptors='all', data='all')
+        self.meta_tx.send_heap(heap)
         LOGGER.info('DataStream %s sent SPEAD metadata to %s' % (
             self.name, self.meta_destination))
 
