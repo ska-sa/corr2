@@ -62,7 +62,8 @@ class Corr2Server(katcp.DeviceServer):
             self.set_concurrency_options(thread_safe=False,
                                          handler_thread=False)
         self.instrument = None
-        self.metadata_cadence = 5
+        self.metadata_cadence = 0
+        self.descriptor_cadence = 5
         self.executor = futures.ThreadPoolExecutor(max_workers=1)
 
     def _log_excep(self, excep, msg=''):
@@ -150,7 +151,8 @@ class Corr2Server(katcp.DeviceServer):
             # set up the main loop sensors
             sensor_manager.sensors_clear()
             sensor_manager.setup_mainloop_sensors()
-            IOLoop.current().add_callback(self.periodic_send_metadata)
+            IOLoop.current().add_callback(self.periodic_issue_descriptors)
+            IOLoop.current().add_callback(self.periodic_issue_metadata)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             return 'ok',
@@ -218,11 +220,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         if ipportstr != '':
             try:
-                temp = ipportstr.split(':')
-                txipstr = temp[0]
-                txport = int(temp[1])
-                self.instrument.stream_set_destination(
-                    stream_name, txipstr, txport)
+                self.instrument.stream_set_destination(stream_name, ipportstr)
             except Exception as ex:
                 return self._log_excep(
                     ex,
@@ -303,7 +301,7 @@ class Corr2Server(katcp.DeviceServer):
             failmsg = 'Failed: stream {0} not in instrument data streams: ' \
                       '{1}'.format(stream_name, self.instrument.data_streams)
             return self._log_excep(None, failmsg)
-        self.instrument.stream_issue_metadata(stream_name)
+        self.instrument.stream_issue_descriptors(stream_name)
         return 'ok', stream_name
 
     @request(Str(default='', multiple=True))
@@ -711,6 +709,7 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply()
     def request_debug_periodic_metadata(self, sock, new_cadence):
         """
+        Change the cadence of sending the periodic metadata.
         :param sock:
         :param new_cadence: cadence, in seconds. 0 will disable the function
         :return:
@@ -725,11 +724,11 @@ class Corr2Server(katcp.DeviceServer):
                          'seconds.' % new_cadence)
             if prev == 0:
                 IOLoop.current().call_later(self.metadata_cadence,
-                                            self.periodic_send_metadata)
+                                            self.periodic_issue_metadata)
         return 'ok',
 
     @gen.coroutine
-    def periodic_send_metadata(self):
+    def periodic_issue_metadata(self):
         """
         Periodically send all instrument metadata.
 
@@ -742,9 +741,49 @@ class Corr2Server(katcp.DeviceServer):
             yield self.executor.submit(self.instrument.stream_issue_metadata)
         except Exception as ex:
             _logger.exception('Error sending metadata - {}'.format(ex.message))
-        _logger.debug('self.periodic_send_metadata ran')
+        _logger.debug('self.periodic_issue_metadata ran')
         IOLoop.current().call_later(self.metadata_cadence,
-                                    self.periodic_send_metadata)
+                                    self.periodic_issue_metadata)
+
+    @request(Int())
+    @return_reply()
+    def request_debug_periodic_descriptors(self, sock, new_cadence):
+        """
+        Change the cadence of sending the periodic descriptors.
+        :param sock:
+        :param new_cadence: cadence, in seconds. 0 will disable the function
+        :return:
+        """
+        _logger = self.instrument.logger
+        prev = self.descriptor_cadence
+        self.descriptor_cadence = new_cadence
+        if new_cadence == 0:
+            _logger.info('Disabled periodic descriptors.')
+        else:
+            _logger.info('Enabled periodic descriptors @ %i '
+                         'seconds.' % new_cadence)
+            if prev == 0:
+                IOLoop.current().call_later(self.descriptor_cadence,
+                                            self.periodic_issue_descriptors)
+        return 'ok',
+
+    @gen.coroutine
+    def periodic_issue_descriptors(self):
+        """
+        Periodically send all instrument metadata.
+
+        :return:
+        """
+        if self.descriptor_cadence == 0:
+            return
+        _logger = self.instrument.logger
+        try:
+            yield self.executor.submit(self.instrument.stream_issue_descriptors)
+        except Exception as ex:
+            _logger.exception('Error sending metadata - {}'.format(ex.message))
+        _logger.debug('self.periodic_issue_descriptors ran')
+        IOLoop.current().call_later(self.descriptor_cadence,
+                                    self.periodic_issue_descriptors)
 
 # @gen.coroutine
 # def send_test_informs(server):

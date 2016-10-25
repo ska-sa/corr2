@@ -7,7 +7,7 @@ from tornado.locks import Event as IOLoopEvent
 from casperfpga import utils as fpgautils
 
 import data_stream
-from fxcorrelator_speadops import SPEAD_ADDRSIZE, add_item as spead_add_item
+import fxcorrelator_speadops as speadops
 from utils import parse_output_products
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
@@ -16,6 +16,114 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 use_xeng_sim = False
 
 MAX_VACC_SYNCH_ATTEMPTS = 5
+
+
+class XengineStream(data_stream.SPEADStreamMeta):
+    """
+    An x-engine SPEAD stream
+    """
+    def __init__(self, name, destination, xops):
+        """
+        Make a SPEAD stream.
+        :param name: the name of the stream
+        :param destination: where is it going?
+        :return:
+        """
+        self.xops = xops
+        super(XengineStream, self).__init__(
+            name, data_stream.XENGINE_CROSS_PRODUCTS, destination)
+
+    def metadata_setup(self):
+        """
+        Add relevant metadata to the ItemGroup
+        :return:
+        """
+        self.xops.spead_meta_update_all()
+
+    def descriptors_setup(self):
+        """
+        Set up the data descriptors for an X-engine stream.
+        :return:
+        """
+        speadops.item_0x1600(self.descr_ig)
+
+        # xeng flags
+        speadops.add_item(
+            self.descr_ig, name='flags_xeng_raw', id=0x1601,
+            description=
+            'Flags associated with xeng_raw data output. bit 34 - corruption '
+            'or data missing during integration, bit 33 - overrange in '
+            'data path, bit 32 - noise diode on during integration, '
+            'bits 0 - 31 reserved for internal debugging',
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
+
+        # xeng data
+        # shape of the x-engine data is:
+        # shape=[self.corr.n_chans, len(self.corr.baselines), 2]
+        # for debug:
+        # shape=[self.corr.n_chans * len(self.corr.baselines), 2]
+        n_xengs = len(self.xops.corr.xhosts) * self.xops.corr.x_per_fpga
+        speadops.add_item(
+            self.descr_ig, name='xeng_raw', id=0x1800,
+            description=
+            'Raw data for %i xengines in the system. This item represents a '
+            'full spectrum (all frequency channels) assembled from lowest '
+            'frequency to highest frequency. Each frequency channel contains '
+            'the data for all baselines (n_bls given by SPEAD ID 0x100b). '
+            'Each value is a complex number - two (real and imaginary) '
+            'unsigned integers.' % n_xengs,
+            dtype=numpy.dtype('>i4'),
+            shape=[self.xops.corr.n_chans, len(self.xops.corr.baselines), 2])
+
+    def write_destination(self):
+        """
+        Write the destination to the hardware.
+        :return:
+        """
+        txip = int(self.destination.ip_address)
+        txport = self.destination.port
+        try:
+            THREADED_FPGA_OP(
+                self.xops.hosts, timeout=10,
+                target_function=(lambda fpga_:
+                                 fpga_.registers.gbe_iptx.write(reg=txip),))
+            THREADED_FPGA_OP(
+                self.xops.hosts, timeout=10,
+                target_function=(lambda fpga_:
+                                 fpga_.registers.gbe_porttx.write(reg=txport),))
+        except AttributeError:
+            errmsg = 'Writing stream %s destination to hardware ' \
+                     'failed!' % self.name
+            self.xops.logger.error(errmsg)
+            raise RuntimeError(errmsg)
+
+    def tx_enable(self):
+        """
+        Enable TX for this data stream
+        :return:
+        """
+        self.descriptors_issue()
+        THREADED_FPGA_OP(
+            self.xops.hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.control.write(gbe_txen=True),))
+        self.xops.logger.info('X-engine output enabled')
+
+    def tx_disable(self):
+        """
+        Disable TX for this data stream
+        :return:
+        """
+        THREADED_FPGA_OP(
+            self.xops.hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.control.write(gbe_txen=False),))
+        self.xops.logger.info('X-engine output disabled')
+
+    def __str__(self):
+        return 'XengineStream %s -> %s' % (self.name, self.destination)
 
 
 class VaccSynchAttemptsMaxedOut(RuntimeError):
@@ -75,7 +183,7 @@ class XEngineOperations(object):
             board_id += 1
 
         # write the data stream destination to the registers
-        self.write_data_stream_destination(None)
+        self.data_stream.write_destination()
 
         # clear gbe status
         THREADED_FPGA_OP(
@@ -147,13 +255,13 @@ class XEngineOperations(object):
                         gapsize-1),))
             # /HACK
         else:
-            _errmsg = 'X-engine image has no register gap_size/gapsize?'
-            self.logger.exception(_errmsg)
-            raise RuntimeError(_errmsg)
+            errmsg = 'X-engine image has no register gap_size/gapsize?'
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
 
         # disable transmission, place cores in reset, and give control
         # register a known state
-        self.xeng_tx_disable(None)
+        self.data_stream.tx_disable()
 
         XEngineOperations._gberst(self.hosts, True)
 
@@ -167,6 +275,13 @@ class XEngineOperations(object):
         """
         # set up the xengine data stream
         self._setup_data_stream()
+
+        # vacc check
+        self.vacc_check_enabled.clear()
+        self.vacc_synch_running.clear()
+        if self.vacc_check_cb is not None:
+            self.vacc_check_cb.stop()
+        self.vacc_check_cb = None
 
     def xengine_to_host_mapping(self):
         """
@@ -193,24 +308,12 @@ class XEngineOperations(object):
                                       'supported.'
         output_name = output_name[0]
         output_address = output_address[0]
-        xeng_stream = data_stream.DataMetaStream(
-            name=output_name,
-            category=data_stream.XENGINE_CROSS_PRODUCTS,
-            destination=output_address,
-            destination_cb=self.write_data_stream_destination,
-            tx_enable_method=self.xeng_tx_enable,
-            tx_disable_method=self.xeng_tx_disable)
+        xeng_stream = XengineStream(output_name, output_address, self)
 
-        xeng_stream.set_meta_destination(output_address)
-        xeng_stream.meta_destination_cb = self.spead_meta_issue_all
 
         self.data_stream = xeng_stream
         self.corr.add_data_stream(xeng_stream)
-        self.vacc_check_enabled.clear()
-        self.vacc_synch_running.clear()
-        if self.vacc_check_cb is not None:
-            self.vacc_check_cb.stop()
-        self.vacc_check_cb = None
+        xeng_stream.metadata_setup()
 
     def _vacc_periodic_check(self):
 
@@ -331,34 +434,6 @@ class XEngineOperations(object):
         self.vacc_check_cb.start()
         self.corr.logger.info('vacc check timer started')
 
-    def write_data_stream_destination(self, data_stream):
-        """
-        Write the x-engine data stream destination to the hosts.
-        :param data_stream - the data stream on which to act
-        :return:
-        """
-        dstrm = data_stream or self.data_stream
-        txip = int(dstrm.destination.ip_address)
-        txport = dstrm.destination.port
-        try:
-            THREADED_FPGA_OP(
-                self.hosts, timeout=10,
-                target_function=(lambda fpga_:
-                                 fpga_.registers.gbe_iptx.write(reg=txip),))
-            THREADED_FPGA_OP(
-                self.hosts, timeout=10,
-                target_function=(lambda fpga_:
-                                 fpga_.registers.gbe_porttx.write(reg=txport),))
-        except AttributeError:
-            self.logger.warning('Writing stream %s destination to '
-                                'hardware failed!' % dstrm.name)
-
-        # update meta data on stream destination change
-        self.spead_meta_update_stream_destination()
-        dstrm.meta_transmit()
-
-        self.logger.info('Wrote stream %s destination to %s in hardware' % (
-            dstrm.name, dstrm.destination))
 
     def clear_status_all(self):
         """
@@ -449,10 +524,10 @@ class XEngineOperations(object):
                 target_function='vacc_check_reset_status')
             for xhost, result in vaccstat.items():
                 if not result:
-                    errstr = 'xeng_vacc_sync: resetting vaccs on ' \
+                    errmsg = 'xeng_vacc_sync: resetting vaccs on ' \
                              '%s failed.' % xhost
-                    self.logger.error(errstr)
-                    raise RuntimeError(errstr)
+                    self.logger.error(errmsg)
+                    raise RuntimeError(errmsg)
 
     def _vacc_sync_create_loadtime(self, min_loadtime):
         """
@@ -892,8 +967,7 @@ class XEngineOperations(object):
                 lambda fpga_:
                 fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
         if self.corr.sensor_manager:
-            sensor = self.corr.sensor_manager.sensor_get('n-accs')
-            sensor.set_value(self.corr.accumulation_len)
+            self.corr.sensor_manager.sensors_xeng_acc_time()
         self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
@@ -903,88 +977,21 @@ class XEngineOperations(object):
         if reenable_timer:
             self.vacc_check_timer_start()
 
-    def xeng_tx_enable(self, data_stream):
-        """
-        Start transmission of data streams from the x-engines
-        :param data_stream - the data stream on which to act
-        :return:
-        """
-        dstrm = data_stream or self.data_stream
-        THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(
-                    lambda fpga_:
-                    fpga_.registers.control.write(gbe_txen=True),))
-        self.logger.info('X-engine output enabled')
-
-    def xeng_tx_disable(self, data_stream):
-        """
-        Start transmission of data streams from the x-engines
-        :param data_stream - the data stream on which to act
-        :return:
-        """
-        dstrm = data_stream or self.data_stream
-        THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(
-                    lambda fpga_:
-                    fpga_.registers.control.write(gbe_txen=False),))
-        self.logger.info('X-engine output disabled')
-
-    def spead_meta_minimal(self):
-        """
-        These metadata items are always required, even when the other metadata
-        is entirely sensor-based.
-        :return:
-        """
-        meta_ig = self.data_stream.meta_ig
-
-        self.corr.speadops.item_0x1600(meta_ig)
-
-        spead_add_item(
-            meta_ig,
-            name='flags_xeng_raw', id=0x1601,
-            description='Flags associated with xeng_raw data output. '
-                        'bit 34 - corruption or data missing during integration'
-                        'bit 33 - overrange in data path '
-                        'bit 32 - noise diode on during integration '
-                        'bits 0 - 31 reserved for internal debugging',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)])
-
-        # shape of the x-engine data is:
-        # shape=[self.corr.n_chans, len(self.corr.baselines), 2]
-        # for debug:
-        # shape=[self.corr.n_chans * len(self.corr.baselines), 2]
-        n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
-        spead_add_item(
-            meta_ig,
-            name='xeng_raw', id=0x1800,
-            description='Raw data for %i xengines in the system. This item '
-                        'represents a full spectrum (all frequency channels) '
-                        'assembled from lowest frequency to highest '
-                        'frequency. Each frequency channel contains the data '
-                        'for all baselines (n_bls given by SPEAD ID 0x100b). '
-                        'Each value is a complex number - two (real and '
-                        'imaginary) unsigned integers.' % n_xengs,
-            dtype=numpy.dtype('>i4'),
-            shape=[self.corr.n_chans, len(self.corr.baselines), 2])
-
     def spead_meta_update_stream_destination(self):
         """
         Update SPEAD metadata about the destination of this stream.
         :return:
         """
         meta_ig = self.data_stream.meta_ig
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='rx_udp_port', id=0x1022,
             description='Destination UDP port for %s data '
                         'output.' % self.data_stream.name,
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=self.data_stream.destination.port)
-
         ipstr = numpy.array(str(self.data_stream.destination.ip_address))
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='rx_udp_ip_str', id=0x1024,
             description='Destination IP address for %s data '
@@ -999,37 +1006,66 @@ class XEngineOperations(object):
         :return:
         """
         meta_ig = self.data_stream.meta_ig
+        speadops.item_0x1600(meta_ig)
+
+        speadops.add_item(
+            meta_ig,
+            name='flags_xeng_raw', id=0x1601,
+            description='Flags associated with xeng_raw data output. '
+                        'bit 34 - corruption or data missing during integration'
+                        'bit 33 - overrange in data path '
+                        'bit 32 - noise diode on during integration '
+                        'bits 0 - 31 reserved for internal debugging',
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
+
+        # shape of the x-engine data is:
+        # shape=[self.corr.n_chans, len(self.corr.baselines), 2]
+        # for debug:
+        # shape=[self.corr.n_chans * len(self.corr.baselines), 2]
+        n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
+        speadops.add_item(
+            meta_ig,
+            name='xeng_raw', id=0x1800,
+            description='Raw data for %i xengines in the system. This item '
+                        'represents a full spectrum (all frequency channels) '
+                        'assembled from lowest frequency to highest '
+                        'frequency. Each frequency channel contains the data '
+                        'for all baselines (n_bls given by SPEAD ID 0x100b). '
+                        'Each value is a complex number - two (real and '
+                        'imaginary) unsigned integers.' % n_xengs,
+            dtype=numpy.dtype('>i4'),
+            shape=[self.corr.n_chans, len(self.corr.baselines), 2])
 
         self.corr.speadops.item_0x1007(meta_ig)
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='n_bls', id=0x1008,
             description='Number of baselines in the data stream.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=len(self.corr.baselines))
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='n_chans', id=0x1009,
             description='Number of frequency channels in an integration.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=self.corr.n_chans)
 
         self.corr.speadops.item_0x100a(meta_ig)
 
         n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='n_xengs', id=0x100B,
             description='The number of x-engines in the system.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=n_xengs)
 
         bls_ordering = numpy.array(
             [baseline for baseline in self.corr.baselines])
         # this is a list of the baseline stream pairs, e.g. ['ant0x' 'ant0y']
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='bls_ordering', id=0x100C,
             description='The baseline ordering in the output data stream.',
@@ -1039,14 +1075,14 @@ class XEngineOperations(object):
 
         self.corr.speadops.item_0x100e(meta_ig)
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='center_freq', id=0x1011,
             description='The on-sky centre-frequency.',
             shape=[], format=[('f', 64)],
             value=int(self.corr.configd['fengine']['true_cf']))
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='bandwidth', id=0x1013,
             description='The input (analogue) bandwidth of the system.',
@@ -1057,41 +1093,41 @@ class XEngineOperations(object):
         self.corr.speadops.item_0x1016(meta_ig)
         self.corr.speadops.item_0x101e(meta_ig)
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='xeng_acc_len', id=0x101F,
             description='Number of spectra accumulated inside X engine. '
                         'Determines minimum integration time and '
                         'user-configurable integration time stepsize. '
                         'X-engine correlator internals.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=self.corr.xeng_accumulation_len)
 
         self.corr.speadops.item_0x1020(meta_ig)
 
         pkt_len = int(self.corr.configd['fengine']['10gbe_pkt_len'])
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='feng_pkt_len', id=0x1021,
             description='Payload size of 10GbE packet exchange between '
                         'F and X engines in 64 bit words. Usually equal '
                         'to the number of spectra accumulated inside X '
                         'engine. F-engine correlator internals.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=pkt_len)
 
         self.spead_meta_update_stream_destination()
 
         port = int(self.corr.configd['fengine']['10gbe_port'])
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='feng_udp_port', id=0x1023,
             description='Port for F-engines 10Gbe links in the system.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=port)
 
         ipstr = numpy.array(self.corr.configd['fengine']['10gbe_start_ip'])
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='feng_start_ip', id=0x1025,
             description='Start IP address for F-engines in the system.',
@@ -1099,68 +1135,53 @@ class XEngineOperations(object):
             dtype=ipstr.dtype,
             value=ipstr)
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='xeng_rate', id=0x1026,
             description='Target clock rate of processing engines (xeng).',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=self.corr.xeng_clk)
 
         self.corr.speadops.item_0x1027(meta_ig)
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='x_per_fpga', id=0x1041,
             description='Number of X engines per FPGA host.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=self.corr.x_per_fpga)
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='ddc_mix_freq', id=0x1043,
             description='Digital downconverter mixing frequency as a fraction '
                         'of the ADC sampling frequency. eg: 0.25. Set to zero '
                         'if no DDC is present.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=0)
 
         self.corr.speadops.item_0x1045(meta_ig)
         self.corr.speadops.item_0x1046(meta_ig)
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='xeng_out_bits_per_sample', id=0x1048,
             description='The number of bits per value of the xeng '
                         'accumulator output. Note this is for a '
                         'single value, not the combined complex size.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=self.corr.xeng_outbits)
 
-        spead_add_item(
+        speadops.add_item(
             meta_ig,
             name='f_per_fpga', id=0x1049,
             description='Number of F engines per FPGA host.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
             value=self.corr.f_per_fpga)
 
         self.corr.speadops.item_0x104a(meta_ig)
         self.corr.speadops.item_0x104b(meta_ig)
 
         self.corr.speadops.item_0x1400(meta_ig)
-
-        self.spead_meta_minimal()
-
-    def spead_meta_issue_all(self, data_stream):
-        """
-        Issue = update the metadata then send it.
-        :param data_stream: The DataStream object for which to send metadata
-        :return:
-        """
-        dstrm = data_stream or self.data_stream
-        self.spead_meta_update_all()
-        dstrm.meta_transmit()
-        self.logger.info(
-            'Issued SPEAD data descriptor for data stream %s to %s.' % (
-                dstrm.name, dstrm.meta_destination))
 
 # end

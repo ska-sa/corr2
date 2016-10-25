@@ -68,11 +68,11 @@ class FpgaHost(Host, KatcpFpga):
         start_time = time.time()
         ctrs0 = self.read_spead_counters()
         if len(ctrs0) != len(self.tengbes):
-            errstr = '{}: has {} 10gbe cores, but read_spead_counters ' \
+            errmsg = '{}: has {} 10gbe cores, but read_spead_counters ' \
                      'returned {} results'.format(self.host, len(self.tengbes),
                                                   len(ctrs0))
-            LOGGER.error(errstr)
-            raise RuntimeError(errstr)
+            LOGGER.error(errmsg)
+            raise RuntimeError(errmsg)
         spead_errors = [True] * len(ctrs0)
         ctrs1 = None
         while (time.time() < start_time + max_waittime) and \

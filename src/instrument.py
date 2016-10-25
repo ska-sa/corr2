@@ -159,13 +159,12 @@ class Instrument(object):
                 rv.append(stream)
         return rv
 
-    def stream_set_destination(self, stream_name, txip_str=None, txport=None):
+    def stream_set_destination(self, stream_name, address):
         """
-        Set the destination for a data stream produced by this instrument.
+        Set the destination for a data stream.
         :param stream_name:
-        :param txip_str: A dotted-decimal string representation of the
-        IP address. e.g. '1.2.3.4'
-        :param txport: An integer port number.
+        :param address: A dotted-decimal string representation of the
+        IP address, range and port. e.g. '1.2.3.4+0:7890'
         :return: <nothing>
         """
         raise NotImplementedError
@@ -186,22 +185,18 @@ class Instrument(object):
         """
         self.get_data_stream(stream_name).tx_disable()
 
-    def stream_issue_metadata(self, stream_name=None):
+    def stream_issue_descriptors(self, stream_name=None):
         """
-        Issue metadata for a stream produced by this instrument.
-        :param stream_name:
+        Send the descriptors for all streams on this instrument
+        :param stream_name: if none is given, do all streams
         :return:
         """
         if stream_name is None:
             streams = self.data_streams
         else:
             streams = [self.get_data_stream(stream_name)]
-        for stream in streams:
-            if hasattr(stream, 'meta_issue'):
-                stream.meta_issue()
-            else:
-                self.logger.warning('Stream {} has no meta_issue() '
-                                    'method'.format(stream.name))
+        for stream in self.data_streams:
+            stream.descriptors_issue()
 
     @property
     def synchronisation_epoch(self):

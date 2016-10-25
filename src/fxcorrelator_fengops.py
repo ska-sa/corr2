@@ -7,9 +7,72 @@ from data_stream import SPEADStream, FENGINE_CHANNELISED_DATA, \
     DIGITISER_ADC_SAMPLES
 import utils
 import fhost_fpga
+import fxcorrelator_speadops as speadops
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+
+
+class FengineStream(SPEADStream):
+    """
+    An x-engine SPEAD stream
+    """
+    def __init__(self, name, destination, fops):
+        """
+        Make a SPEAD stream.
+        :param name: the name of the stream
+        :param destination: where is it going?
+        :return:
+        """
+        self.fops = fops
+        super(FengineStream, self).__init__(
+            name, FENGINE_CHANNELISED_DATA, destination)
+
+    def descriptors_setup(self):
+        """
+        Set up the data descriptors for an F-engine stream.
+        :return:
+        """
+        speadops.item_0x1600(self.descr_ig)
+
+    def write_destination(self):
+        """
+        Write the destination to the hardware.
+        :return:
+        """
+        txip = int(self.destination.ip_address)
+        try:
+            THREADED_FPGA_OP(self.fops.hosts, timeout=5, target_function=(
+                lambda fpga_: fpga_.registers.iptx_base.write_int(txip),))
+        except AttributeError:
+            errmsg = 'Writing stream %s destination to hardware ' \
+                     'failed!' % self.name
+            self.fops.logger.error(errmsg)
+            raise RuntimeError(errmsg)
+
+    def tx_enable(self):
+        """
+        Enable TX for this data stream
+        :return:
+        """
+        self.descriptors_issue()
+        THREADED_FPGA_OP(
+            self.fops.hosts, 5,
+            (lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+        self.fops.logger.info('F-engine output enabled')
+
+    def tx_disable(self):
+        """
+        Disable TX for this data stream
+        :return:
+        """
+        THREADED_FPGA_OP(
+            self.fops.hosts, 5,
+            (lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+        self.fops.logger.info('F-engine output disabled')
+
+    def __str__(self):
+        return 'FengineStream %s -> %s' % (self.name, self.destination)
 
 
 class FEngineOperations(object):
@@ -83,9 +146,7 @@ class FEngineOperations(object):
         self.clear_status_all()
 
         # where does the F-engine data go?
-        fdest_ip = int(self.data_stream.destination.ip_address)
-        THREADED_FPGA_OP(self.hosts, timeout=5, target_function=(
-            lambda fpga_: fpga_.registers.iptx_base.write_int(fdest_ip),))
+        self.data_stream.write_destination()
 
         # set the sample rate on the Fhosts
         for host in self.hosts:
@@ -106,6 +167,7 @@ class FEngineOperations(object):
                 dig_streams.append((stream.name, stream.input_number))
         dig_streams = sorted(dig_streams,
                              key=lambda stream: stream[1])
+
         # match eq polys to input names
         eq_polys = {}
         for dig_stream in dig_streams:
@@ -164,9 +226,7 @@ class FEngineOperations(object):
                                       'supported.'
         output_name = output_name[0]
         output_address = output_address[0]
-        self.data_stream = SPEADStream(output_name,
-                                       FENGINE_CHANNELISED_DATA,
-                                       output_address)
+        self.data_stream = FengineStream(output_name, output_address, self)
         self.corr.add_data_stream(self.data_stream)
 
     def sys_reset(self, sleeptime=0):
@@ -523,20 +583,21 @@ class FEngineOperations(object):
         Enable TX on all tengbe cores on all F hosts
         :return:
         """
-        THREADED_FPGA_OP(
-            self.hosts, 5,
-            (lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+        self.data_stream.tx_enable()
 
     def tx_disable(self):
         """
         Disable TX on all tengbe cores on all F hosts
         :return:
         """
-        THREADED_FPGA_OP(
-            self.hosts, 5,
-            (lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+        self.data_stream.tx_disable()
 
     def get_fengine(self, input_name):
+        """
+
+        :param input_name:
+        :return:
+        """
         for feng in self.fengines:
             if input_name == feng.name:
                 return feng

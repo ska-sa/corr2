@@ -22,7 +22,7 @@ def add_item(sig, stx=None, **kwargs):
     :param kwargs:
     :return:
     """
-    sid = kwargs['id']
+    # sid = kwargs['id']
     # spead2 metadata create (and send)
     if sig is not None:
         sig.add_item(**kwargs)
@@ -40,6 +40,20 @@ def add_item(sig, stx=None, **kwargs):
     #     if 'value' in kwargs:
     #         svalue = str(kwargs['value'])
     #         sensor.set_value(svalue)
+
+
+def item_0x1600(sig, stx=None):
+    add_item(
+        sig=sig, stx=stx,
+        name='timestamp', id=0x1600,
+        description='Timestamp of start of this integration. uint '
+                    'counting multiples of ADC samples since last sync '
+                    '(sync_time, id=0x1027). Divide this number by '
+                    'timestamp_scale (id=0x1046) to get back to seconds '
+                    'since last sync when this integration was actually '
+                    'started.',
+        shape=[],
+        format=[('u', SPEAD_ADDRSIZE)])
 
 
 class SpeadOperations(object):
@@ -64,19 +78,18 @@ class SpeadOperations(object):
             ids = [ids]
         # loop through known streams and match spead IDs to those streams
         for stream in self.corr.data_streams:
-            try:
-                if stream.meta_ig:
-                    changes = False
-                    for speadid in ids:
-                        idfunc = getattr(self, 'item_0x%04x' % speadid)
-                        if speadid in stream.meta_ig.ids():
-                            idfunc(stream.meta_ig)
-                            changes = True
-                    if changes:
-                        stream.meta_transmit()
-            except AttributeError as e:
-                # DataStreams don't necessarily have an associated SPEAD stream
-                pass
+            if not hasattr(stream, 'meta_ig'):
+                continue
+            if not stream.meta_ig:
+                continue
+            # changes = False
+            for speadid in ids:
+                idfunc = getattr(self, 'item_0x%04x' % speadid)
+                if speadid in stream.meta_ig.ids():
+                    idfunc(stream.meta_ig)
+                    # changes = True
+            # if changes:
+            #     stream.metadata_issue()
 
     def item_0x1007(self, sig, stx=None):
         add_item(
@@ -316,20 +329,6 @@ class SpeadOperations(object):
                 shape=eq.shape,
                 dtype=eq.dtype,
                 value=eq)
-
-    @staticmethod
-    def item_0x1600(sig, stx=None):
-        add_item(
-            sig=sig, stx=stx,
-            name='timestamp', id=0x1600,
-            description='Timestamp of start of this integration. uint '
-                        'counting multiples of ADC samples since last sync '
-                        '(sync_time, id=0x1027). Divide this number by '
-                        'timestamp_scale (id=0x1046) to get back to seconds '
-                        'since last sync when this integration was actually '
-                        'started.',
-            shape=[],
-            format=[('u', SPEAD_ADDRSIZE)])
 
     # 0x1800 - fxcorrelator_xengops.py
 

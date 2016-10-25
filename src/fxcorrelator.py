@@ -252,7 +252,8 @@ class FxCorrelator(Instrument):
         if self.found_beamformer:
             self.bops.configure()
 
-    def configure_digitiser_streams(self):
+    @staticmethod
+    def configure_digitiser_streams():
         """
         Set up the digitiser streams available to this correlator.
         :return:
@@ -399,11 +400,11 @@ class FxCorrelator(Instrument):
         """
         old_labels = self.get_input_labels()
         if len(new_labels) != len(old_labels):
-            errstr = 'Number of supplied source labels (%i) does not match ' \
+            errmsg = 'Number of supplied source labels (%i) does not match ' \
                      'number of configured sources (%i).' % \
                      (len(new_labels), len(old_labels))
-            self.logger.error(errstr)
-            raise ValueError(errstr)
+            self.logger.error(errmsg)
+            raise ValueError(errmsg)
         all_the_same = True
         for ctr, new_label in enumerate(new_labels):
             if new_label != old_labels[ctr]:
@@ -510,7 +511,8 @@ class FxCorrelator(Instrument):
         # do the bitstreams exist?
         self._check_bitstreams()
 
-        # TODO: Load config values from the bitstream meta information - f per fpga, x per fpga, etc
+        # TODO: Load config values from the bitstream meta
+        # information - f per fpga, x per fpga, etc
         _fxcorr_d = self.configd['FxCorrelator']
         self.arp_wait_time = int(_fxcorr_d['arp_wait_time'])
         self.sensor_poll_time = int(_fxcorr_d['sensor_poll_time'])
@@ -593,7 +595,7 @@ class FxCorrelator(Instrument):
             'addresses (%d)' % (len(source_names), len(source_mcast)))
         for ctr, source in enumerate(source_names):
             addr = StreamAddress.from_address_string(source_mcast[ctr])
-            dig_src = DigitiserStream(source, ctr, addr)
+            dig_src = DigitiserStream(source, addr, ctr, self)
             self.add_data_stream(dig_src)
 
     def _read_config_file(self):
@@ -610,20 +612,34 @@ class FxCorrelator(Instrument):
         """
         raise NotImplementedError('_read_config_server not implemented')
 
-    def stream_set_destination(self, stream_name, txip_str=None, txport=None):
+    def stream_set_destination(self, stream_name, address):
         """
         Set the destination for a data stream.
         :param stream_name:
-        :param txip_str: A dotted-decimal string representation of the
-        IP address. e.g. '1.2.3.4'
-        :param txport: An integer port number.
+        :param address: A dotted-decimal string representation of the
+        IP address, range and port. e.g. '1.2.3.4+0:7890'
         :return: <nothing>
         """
         stream = self.get_data_stream(stream_name)
-        stream.set_destination(txip_str, txport)
-        if hasattr(stream, 'set_meta_destination'):
-            stream.set_meta_destination(txip_str, txport)
+        stream.set_destination(address)
         if self.sensor_manager:
             self.sensor_manager.sensors_stream_destinations()
+
+    def stream_issue_metadata(self, stream_name=None):
+        """
+        Issue metadata for a stream produced by this instrument.
+        :param stream_name: if none is given, do all streams
+        :return:
+        """
+        if stream_name is None:
+            streams = self.data_streams
+        else:
+            streams = [self.get_data_stream(stream_name)]
+        for stream in streams:
+            if hasattr(stream, 'metadata_issue'):
+                stream.metadata_issue()
+            else:
+                self.logger.debug('SPEADStream {} is not a metadata stream'
+                                  ''.format(stream.name))
 
 # end

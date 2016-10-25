@@ -876,18 +876,16 @@ class FpgaFHost(DigitiserStreamReceiver):
         if localtime == -1:
             localtime = self.get_local_time()
         if localtime & ((2**12) - 1) != 0:
-            LOGGER.exception('Bottom 12 bits of local time are not '
-                             'zero? %i' % localtime)
-            raise ValueError('Bottom 12 bits of local time are not '
-                             'zero? %i' % localtime)
+            errmsg = 'Bottom 12 bits of local time are not zero? %i' % localtime
+            LOGGER.error(errmsg)
+            raise ValueError(errmsg)
         if loadtime_system != -1:
             if loadtime_system & ((2**12) - 1) != 0:
-                LOGGER.exception('Time resolution from the digitiser is '
-                                 'only 2^12, trying to trigger at %i would '
-                                 'never work.' % loadtime_system)
-                raise ValueError('Time resolution from the digitiser is '
-                                 'only 2^12, trying to trigger at %i would '
-                                 'never work.' % loadtime_system)
+                errmsg = 'Time resolution from the digitiser is only 2^12, ' \
+                         'trying to trigger at %i would never ' \
+                         'work.' % loadtime_system
+                LOGGER.error(errmsg)
+                raise ValueError(errmsg)
             return localtime, loadtime_system
         if loadtime_unix != -1:
             timediff = loadtime_unix - start_tic
@@ -925,12 +923,10 @@ class FpgaFHost(DigitiserStreamReceiver):
             loadtime_system=loadtime_system, localtime=localtime)
 
         if loadtime <= localtime:
-            LOGGER.exception(
-                'A load time in past makes no sense. %i < %i = %i' % (
-                    loadtime, localtime, loadtime - localtime))
-            raise ValueError(
-                'A load time in past makes no sense. %i < %i = %i' % (
-                    loadtime, localtime, loadtime - localtime))
+            errmsg = 'A load time in past makes no sense. %i < %i = %i' % (
+                loadtime, localtime, loadtime - localtime)
+            LOGGER.error(errmsg)
+            raise ValueError(errmsg)
 
         custom_timeout = int((loadtime - localtime) /
                              self.rx_data_sample_rate_hz) + 1
@@ -945,10 +941,10 @@ class FpgaFHost(DigitiserStreamReceiver):
         LOGGER.debug('%s: timed ADC read took %.3f sec, total %.3f sec' % (
             self.host, (toc - snap_tic), (toc - tic)))
         if ((loadtime >> 12) & ((2**32)-1)) != rv['p0'].timestamp:
-            err_str = 'ADC data not read at specified time: %i != %s' % (
+            errmsg = 'ADC data not read at specified time: %i != %s' % (
                 loadtime, str(rv['p0'].timestamp))
-            LOGGER.error(err_str)
-            raise RuntimeError(err_str)
+            LOGGER.error(errmsg)
+            raise RuntimeError(errmsg)
         rv['p0'].timestamp = loadtime
         rv['p1'].timestamp = loadtime
         return rv

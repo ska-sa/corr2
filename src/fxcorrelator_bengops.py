@@ -73,6 +73,7 @@ class BEngineOperations(object):
                                         self.corr.configd,
                                         self.corr.fops,
                                         self.corr.speadops,)
+                beam.metadata_setup()
                 if beam.name in beam_names:
                     raise ValueError('Cannot have more than one beam with '
                                      'the name %s. Please check the '
@@ -88,7 +89,7 @@ class BEngineOperations(object):
 
         # add the beam data streams to the instrument list
         for beam in self.beams.values():
-            self.corr.add_data_stream(beam.data_stream)
+            self.corr.add_data_stream(beam)
 
     def tx_enable(self, beams=None):
         """

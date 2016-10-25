@@ -35,11 +35,11 @@ class FpgaBHost(FpgaXHost):
         """
         beam_cfgreg = self.registers['bf%i_config' % beam.index]
         beam_ipreg = self.registers['bf%i_ip' % beam.index]
-        beam_cfgreg.write(port=beam.data_stream.destination.port)
-        beam_ipreg.write(ip=int(beam.data_stream.destination.ip_address))
+        beam_cfgreg.write(port=beam.destination.port)
+        beam_ipreg.write(ip=int(beam.destination.ip_address))
         LOGGER.info('%s:%i: Beam %i:%s destination set to %s' % (
             self.host, self.index, beam.index, beam.name,
-            beam.data_stream.destination))
+            beam.destination))
 
     def beam_index_set(self, beam):
         """
@@ -174,14 +174,14 @@ class FpgaBHost(FpgaXHost):
                    for beng_ctr in range(self.x_per_fpga)]
             for v in drv:
                 if v != drv[0]:
-                    errstr = 'Host({host}) Beam({bidx}:{beam}): quantiser ' \
+                    errmsg = 'Host({host}) Beam({bidx}:{beam}): quantiser ' \
                              'gains differ across b-engines on ' \
                              'this host: {vals}'.format(host=self.host,
                                                         bidx=beam.index,
                                                         beam=beam.name,
                                                         vals=drv)
-                    LOGGER.error(errstr)
-                    raise ValueError(errstr)
+                    LOGGER.error(errmsg)
+                    raise ValueError(errmsg)
             return drv[0]
 
     def beam_partitions_read(self, beam):

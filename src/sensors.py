@@ -280,17 +280,15 @@ class Corr2SensorManager(SensorManager):
             dpref = 'Engine {eng} interface {iface} '.format(
                 eng=eng, iface=iface)
 
+            sensor_value = '({mac},{ip},{port})'.format(
+                mac=str(host.tengbes[iface].mac),
+                ip=str(host.tengbes[iface].ip_address),
+                port=str(host.tengbes[iface].port))
             sensor = self.do_sensor(
                 Corr2Sensor.string,
-                '{eng}-{iface}-ip'.format(eng=eng, iface=iface),
-                '{prf} IP address'.format(prf=dpref))
-            sensor.set_value(str(host.tengbes[iface].ip_address))
-
-            sensor = self.do_sensor(
-                Corr2Sensor.string,
-                '{eng}-{iface}-mac'.format(eng=eng, iface=iface),
-                '{prf} MAC address'.format(prf=dpref))
-            sensor.set_value(str(host.tengbes[iface].mac))
+                '{eng}-{iface}-details'.format(eng=eng, iface=iface),
+                '{prf} (MAC,IP,port)'.format(prf=dpref))
+            sensor.set_value(sensor_value)
 
             sensor = self.do_sensor(
                 Corr2Sensor.string,
@@ -299,19 +297,13 @@ class Corr2SensorManager(SensorManager):
                 '{prf} multicast subscriptions'.format(prf=dpref))
             sensor.set_value(str(host.tengbes[iface].multicast_subscriptions))
 
-            sensor = self.do_sensor(
-                Corr2Sensor.integer,
-                '{eng}-{iface}-port'.format(eng=eng, iface=iface),
-                '{prf} port'.format(prf=dpref))
-            sensor.set_value(host.tengbes[iface].port)
-
         for ctr, host in enumerate(self.instrument.fhosts):
             for gbe in host.tengbes:
-                iface_sensors_for_host(host, 'feng{0}'.format(ctr), gbe.name)
+                iface_sensors_for_host(host, 'fhost{0}'.format(ctr), gbe.name)
 
         for ctr, host in enumerate(self.instrument.xhosts):
             for gbe in host.tengbes:
-                iface_sensors_for_host(host, 'xeng{0}'.format(ctr), gbe.name)
+                iface_sensors_for_host(host, 'xhost{0}'.format(ctr), gbe.name)
 
         # TODO
         # if self.instrument.bhosts:
@@ -852,7 +844,7 @@ class Corr2SensorManager(SensorManager):
             sensor = Corr2Sensor.string(
                 name='xeng-host{}-chan-range'.format(bid),
                 description='The range of frequency channels processed '
-                            'by {host}:{brd}.'.format(host=_x.host, brd=bid),
+                            'by xeng board {brd}.'.format(brd=bid),
                 initial_status=Sensor.UNKNOWN,
                 manager=self)
             sensor.set_value('({start},{end})'.format(
