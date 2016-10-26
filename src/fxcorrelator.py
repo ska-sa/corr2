@@ -267,22 +267,6 @@ class FxCorrelator(Instrument):
         """
         return self.sample_rate_hz
 
-    def set_synch_time(self, new_synch_time):
-        """
-        Set the last sync time for this system
-        :param new_synch_time: UNIX time
-        :return: <nothing>
-        """
-        time_now = time.time()
-        # too far in the past?
-        if new_synch_time < time_now - (2**self.timestamp_bits):
-            _err = 'Synch epoch supplied is too far in the past: now(%.3f) ' \
-                   'epoch(%.3f)' % (time_now, new_synch_time)
-            self.logger.error(_err)
-            raise RuntimeError(_err)
-        self.synchronisation_epoch = new_synch_time
-        self.logger.info('Set synch epoch to %.5f' % new_synch_time)
-
     def est_synch_epoch(self):
         """
         Estimates the synchronisation epoch based on current F-engine
@@ -293,12 +277,12 @@ class FxCorrelator(Instrument):
         feng_mcnt = self.fhosts[0].get_local_time()
         self.logger.info('\tcurrent F-engine mcnt: %i' % feng_mcnt)
         if feng_mcnt & 0xfff != 0:
-            _err = 'Bottom 12 bits of timestamp from F-engine are not ' \
+            errmsg = 'Bottom 12 bits of timestamp from F-engine are not ' \
                    'zero?! feng_mcnt(%i)' % feng_mcnt
-            self.logger.error(_err)
-            raise RuntimeError(_err)
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
         t_now = time.time()
-        self.set_synch_time(t_now - feng_mcnt / self.sample_rate_hz)
+        self.synchronisation_epoch = t_now - feng_mcnt / self.sample_rate_hz
         self.logger.info('\tnew epoch: %.3f' % self.synchronisation_epoch)
 
     def time_from_mcnt(self, mcnt):

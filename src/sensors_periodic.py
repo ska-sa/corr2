@@ -111,26 +111,26 @@ def _sensor_cb_feng_rxtime(sensor_ok, sensor_values):
                                 sensor_ok, sensor_values)
 
 
-@tornado.gen.coroutine
-def _sensor_cb_fdelays(sensor, f_host):
-    """
-    Sensor call back function for F-engine delay functionality
-    :param sensor:
-    :return:
-    """
-    executor = sensor.executor
-    try:
-        result = yield executor.submit(f_host.delay_check_loadcounts)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR, result)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    except Exception as e:
-        LOGGER.error('Error updating delay functionality sensor '
-                     'for {} - {}'.format(f_host, e.message))
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_sensor_cb_fdelays ran on {}'.format(f_host))
-    IOLoop.current().call_later(10, _sensor_cb_fdelays, sensor, f_host)
+# @tornado.gen.coroutine
+# def _sensor_cb_fdelays(sensor, f_host):
+#     """
+#     Sensor call back function for F-engine delay functionality
+#     :param sensor:
+#     :return:
+#     """
+#     executor = sensor.executor
+#     try:
+#         result = yield executor.submit(f_host.delay_check_loadcounts)
+#         sensor.set(time.time(),
+#                    Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR, result)
+#     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+#         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
+#     except Exception as e:
+#         LOGGER.error('Error updating delay functionality sensor '
+#                      'for {} - {}'.format(f_host, e.message))
+#         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
+#     LOGGER.debug('_sensor_cb_fdelays ran on {}'.format(f_host))
+#     IOLoop.current().call_later(10, _sensor_cb_fdelays, sensor, f_host)
 
 
 @tornado.gen.coroutine
@@ -821,12 +821,12 @@ def _setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop):
             Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_sensor_feng_rx_reorder, sensor, _f)
 
-        # Delay functionality
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-delays-ok'.format(fhost),
-            'F-engine %s delay functionality' % _f.host,
-            Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_sensor_cb_fdelays, sensor, _f)
+        # # Delay functionality
+        # sensor = sens_man.do_sensor(
+        #     Corr2Sensor.boolean, '{}-delays-ok'.format(fhost),
+        #     'F-engine delay functionality okay',
+        #     Corr2Sensor.UNKNOWN, '', executor)
+        # ioloop.add_callback(_sensor_cb_fdelays, sensor, _f)
 
 
 def setup_sensors(sensor_manager, enable_counters=False):

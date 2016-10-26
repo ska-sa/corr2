@@ -212,14 +212,20 @@ class Instrument(object):
         """
         # LOGGER.info('@synchronisation_epoch setter')
         time_now = time.time()
+        if hasattr(self, 'timestamp_bits'):
+            if new_synch_time < time_now - (2**self.timestamp_bits):
+                errmsg = 'Synch epoch supplied is too far in the past: ' \
+                         'now(%.3f) epoch(%.3f)' % (time_now, new_synch_time)
+                self.logger.error(errmsg)
+                raise RuntimeError(errmsg)
         if new_synch_time > time_now:
-            _err = 'Synch time in the future makes no sense? %d > %d' % (
+            errmsg = 'Synch time in the future makes no sense? %d > %d' % (
                 new_synch_time, time_now)
-            self.logger.error(_err)
-            raise RuntimeError(_err)
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
         self._synchronisation_epoch = new_synch_time
         if self.sensor_manager:
             self.sensor_manager.sensors_sync_time()
-        self.logger.info('Set synch epoch to %d.' % new_synch_time)
+        self.logger.info('Set synch epoch to %.5f.' % new_synch_time)
 
 # end

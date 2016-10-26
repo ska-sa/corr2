@@ -618,11 +618,11 @@ class XEngineOperations(object):
                 _bad_ldcnt = status['loadcount'] != load_count0
                 _bad_armcnt = status['armcount'] != arm_count0
                 if _bad_ldcnt or _bad_armcnt:
-                    _err = 'All hosts do not have matching arm and ' \
+                    errmsg = 'All hosts do not have matching arm and ' \
                            'load counts.'
-                    self.logger.error(_err)
+                    self.logger.error(errmsg)
                     self._vacc_sync_print_vacc_statuses(vacc_status)
-                    raise RuntimeError(_err)
+                    raise RuntimeError(errmsg)
         self.logger.info('\tBefore arming: arm_count(%i) load_count(%i)' %
                          (arm_count0, load_count0))
         return arm_count0, load_count0
@@ -638,10 +638,10 @@ class XEngineOperations(object):
             for status in vacc_status[host.host]:
                 if ((status['armcount'] != arm_count_new) or
                         (status['armcount'] != armcount_initial + 1)):
-                    _err = 'xeng_vacc_sync: all hosts do not have ' \
+                    errmsg = 'xeng_vacc_sync: all hosts do not have ' \
                            'matching arm counts or arm count did ' \
                            'not increase.'
-                    self.logger.error(_err)
+                    self.logger.error(errmsg)
                     self._vacc_sync_print_vacc_statuses(vacc_status)
                     return False
         self.logger.info('\tDone arming')
@@ -664,9 +664,9 @@ class XEngineOperations(object):
         for host in self.hosts:
             if ((lsws[host.host]['lsw'] != lsws[_host0]['lsw']) or
                     (msws[host.host]['msw'] != msws[_host0]['msw'])):
-                _err = 'xeng_vacc_sync: all hosts do not have matching ' \
+                errmsg = 'xeng_vacc_sync: all hosts do not have matching ' \
                        'vacc LSWs and MSWs'
-                self.logger.error(_err)
+                self.logger.error(errmsg)
                 self.logger.error('LSWs: %s' % lsws)
                 self.logger.error('MSWs: %s' % msws)
                 vacc_status = self.vacc_status()
@@ -952,9 +952,9 @@ class XEngineOperations(object):
         :return:
         """
         if (acc_len is not None) and (acc_len <= 0):
-            _err = 'new acc_len of %i makes no sense' % acc_len
-            self.logger.error(_err)
-            raise RuntimeError(_err)
+            errmsg = 'new acc_len of %i makes no sense' % acc_len
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
         reenable_timer = False
         if self.vacc_check_enabled.is_set():
             self.vacc_check_timer_stop()

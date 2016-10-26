@@ -503,6 +503,11 @@ class Corr2SensorManager(SensorManager):
                         feng.delay.phase_offset_delta
                     )
                     sensor.set_value(_val)
+                sensor = self.do_sensor(
+                    Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
+                    'Delays for this input are functioning correctly.',
+                    Sensor.UNKNOWN)
+                sensor.set_value(False if feng.delay.error.is_set() else True)
 
     def sensors_feng_streams(self):
         """

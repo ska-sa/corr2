@@ -707,6 +707,24 @@ class Corr2Server(katcp.DeviceServer):
 
     @request(Int())
     @return_reply()
+    def request_debug_delay_logging(self, sock, enable_disable):
+        """
+        Change the cadence of sending the periodic metadata.
+        :param sock:
+        :param enable_disable - 1 for logging enabled, 0 for not
+        :return:
+        """
+        import corr2.delay as delayops
+        if enable_disable == 1:
+            delayops.debug_logging = True
+            self.instrument.logger.info('Enabled delay logging.')
+        else:
+            delayops.debug_logging = False
+            self.instrument.logger.info('Disabled delay logging.')
+        return 'ok',
+
+    @request(Int())
+    @return_reply()
     def request_debug_periodic_metadata(self, sock, new_cadence):
         """
         Change the cadence of sending the periodic metadata.
