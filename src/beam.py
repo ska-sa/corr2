@@ -125,6 +125,7 @@ class Beam(SPEADStreamMeta):
             source_index += 1
         obj.quant_gain = 1
         obj.source_poly = []
+        obj.descriptors_setup()
         return obj
 
     def __str__(self):
@@ -216,7 +217,24 @@ class Beam(SPEADStreamMeta):
         Set up the data descriptors for an B-engine stream.
         :return:
         """
+        if not self.xeng_acc_len:
+            # wait until it's been set up
+            return
         speadops.item_0x1600(self.descr_ig)
+        # id is 0x5 + 12 least sig bits id of each beam
+        beam_data_id = 0x5000
+        speadops.add_item(
+            self.descr_ig,
+            name='bf_raw', id=beam_data_id,
+            description='Raw data for bengines in the system. Frequencies '
+                        'are assembled from lowest frequency to highest '
+                        'frequency. Frequencies come in blocks of values '
+                        'in time order where the number of samples in a '
+                        'block is given by xeng_acc_len (id 0x101F). Each '
+                        'value is a complex number -- two (real and '
+                        'imaginary) signed integers.',
+            dtype=numpy.int8,
+            shape=[self.active_channels(), self.xeng_acc_len, 2])
 
     def write_destination(self):
         """
@@ -490,7 +508,8 @@ class Beam(SPEADStreamMeta):
                     (bandwidth, centerfreq, parts))
         self.partitions_activate(parts)
         self.spead_meta_update_bandwidth()
-        self.spead_meta_update_dataheap()
+        self.descriptors_setup()
+        self.descriptors_issue()
         return self.get_beam_bandwidth()
 
     def get_beam_bandwidth(self):
@@ -524,29 +543,6 @@ class Beam(SPEADStreamMeta):
             shape=[], format=[('f', 64)],
             value=bw)
         LOGGER.info('Beam %i:%s - updated bandwidth' % (
-            self.index, self.name))
-    
-    def spead_meta_update_dataheap(self):
-        """
-        Update meta information about the beamformer data heap
-        :return:
-        """
-        meta_ig = self.meta_ig
-        # id is 0x5 + 12 least sig bits id of each beam
-        beam_data_id = 0x5000
-        speadops.add_item(
-            meta_ig,
-            name='bf_raw', id=beam_data_id,
-            description='Raw data for bengines in the system. Frequencies '
-                        'are assembled from lowest frequency to highest '
-                        'frequency. Frequencies come in blocks of values '
-                        'in time order where the number of samples in a '
-                        'block is given by xeng_acc_len (id 0x101F). Each '
-                        'value is a complex number -- two (real and '
-                        'imaginary) signed integers.',
-            dtype=numpy.int8,
-            shape=[self.active_channels(), self.xeng_acc_len, 2])
-        LOGGER.info('Beam %i:%s - updated dataheap metadata' % (
             self.index, self.name))
     
     def spead_meta_update_beamformer(self):
@@ -653,7 +649,6 @@ class Beam(SPEADStreamMeta):
         :return:
         """
         self.spead_meta_update_beamformer()
-        self.spead_meta_update_dataheap()
         self.spead_meta_update_destination()
         self.spead_meta_update_weights()
         self.spead_meta_update_labels()
