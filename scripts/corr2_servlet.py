@@ -62,7 +62,7 @@ class Corr2Server(katcp.DeviceServer):
             self.set_concurrency_options(thread_safe=False,
                                          handler_thread=False)
         self.instrument = None
-        self.metadata_cadence = 0
+        self.metadata_cadence = 5
         self.descriptor_cadence = 5
         self.executor = futures.ThreadPoolExecutor(max_workers=1)
 
@@ -520,7 +520,7 @@ class Corr2Server(katcp.DeviceServer):
                                        ' {0}.'.format(beam_name))
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))
 
-    @request(Str(), Float(), Float())
+    @request(Str(), Float(default=-1), Float(default=-1))
     @return_reply(Str(), Str(), Str())
     def request_beam_passband(self, sock, beam_name, bandwidth, centerfreq):
         """
@@ -534,6 +534,10 @@ class Corr2Server(katcp.DeviceServer):
         if not self.instrument.found_beamformer:
             return self._log_excep(None, 'Cannot run beamformer commands with'
                                          ' no beamformer')
+        if (bandwidth == -1) or (centerfreq == -1):
+            (cur_bw, cur_cf) = self.instrument.bops.get_beam_bandwidth(
+                beam_name)
+            return 'ok', beam_name, str(cur_bw), str(cur_cf)
         try:
             (cur_bw, cur_cf) = self.instrument.bops.set_beam_bandwidth(
                 beam_name,

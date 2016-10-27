@@ -490,6 +490,7 @@ class Beam(SPEADStreamMeta):
                     (bandwidth, centerfreq, parts))
         self.partitions_activate(parts)
         self.spead_meta_update_bandwidth()
+        self.spead_meta_update_dataheap()
         return self.get_beam_bandwidth()
 
     def get_beam_bandwidth(self):

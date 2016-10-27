@@ -629,18 +629,17 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
             beam = self.instrument.bops.beams[strmnm]
+            beam_bw, beam_cf = beam.get_beam_bandwidth()
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
                 'Bandwidth of selected beam passband.',
                 Sensor.UNKNOWN)
-            sensor.set_value(beam.bandwidth)
-
+            sensor.set_value(beam_bw)
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-center-freq'.format(strmnm),
                 'Center frequency of selected beam passband.',
                 Sensor.UNKNOWN)
-            sensor.set_value(beam.center_freq)
-
+            sensor.set_value(beam_cf)
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in selected beam passband.',
