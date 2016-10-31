@@ -77,17 +77,15 @@ class DigitiserStream(SPEADStream):
         Enable TX for this data stream
         :return:
         """
-        errmsg = 'Digitiser streams cannot be started or stopped.'
-        self.correlator.logger.error(errmsg)
-        raise RuntimeError(errmsg)
+        self.correlator.logger.info('{}: Digitiser streams cannot be '
+                                    'started.'.format(self.name))
 
     def tx_disable(self):
         """
         Disable TX for this data stream
         :return:
         """
-        errmsg = 'Digitiser streams cannot be started or stopped.'
-        self.correlator.logger.error(errmsg)
-        raise RuntimeError(errmsg)
+        self.correlator.logger.info('{}: Digitiser streams cannot be '
+                                    'stopped.'.format(self.name))
 
 # end

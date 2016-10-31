@@ -67,7 +67,8 @@ class FengineStream(SPEADStream):
         Disable TX for this data stream
         :return:
         """
-        raise RuntimeError('Cannot stop F-engine streams.')
+        self.fops.logger.info('{}: F-engine streams cannot be stopped.'.format(
+            self.name))
 
     def _tx_disable(self):
         """
