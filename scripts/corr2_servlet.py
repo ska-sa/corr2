@@ -68,7 +68,7 @@ class Corr2Server(katcp.DeviceServer):
 
     def _log_excep(self, excep, msg=''):
         """
-        Log and exception and return fail
+        Log an error and return fail
         :param excep: the exception that caused us to fail
         :param msg: the error message to log
         :return:
@@ -78,9 +78,9 @@ class Corr2Server(katcp.DeviceServer):
             template = '\nAn exception of type {0} occured. Arguments: {1!r}'
             message += template.format(type(excep).__name__, excep.args)
         if self.instrument:
-            self.instrument.logger.exception(message)
+            self.instrument.logger.error(message)
         else:
-            logging.exception(message)
+            logging.error(message)
         return 'fail', message
 
     @request()
@@ -268,9 +268,14 @@ class Corr2Server(katcp.DeviceServer):
             failmsg = 'Failed: stream {0} not in instrument data streams:' \
                       ' {1}'.format(stream_name, self.instrument.data_streams)
             return self._log_excep(None, failmsg)
-        self.instrument.stream_issue_metadata(stream_name)
-        self.instrument.stream_tx_enable(stream_name)
-        return 'ok', stream_name
+        try:
+            self.instrument.stream_issue_metadata(stream_name)
+            self.instrument.stream_tx_enable(stream_name)
+            return 'ok', stream_name
+        except RuntimeError as excep:
+            failmsg = 'Failed: stream {0} could not be started.'.format(
+                stream_name)
+            return self._log_excep(excep, failmsg)
 
     @request(Str(default=''))
     @return_reply(Str())
@@ -285,8 +290,13 @@ class Corr2Server(katcp.DeviceServer):
             failmsg = 'Failed: stream {0} not in instrument data streams: ' \
                       '{1}'.format(stream_name, self.instrument.data_streams)
             return self._log_excep(None, failmsg)
-        self.instrument.stream_tx_disable(stream_name)
-        return 'ok', stream_name
+        try:
+            self.instrument.stream_tx_disable(stream_name)
+            return 'ok', stream_name
+        except RuntimeError as excep:
+            failmsg = 'Failed: stream {0} could not be stopped.'.format(
+                stream_name)
+            return self._log_excep(excep, failmsg)
 
     @request(Str(default=''))
     @return_reply(Str())
