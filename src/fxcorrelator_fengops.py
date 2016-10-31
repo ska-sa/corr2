@@ -67,6 +67,13 @@ class FengineStream(SPEADStream):
         Disable TX for this data stream
         :return:
         """
+        raise RuntimeError('Cannot stop F-engine streams.')
+
+    def _tx_disable(self):
+        """
+        Disable TX for this data stream
+        :return:
+        """
         THREADED_FPGA_OP(
             self.fops.hosts, 5,
             (lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
