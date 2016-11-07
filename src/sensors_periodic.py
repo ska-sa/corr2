@@ -356,29 +356,41 @@ def _xhost_check_network_rx(sensor, x_host):
 
 
 @tornado.gen.coroutine
-def _xhost_report_network_tx(sensor, x_host, gbe):
+def _xhost_report_network_tx(sensor_manager, x_host):
     """
     Check that the x-hosts are sending data correctly
-    :param sensor:
     :param x_host:
-    :param gbe:
     :return:
     """
-    executor = sensor.executor
-    try:
-        result = yield executor.submit(
-            x_host.registers['%s_txctr' % gbe.name].read)
-        result = result['data']['reg']
-        sensor.set_value(result)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, 0)
-    except Exception as e:
-        LOGGER.error('Error updating {} for {} - '
-                     '{}'.format(sensor.name, x_host, e.message))
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, 0)
+    xhost = host_lookup[x_host.host]
+    counters_ticking = True
+    for gbe in x_host.tengbes:
+        sensor = sensor_manager.sensor_get(
+            '{xhost}-network-{gbe}-tx-ctr'.format(
+                xhost=xhost, gbe=gbe.name))
+        old_val = sensor.value()
+        executor = sensor.executor
+        try:
+            result = yield executor.submit(
+                x_host.registers['%s_txctr' % gbe.name].read)
+            result = result['data']['reg']
+            sensor.set_value(result)
+            if result == old_val:
+                counters_ticking = False
+        except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+            sensor.set(time.time(), Corr2Sensor.UNKNOWN, 0)
+            new_vals = None
+        except Exception as e:
+            LOGGER.error('Error updating {} for {} - '
+                         '{}'.format(sensor.name, x_host, e.message))
+            sensor.set(time.time(), Corr2Sensor.UNKNOWN, 0)
+            new_vals = None
+    sensor_ok = sensor = sensor_manager.sensor_get(
+        '{}-network-tx-ok'.format(xhost))
+    sensor.set_value(counters_ticking)
     LOGGER.debug('_xhost_report_network_tx ran')
     IOLoop.current().call_later(10, _xhost_report_network_tx,
-                                sensor, x_host, gbe)
+                                sensor_manager, x_host)
 
 
 @tornado.gen.coroutine
@@ -684,7 +696,10 @@ def _setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop):
             'X-engine network RX okay', Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_xhost_check_network_rx, sensor, _x)
 
-        # Raw TX - report tengbe counters
+        # Raw TX - tengbe counters must increment, report the counters also
+        sensor = sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}-network-tx-ok'.format(xhost),
+            'X-engine network TX okay', Corr2Sensor.UNKNOWN, '', None)
         for gbe in _x.tengbes:
             sensor = sens_man.do_sensor(
                 Corr2Sensor.integer,
@@ -692,7 +707,7 @@ def _setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop):
                     xhost=xhost, gbe=gbe.name),
                 'X-engine network TX counter', Corr2Sensor.UNKNOWN,
                 '', executor)
-            ioloop.add_callback(_xhost_report_network_tx, sensor, _x, gbe)
+        ioloop.add_callback(_xhost_report_network_tx, sens_man, _x)
 
         # Rx reorder counters
         sensor = sens_man.do_sensor(
