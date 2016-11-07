@@ -1121,7 +1121,7 @@ class XEngineOperations(object):
         """
         Issue = update the metadata then send it.
         :param data_stream: The DataStream object for which to send metadata
-        :return:
+        :return: True if the callback transmits the metadata as well
         """
         dstrm = data_stream or self.data_stream
         self.spead_meta_update_all()
@@ -1129,5 +1129,6 @@ class XEngineOperations(object):
         self.logger.info('Issued SPEAD data descriptor for data stream %s '
                          'to %s.' % (dstrm.name,
                                      dstrm.meta_destination))
+        return True
 
 # end

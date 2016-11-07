@@ -123,8 +123,9 @@ class DataStream(object):
         Call the meta destination update callback, then transmit the metadata.
         :return:
         """
-        self.meta_destination_cb(self)
-        self.meta_transmit()
+        transmitted = self.meta_destination_cb(self)
+        if not transmitted:
+            self.meta_transmit()
 
     def meta_transmit(self):
         """

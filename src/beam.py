@@ -651,6 +651,8 @@ class Beam(object):
         """
         Issue = update + transmit
         :param data_stream: the DataStrem for which to issue metadata
+        :return: True if the callback transmits the metadata as well
         """
         self.spead_meta_update_all()
         self.spead_meta_transmit_all()
+        return True
