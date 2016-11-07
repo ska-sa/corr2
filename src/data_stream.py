@@ -313,7 +313,8 @@ def _setup_spead_tx(ip_string, port):
     :param port: and on which port?
     :return:
     """
-    streamconfig = spead2.send.StreamConfig(max_packet_size=4096, max_heaps=8)
+    streamconfig = spead2.send.StreamConfig(
+        max_packet_size=4096, max_heaps=8, rate=100e6)
     streamsocket = socket.socket(
         family=socket.AF_INET, type=socket.SOCK_DGRAM, proto=socket.IPPROTO_IP)
     ttl_bin = struct.pack('@i', SPEAD_PKT_TTL)
