@@ -6,6 +6,7 @@ import Queue
 
 import spead2
 import spead2.recv as s2rx
+import numpy as np
 
 LOGGER = logging.getLogger(__name__)
 
@@ -16,8 +17,21 @@ class CorrRx(threading.Thread):
     ItemGroup into the `data_queue` attribute. If the Queue is full, the newer dumps will
     be discarded.
 
+    Paramaters:
+        port: Spead2 stream port (default = 8888)
+        queue_size: Size of spead2 heap queue. Note that spead2 heaps can be very large 
+                    (100's of megabytes) and available RAM should be taken into account 
+                    when assigning queue size. (default = 3)
+        ring_heaps: Number of heaps to keep in the spead2 ring buffer. (default = 4)
+        active_frames: Number of frames that may be in flight at one time. (default = 3)
+        buffer_size: Spead2 receiver udp_reader buffer size. Default is None which will
+                     use the spead2 default.
+
     """
-    def __init__(self, port=8888, queue_size=3):
+    def __init__(self, port=8888, queue_size=3, ring_heaps=4, active_frames=3, buffer_size=None):
+        self.ring_heaps = ring_heaps
+        self.active_frames = active_frames
+        self.buffer_size = buffer_size
         self.logger = LOGGER
         self.quit_event = threading.Event()
         self.data_queue = Queue.Queue(maxsize=queue_size)
@@ -42,34 +56,68 @@ class CorrRx(threading.Thread):
         logger = self.logger
         logger.info('Data reception on port %i.' % self.data_port)
 
-        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
-                           max_heaps=8, ring_heaps=8)
-        strm.add_udp_reader(port=self.data_port, max_size=9200,
-                            buffer_size=51200000)
-
-        self.running_event.set()
-
         try:
+            # We can't tell how big to make the memory pool or how many heaps
+            # we will be receiving in parallel until we have the metadata, but
+            # we need this to set up the stream. To handle this, we'll make a
+            # temporary stream for reading the metadata, then replace it once
+            # we have the metadata
+            self.strm = strm = s2rx.Stream(spead2.ThreadPool(), 
+                                           max_heaps=2, ring_heaps=8)
+            strm.add_udp_reader(port=self.data_port)
             ig = spead2.ItemGroup()
-            idx = -1
-            dump_size = 0
-            datasets = {}
-            datasets_index = {}
-            # we need these bits of meta data before being able to assemble and transmit
-            # signal display data
+            meta_required = set(['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
+                                 'center_freq', 'bls_ordering', 'n_accs'])
+            meta = set()
+            try:
+                for heap in strm:
+                    updated = ig.update(heap)
+                    meta = set(ig.keys())
+                    if meta_required.issubset(meta):
+                        break
+                    if 'timestamp' in updated:
+                        logger.warning('Dropping heap with timestamp %d because metadata not ready',
+                                       updated['timestamp'].value)
+            except spead2.Stopped:
+                return
+            self.strm.stop()
 
-            meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
-                             'center_freq', 'bls_ordering', 'n_accs']
-            meta = {}
+            # Code from SP ingest process. This should be updated when multiple capture machines
+            # are required to process data
+            heap_data_size = np.product(ig['xeng_raw'].shape) * ig['xeng_raw'].dtype.itemsize
+            heap_channels = ig['xeng_raw'].shape[0]
+            logger.info('Creating spead2 stream with max_heaps=%i, ring_heaps=%i' % (
+                self.active_frames, self.ring_heaps))
+            self.strm = strm = s2rx.Stream(spead2.ThreadPool(),
+                max_heaps=self.active_frames, ring_heaps=self.ring_heaps)
+            memory_pool_heaps = (self.active_frames + 2) + self.ring_heaps 
+            logger.info('Updating spead2 stream memory pool with heap_data_size=%i '
+                         'and memory_pool_heaps=%i' % (heap_data_size, memory_pool_heaps))
+            memory_pool = spead2.MemoryPool(heap_data_size, heap_data_size + 512,
+                                            memory_pool_heaps, memory_pool_heaps)
+            strm.set_memory_allocator(memory_pool)
+            if self.buffer_size:
+                strm.add_udp_reader(port=self.data_port, buffer_size=self.buffer_size)
+            else:
+                strm.add_udp_reader(port=self.data_port)
+
+            self.running_event.set()
+
+            idx = -1
             for heap in self.strm:
+                # should we quit?
+                if self.quit_event.is_set():
+                    logger.info('Got a signal from main(), exiting rx loop...')
+                    break
+
                 idx += 1
                 updated = ig.update(heap)
-                logger.debug('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f' % (
+                logger.info('PROCESSING HEAP idx(%i) cnt(%i) @ %.4f' % (
                     idx, heap.cnt, time.time()))
                 # output item values specified
 
                 if 'xeng_raw' not in updated:
-                    logger.info('Skipping heap {} since no xeng_raw was not updated'.format(idx))
+                    logger.info('Skipping non data heap {}.'.format(idx))
                     continue
 
                 ig_copy = copy.deepcopy(ig)
@@ -82,15 +130,9 @@ class CorrRx(threading.Thread):
                 except Exception:
                     logger.exception(
                         'Unhandled exception while calling data_callback()')
-
-                # should we quit?
-                if self.quit_event.is_set():
-                    logger.info('Got a signal from main(), exiting rx loop...')
-                    break
-
         finally:
             try:
-                strm.stop()
+                self.strm.stop()
                 logger.info("SPEAD receiver stopped")
             except Exception:
                 logger.exception('Exception trying to stop self.rx')
@@ -110,12 +152,22 @@ class CorrRx(threading.Thread):
         try:
             while True:
                 self.data_queue.get_nowait()
+                self.logger.debug('Discarding dump from data queue.')
         except Queue.Empty:
             pass
 
         # discard next dump too, in case
-        LOGGER.info('Discarding {discard} initial dump(s):'.format(discard=discard))
+        self.logger.info('Discarding {discard} initial dump(s):'.format(discard=discard))
         for i in range(discard):
-            self.data_queue.get(timeout=dump_timeout)
-        LOGGER.info('Waiting for a clean dump:')
-        return self.data_queue.get(timeout=dump_timeout)
+            try:
+                dump = self.data_queue.get(timeout=dump_timeout)
+            except:
+                raise
+        self.logger.debug('Waiting for a clean dump:')
+        try:
+            dump = self.data_queue.get(timeout=dump_timeout)
+        except:
+            raise
+        else:
+            return dump
+
