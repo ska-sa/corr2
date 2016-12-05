@@ -501,8 +501,13 @@ def parse_output_products(dictionary):
     :param dictionary:
     :return:
     """
-    prods = dictionary['output_products'].split(',')
-    addresses = dictionary['output_destinations'].split(',')
+    try:
+        prods = dictionary['output_products'].split(',')
+        addresses = dictionary['output_destinations'].split(',')
+    except KeyError:
+        raise RuntimeError('The given dictionary does not seem to have '
+                           'output_products or output_destinations '
+                           'defined.\n%s' % str(dictionary))
     if len(prods) != len(addresses):
         raise RuntimeError('Need the same number of output products and '
                            'addresses: %s, %s' % (prods, addresses))
