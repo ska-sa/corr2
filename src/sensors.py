@@ -333,7 +333,7 @@ class Corr2SensorManager(SensorManager):
         """
         val = self.instrument.synchronisation_epoch
         val = 0 if val < 0 else val
-        sensor = self.do_sensor(Corr2Sensor.integer, 'sync-time',
+        sensor = self.do_sensor(Corr2Sensor.float, 'sync-time',
                                 'The time at which the digitisers were '
                                 'synchronised. Seconds since the Unix Epoch.',
                                 Sensor.UNKNOWN, 's')
