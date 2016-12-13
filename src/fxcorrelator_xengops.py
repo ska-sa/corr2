@@ -38,7 +38,7 @@ class XengineStream(data_stream.SPEADStreamMeta):
         Add relevant metadata to the ItemGroup
         :return:
         """
-        self.xops.spead_meta_update_all()
+        # SPEAD metadata is deprecated - self.xops.spead_meta_update_all()
 
     def descriptors_setup(self):
         """
@@ -982,6 +982,9 @@ class XEngineOperations(object):
         Update SPEAD metadata about the destination of this stream.
         :return:
         """
+        # SPEAD metadata is deprecated -
+        return
+
         meta_ig = self.data_stream.meta_ig
         speadops.add_item(
             meta_ig,
@@ -1005,6 +1008,9 @@ class XEngineOperations(object):
         Update metadata for this correlator's xengine output.
         :return:
         """
+        # SPEAD metadata is deprecated -
+        return
+
         meta_ig = self.data_stream.meta_ig
         speadops.item_0x1600(meta_ig)
 

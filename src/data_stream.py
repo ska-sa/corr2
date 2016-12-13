@@ -10,11 +10,14 @@ from fxcorrelator_speadops import SPEAD_ADDRSIZE
 
 LOGGER = logging.getLogger(__name__)
 
-DIGITISER_ADC_SAMPLES = 0
-FENGINE_CHANNELISED_DATA = 1
-XENGINE_CROSS_PRODUCTS = 2
-BEAMFORMER_FREQUENCY_DOMAIN = 3
-BEAMFORMER_TIME_DOMAIN = 4
+DIGITISER_ADC_SAMPLES = 0  # baseband-voltage
+FENGINE_CHANNELISED_DATA = 1  # antenna-channelised-voltage
+XENGINE_CROSS_PRODUCTS = 2  # baseline-correlation-products
+BEAMFORMER_FREQUENCY_DOMAIN = 3  # tied-array-channelised-voltage
+BEAMFORMER_TIME_DOMAIN = 4  # tied-array-voltage
+BEAMFORMER_INCOHERENT = 5  # incoherent-beam-total-power
+FLYS_EYE = 6  # antenna-correlation-products
+ANTENNA_VOLTAGE_BUFFER = 7  # antenna-voltage-buffer
 
 SPEAD_PKT_TTL = 2
 
@@ -385,7 +388,7 @@ class SPEADStream(object):
         :return:
         """
         if (not self.descr_ig) or (not self.descr_tx):
-            LOGGER.info('%s: descriptors have not been set up for '
+            LOGGER.debug('%s: descriptors have not been set up for '
                         'stream yet.' % self.name)
             return
         ctr = 0
@@ -438,7 +441,7 @@ class SPEADStreamMeta(SPEADStream):
         :return:
         """
         if (not self.meta_ig) or (not self.descr_tx):
-            LOGGER.info('%s: metadata has not been set up for '
+            LOGGER.debug('%s: metadata has not been set up for '
                         'stream yet.' % self.name)
             return
         ctr = 0

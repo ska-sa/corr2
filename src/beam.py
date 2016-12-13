@@ -210,7 +210,7 @@ class Beam(SPEADStreamMeta):
         Add relevant metadata to the ItemGroup
         :return:
         """
-        self.spead_meta_update_all()
+        # SPEAD metadata is deprecated - self.spead_meta_update_all()
 
     def descriptors_setup(self):
         """
@@ -528,6 +528,9 @@ class Beam(SPEADStreamMeta):
         Update the metadata regarding this beam's bandwidth
         :return:
         """
+        # SPEAD metadata is deprecated -
+        return
+
         bw, cf = self.get_beam_bandwidth()
         meta_ig = self.meta_ig
         speadops.add_item(
@@ -551,6 +554,9 @@ class Beam(SPEADStreamMeta):
         and options descriptors and unpack sequences.
         :return:
         """
+        # SPEAD metadata is deprecated -
+        return
+
         meta_ig = self.meta_ig
         # calculate a few things for this beam
         n_bhosts = len(self.hosts)
@@ -593,6 +599,9 @@ class Beam(SPEADStreamMeta):
         Update the SPEAD IGs to notify the receiver of changes to destination
         :return:
         """
+        # SPEAD metadata is deprecated -
+        return
+
         meta_ig = self.meta_ig
         speadops.add_item(
             meta_ig,
@@ -618,6 +627,9 @@ class Beam(SPEADStreamMeta):
         Update the weights in the BEAM SPEAD ItemGroups.
         :return:
         """
+        # SPEAD metadata is deprecated -
+        return
+
         weights = self.get_weights().values()
         meta_ig = self.meta_ig
         speadops.add_item(
@@ -639,6 +651,9 @@ class Beam(SPEADStreamMeta):
         Update the labels in the BEAM SPEAD ItemGroups.
         :return:
         """
+        # SPEAD metadata is deprecated -
+        return
+
         self.speadops.item_0x100e(sig=self.meta_ig)
         LOGGER.info('Beam %i:%s - updated label metadata' % (
             self.index, self.name))
@@ -648,6 +663,9 @@ class Beam(SPEADStreamMeta):
         Update the IGs for all beams for all beamformer info
         :return:
         """
+        # SPEAD metadata is deprecated -
+        return
+
         self.spead_meta_update_beamformer()
         self.spead_meta_update_destination()
         self.spead_meta_update_weights()
