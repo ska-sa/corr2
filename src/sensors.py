@@ -436,6 +436,7 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(len(self.instrument.baselines))
 
         self.sensors_xeng_acc_time()
+        self.sensors_baseline_ordering()
 
     def sensors_feng_fft_shift(self):
         """
