@@ -186,6 +186,7 @@ class Beam(SPEADStreamMeta):
             target_function=(
                 lambda fpga_:
                 fpga_.registers[reg_name].write(txen=True), [], {}))
+        self.tx_enabled = True
         LOGGER.info('Beam %i:%s output enabled.' % (self.index, self.name))
 
     def tx_disable(self):
@@ -203,6 +204,7 @@ class Beam(SPEADStreamMeta):
             target_function=(
                 lambda fpga_:
                 fpga_.registers[reg_name].write(txen=False), [], {}))
+        self.tx_enabled = False
         LOGGER.info('Beam %i:%s output disabled.' % (self.index, self.name))
 
     def metadata_setup(self):

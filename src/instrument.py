@@ -138,7 +138,7 @@ class Instrument(object):
     def get_data_stream(self, stream_name):
         """
         Does a given stream name exist on this instrument?
-        :param stream_name:
+        :param stream_name: string, name of the stream to query
         :return:
         """
         for stream in self.data_streams:
@@ -162,7 +162,7 @@ class Instrument(object):
     def stream_set_destination(self, stream_name, address):
         """
         Set the destination for a data stream.
-        :param stream_name:
+        :param stream_name: string, name of the stream to query
         :param address: A dotted-decimal string representation of the
         IP address, range and port. e.g. '1.2.3.4+0:7890'
         :return: <nothing>
@@ -172,7 +172,7 @@ class Instrument(object):
     def stream_tx_enable(self, stream_name):
         """
         Enable tranmission for a stream produced by this instrument.
-        :param stream_name:
+        :param stream_name: string, name of the stream to query
         :return:
         """
         self.get_data_stream(stream_name).tx_enable()
@@ -180,10 +180,18 @@ class Instrument(object):
     def stream_tx_disable(self, stream_name):
         """
         Disable tranmission for a stream produced by this instrument.
-        :param stream_name:
+        :param stream_name: string, name of the stream to query
         :return:
         """
         self.get_data_stream(stream_name).tx_disable()
+
+    def stream_tx_status(self, stream_name):
+        """
+        Return True if the stream is enabled and transmitting, else False.
+        :param stream_name: string, name of the stream to query
+        :return:
+        """
+        return self.get_data_stream(stream_name).tx_enabled
 
     def stream_issue_descriptors(self, stream_name=None):
         """

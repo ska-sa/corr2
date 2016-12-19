@@ -299,6 +299,27 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(excep, failmsg)
 
     @request(Str(default=''))
+    @return_reply(Str(), Int())
+    def request_capture_status(self, sock, stream_name):
+        """
+        Report the capture status of a stream.
+        :param sock:
+        :param stream_name: an instrument data stream name
+        :return: 1 if stream TX is enabled, else 0
+        """
+        if not self.instrument.check_data_stream(stream_name):
+            failmsg = 'Failed: stream {0} not in instrument data streams: ' \
+                      '{1}'.format(stream_name, self.instrument.data_streams)
+            return self._log_excep(None, failmsg)
+        try:
+            tx_enabled = self.instrument.stream_tx_status(stream_name)
+            return 'ok', stream_name, 1 if tx_enabled else 0
+        except RuntimeError as excep:
+            failmsg = 'Failed: stream {0} could not get TX status.'.format(
+                stream_name)
+            return self._log_excep(excep, failmsg)
+
+    @request(Str(default=''))
     @return_reply(Str())
     def request_capture_meta(self, sock, stream_name):
         """

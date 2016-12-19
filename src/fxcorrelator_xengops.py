@@ -108,6 +108,7 @@ class XengineStream(data_stream.SPEADStreamMeta):
             target_function=(
                 lambda fpga_:
                 fpga_.registers.control.write(gbe_txen=True),))
+        self.tx_enabled = True
         self.xops.logger.info('X-engine output enabled')
 
     def tx_disable(self):
@@ -120,6 +121,7 @@ class XengineStream(data_stream.SPEADStreamMeta):
             target_function=(
                 lambda fpga_:
                 fpga_.registers.control.write(gbe_txen=False),))
+        self.tx_enabled = False
         self.xops.logger.info('X-engine output disabled')
 
     def __str__(self):
@@ -309,7 +311,6 @@ class XEngineOperations(object):
         output_name = output_name[0]
         output_address = output_address[0]
         xeng_stream = XengineStream(output_name, output_address, self)
-
 
         self.data_stream = xeng_stream
         self.corr.add_data_stream(xeng_stream)

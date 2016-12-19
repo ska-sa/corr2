@@ -60,6 +60,7 @@ class FengineStream(SPEADStream):
         THREADED_FPGA_OP(
             self.fops.hosts, 5,
             (lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+        self.tx_enabled = True
         self.fops.logger.info('F-engine output enabled')
 
     def tx_disable(self):

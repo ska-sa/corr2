@@ -348,6 +348,7 @@ class SPEADStream(object):
         self.category = category
         self.destination = None
         self.descr_tx = None
+        self.tx_enabled = False
         self.descr_ig = spead2.send.ItemGroup(
             flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
         self.descriptors_setup()
@@ -389,7 +390,7 @@ class SPEADStream(object):
         """
         if (not self.descr_ig) or (not self.descr_tx):
             LOGGER.debug('%s: descriptors have not been set up for '
-                        'stream yet.' % self.name)
+                         'stream yet.' % self.name)
             return
         ctr = 0
         for tx in self.descr_tx:
@@ -418,6 +419,10 @@ class SPEADStream(object):
         return 'SPEADStream %s:%i -> %s' % (
             self.name, self.category, self.destination)
 
+    def __repr__(self):
+        return 'SPEADStream(%s:%i:%s)' % (
+            self.name, self.category, self.destination)
+
 
 class SPEADStreamMeta(SPEADStream):
     """
@@ -442,7 +447,7 @@ class SPEADStreamMeta(SPEADStream):
         """
         if (not self.meta_ig) or (not self.descr_tx):
             LOGGER.debug('%s: metadata has not been set up for '
-                        'stream yet.' % self.name)
+                         'stream yet.' % self.name)
             return
         ctr = 0
         for tx in self.descr_tx:
