@@ -335,6 +335,18 @@ class Corr2Server(katcp.DeviceServer):
         self.instrument.stream_issue_descriptors(stream_name)
         return 'ok', stream_name
 
+    @request(Str(default=''), Float())
+    @return_reply(Str())
+    def request_frequency_select(self, sock, stream_name, centrefreq):
+        """
+        Select the passband for this instrument
+        :param sock:
+        :param stream_name: an instrument data stream name
+        :param centrefreq: the centre frequency to choose, in Hz
+        :return:
+        """
+        return 'fail', 'Unavailable in this mode'
+
     @request(Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_input_labels(self, sock, *newlist):
@@ -430,8 +442,9 @@ class Corr2Server(katcp.DeviceServer):
                 return self._log_excep(ex, 'Failed to set accumulation length.')
         return 'ok', self.instrument.xops.get_acc_time()
 
-    @request(Str(default=''))
-    @return_reply(Str(multiple=True))
+    @request(Str())
+    # @return_reply(Str(multiple=True))
+    @return_reply()
     def request_quantiser_snapshot(self, sock, source_name):
         """
         Get a list of values representing the quantised spectrum for
@@ -443,12 +456,13 @@ class Corr2Server(katcp.DeviceServer):
         try:
             snapdata = self.instrument.fops.get_quant_snap(source_name)
         except ValueError as ex:
-            return self._log_excep(ex, 'Failed reading quant snap data for '
-                                       'source {0}.'.format(source_name))
-        quant_string = ''
-        for complex_word in snapdata:
-            quant_string += ' %s' % str(complex_word)
-        return tuple(['ok'] + Corr2Server.rv_to_liststr(quant_string))
+            return self._log_excep(ex, ex.message)
+        # quant_string = ''
+        # for complex_word in snapdata:
+        #     quant_string += ' %s' % str(complex_word)
+        # return tuple(['ok'] + Corr2Server.rv_to_liststr(quant_string))
+        sock.inform(source_name, str(snapdata))
+        return 'ok',
 
     @request(Str(), Float(default=-1))
     @return_reply(Int())
@@ -469,8 +483,7 @@ class Corr2Server(katcp.DeviceServer):
             sock.inform(source_name, rstr)
             return 'ok', snaptime
         except ValueError as ex:
-            return self._log_excep(ex, 'Failed reading ADC voltage data for '
-                                       'source {0}.'.format(source_name))
+            return self._log_excep(ex, ex.message)
 
     @request()
     @return_reply(Int())

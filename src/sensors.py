@@ -357,7 +357,7 @@ class Corr2SensorManager(SensorManager):
         """
         mapping = self.instrument.get_input_mapping()
         sensor = self.do_sensor(
-            Corr2Sensor.string, 'input-mapping',
+            Corr2Sensor.string, 'input-labelling',
             'Mapping of input labels to hardware LRUs and input numbers: '
             '(input-label, input-index, LRU host, index-on-host)')
         sensor.set_value(str(mapping))
@@ -434,6 +434,13 @@ class Corr2SensorManager(SensorManager):
                 'The number of baselines produced by this correlator '
                 'instrument.', Sensor.UNKNOWN)
             sensor.set_value(len(self.instrument.baselines))
+
+            # TODO - this might not be correct
+            sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
+                'Number of channels in the integration.',
+                Sensor.UNKNOWN)
+            sensor.set_value(self.instrument.n_chans)
 
         self.sensors_xeng_acc_time()
         self.sensors_baseline_ordering()
@@ -556,6 +563,13 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(self.instrument.n_chans)
 
             sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-n-chans-per-substream'.format(strmnm),
+                'Number of channels in each substream.',
+                Sensor.UNKNOWN)
+            n_xeng = len(self.instrument.xhosts) * self.instrument.x_per_fpga
+            sensor.set_value(self.instrument.n_chans / n_xeng)
+
+            sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-coarse-chans'.format(strmnm),
                 'Number of channels in the first PFB in a cascaded-PFB design.',
                 Sensor.UNKNOWN)
@@ -630,17 +644,17 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
             beam = self.instrument.bops.beams[strmnm]
-            beam_bw, beam_cf = beam.get_beam_bandwidth()
-            sensor = self.do_sensor(
-                Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
-                'Bandwidth of selected beam passband.',
-                Sensor.UNKNOWN)
-            sensor.set_value(beam_bw)
-            sensor = self.do_sensor(
-                Corr2Sensor.float, '{}-center-freq'.format(strmnm),
-                'Center frequency of selected beam passband.',
-                Sensor.UNKNOWN)
-            sensor.set_value(beam_cf)
+            # beam_bw, beam_cf = beam.get_beam_bandwidth()
+            # sensor = self.do_sensor(
+            #     Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
+            #     'Bandwidth of selected beam passband.',
+            #     Sensor.UNKNOWN)
+            # sensor.set_value(beam_bw)
+            # sensor = self.do_sensor(
+            #     Corr2Sensor.float, '{}-center-freq'.format(strmnm),
+            #     'Center frequency of selected beam passband.',
+            #     Sensor.UNKNOWN)
+            # sensor.set_value(beam_cf)
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in selected beam passband.',
@@ -661,11 +675,18 @@ class Corr2SensorManager(SensorManager):
 
             # TODO - where is this found?
             sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-beng-out-bits-per-sample'
-                                     ''.format(strmnm),
+                Corr2Sensor.integer,
+                '{}-beng-out-bits-per-sample'.format(strmnm),
                 'B-engine output bits per sample.',
                 Sensor.UNKNOWN)
             sensor.set_value(16)
+
+            sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-n-chans-per-substream'.format(strmnm),
+                'Number of channels in each substream.',
+                Sensor.UNKNOWN)
+            n_xeng = len(self.instrument.xhosts) * self.instrument.x_per_fpga
+            sensor.set_value(self.instrument.n_chans / n_xeng)
 
         self.sensors_beng_passband()
         self.sensors_beng_weights()
@@ -699,6 +720,8 @@ class Corr2SensorManager(SensorManager):
         self.sensors_clear()
 
         # sensors from list @ https://docs.google.com/spreadsheets/d/12AWtHXPXmkT5e_VT-H__zHjV8_Cba0Y7iMkRnj2qfS8/edit#gid=0
+
+        self.sensors_stream_destinations()
 
         self.sensors_tengbe_interfacing()
 
@@ -849,11 +872,12 @@ class Corr2SensorManager(SensorManager):
             sensor = Corr2Sensor.string(
                 name='xeng-host{}-chan-range'.format(bid),
                 description='The range of frequency channels processed '
-                            'by xeng board {brd}.'.format(brd=bid),
+                            'by xeng board {brd}, inclusive.'.format(brd=bid),
                 initial_status=Sensor.UNKNOWN,
                 manager=self)
+            self.sensor_create(sensor)
             sensor.set_value('({start},{end})'.format(
-                start=bid*chans_per_x, end=(bid+1)*chans_per_x))
+                start=bid*chans_per_x, end=(bid+1)*chans_per_x-1))
 
         hosts = [('fengine', self.instrument.fhosts[0]),
                  ('xengine', self.instrument.xhosts[0])]
@@ -870,6 +894,7 @@ class Corr2SensorManager(SensorManager):
                             description='Git info: %s' % sensname,
                             initial_status=Sensor.UNKNOWN,
                             manager=self)
+                        self.sensor_create(sensor)
                         sensor.set_value(str(value))
                     filectr += 1
 

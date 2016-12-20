@@ -656,7 +656,9 @@ class FEngineOperations(object):
                 return host.get_quant_snapshot(input_name)
             except ValueError:
                 pass
-        raise ValueError('Could not find input %s anywhere.' % input_name)
+        raise ValueError(
+            'Could not find input %s anywhere. Available inputs: %s' % (
+                input_name, self.corr.get_input_labels()))
 
     def _get_adc_snapshot_compat(self, input_name):
         """
@@ -679,8 +681,9 @@ class FEngineOperations(object):
                 return {input_name: d['p%i' % feng.offset]}
             except ValueError:
                 pass
-            raise RuntimeError('Could not get ADC compat snapshot for input '
-                               '%s' % input_name)
+            raise ValueError(
+                'Could not find input %s anywhere. Available inputs: %s' % (
+                    input_name, self.corr.get_input_labels()))
 
     def get_adc_snapshot(self, input_name=None, unix_time=-1):
         """
@@ -737,7 +740,8 @@ class FEngineOperations(object):
                     pass
             if rv is None:
                 raise ValueError(
-                    'Could not find input %s on any host.' % input_name)
+                    'Could not find input %s anywhere. Available inputs: %s' % (
+                        input_name, self.corr.get_input_labels()))
             return {input_name: rv}
 
     def check_qdr_devices(self):
