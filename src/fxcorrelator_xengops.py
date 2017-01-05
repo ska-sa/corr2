@@ -1049,7 +1049,9 @@ class XEngineOperations(object):
                         'Each value is a complex number - two (real and '
                         'imaginary) unsigned integers.' % n_xengs,
             dtype=numpy.dtype('>i4'),
+            # ar1.0
             # shape=[self.corr.n_chans, len(self.corr.baselines), 2])
+            # ar1.5
             shape=[self.corr.n_chans/n_xengs, len(self.corr.baselines), 2])
 
         self.corr.speadops.item_0x1007(meta_ig)

@@ -101,7 +101,7 @@ class BEngineOperations(object):
             beams = self.beams.keys()
         for beam_name in beams:
             beam = self.beams[beam_name]
-            beam.tx_enable(None)
+            beam.tx_enable()
 
     def tx_disable(self, beams=None):
         """
@@ -113,7 +113,7 @@ class BEngineOperations(object):
             beams = self.beams.keys()
         for beam_name in beams:
             beam = self.beams[beam_name]
-            beam.tx_disable(None)
+            beam.tx_disable()
 
     def partitions_current(self):
         """
