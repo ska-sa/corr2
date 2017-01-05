@@ -73,7 +73,15 @@ class XengineStream(data_stream.SPEADStreamMeta):
             'Each value is a complex number - two (real and imaginary) '
             'unsigned integers.' % n_xengs,
             dtype=numpy.dtype('>i4'),
-            shape=[self.xops.corr.n_chans, len(self.xops.corr.baselines), 2])
+            # shape=[self.xops.corr.n_chans, len(self.xops.corr.baselines), 2])
+            shape=[self.xops.corr.n_chans/n_xengs, len(self.xops.corr.baselines), 2])
+
+        speadops.add_item(
+            self.descr_ig, name='frequency', id=0x4103,
+            description=
+            'Identifies the first channel in the band of frequency channels '
+            'in the SPEAD heap',
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
 
     def write_destination(self):
         """
@@ -1041,7 +1049,8 @@ class XEngineOperations(object):
                         'Each value is a complex number - two (real and '
                         'imaginary) unsigned integers.' % n_xengs,
             dtype=numpy.dtype('>i4'),
-            shape=[self.corr.n_chans, len(self.corr.baselines), 2])
+            # shape=[self.corr.n_chans, len(self.corr.baselines), 2])
+            shape=[self.corr.n_chans/n_xengs, len(self.corr.baselines), 2])
 
         self.corr.speadops.item_0x1007(meta_ig)
 

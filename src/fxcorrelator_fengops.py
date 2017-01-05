@@ -602,6 +602,16 @@ class FEngineOperations(object):
         self.logger.info('Subscribing F-engine inputs...')
         for fhost in self.hosts:
             self.logger.info('\t%s:' % fhost.host)
+
+            # andrew's ar1.5 changes
+            if 'rx_dest_ip_mask0' in fhost.registers._items:
+                base = int(fhost.fengines[0].input.destination.ip_address)
+                fhost.registers.rx_dest_ip0.write_int(base)
+                fhost.registers.rx_dest_ip1.write_int(base+2)
+                mask = (255 << 24) + (255 << 16) + (255 << 8) + 254
+                fhost.registers.rx_dest_ip_mask0.write_int(mask)
+                fhost.registers.rx_dest_ip_mask1.write_int(mask)
+
             gbe_ctr = 0
             for feng in fhost.fengines:
                 input_addr = feng.input.destination
