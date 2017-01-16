@@ -3,7 +3,7 @@ import logging
 from casperfpga import utils as fpgautils
 
 import fxcorrelator_speadops as speadops
-from data_stream import SPEADStreamMeta, BEAMFORMER_FREQUENCY_DOMAIN
+from data_stream import SPEADStream, BEAMFORMER_FREQUENCY_DOMAIN
 from utils import parse_output_products
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
@@ -12,7 +12,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 LOGGER = logging.getLogger(__name__)
 
 
-class Beam(SPEADStreamMeta):
+class Beam(SPEADStream):
     def __init__(self, name, index, destination):
         """
         A frequency-domain tied-array beam
@@ -206,13 +206,6 @@ class Beam(SPEADStreamMeta):
                 fpga_.registers[reg_name].write(txen=False), [], {}))
         self.tx_enabled = False
         LOGGER.info('Beam %i:%s output disabled.' % (self.index, self.name))
-
-    def metadata_setup(self):
-        """
-        Add relevant metadata to the ItemGroup
-        :return:
-        """
-        # SPEAD metadata is deprecated - self.spead_meta_update_all()
 
     def descriptors_setup(self):
         """
@@ -509,7 +502,6 @@ class Beam(SPEADStreamMeta):
         LOGGER.info('BW(%.3f) CF(%.3f) translates to partitions: %s' %
                     (bandwidth, centerfreq, parts))
         self.partitions_activate(parts)
-        self.spead_meta_update_bandwidth()
         self.descriptors_setup()
         self.descriptors_issue()
         return self.get_beam_bandwidth()
@@ -524,153 +516,5 @@ class Beam(SPEADStreamMeta):
         LOGGER.info('Partitions %s give BW(%.3f) CF(%.3f)' %
                     (self.partitions_active, bw, cf))
         return bw, cf
-
-    def spead_meta_update_bandwidth(self):
-        """
-        Update the metadata regarding this beam's bandwidth
-        :return:
-        """
-        # SPEAD metadata is deprecated -
-        return
-
-        bw, cf = self.get_beam_bandwidth()
-        meta_ig = self.meta_ig
-        speadops.add_item(
-            meta_ig,
-            name='n_chans', id=0x1009,
-            description='Number of frequency channels selected in this beam.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.active_channels())
-        speadops.add_item(
-            meta_ig,
-            name='bandwidth', id=0x1013,
-            description='The analogue bandwidth in this beam data stream.',
-            shape=[], format=[('f', 64)],
-            value=bw)
-        LOGGER.info('Beam %i:%s - updated bandwidth' % (
-            self.index, self.name))
-    
-    def spead_meta_update_beamformer(self):
-        """
-        Issues the SPEAD metadata packets containing the payload
-        and options descriptors and unpack sequences.
-        :return:
-        """
-        # SPEAD metadata is deprecated -
-        return
-
-        meta_ig = self.meta_ig
-        # calculate a few things for this beam
-        n_bhosts = len(self.hosts)
-        n_bengs = self.beng_per_host * n_bhosts
-        self.speadops.item_0x1007(sig=meta_ig)
-        self.spead_meta_update_bandwidth()
-        self.speadops.item_0x100a(sig=meta_ig)
-        speadops.add_item(
-            meta_ig,
-            name='n_bengs', id=0x100F,
-            description='The total number of B engines in the system.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=n_bengs)
-        self.speadops.item_0x1020(sig=meta_ig)
-        self.speadops.item_0x1027(sig=meta_ig)
-        self.speadops.item_0x1045(sig=meta_ig)
-        self.speadops.item_0x1046(sig=meta_ig)
-        speadops.add_item(
-            meta_ig,
-            name='b_per_fpga', id=0x1047,
-            description='The number of b-engines per fpga.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.beng_per_host)
-        self.speadops.item_0x104a(meta_ig)
-        self.speadops.item_0x104b(meta_ig)
-        speadops.add_item(
-            meta_ig,
-            name='beng_out_bits_per_sample', id=0x1050,
-            description='The number of bits per value in the beng output. '
-                        'Note that this is for a single value, not the '
-                        'combined complex value size.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=8)
-        speadops.item_0x1600(sig=meta_ig)
-        LOGGER.info('Beam %i:%s - updated beamformer metadata' % (
-            self.index, self.name))
-    
-    def spead_meta_update_destination(self):
-        """
-        Update the SPEAD IGs to notify the receiver of changes to destination
-        :return:
-        """
-        # SPEAD metadata is deprecated -
-        return
-
-        meta_ig = self.meta_ig
-        speadops.add_item(
-            meta_ig,
-            name='rx_udp_port', id=0x1022,
-            description='Destination UDP port for B engine output.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.destination.port)
-    
-        ipstr = numpy.array(str(self.destination.ip_address))
-        speadops.add_item(
-            meta_ig,
-            name='rx_udp_ip_str', id=0x1024,
-            description='Destination IP address for B engine output UDP '
-                        'packets.',
-            shape=ipstr.shape,
-            dtype=ipstr.dtype,
-            value=ipstr)
-        LOGGER.info('Beam %i:%s - updated meta destination '
-                    'metadata' % (self.index, self.name))
-    
-    def spead_meta_update_weights(self):
-        """
-        Update the weights in the BEAM SPEAD ItemGroups.
-        :return:
-        """
-        # SPEAD metadata is deprecated -
-        return
-
-        weights = self.get_weights().values()
-        meta_ig = self.meta_ig
-        speadops.add_item(
-            meta_ig,
-            name='beamweight',
-            id=0x2000,
-            description='The unitless per-channel digital scaling '
-                        'factors implemented prior to combining '
-                        'antenna signals during beamforming for input '
-                        'beam %s. Complex number real 32 bit '
-                        'floats.' % self.name,
-            shape=[len(weights)], format=[('i', 32)],
-            value=weights)
-        LOGGER.info('Beam %i:%s - updated weights metadata' % (
-            self.index, self.name))
-    
-    def spead_meta_update_labels(self):
-        """
-        Update the labels in the BEAM SPEAD ItemGroups.
-        :return:
-        """
-        # SPEAD metadata is deprecated -
-        return
-
-        self.speadops.item_0x100e(sig=self.meta_ig)
-        LOGGER.info('Beam %i:%s - updated label metadata' % (
-            self.index, self.name))
-    
-    def spead_meta_update_all(self):
-        """
-        Update the IGs for all beams for all beamformer info
-        :return:
-        """
-        # SPEAD metadata is deprecated -
-        return
-
-        self.spead_meta_update_beamformer()
-        self.spead_meta_update_destination()
-        self.spead_meta_update_weights()
-        self.spead_meta_update_labels()
 
 # end

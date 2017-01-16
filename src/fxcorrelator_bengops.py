@@ -73,7 +73,6 @@ class BEngineOperations(object):
                                         self.corr.configd,
                                         self.corr.fops,
                                         self.corr.speadops,)
-                beam.metadata_setup()
                 if beam.name in beam_names:
                     raise ValueError('Cannot have more than one beam with '
                                      'the name %s. Please check the '
@@ -97,6 +96,7 @@ class BEngineOperations(object):
         :param beams - list of beam names
         :return:
         """
+        raise DeprecationWarning
         if not beams:
             beams = self.beams.keys()
         for beam_name in beams:
@@ -109,6 +109,7 @@ class BEngineOperations(object):
         :param beams - list of beam names
         :return:
         """
+        raise DeprecationWarning
         if not beams:
             beams = self.beams.keys()
         for beam_name in beams:

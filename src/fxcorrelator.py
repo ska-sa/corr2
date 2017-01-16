@@ -20,7 +20,6 @@ from fxcorrelator_fengops import FEngineOperations
 from fxcorrelator_xengops import XEngineOperations
 from fxcorrelator_bengops import BEngineOperations
 from fxcorrelator_filterops import FilterOperations
-from fxcorrelator_speadops import SpeadOperations
 from data_stream import StreamAddress
 from digitiser import DigitiserStream
 
@@ -96,7 +95,6 @@ class FxCorrelator(Instrument):
         self.xops = XEngineOperations(self)
         self.bops = BEngineOperations(self)
         self.filtops = FilterOperations(self)
-        self.speadops = SpeadOperations(self)
 
         # set up the filter boards if we need to
         if 'filter' in self.configd:

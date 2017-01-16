@@ -307,10 +307,10 @@ class FEngineOperations(object):
                     return False, feng_times, feng_times_unix
                 # is the time close enough to local time?
                 if abs(read_time - feng_time) > self.corr.time_offset_allowed_s:
-                    errmsg = '%s: time calculated from board cannot be so far ' \
-                           'from local time: now(%.3f) feng_time(%.3f) ' \
-                           'diff(%.3f)' % (host.host, read_time, feng_time,
-                                           read_time - feng_time)
+                    errmsg = '%s: time calculated from board cannot be so ' \
+                             'far from local time: now(%.3f) feng_time(%.3f) ' \
+                             'diff(%.3f)' % (host.host, read_time, feng_time,
+                                             read_time - feng_time)
                     self.logger.error(errmsg)
                     return False, feng_times, feng_times_unix
                 feng_times_unix[host.host] = feng_time
@@ -521,8 +521,6 @@ class FEngineOperations(object):
                 raise ValueError('New EQ error - REVERTED to '
                                  'old value! - %s' % e.message)
         if write:
-            # only want this to happen after the values are written
-            self.corr.speadops.update_metadata(0x1400)
             if self.corr.sensor_manager:
                 self.corr.sensor_manager.sensors_feng_eq()
 
@@ -539,7 +537,6 @@ class FEngineOperations(object):
         self.logger.info('Writing EQ on all fhosts based on stored '
                          'per-input EQ values...')
         THREADED_FPGA_FUNC(self.hosts, 10, 'write_eq_all')
-        self.corr.speadops.update_metadata([0x1400])
         self.logger.info('done.')
 
     def set_fft_shift_all(self, shift_value=None):
@@ -557,7 +554,6 @@ class FEngineOperations(object):
         THREADED_FPGA_FUNC(self.hosts, 10, ('set_fft_shift', (shift_value,),))
         self.corr.fft_shift = shift_value
         self.logger.info('done.')
-        self.corr.speadops.update_metadata([0x101e])
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_feng_fft_shift()
         return shift_value
@@ -625,7 +621,8 @@ class FEngineOperations(object):
                     rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0],
                                                    rxaddr_bits[1],
                                                    rxaddr_bits[2])
-                    if (len(fhost.tengbes) / self.corr.f_per_fpga) != input_addr.ip_range:
+                    if ((len(fhost.tengbes) / self.corr.f_per_fpga) !=
+                            input_addr.ip_range):
                         raise RuntimeError(
                             '10Gbe ports (%d) do not match sources IPs (%d)' %
                             (len(fhost.tengbes), input_addr.ip_range))

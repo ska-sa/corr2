@@ -18,7 +18,7 @@ use_xeng_sim = False
 MAX_VACC_SYNCH_ATTEMPTS = 5
 
 
-class XengineStream(data_stream.SPEADStreamMeta):
+class XengineStream(data_stream.SPEADStream):
     """
     An x-engine SPEAD stream
     """
@@ -33,13 +33,6 @@ class XengineStream(data_stream.SPEADStreamMeta):
         super(XengineStream, self).__init__(
             name, data_stream.XENGINE_CROSS_PRODUCTS, destination)
 
-    def metadata_setup(self):
-        """
-        Add relevant metadata to the ItemGroup
-        :return:
-        """
-        # SPEAD metadata is deprecated - self.xops.spead_meta_update_all()
-
     def descriptors_setup(self):
         """
         Set up the data descriptors for an X-engine stream.
@@ -47,15 +40,15 @@ class XengineStream(data_stream.SPEADStreamMeta):
         """
         speadops.item_0x1600(self.descr_ig)
 
-        # xeng flags
-        speadops.add_item(
-            self.descr_ig, name='flags_xeng_raw', id=0x1601,
-            description=
-            'Flags associated with xeng_raw data output. bit 34 - corruption '
-            'or data missing during integration, bit 33 - overrange in '
-            'data path, bit 32 - noise diode on during integration, '
-            'bits 0 - 31 reserved for internal debugging',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
+        # # xeng flags
+        # speadops.add_item(
+        #     self.descr_ig, name='flags_xeng_raw', id=0x1601,
+        #     description=
+        #     'Flags associated with xeng_raw data output. bit 34 - corruption '
+        #     'or data missing during integration, bit 33 - overrange in '
+        #     'data path, bit 32 - noise diode on during integration, '
+        #     'bits 0 - 31 reserved for internal debugging',
+        #     shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
 
         # xeng data
         # shape of the x-engine data is:
@@ -74,7 +67,8 @@ class XengineStream(data_stream.SPEADStreamMeta):
             'unsigned integers.' % n_xengs,
             dtype=numpy.dtype('>i4'),
             # shape=[self.xops.corr.n_chans, len(self.xops.corr.baselines), 2])
-            shape=[self.xops.corr.n_chans/n_xengs, len(self.xops.corr.baselines), 2])
+            shape=[self.xops.corr.n_chans/n_xengs,
+                   len(self.xops.corr.baselines), 2])
 
         speadops.add_item(
             self.descr_ig, name='frequency', id=0x4103,
@@ -322,7 +316,6 @@ class XEngineOperations(object):
 
         self.data_stream = xeng_stream
         self.corr.add_data_stream(xeng_stream)
-        xeng_stream.metadata_setup()
 
     def _vacc_periodic_check(self):
 
@@ -980,226 +973,9 @@ class XEngineOperations(object):
         self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
-        self.corr.speadops.update_metadata([0x1015, 0x1016])
         if vacc_resync:
             self.vacc_sync()
         if reenable_timer:
             self.vacc_check_timer_start()
-
-    def spead_meta_update_stream_destination(self):
-        """
-        Update SPEAD metadata about the destination of this stream.
-        :return:
-        """
-        # SPEAD metadata is deprecated -
-        return
-
-        meta_ig = self.data_stream.meta_ig
-        speadops.add_item(
-            meta_ig,
-            name='rx_udp_port', id=0x1022,
-            description='Destination UDP port for %s data '
-                        'output.' % self.data_stream.name,
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.data_stream.destination.port)
-        ipstr = numpy.array(str(self.data_stream.destination.ip_address))
-        speadops.add_item(
-            meta_ig,
-            name='rx_udp_ip_str', id=0x1024,
-            description='Destination IP address for %s data '
-                        'output.' % self.data_stream.name,
-            shape=ipstr.shape,
-            dtype=ipstr.dtype,
-            value=ipstr)
-
-    def spead_meta_update_all(self):
-        """
-        Update metadata for this correlator's xengine output.
-        :return:
-        """
-        # SPEAD metadata is deprecated -
-        return
-
-        meta_ig = self.data_stream.meta_ig
-        speadops.item_0x1600(meta_ig)
-
-        speadops.add_item(
-            meta_ig,
-            name='flags_xeng_raw', id=0x1601,
-            description='Flags associated with xeng_raw data output. '
-                        'bit 34 - corruption or data missing during integration'
-                        'bit 33 - overrange in data path '
-                        'bit 32 - noise diode on during integration '
-                        'bits 0 - 31 reserved for internal debugging',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
-
-        # shape of the x-engine data is:
-        # shape=[self.corr.n_chans, len(self.corr.baselines), 2]
-        # for debug:
-        # shape=[self.corr.n_chans * len(self.corr.baselines), 2]
-        n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
-        speadops.add_item(
-            meta_ig,
-            name='xeng_raw', id=0x1800,
-            description='Raw data for %i xengines in the system. This item '
-                        'represents a full spectrum (all frequency channels) '
-                        'assembled from lowest frequency to highest '
-                        'frequency. Each frequency channel contains the data '
-                        'for all baselines (n_bls given by SPEAD ID 0x100b). '
-                        'Each value is a complex number - two (real and '
-                        'imaginary) unsigned integers.' % n_xengs,
-            dtype=numpy.dtype('>i4'),
-            # ar1.0
-            # shape=[self.corr.n_chans, len(self.corr.baselines), 2])
-            # ar1.5
-            shape=[self.corr.n_chans/n_xengs, len(self.corr.baselines), 2])
-
-        self.corr.speadops.item_0x1007(meta_ig)
-
-        speadops.add_item(
-            meta_ig,
-            name='n_bls', id=0x1008,
-            description='Number of baselines in the data stream.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=len(self.corr.baselines))
-
-        speadops.add_item(
-            meta_ig,
-            name='n_chans', id=0x1009,
-            description='Number of frequency channels in an integration.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.corr.n_chans)
-
-        self.corr.speadops.item_0x100a(meta_ig)
-
-        n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
-        speadops.add_item(
-            meta_ig,
-            name='n_xengs', id=0x100B,
-            description='The number of x-engines in the system.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=n_xengs)
-
-        bls_ordering = numpy.array(
-            [baseline for baseline in self.corr.baselines])
-        # this is a list of the baseline stream pairs, e.g. ['ant0x' 'ant0y']
-        speadops.add_item(
-            meta_ig,
-            name='bls_ordering', id=0x100C,
-            description='The baseline ordering in the output data stream.',
-            shape=bls_ordering.shape,
-            dtype=bls_ordering.dtype,
-            value=bls_ordering)
-
-        self.corr.speadops.item_0x100e(meta_ig)
-
-        speadops.add_item(
-            meta_ig,
-            name='center_freq', id=0x1011,
-            description='The on-sky centre-frequency.',
-            shape=[], format=[('f', 64)],
-            value=int(self.corr.configd['fengine']['true_cf']))
-
-        speadops.add_item(
-            meta_ig,
-            name='bandwidth', id=0x1013,
-            description='The input (analogue) bandwidth of the system.',
-            shape=[], format=[('f', 64)],
-            value=int(self.corr.configd['fengine']['bandwidth']))
-
-        self.corr.speadops.item_0x1015(meta_ig)
-        self.corr.speadops.item_0x1016(meta_ig)
-        self.corr.speadops.item_0x101e(meta_ig)
-
-        speadops.add_item(
-            meta_ig,
-            name='xeng_acc_len', id=0x101F,
-            description='Number of spectra accumulated inside X engine. '
-                        'Determines minimum integration time and '
-                        'user-configurable integration time stepsize. '
-                        'X-engine correlator internals.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.corr.xeng_accumulation_len)
-
-        self.corr.speadops.item_0x1020(meta_ig)
-
-        pkt_len = int(self.corr.configd['fengine']['10gbe_pkt_len'])
-        speadops.add_item(
-            meta_ig,
-            name='feng_pkt_len', id=0x1021,
-            description='Payload size of 10GbE packet exchange between '
-                        'F and X engines in 64 bit words. Usually equal '
-                        'to the number of spectra accumulated inside X '
-                        'engine. F-engine correlator internals.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=pkt_len)
-
-        self.spead_meta_update_stream_destination()
-
-        port = int(self.corr.configd['fengine']['10gbe_port'])
-        speadops.add_item(
-            meta_ig,
-            name='feng_udp_port', id=0x1023,
-            description='Port for F-engines 10Gbe links in the system.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=port)
-
-        ipstr = numpy.array(self.corr.configd['fengine']['10gbe_start_ip'])
-        speadops.add_item(
-            meta_ig,
-            name='feng_start_ip', id=0x1025,
-            description='Start IP address for F-engines in the system.',
-            shape=ipstr.shape,
-            dtype=ipstr.dtype,
-            value=ipstr)
-
-        speadops.add_item(
-            meta_ig,
-            name='xeng_rate', id=0x1026,
-            description='Target clock rate of processing engines (xeng).',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.corr.xeng_clk)
-
-        self.corr.speadops.item_0x1027(meta_ig)
-
-        speadops.add_item(
-            meta_ig,
-            name='x_per_fpga', id=0x1041,
-            description='Number of X engines per FPGA host.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.corr.x_per_fpga)
-
-        speadops.add_item(
-            meta_ig,
-            name='ddc_mix_freq', id=0x1043,
-            description='Digital downconverter mixing frequency as a fraction '
-                        'of the ADC sampling frequency. eg: 0.25. Set to zero '
-                        'if no DDC is present.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=0)
-
-        self.corr.speadops.item_0x1045(meta_ig)
-        self.corr.speadops.item_0x1046(meta_ig)
-
-        speadops.add_item(
-            meta_ig,
-            name='xeng_out_bits_per_sample', id=0x1048,
-            description='The number of bits per value of the xeng '
-                        'accumulator output. Note this is for a '
-                        'single value, not the combined complex size.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.corr.xeng_outbits)
-
-        speadops.add_item(
-            meta_ig,
-            name='f_per_fpga', id=0x1049,
-            description='Number of F engines per FPGA host.',
-            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)],
-            value=self.corr.f_per_fpga)
-
-        self.corr.speadops.item_0x104a(meta_ig)
-        self.corr.speadops.item_0x104b(meta_ig)
-
-        self.corr.speadops.item_0x1400(meta_ig)
 
 # end
