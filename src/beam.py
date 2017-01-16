@@ -221,10 +221,11 @@ class Beam(SPEADStream):
         speadops.add_item(
             self.descr_ig,
             name='bf_raw', id=beam_data_id,
-            description='Channelised complex data. Real comes before imaginary '
-                        'A number of consecutive samples from each channel are '                             'in the same packet. The heap offset and frequency '
-                        'SPEAD items can be used to calculate the exact frequency '
-                        'in relation to the spectrum',
+            description='Channelised complex data. Real comes before imaginary.'
+                        'A number of consecutive samples from each channel are '
+                        'in the same packet. The heap offset and frequency '
+                        'SPEAD items can be used to calculate the exact '
+                        'frequency in relation to the spectrum',
             dtype=numpy.int8,
             shape=[self.chans_per_partition, self.xeng_acc_len, 2])
 
