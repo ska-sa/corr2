@@ -228,15 +228,19 @@ class Beam(SPEADStreamMeta):
         speadops.add_item(
             self.descr_ig,
             name='bf_raw', id=beam_data_id,
-            description='Raw data for bengines in the system. Frequencies '
-                        'are assembled from lowest frequency to highest '
-                        'frequency. Frequencies come in blocks of values '
-                        'in time order where the number of samples in a '
-                        'block is given by xeng_acc_len (id 0x101F). Each '
-                        'value is a complex number -- two (real and '
-                        'imaginary) signed integers.',
+            description='Channelised complex data. Real comes before imaginary '
+                        'A number of consecutive samples from each channel are '                             'in the same packet. The heap offset and frequency '
+                        'SPEAD items can be used to calculate the exact frequency '
+                        'in relation to the spectrum',
             dtype=numpy.int8,
-            shape=[self.active_channels(), self.xeng_acc_len, 2])
+            shape=[self.chans_per_partition, self.xeng_acc_len, 2])
+
+        speadops.add_item(
+            self.descr_ig, name='frequency', id=0x4103,
+            description=
+            'Identifies the first channel in the band of frequency channels '
+            'in the SPEAD heap',
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
 
     def write_destination(self):
         """
