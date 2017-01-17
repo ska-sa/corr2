@@ -68,6 +68,10 @@ class Corr2Sensor(Sensor):
         :param value:
         :return:
         """
+        (old_timestamp, old_status, old_value) = self.read()
+        if (old_status == status) and (old_value == value):
+            LOGGER.debug('Sensor values unchanged, ignoring')
+            return
         super(Corr2Sensor, self).set(timestamp, status, value)
         if self.manager:
             self.manager.sensor_set_cb(self)
