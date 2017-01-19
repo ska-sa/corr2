@@ -673,6 +673,8 @@ class Corr2SensorManager(SensorManager):
         streams = self.instrument.get_data_streams_by_type(
             data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
 
+        instrument_inputs = self.instrument.get_input_labels()
+
         for stream in streams:
             strmnm = stream.name
             beam = self.instrument.bops.beams[strmnm]
@@ -691,6 +693,14 @@ class Corr2SensorManager(SensorManager):
                 Sensor.UNKNOWN)
             n_xeng = len(self.instrument.xhosts) * self.instrument.x_per_fpga
             sensor.set_value(self.instrument.n_chans / n_xeng)
+
+            sensor = self.do_sensor(
+                Corr2Sensor.string, '{}-source-indices'.format(strmnm),
+                'The IP addresses of the sources summed in this beam.',
+                Sensor.UNKNOWN)
+            tmp = [instrument_inputs.index(nm) for nm in beam.source_names]
+            tmp.sort()
+            sensor.set_value(tmp)
 
         self.sensors_beng_passband()
         self.sensors_beng_weights()
