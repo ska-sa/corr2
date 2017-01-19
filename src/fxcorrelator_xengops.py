@@ -307,13 +307,18 @@ class XEngineOperations(object):
         """
         # the x-engine output data stream setup
         xeng_d = self.corr.configd['xengine']
+        num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
         output_name, output_address = parse_output_products(xeng_d)
         assert len(output_name) == 1, 'Currently only single xeng products ' \
                                       'supported.'
         output_name = output_name[0]
         output_address = output_address[0]
+        if output_address.ip_range != 1:
+            raise RuntimeError(
+                'The x-engine\'s given address range (%s) must be one, a '
+                'starting base.' % output_address)
+        output_address.ip_range = num_xeng
         xeng_stream = XengineStream(output_name, output_address, self)
-
         self.data_stream = xeng_stream
         self.corr.add_data_stream(xeng_stream)
 

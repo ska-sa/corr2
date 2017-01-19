@@ -236,6 +236,12 @@ class FEngineOperations(object):
                                       'supported.'
         output_name = output_name[0]
         output_address = output_address[0]
+        if output_address.ip_range != 1:
+            raise RuntimeError(
+                'The f-engine\'s given output address range (%s) must be one, a'
+                ' starting base address.' % output_address)
+        num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
+        output_address.ip_range = num_xeng
         self.data_stream = FengineStream(output_name, output_address, self)
         self.corr.add_data_stream(self.data_stream)
 

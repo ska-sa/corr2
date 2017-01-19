@@ -61,6 +61,9 @@ class Beam(SPEADStream):
         :param speadops:
         :return:
         """
+        # number of b-engines in the system
+        num_beng = int(config['xengine']['x_per_fpga']) * len(bhosts)
+
         # look for the section matching the name
         beam_dict = config[beam_key]
 
@@ -68,12 +71,16 @@ class Beam(SPEADStream):
         assert len(beam_product) == 1, 'Currently only single beam products ' \
                                        'supported.'
         beam_name = beam_product[0]
-        obj = cls(beam_name, int(beam_dict['stream_index']),
-                  beam_stream_address[0])
+        beam_address = beam_stream_address[0]
+        if beam_address.ip_range != 1:
+            raise RuntimeError(
+                'The beam\'s given address range (%s) must be one, a starting'
+                'base address.' % beam_address)
+        beam_address.ip_range = num_beng
 
+        obj = cls(beam_name, int(beam_dict['stream_index']), beam_address)
         obj.hosts = bhosts
         obj.speadops = speadops
-
         obj.partitions_per_host = int(config['xengine']['x_per_fpga'])
         obj.partitions_total = obj.partitions_per_host * len(obj.hosts)
         obj.partitions = range(0, obj.partitions_total)

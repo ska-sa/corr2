@@ -498,19 +498,30 @@ def hosts_from_dhcp_leases(host_pref='roach',
 def parse_output_products(dictionary):
     """
     Parse a config dictionary section for output products and addresses.
-    :param dictionary:
-    :return:
+    :param dictionary: a dict containing the products and their details
+    :return: lists of products and StreamAddresses
     """
+
+    # base_output_destinations
+
     try:
         prods = dictionary['output_products'].split(',')
-        addresses = dictionary['output_destinations'].split(',')
     except KeyError:
         raise RuntimeError('The given dictionary does not seem to have '
-                           'output_products or output_destinations '
-                           'defined.\n%s' % str(dictionary))
+                           'output_products defined.\n%s' % str(dictionary))
+    try:
+        addresses = dictionary['output_destinations'].split(',')
+    except KeyError:
+        try:
+            addresses = dictionary['output_destinations_base'].split(',')
+        except KeyError:
+            raise RuntimeError('The given dictionary does not seem to have '
+                               'output_destinations or output_destinations_base'
+                               ' defined.\n%s' % str(dictionary))
     if len(prods) != len(addresses):
         raise RuntimeError('Need the same number of output products and '
                            'addresses: %s, %s' % (prods, addresses))
+    # process the address strings
     for ctr, addr in enumerate(addresses):
         addresses[ctr] = StreamAddress.from_address_string(addr)
     return prods, addresses
