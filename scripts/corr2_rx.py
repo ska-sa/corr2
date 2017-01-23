@@ -23,14 +23,14 @@ import time
 import h5py
 import threading
 import Queue
-import os
+import re
 import logging
 import argparse
 import sys
 
 from casperfpga import tengbe
 
-from corr2 import utils
+from corr2 import utils, data_stream
 
 
 class PrintConsumer(object):
@@ -204,8 +204,7 @@ def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
                     n_chans = h5_file['n_chans'][0]
                     n_bls = h5_file['n_bls'][0]
                     logger.info('Got all required metadata. Expecting data '
-                                'frame shape of %i %i %i' % (
-                        n_chans, n_bls, 2))
+                                'frame shape of %i %i %i' % (n_chans, n_bls, 2))
                     meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
                                      'center_freq', 'bls_ordering', 'n_accs']
 
@@ -254,9 +253,11 @@ def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
         # next item...
 
 
-def process_xeng_data(ig, logger, baselines, channels, acc_scale=False):
+def process_xeng_data(
+        heap_queue, ig, logger, baselines, channels, acc_scale=False):
     """
     Assemble data for the the plotting/printing thread to deal with.
+    :param heap_queue: the queue of data from the x-engines
     :param ig: the SPEAD2 item group
     :param logger: the logger to use
     :param baselines: which baselines are of interest?
@@ -271,21 +272,44 @@ def process_xeng_data(ig, logger, baselines, channels, acc_scale=False):
     xeng_raw = ig['xeng_raw'].value
     if xeng_raw is None:
         return None
-    logger.info('Processing xeng_raw heap with '
-                'shape: %s' % str(np.shape(xeng_raw)))
-    num_accs = int(ig['n_accs'].value)
-    scale_factor = float(ig['scale_factor_timestamp'].value)
-    sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value /
-                                            scale_factor)
-    logger.info('(%s) timestamp %i => %s' % (
-        time.ctime(), ig['timestamp'].value, time.ctime(sd_timestamp)))
+
+    # add the value to the queue
+    if not heap_queue.full():
+        if not heap_queue.empty():
+            old_val = heap_queue.get_nowait()
+            heap_queue.put(old_val)
+            if old_val[0] != ig['timestamp'].value:
+                logger.error('Heap queue not full, but new timestamp rx\'d?')
+                heap_queue = Queue.Queue(maxsize=NUM_XENG-1)
+        heap_queue.put((ig['timestamp'].value, ig['frequency'].value, xeng_raw))
+        logger.debug('adding stuff to queue - %i, %i' % (
+            ig['timestamp'].value, ig['frequency'].value))
+        return
+
+    # reassemble the heap
+    vals = [(ig['timestamp'].value, ig['frequency'].value, xeng_raw)]
+    while not heap_queue.empty():
+        val = heap_queue.get_nowait()
+        vals.append(val)
+    vals = sorted(vals, key=lambda val: val[1])
+    xeng_raw = np.concatenate([val[2] for val in vals], axis=0)
+
+    logger.info('Processing xeng_raw heap with time %i and '
+                'shape: %s' % (ig['timestamp'].value, str(np.shape(xeng_raw))))
+
+    # num_accs = int(ig['n_accs'].value)
+    # scale_factor = float(ig['scale_factor_timestamp'].value)
+    # sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value /
+    #                                         scale_factor)
+    # logger.info('(%s) timestamp %i => %s' % (
+    #     time.ctime(), ig['timestamp'].value, time.ctime(sd_timestamp)))
     baseline_data = []
     baseline_phase = []
     for baseline in baselines:
         bdata = xeng_raw[:, baseline]
 
-        if acc_scale:
-            bdata = bdata / (num_accs * 1.0)
+        # if acc_scale:
+        #     bdata = bdata / (num_accs * 1.0)
 
         powerdata = []
         phasedata = []
@@ -337,7 +361,7 @@ class CorrReceiver(threading.Thread):
         # if log_handler == None:
         #     log_handler = log_handlers.DebugLogHandler(100)
         # self.log_handler = log_handler
-        self.logger = logging.getLogger('CorrRx')
+        self.logger = logging.getLogger('corr2_rx.py')
         # self.logger.addHandler(self.log_handler)
         self.logger.setLevel(log_level)
         self.logger = logging.getLogger(__name__)
@@ -390,7 +414,7 @@ class CorrReceiver(threading.Thread):
 
         # make a SPEAD2 receiver stream
         strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
-                           max_heaps=8, ring_heaps=8)
+                           max_heaps=40, ring_heaps=40)
         strm.add_udp_reader(port=self.port,
                             max_size=9200,
                             buffer_size=5120000)
@@ -404,12 +428,19 @@ class CorrReceiver(threading.Thread):
         # make the ItemGroup and some local vars
         ig = spead2.ItemGroup()
         idx = 0
-        last_cnt = -1
+        last_cnt = -1 * NUM_XENG
+
+        heap_queue = None
 
         # process received heaps
         for heap in strm:
             ig.update(heap)
             cnt_diff = heap.cnt - last_cnt
+
+            # make a new Queue for every new group of heaps from the x-engines
+            if np.abs(cnt_diff) > NUM_XENG:
+                heap_queue = Queue.Queue(maxsize=NUM_XENG-1)
+
             last_cnt = heap.cnt
             logger.debug('PROCESSING HEAP idx(%i) cnt(%i) cnt_diff(%i) '
                          '@ %.4f' % (idx, heap.cnt, cnt_diff, time.time()))
@@ -432,7 +463,8 @@ class CorrReceiver(threading.Thread):
                 need_plot = False
             if need_print or need_plot:
                 data = process_xeng_data(
-                    ig, logger, self.baselines, self.channels, self.acc_scale)
+                    heap_queue, ig, logger, self.baselines,
+                    self.channels, self.acc_scale)
             else:
                 logger.debug('\talready got data, skipping '
                              'processing this heap.')
@@ -484,8 +516,12 @@ if __name__ == '__main__':
         description='Receive data from a corr2 correlator.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '--config', dest='config', action='store', default='',
-        help='corr2 config file')
+        '--servlet', dest='servlet', action='store', default='127.0.0.1:7601',
+        help='ip and port of running corr2_servlet')
+    parser.add_argument(
+        '--product', dest='prodname', action='store',
+        default='baseline-correlation-products',
+        help='name of correlation product')
     parser.add_argument(
         '--file', dest='writefile', action='store_true', default=False,
         help='Write an H5 file.')
@@ -547,43 +583,59 @@ if __name__ == '__main__':
         except AttributeError:
             raise RuntimeError('No such log level: %s' % spead_log_level)
 
-    if 'CORR2INI' in os.environ.keys() and args.config == '':
-        args.config = os.environ['CORR2INI']
+    product_name = args.prodname
 
-    # load information from the config file of the running system
-    config = utils.parse_ini_file(args.config)
-    n_chans = int(config['fengine']['n_chans'])
-    fhosts = config['fengine']['hosts'].split(',')
-    n_ants = len(fhosts)
-    print 'Loaded instrument info from config file:\n\t%s' % args.config
+    servlet_ip = args.servlet.split(':')
+    servlet_port = int(servlet_ip[1])
+    servlet_ip = servlet_ip[0]
 
-    # find out where the data is going. if it's a multicast address, then
-    # subscribe to multicast
-    if 'output_destination_ip' in config['xengine']:
+    # before doing much of anything, need to get metadata from sensors
+    import katcp
+    client = katcp.BlockingClient(servlet_ip, servlet_port)
+    client.setDaemon(True)
+    client.start()
+    is_connected = client.wait_connected(10)
+    if not is_connected:
+        client.stop()
+        raise RuntimeError('Could not connect to corr2_servlet, timed out.')
+    reply, informs = client.blocking_request(
+        katcp.Message.request('sensor-value'), timeout=5)
+    client.stop()
+    if not reply.reply_ok():
+        raise RuntimeError('Could not read sensors from corr2_servlet, '
+                           'request failed.')
+    sensors_required = ['n-chans', 'n-ants',
+                        '{}-n-accs'.format(product_name),
+                        '{}-destination'.format(product_name),
+                        '{}-n-bls'.format(product_name),
+                        '{}-bls-ordering'.format(product_name)]
+    sensors = {}
+    srch = re.compile('|'.join(sensors_required))
+    for inf in informs:
+        if srch.match(inf.arguments[2]):
+            sensors[inf.arguments[2]] = inf.arguments[4]
 
-        output = {
-            'product': config['xengine']['output_products'],
-            'src_ip': tengbe.IpAddress(config['xengine']['output_destination_ip']),
-            'port': int(config['xengine']['output_destination_port']),
-        }
-    else:
-        prods, addresses = utils.parse_output_products(config['xengine'])
-        output = {
-            'product': prods[0],
-            'src_ip': addresses[0].ip_address,
-            'port': int(addresses[0].port),
-        }
+    n_chans = int(sensors['n-chans'])
+    n_ants = int(sensors['n-ants'])
+    output = {
+        'product': product_name,
+        'address': data_stream.StreamAddress.from_address_string(
+            sensors['{}-destination'.format(product_name)])
+    }
 
-    data_port = output['port']
-    if output['src_ip'].is_multicast():
+    if output['address'].ip_address.is_multicast():
         import socket
         import struct
-        print 'Source is multicast: %s' % output['src_ip']
-        # look up multicast group address in name server and find out IP version
-        addrinfo = socket.getaddrinfo(str(output['src_ip']), None)[0]
+        print 'Source is multicast: %s' % output['address']
+
+        # look up multicast group address in name server
+        # and find out IP version
+        addrinfo = socket.getaddrinfo(
+            str(output['address'].ip_address), None)[0]
+        ip_version = addrinfo[0]
 
         # create a socket
-        mcast_sock = socket.socket(addrinfo[0], socket.SOCK_DGRAM)
+        mcast_sock = socket.socket(ip_version, socket.SOCK_DGRAM)
 
         # # Allow multiple copies of this program on one machine
         # # (not strictly needed)
@@ -593,21 +645,30 @@ if __name__ == '__main__':
         # mcast_sock.bind(('', data_port))
         # print 'Receiver bound to port %i.' % data_port
 
+        def join_group(address):
+            group_bin = socket.inet_pton(ip_version, address)
+            if ip_version == socket.AF_INET:  # IPv4
+                mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
+                mcast_sock.setsockopt(socket.IPPROTO_IP,
+                                      socket.IP_ADD_MEMBERSHIP, mreq)
+                print 'Subscribing to %s.' % address
+            else:
+                mreq = group_bin + struct.pack('@I', 0)
+                mcast_sock.setsockopt(socket.IPPROTO_IPV6,
+                                      socket.IPV6_JOIN_GROUP, mreq)
+
         # join group
-        group_bin = socket.inet_pton(addrinfo[0], addrinfo[4][0])
-        if addrinfo[0] == socket.AF_INET:  # IPv4
-            mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
-            mcast_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-            print 'Subscribing to %s.' % str(output['src_ip'])
-        else:
-            mreq = group_bin + struct.pack('@I', 0)
-            mcast_sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
+        for addrctr in range(output['address'].ip_range):
+            addr = int(output['address'].ip_address) + addrctr
+            addr = tengbe.IpAddress(addr)
+            join_group(str(addr))
     else:
         mcast_sock = None
         print 'Source is not multicast: %s' % output['src_ip']
 
-    NUM_BASELINES = n_ants * (n_ants + 1) / 2 * 4
-    BASELINES = utils.baselines_from_config(config=config)
+    NUM_XENG = output['address'].ip_range
+    NUM_BASELINES = int(sensors['{}-n-bls'.format(product_name)])
+    BASELINES = list(sensors['{}-bls-ordering'.format(product_name)])
     LEGEND = args.legend
 
     if args.items:
@@ -680,6 +741,8 @@ if __name__ == '__main__':
 
     # a quite event to stop the thread if needed
     quit_event = threading.Event()
+
+    data_port = output['address'].port
 
     # start the receiver thread
     print 'Initialising SPEAD transports for data:'
