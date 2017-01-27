@@ -141,6 +141,7 @@ class SPEADStream(object):
         self.name = name
         self.category = category
         self.destination = None
+        self.source = None
         self.descr_tx = None
         self.tx_enabled = False
         self.descr_ig = spead2.send.ItemGroup(
@@ -155,6 +156,22 @@ class SPEADStream(object):
         :return:
         """
         raise NotImplementedError
+
+    def set_source(self, new_source):
+        """
+        Set the source(s) for this stream
+        :param new_source: a single IP or list of IPs
+        :return:
+        """
+        if not hasattr(new_source, 'append'):
+            new_source = [new_source]
+        srcs = []
+        for src in new_source:
+            if hasattr(src, 'ip_address'):
+                srcs.append(src)
+            else:
+                srcs.append(StreamAddress.from_address_string(src))
+        self.source = srcs
 
     def set_destination(self, new_dest):
         """

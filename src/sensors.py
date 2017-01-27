@@ -275,6 +275,12 @@ class Corr2SensorManager(SensorManager):
                 Sensor.UNKNOWN)
             sensor.set_value(stream.destination)
 
+            sensor = self.do_sensor(
+                Corr2Sensor.string, '{}-source'.format(stream.name),
+                'The sources from which data is received to create this stream',
+                Sensor.UNKNOWN)
+            sensor.set_value(stream.source or '')
+
     def sensors_tengbe_interfacing(self):
         """
         Information about the host 10gbe interfaces.

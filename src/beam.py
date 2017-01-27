@@ -130,6 +130,7 @@ class Beam(SPEADStream):
             obj.source_streams[match] = {'weight': input_weight,
                                          'index': source_index}
             source_index += 1
+        obj.set_source(fengops.data_stream.destination)
         obj.quant_gain = 1
         obj.source_poly = []
         obj.descriptors_setup()
@@ -347,7 +348,9 @@ class Beam(SPEADStream):
 
     @property
     def source_names(self):
-        return [source.name for source in self.source_streams.keys()]
+        tmp = [source.name for source in self.source_streams.keys()]
+        tmp.sort()
+        return tmp
 
     def get_source(self, source_name):
         """

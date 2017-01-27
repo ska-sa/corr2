@@ -320,6 +320,7 @@ class XEngineOperations(object):
         output_address.ip_range = num_xeng
         xeng_stream = XengineStream(output_name, output_address, self)
         self.data_stream = xeng_stream
+        self.data_stream.set_source(self.corr.fops.data_stream.destination)
         self.corr.add_data_stream(xeng_stream)
 
     def _vacc_periodic_check(self):

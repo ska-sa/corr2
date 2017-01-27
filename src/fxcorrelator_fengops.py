@@ -243,6 +243,9 @@ class FEngineOperations(object):
         num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
         output_address.ip_range = num_xeng
         self.data_stream = FengineStream(output_name, output_address, self)
+        self.data_stream.set_source(
+            [feng.input.destination for feng in self.fengines]
+        )
         self.corr.add_data_stream(self.data_stream)
 
     def sys_reset(self, sleeptime=0):

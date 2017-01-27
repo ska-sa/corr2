@@ -47,8 +47,8 @@ class DigitiserStream(SPEADStream):
         # spead_add_item(
         #     sig=self.descr_ig, stx=None,
         #     name='digitiser_status', id=0x3102,
-        #     description='Bitfield indicating the status of the digitiser. LSb '
-        #                 '(bit0): noise_diode. bit1: adc_saturate. '
+        #     description='Bitfield indicating the status of the digitiser. ' \
+        #                 'LSb (bit0): noise_diode. bit1: adc_saturate. '
         #                 'Other bits reserved for future use.',
         #     shape=[], format=[('u', SPEAD_ADDRSIZE)])
         #
