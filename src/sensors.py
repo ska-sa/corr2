@@ -701,6 +701,12 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(self.instrument.n_chans / n_xeng)
 
             sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
+                'Number of spectra chunks per heap.',
+                Sensor.UNKNOWN)
+            sensor.set_value(self.instrument.xeng_accumulation_len)
+
+            sensor = self.do_sensor(
                 Corr2Sensor.string, '{}-source-indices'.format(strmnm),
                 'The IP addresses of the sources summed in this beam.',
                 Sensor.UNKNOWN)
