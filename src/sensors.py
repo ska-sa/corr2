@@ -685,13 +685,12 @@ class Corr2SensorManager(SensorManager):
             strmnm = stream.name
             beam = self.instrument.bops.beams[strmnm]
 
-            # TODO - where is this found?
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
                 '{}-beng-out-bits-per-sample'.format(strmnm),
                 'B-engine output bits per sample.',
                 Sensor.UNKNOWN)
-            sensor.set_value(16)
+            sensor.set_value(self.instrument.beng_outbits)
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans-per-substream'.format(strmnm),

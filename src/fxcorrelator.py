@@ -547,11 +547,15 @@ class FxCorrelator(Instrument):
         self.xeng_clk = int(_xeng_d['x_fpga_clock'])
         self.xeng_outbits = int(_xeng_d['xeng_outbits'])
 
+        # TODO - get this from the config file
         # check if beamformer exists with x-engines
         self.found_beamformer = False
         if 'bengine' in self.configd.keys():
             self.found_beamformer = True
-            self.beng_outbits = 8
+            try:
+                self.beng_outbits = int(self.configd['bengine']['beng_outbits'])
+            except KeyError:
+                self.beng_outbits = 8
 
         # create the host objects
         self._create_hosts()
