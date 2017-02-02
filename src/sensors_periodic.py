@@ -658,6 +658,30 @@ def _sensor_cb_reorder_status(sensor, host):
     IOLoop.current().call_later(10, _sensor_cb_reorder_status, sensor, host)
 
 
+def _setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop):
+    """
+    Set up the B-engine specific sensors.
+    :param sens_man:
+    :param general_executor:
+    :param host_executors:
+    :param ioloop:
+    :return:
+    """
+    # TODO - right now this just mirrors the xhostn-lru-ok sensors
+
+    # B-engine host sensors
+    for _x in sens_man.instrument.xhosts:
+        executor = host_executors[_x.host]
+        xhost = host_lookup[_x.host]
+        bhost = xhost.replace('xhost', 'bhost')
+
+        # LRU okay
+        sensor = sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}-lru-ok'.format(bhost),
+            'B-engine %s LRU okay' % _x.host, Corr2Sensor.UNKNOWN, '', executor)
+        ioloop.add_callback(_sensor_cb_xlru, sensor, _x)
+
+
 def _setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop):
     """
     Set up the X-engine specific sensors.
@@ -884,6 +908,7 @@ def setup_sensors(sensor_manager, enable_counters=False):
 
     _setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop)
     _setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop)
+    _setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop)
 
     all_hosts = sens_man.instrument.fhosts + sens_man.instrument.xhosts
 
