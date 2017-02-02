@@ -347,7 +347,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         if not self.instrument.check_data_stream(stream_name):
             return 'fail', -1.0
-        return 'ok', self.instrument.analogue_bandwidth
+        return 'ok', self.instrument.analogue_bandwidth / 2.0
 
     @request(Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
