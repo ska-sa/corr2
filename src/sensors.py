@@ -515,10 +515,10 @@ class Corr2SensorManager(SensorManager):
                 if feng.delay.load_time:
                     _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
                         feng.delay.load_time,
-                        feng.delay.delay,
-                        feng.delay.delay_delta,
-                        feng.delay.phase_offset,
-                        feng.delay.phase_offset_delta
+                        feng.delay_actual.delay,
+                        feng.delay_actual.delay_delta,
+                        feng.delay_actual.phase_offset,
+                        feng.delay_actual.phase_offset_delta
                     )
                     sensor.set_value(_val)
                 sensor = self.do_sensor(
