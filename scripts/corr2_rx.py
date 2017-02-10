@@ -604,7 +604,8 @@ if __name__ == '__main__':
     if not reply.reply_ok():
         raise RuntimeError('Could not read sensors from corr2_servlet, '
                            'request failed.')
-    sensors_required = ['n-chans', 'n-ants',
+    sensors_required = ['{}-n-chans'.format(product_name),
+                        'n-ants',
                         '{}-n-accs'.format(product_name),
                         '{}-destination'.format(product_name),
                         '{}-n-bls'.format(product_name),
@@ -615,7 +616,7 @@ if __name__ == '__main__':
         if srch.match(inf.arguments[2]):
             sensors[inf.arguments[2]] = inf.arguments[4]
 
-    n_chans = int(sensors['n-chans'])
+    n_chans = int(sensors['{}-n-chans'.format(product_name)])
     n_ants = int(sensors['n-ants'])
     output = {
         'product': product_name,
