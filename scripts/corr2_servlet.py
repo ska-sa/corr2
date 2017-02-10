@@ -409,7 +409,7 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(None).values()[0]
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
-    @request(Float(), Str(default='', multiple=True))
+    @request(Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):
         """

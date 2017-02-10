@@ -389,29 +389,28 @@ class FEngineOperations(object):
         :param delay_list:
         :return:
         """
-        time_now = time.time()
-
-        # check that load time is not too soon or in the past
-        if loadtime < (time_now + self.corr.min_load_time):
-            errmsg = 'Time given is in the past or does not allow for ' \
-                     'enough time to set values'
-            self.logger.error(errmsg)
-            raise RuntimeError(errmsg)
-
-        loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
-        load_wait_delay = (loadtime - time_now + self.corr.min_load_time)
-
-        numfeng = len(self.fengines)
-        if len(delay_list) != numfeng:
-            errmsg = 'Too few delay setup parameters given. Need as ' \
-                   'many as there are inputs (%i), given %i delay ' \
-                   'settings' % (numfeng, len(delay_list))
-            self.logger.error(errmsg)
-            raise ValueError(errmsg)
-        input_delays = delayops.process_list(delay_list)
-
-        # set them in the objects and then write them to hardware
-        actual_vals = self.set_delays_all(loadtime_mcnt, input_delays)
+        if loadtime > 0:
+            time_now = time.time()
+            # check that load time is not too soon or in the past
+            if loadtime < (time_now + self.corr.min_load_time):
+                errmsg = 'Time given is in the past or does not allow for ' \
+                         'enough time to set values'
+                self.logger.error(errmsg)
+                raise RuntimeError(errmsg)
+            loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
+            load_wait_delay = (loadtime - time_now + self.corr.min_load_time)
+            numfeng = len(self.fengines)
+            if len(delay_list) != numfeng:
+                errmsg = 'Too few delay setup parameters given. Need as ' \
+                       'many as there are inputs (%i), given %i delay ' \
+                       'settings' % (numfeng, len(delay_list))
+                self.logger.error(errmsg)
+                raise ValueError(errmsg)
+            input_delays = delayops.process_list(delay_list)
+            # set them in the objects and then write them to hardware
+            actual_vals = self.set_delays_all(loadtime_mcnt, input_delays)
+        else:
+            actual_vals = self.get_delays_all()
         rv = []
         for val in actual_vals:
             res_str = '{},{}:{},{}'.format(
@@ -438,6 +437,20 @@ class FEngineOperations(object):
             self.corr.fhosts, timeout=0.5, target_function=target_func)
         return [actual_vals[feng.host.host][feng.offset]
                 for feng in self.fengines]
+
+    def get_delays_all(self):
+        """
+        Get delays from all fhosts
+        :return:
+        """
+        return [
+            {
+                'act_delay': feng.delay_actual.delay,
+                'act_delay_delta': feng.delay_actual.delay_delta,
+                'act_phase_offset': feng.delay_actual.phase_offset,
+                'act_phase_offset_delta': feng.delay_actual.phase_offset_delta
+            } for feng in self.fengines
+        ]
 
     def check_tx(self):
         """

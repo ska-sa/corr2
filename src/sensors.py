@@ -701,7 +701,7 @@ class Corr2SensorManager(SensorManager):
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
-                'Number of spectra chunks per heap.',
+                'Number of spectrum chunks per heap.',
                 Sensor.UNKNOWN)
             sensor.set_value(self.instrument.xeng_accumulation_len)
 
