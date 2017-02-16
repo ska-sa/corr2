@@ -707,7 +707,7 @@ class Corr2SensorManager(SensorManager):
 
             sensor = self.do_sensor(
                 Corr2Sensor.string, '{}-source-indices'.format(strmnm),
-                'The IP addresses of the sources summed in this beam.',
+                'The global input indices of the sources summed in this beam.',
                 Sensor.UNKNOWN)
             tmp = [instrument_inputs.index(nm) for nm in beam.source_names]
             tmp.sort()
