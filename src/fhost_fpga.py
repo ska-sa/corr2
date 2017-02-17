@@ -52,6 +52,7 @@ class Fengine(object):
         self.eq_poly = None
         self.eq_bram_name = 'eq%i' % offset
         self.delay = delayops.Delay()
+        self.delay_actual = delayops.Delay()
         self.sensor_manager = sensor_manager
 
         # TODO - sensors, sensors, sensors - does this level of object know about them?! I should think not...
@@ -76,7 +77,22 @@ class Fengine(object):
     @input_number.setter
     def input_number(self, value):
         raise NotImplementedError('This is not currently defined.')
-    
+
+    def set_delay_actual(self, actual_delays):
+        """
+        Store the actual delay values that were set in hardware.
+        :param actual_delays: a dictionary or Delay object
+        :return:
+        """
+        if hasattr(actual_delays, 'delay'):
+            self.delay_actual = actual_delays
+        else:
+            self.delay_actual = delayops.Delay(
+                delay=actual_delays['act_delay'],
+                delay_delta=actual_delays['act_delay_delta'],
+                phase_offset=actual_delays['act_phase_offset'],
+                phase_offset_delta=actual_delays['act_phase_offset_delta'],)
+
     def set_delay(self, delay=0.0, delay_delta=0.0,
                   phase_offset=0.0, phase_offset_delta=0.0,
                   load_time=None, load_wait=None, load_check=True):
@@ -373,6 +389,7 @@ class FpgaFHost(DigitiserStreamReceiver):
                 'act_phase_offset_delta': (act_val['act_phase_offset_delta'] *
                                            numpy.pi * sample_rate)
             }
+            feng.set_delay_actual(act_val)
             if delayops.debug_logging:
                 LOGGER.info(
                     '[%s] Phase offset actually set to %.3f rad with rate %e '

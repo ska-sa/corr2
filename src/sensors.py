@@ -515,10 +515,10 @@ class Corr2SensorManager(SensorManager):
                 if feng.delay.load_time:
                     _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
                         feng.delay.load_time,
-                        feng.delay.delay,
-                        feng.delay.delay_delta,
-                        feng.delay.phase_offset,
-                        feng.delay.phase_offset_delta
+                        feng.delay_actual.delay,
+                        feng.delay_actual.delay_delta,
+                        feng.delay_actual.phase_offset,
+                        feng.delay_actual.phase_offset_delta
                     )
                     sensor.set_value(_val)
                 sensor = self.do_sensor(
@@ -685,13 +685,12 @@ class Corr2SensorManager(SensorManager):
             strmnm = stream.name
             beam = self.instrument.bops.beams[strmnm]
 
-            # TODO - where is this found?
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
                 '{}-beng-out-bits-per-sample'.format(strmnm),
                 'B-engine output bits per sample.',
                 Sensor.UNKNOWN)
-            sensor.set_value(16)
+            sensor.set_value(self.instrument.beng_outbits)
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans-per-substream'.format(strmnm),
@@ -702,13 +701,13 @@ class Corr2SensorManager(SensorManager):
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
-                'Number of spectra chunks per heap.',
+                'Number of spectrum chunks per heap.',
                 Sensor.UNKNOWN)
             sensor.set_value(self.instrument.xeng_accumulation_len)
 
             sensor = self.do_sensor(
                 Corr2Sensor.string, '{}-source-indices'.format(strmnm),
-                'The IP addresses of the sources summed in this beam.',
+                'The global input indices of the sources summed in this beam.',
                 Sensor.UNKNOWN)
             tmp = [instrument_inputs.index(nm) for nm in beam.source_names]
             tmp.sort()

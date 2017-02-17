@@ -336,7 +336,7 @@ class Corr2Server(katcp.DeviceServer):
         return 'ok', stream_name
 
     @request(Str(default=''), Float())
-    @return_reply(Str())
+    @return_reply(Float())
     def request_frequency_select(self, sock, stream_name, centrefreq):
         """
         Select the passband for this instrument
@@ -345,7 +345,9 @@ class Corr2Server(katcp.DeviceServer):
         :param centrefreq: the centre frequency to choose, in Hz
         :return:
         """
-        return 'fail', 'Unavailable in this mode'
+        if not self.instrument.check_data_stream(stream_name):
+            return 'fail', -1.0
+        return 'ok', self.instrument.analogue_bandwidth / 2.0
 
     @request(Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -407,7 +409,7 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(None).values()[0]
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
-    @request(Float(), Str(default='', multiple=True))
+    @request(Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):
         """
