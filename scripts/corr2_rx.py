@@ -253,11 +253,11 @@ def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
         # next item...
 
 
-def process_xeng_data(
-        heap_queue, ig, logger, baselines, channels, acc_scale=False):
+def process_xeng_data(heap_data, ig, logger, baselines,
+                      channels, acc_scale=False):
     """
     Assemble data for the the plotting/printing thread to deal with.
-    :param heap_queue: the queue of data from the x-engines
+    :param heap_data: heaps of data from the x-engines
     :param ig: the SPEAD2 item group
     :param logger: the logger to use
     :param baselines: which baselines are of interest?
@@ -273,64 +273,108 @@ def process_xeng_data(
     if xeng_raw is None:
         return None
 
-    # add the value to the queue
-    if not heap_queue.full():
-        if not heap_queue.empty():
-            old_val = heap_queue.get_nowait()
-            heap_queue.put(old_val)
-            if old_val[0] != ig['timestamp'].value:
-                logger.error('Heap queue not full, but new timestamp rx\'d?')
-                heap_queue = Queue.Queue(maxsize=NUM_XENG-1)
-        heap_queue.put((ig['timestamp'].value, ig['frequency'].value, xeng_raw))
-        logger.debug('adding stuff to queue - %i, %i' % (
-            ig['timestamp'].value, ig['frequency'].value))
-        return
+    this_time = ig['timestamp'].value
+    this_freq = ig['frequency'].value
 
-    # reassemble the heap
-    vals = [(ig['timestamp'].value, ig['frequency'].value, xeng_raw)]
-    while not heap_queue.empty():
-        val = heap_queue.get_nowait()
-        vals.append(val)
-    vals = sorted(vals, key=lambda val: val[1])
-    xeng_raw = np.concatenate([val[2] for val in vals], axis=0)
+    if this_time in heap_data:
+        if this_freq in heap_data[this_time]:
+            # already have this frequency - this seems to be a bug
+            old_data = heap_data[this_time][this_freq]
+            if np.shape(old_data) != np.shape(xeng_raw):
+                logger.error('Got repeat freq %i for time %i, with a '
+                             'DIFFERENT SHAPE?!' % (this_freq, this_time))
+            else:
+                if (xeng_raw == old_data).all():
+                    logger.error('Got repeat freq %i with SAME data for time '
+                                 '%i' % (this_freq, this_time))
+                else:
+                    logger.error('Got repeat freq %i with DIFFERENT data '
+                                 'for time %i' % (this_freq, this_time))
+        else:
+            heap_data[this_time][this_freq] = xeng_raw
+    else:
+        heap_data[this_time] = {this_freq: xeng_raw}
 
-    logger.info('Processing xeng_raw heap with time %i and '
-                'shape: %s' % (ig['timestamp'].value, str(np.shape(xeng_raw))))
+    # housekeeping - are the older heaps in the data?
+    if len(heap_data) > 5:
+        logger.info('Culling stale timestamps:')
+        heaptimes = heap_data.keys()
+        heaptimes.sort()
+        for ctr in range(0, len(heaptimes)-5):
+            heap_data.pop(heaptimes[ctr])
+            logger.info('\ttime heaptimes[ctr] culled')
 
-    # num_accs = int(ig['n_accs'].value)
-    # scale_factor = float(ig['scale_factor_timestamp'].value)
-    # sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value /
-    #                                         scale_factor)
-    # logger.info('(%s) timestamp %i => %s' % (
-    #     time.ctime(), ig['timestamp'].value, time.ctime(sd_timestamp)))
-    baseline_data = []
-    baseline_phase = []
-    for baseline in baselines:
-        bdata = xeng_raw[:, baseline]
+    def process_heaptime(htime, hdata):
+        """
 
-        # if acc_scale:
-        #     bdata = bdata / (num_accs * 1.0)
+        :param htime:
+        :param hdata:
+        :return:
+        """
+        freqs = hdata.keys()
+        freqs.sort()
+        if freqs != range(0, n_chans, n_chans / NUM_XENG):
+            logger.error('Did not get all frequencies from the x-engines for '
+                         'time %i: %s' % (htime, str(freqs)))
+            heap_data.pop(htime)
+            return None
+        vals = []
+        for freq, xdata in hdata.items():
+            vals.append((htime, freq, xdata))
+        vals = sorted(vals, key=lambda val: val[1])
+        xeng_raw = np.concatenate([val[2] for val in vals], axis=0)
+        time_s = ig['timestamp'].value / (n_chans * 2 * n_accs)
+        logger.info('Processing xeng_raw heap with time %i (%i) and '
+                    'shape: %s' % (ig['timestamp'].value, time_s,
+                                   str(np.shape(xeng_raw))))
+        heap_data.pop(htime)
+        # TODO scaling
+        # num_accs = int(ig['n_accs'].value)
+        # scale_factor = float(ig['scale_factor_timestamp'].value)
+        # sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value /
+        #                                         scale_factor)
+        # logger.info('(%s) timestamp %i => %s' % (
+        #     time.ctime(), ig['timestamp'].value, time.ctime(sd_timestamp)))
+        # /TODO scaling
+        baseline_data = []
+        baseline_phase = []
+        for baseline in baselines:
+            bdata = xeng_raw[:, baseline]
+            # TODO scaling
+            # if acc_scale:
+            #     bdata = bdata / (num_accs * 1.0)
+            # /TODO scaling
+            powerdata = []
+            phasedata = []
+            for ctr in range(channels[0], channels[1]):
+                complex_tuple = bdata[ctr]
+                pwr = np.sqrt(complex_tuple[0] ** 2 + complex_tuple[1] ** 2)
+                powerdata.append(pwr)
+                cplx = complex(complex_tuple[0], complex_tuple[1])
+                phase = np.angle(cplx)
+                phasedata.append(phase)
+            # TODO scaling
+            # ?!broken?!
+            # bdata = bdata[channels[0]:channels[1], :]
+            # if acc_scale:
+            #     bdata = bdata / (num_accs * 1.0)
+            # powerdata = (bdata**2).sum(1)
+            # phasedata = np.angle(bdata[:, 0] + (bdata[:, 1] * 1j))
+            # /TODO scaling
+            baseline_data.append((baseline, powerdata[:]))
+            baseline_phase.append((baseline, phasedata[:]))
+        return htime, baseline_data, baseline_phase
 
-        powerdata = []
-        phasedata = []
-        for ctr in range(channels[0], channels[1]):
-            complex_tuple = bdata[ctr]
-            pwr = np.sqrt(complex_tuple[0]**2 + complex_tuple[1]**2)
-            powerdata.append(pwr)
-            cplx = complex(complex_tuple[0], complex_tuple[1])
-            phase = np.angle(cplx)
-            phasedata.append(phase)
-
-        # ?!broken?!
-        # bdata = bdata[channels[0]:channels[1], :]
-        # if acc_scale:
-        #     bdata = bdata / (num_accs * 1.0)
-        # powerdata = (bdata**2).sum(1)
-        # phasedata = np.angle(bdata[:, 0] + (bdata[:, 1] * 1j))
-
-        baseline_data.append((baseline, powerdata[:]))
-        baseline_phase.append((baseline, phasedata[:]))
-    return baseline_data, baseline_phase
+    # loop through the times we know about and process the complete ones
+    rvs = {}
+    heaptimes = heap_data.keys()
+    for heaptime in heaptimes:
+        if len(heap_data[heaptime]) == NUM_XENG:
+            rv = process_heaptime(
+                heaptime, heap_data[heaptime])
+            if rv:
+                rvs[rv[0]] = (rv[1], rv[2])
+    return rvs
 
 
 class CorrReceiver(threading.Thread):
@@ -430,28 +474,24 @@ class CorrReceiver(threading.Thread):
         idx = 0
         last_cnt = -1 * NUM_XENG
 
-        heap_queue = None
+        heap_contents = {}
 
         # process received heaps
         for heap in strm:
             ig.update(heap)
             cnt_diff = heap.cnt - last_cnt
-
-            # make a new Queue for every new group of heaps from the x-engines
-            if np.abs(cnt_diff) > NUM_XENG:
-                heap_queue = Queue.Queue(maxsize=NUM_XENG-1)
-
             last_cnt = heap.cnt
             logger.debug('PROCESSING HEAP idx(%i) cnt(%i) cnt_diff(%i) '
                          '@ %.4f' % (idx, heap.cnt, cnt_diff, time.time()))
-
+            logger.debug('Contents dict is now %i long' % len(heap_contents))
             if self.track_list:
                 do_track_items(ig, logger, track_list=self.track_list)
-
             if h5_file:
                 do_h5_file(ig, logger, h5_file,
                            self.h5_datasets, self.h5_dataset_indices)
-
+            if len(heap.get_items()) == 0:
+                logger.debug('Empty heap - was this descriptors?')
+                continue
             # do we need to process more data?
             if self.print_queue:
                 need_print = self.need_print_data.is_set()
@@ -463,49 +503,46 @@ class CorrReceiver(threading.Thread):
                 need_plot = False
             if need_print or need_plot:
                 data = process_xeng_data(
-                    heap_queue, ig, logger, self.baselines,
+                    heap_contents, ig, logger, self.baselines,
                     self.channels, self.acc_scale)
             else:
                 logger.debug('\talready got data, skipping '
                              'processing this heap.')
                 data = None
             if data:
-                # add to consumer queues if necessary
-                if need_print:
-                    self.need_print_data.clear()
-                    try:
-                        self.print_queue.put(data)
-                    except Queue.Full:
-                        self.print_queue.get()
-                        self.print_queue.put(data)
-                if need_plot:
-                    self.need_plot_data.clear()
-                    try:
-                        self.plot_queue.put(data)
-                    except Queue.Full:
-                        self.plot_queue.get()
-                        self.plot_queue.put(data)
-
+                for datatime in data:
+                    # add to consumer queues if necessary
+                    if need_print:
+                        self.need_print_data.clear()
+                        try:
+                            self.print_queue.put(data[datatime])
+                        except Queue.Full:
+                            self.print_queue.get()
+                            self.print_queue.put(data[datatime])
+                    if need_plot:
+                        self.need_plot_data.clear()
+                        try:
+                            self.plot_queue.put(data[datatime])
+                        except Queue.Full:
+                            self.plot_queue.get()
+                            self.plot_queue.put(data[datatime])
             # should we quit?
             if self.quit_event.is_set():
                 logger.info('Got a signal from main(), exiting rx loop...')
                 break
-
             # count processed heaps
             idx += 1
-
+# TODO file
 #        for (name,idx) in datasets_index.iteritems():
 #            if idx == 1:
 #                 self.logger.info('Repacking dataset %s as an attribute as '
 #                                  'it is singular.' % name)
 #                h5_file['/'].attrs[name] = h5_file[name].value[0]
 #                h5_file.__delitem__(name)
-
         if h5_file is not None:
             logger.info('Closing H5 file, %s' % h5_filename)
             h5_file.flush()
             h5_file.close()
-
         strm.stop()
         logger.info('SPEAD2 RX stream socket closed.')
         self.quit_event.clear()
@@ -609,7 +646,8 @@ if __name__ == '__main__':
                         '{}-n-accs'.format(product_name),
                         '{}-destination'.format(product_name),
                         '{}-n-bls'.format(product_name),
-                        '{}-bls-ordering'.format(product_name)]
+                        '{}-bls-ordering'.format(product_name),
+                        '{}-n-accs'.format(product_name)]
     sensors = {}
     srch = re.compile('|'.join(sensors_required))
     for inf in informs:
@@ -617,6 +655,7 @@ if __name__ == '__main__':
             sensors[inf.arguments[2]] = inf.arguments[4]
 
     n_chans = int(sensors['{}-n-chans'.format(product_name)])
+    n_accs = int(sensors['{}-n-accs'.format(product_name)])
     n_ants = int(sensors['n-ants'])
     output = {
         'product': product_name,
