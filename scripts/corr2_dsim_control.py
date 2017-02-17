@@ -1,68 +1,66 @@
 #!/usr/bin/env python
 
-__author__ = 'paulp'
-
 import argparse
 import sys
-import time
 import os
-import ConfigParser
-
-from casperfpga import tengbe
 
 from corr2 import utils
-
 from corr2.dsimhost_fpga import FpgaDsimHost
 
-parser = argparse.ArgumentParser(description='Control the dsim-engine (fake digitiser.)',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser = argparse.ArgumentParser(
+    description='Control the dsim-engine (fake digitiser.)',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--config', type=str, action='store', help=
                     'corr2 config file. (default: Use CORR2INI env var)')
-parser.add_argument('--program', dest='program', action='store_true', default=False,
-                    help='(re)program the fake digitiser')
-parser.add_argument('--deprogram', dest='deprogram', action='store_true', default=False,
-                    help='deprogram the fake digitiser')
+parser.add_argument('--program', dest='program', action='store_true',
+                    default=False, help='(re)program the fake digitiser')
+parser.add_argument('--deprogram', dest='deprogram', action='store_true',
+                    default=False, help='deprogram the fake digitiser')
 parser.add_argument('--start', dest='start', action='store_true', default=False,
                     help='start the fake digitiser transmission')
 parser.add_argument('--pulse', action='store_true', default=False, help=
-                    'Send a pulse of fake packets. Does nothing if digitiser is '
-                    'already transmitting, use --stop first. It will only work '
-                    'once until the dsim-engine is reset, e.g using --resync '
-                    'which can be used with --pulse (--resync will be applied first).')
-parser.add_argument('--pulse-packets', action='store', default=100, type=int, help=
-                    'Send out out this many data packets per polarisation if --pulse '
-                    'is specified (default: %(default)d.')
+                    'Send a pulse of fake packets. Does nothing if digitiser '
+                    'is already transmitting, use --stop first. It will only '
+                    'work once until the dsim-engine is reset, e.g using '
+                    '--resync which can be used with --pulse (--resync will '
+                    'be applied first).')
+parser.add_argument('--pulse-packets', action='store', default=100, type=int,
+                    help='Send out out this many data packets per polarisation'
+                         ' if --pulse is specified (default: %(default)d.')
 parser.add_argument('--resync', action='store_true', default=False,
                     help='Restart digitiser time and then sync')
 parser.add_argument('--stop', dest='stop', action='store_true', default=False,
                     help='stop the fake digitiser transmission')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                    help='log level to use, default None, options INFO, DEBUG, ERROR')
-parser.add_argument('--ipython', action='store_true', default=False, help=
-                    'Launch an embedded ipython shell once all is said and done')
-parser.add_argument('--sine-source', action='append', default=[], nargs=3 , help=
-                    'Choose which sine to source, sin_0 or sin_1. '
-                    'Set Scale and Frequency')
-parser.add_argument('--noise-source', action='append', default=[], nargs=2, help=
-                    'Choose which Noise to source, noise_0 or noise_1. '
+                    help='log level to use, default None, options INFO, '
+                         'DEBUG, ERROR')
+parser.add_argument('--ipython', action='store_true', default=False,
+                    help='Launch an embedded ipython shell once all is said '
+                         'and done')
+parser.add_argument('--sine-source', action='append', default=[], nargs=3,
+                    help='Choose which sine to source, sin_0 or sin_1. '
+                         'Set Scale and Frequency')
+parser.add_argument('--noise-source', action='append', default=[], nargs=2,
+                    help='Choose which Noise to source, noise_0 or noise_1. '
                     'Set noise scale.')
-parser.add_argument('--output-type', action='append', default=[], nargs=2, help=
-                    'Choose which Output to source from, Output_0 or Output_1. '
-                     'Output types, choose from signal or test_vectors.')
-parser.add_argument('--output-scale', action='append', default=[], nargs=2, help=
-                    'Choose which Output to source from, Output 0 or Output 1. '
-                     'Output Scale, choose between 0 - 1.')
-parser.add_argument('--zeros-sine', action='store_true', default=False, help=
-                    'Sets all sine sources to 0 scale and 0 Frequency.')
-parser.add_argument('--zeros-noise', action='store_true', default=False, help=
-                    'Sets all  noise sources to 0 scale.')
-parser.add_argument('--pulsar-source', action='append', default=[], nargs=3, help=
-                    'Choose which pulsar source, pulsar_0 or pulsar_1. '
+parser.add_argument('--output-type', action='append', default=[], nargs=2,
+                    help='Choose which Output to source from, Output_0 or '
+                         'Output_1. Output types, choose from signal or '
+                         'test_vectors.')
+parser.add_argument('--output-scale', action='append', default=[], nargs=2,
+                    help='Choose which Output to source from, Output 0 or '
+                         'Output 1. Output Scale, choose between 0 - 1.')
+parser.add_argument('--zeros-sine', action='store_true', default=False,
+                    help='Sets all sine sources to 0 scale and 0 Frequency.')
+parser.add_argument('--zeros-noise', action='store_true', default=False,
+                    help='Sets all  noise sources to 0 scale.')
+parser.add_argument('--pulsar-source', action='append', default=[], nargs=3,
+                    help='Choose which pulsar source, pulsar_0 or pulsar_1. '
                     ' Set Scale and Frequency')
-parser.add_argument('--repeat-sine', action='append', default=[], nargs=2, help=
-                    'Force a sin source to repeat exactly every N samples. '
-                    'Setting N to 0 disables repeating. '
-                    'Arguments: sin_name, N. E.g --repeat-sin sin_0 4096')
+parser.add_argument('--repeat-sine', action='append', default=[], nargs=2,
+                    help='Force a sin source to repeat exactly every N '
+                         'samples. Setting N to 0 disables repeating. '
+                         'Arguments: sin_name, N. E.g --repeat-sin sin_0 4096')
 args = parser.parse_args()
 
 
@@ -80,8 +78,8 @@ else:
     try:
         config_filename = os.environ['CORR2INI']
     except KeyError:
-        raise RuntimeError(
-            'No config file speficied and environment var "CORR2INI" not defined')
+        raise RuntimeError('No config file speficied and environment var '
+                           '"CORR2INI" not defined')
 
 corr_conf = utils.parse_ini_file(config_filename, ['dsimengine'])
 dsim_conf = corr_conf['dsimengine']
@@ -99,6 +97,12 @@ if args.program:
     something_happened = True
 else:
     dhost.get_system_information()
+
+# TODO HACK
+if 'cwg0_en' in dhost.registers.names():
+    dhost.registers.cwg0_en.write(en=1)
+    dhost.registers.cwg1_en.write(en=1)
+# /HACK
 
 if args.deprogram:
     dhost.deprogram()
@@ -135,7 +139,8 @@ if args.sine_source:
         xscale = float(xscale_s)
         yfreq = float(yfreq_s)
         try:
-            sine_source = getattr(dhost.sine_sources, 'sin_{}'.format(sine_name))
+            sine_source = getattr(dhost.sine_sources, 'sin_{}'.format(
+                sine_name))
         except AttributeError:
             print "You can only select between sine sources: {}".format([
                 ss.name for ss in dhost.sine_sources])
@@ -143,8 +148,9 @@ if args.sine_source:
         try:
             sine_source.set(scale=xscale, frequency=yfreq)
         except ValueError:
-            print "\nError, verify your inputs for sin_%s" % sine_sources.name
-            print "Max Frequency should be {}MHz".format(sine_sources.max_freq/1e6)
+            print "\nError, verify your inputs for sin_%s" % sine_source.name
+            print "Max Frequency should be {}MHz".format(
+                sine_source.max_freq/1e6)
             print "Scale should be between 0 and 1"
             sys.exit(1)
         print ""
@@ -171,7 +177,8 @@ if args.noise_source:
     for noise_sources, noise_scale_s in args.noise_source:
         noise_scale = float(noise_scale_s)
         try:
-            source_from = getattr(dhost.noise_sources, 'noise_{}'.format(noise_sources))
+            source_from = getattr(dhost.noise_sources, 'noise_{}'.format(
+                noise_sources))
         except AttributeError:
             print "You can only select between:", dhost.noise_sources.names()
             sys.exit(1)
@@ -204,7 +211,8 @@ if args.pulsar_source:
         xscale = float(xscale_s)
         yfreq = float(yfreq_s)
         try:
-            pulsar_sources = getattr(dhost.pulsar_sources, 'pulsar_{}'.format(pulsar_source))
+            pulsar_sources = getattr(dhost.pulsar_sources, 'pulsar_{}'.format(
+                pulsar_source))
         except AttributeError:
             print "You can only select between pulsar sources: {}".format([
                 ss.name for ss in dhost.pulsar_sources])
@@ -212,8 +220,10 @@ if args.pulsar_source:
         try:
             pulsar_sources.set(scale=xscale, frequency=yfreq)
         except ValueError:
-            print "\nError, verify your inputs for pulsar_%s" % pulsar_sources.name
-            print "Max Frequency should be {}MHz".format(pulsar_sources.max_freq/1e6)
+            print "\nError, verify your inputs for pulsar_{}".format(
+                str(pulsar_sources.name))
+            print "Max Frequency should be {}MHz".format(
+                pulsar_sources.max_freq/1e6)
             print "Scale should be between 0 and 1"
             sys.exit(1)
         print ""
@@ -244,7 +254,7 @@ if args.output_type:
         print "output selected:", type_from.name
         print "output type:", type_from.output_type
     something_happened = True
-#---------------------------------------------
+# ---------------------------------------------
 if args.output_scale:
     for output_scale, output_scale_s in args.output_scale:
         scale_value = float(output_scale_s)
@@ -261,7 +271,7 @@ if args.output_scale:
         """Check if it can read what was written to it!"""
         print ""
         print "output selected:", scale_from.name
-        print "output scale:",  scale_from.scale_register.read()['data']['scale']
+        print "output scale:", scale_from.scale_register.read()['data']['scale']
     something_happened = True
 
 if args.repeat_sine:
@@ -281,12 +291,11 @@ if args.repeat_sine:
             sys.exit(1)
 
 if args.ipython:
-    """Embedding ipython for debugging"""
+    # Embedding ipython for debugging
     import IPython
     IPython.embed()
     something_happened = True
 
-
 if not something_happened:
     parser.print_help()
-#dhost.disconnect()
+# dhost.disconnect()
