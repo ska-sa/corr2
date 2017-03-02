@@ -228,7 +228,9 @@ def baselines_from_config(config_file=None, config=None):
     sources = sources_from_config(config=config)
     fhosts = hosts_from_config(config=config, section='fengine')
     n_antennas = len(fhosts)
-    assert len(sources) / 2 == n_antennas
+    if len(sources) / 2 != n_antennas:
+        raise ValueError('Found {} sources, but {} antennas?'.format(
+            len(sources), n_antennas))
     return baselines_from_source_list(sources)
     # order1 = []
     # order2 = []
