@@ -80,7 +80,7 @@ class SineSource(Source):
             return None
         if not self.repeat_en_register.read()['data']['en']:
             return None
-        return self.repeat_len_register['data'][self.repeat_len_field_name]
+        return self.repeat_len_register.read()['data'][self.repeat_len_field_name]
 
     def set(self, scale=None, frequency=None, repeat_n=None):
         """Set source parameters
