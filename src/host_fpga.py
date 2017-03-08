@@ -106,14 +106,16 @@ class FpgaHost(Host, KatcpFpga):
         """
         port = info_dict[self.host][0]
         hoststr = info_dict[self.host][1]
-        mac_ctr = 1
         for gbe in self.tengbes:
+            if gbe.block_info['flavour']=='sfp+': 
+                mac_ctr=int(gbe.block_info['slot'])*4 + int(gbe.block_info['port_r2_sfpp'])
+            else:
+                raise RuntimeError("Non-SFP+ network link configurations are not supported!")
             this_mac = tengbe.Mac.from_roach_hostname(self.host, mac_ctr)
             gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=port)
             logger.info('%s(%s) gbe(%s) mac(%s) port(%i)' %
                         (hoststr, self.host, gbe.name, str(gbe.mac), port))
             # gbe.tap_start(restart=True)
             gbe.dhcp_start()
-            mac_ctr += 1
 
 # end
