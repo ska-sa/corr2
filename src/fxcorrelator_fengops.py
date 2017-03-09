@@ -623,11 +623,19 @@ class FEngineOperations(object):
 
             # andrew's ar1.5 changes
             if 'rx_dest_ip_mask0' in fhost.registers._items:
-                base = int(fhost.fengines[0].input.destination.ip_address)
+                destination = fhost.fengines[0].input.destination    
+                base = int(destination.ip_address)
                 fhost.registers.rx_dest_ip0.write_int(base)
-                fhost.registers.rx_dest_ip1.write_int(base+2)
-                mask = (255 << 24) + (255 << 16) + (255 << 8) + 254
+
+                mask = (255 << 24) + (255 << 16) + (255 << 8) + (256 - destination.ip_range)
                 fhost.registers.rx_dest_ip_mask0.write_int(mask)
+            
+            if 'rx_dest_ip_mask1' in fhost.registers._items:
+                destination = fhost.fengines[1].input.destination    
+                base = int(destination.ip_address)
+                fhost.registers.rx_dest_ip1.write_int(base)
+
+                mask = (255 << 24) + (255 << 16) + (255 << 8) + (256 - destination.ip_range)
                 fhost.registers.rx_dest_ip_mask1.write_int(mask)
 
             gbe_ctr = 0
