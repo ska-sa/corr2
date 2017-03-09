@@ -65,6 +65,8 @@ class Corr2Server(katcp.DeviceServer):
         self.metadata_cadence = 5
         self.descriptor_cadence = 5
         self.executor = futures.ThreadPoolExecutor(max_workers=1)
+        self._created = False
+        self._initialised = False
 
     def _log_excep(self, excep, msg=''):
         """
@@ -112,10 +114,13 @@ class Corr2Server(katcp.DeviceServer):
         :param log_len: how many lines should the log keep
         :return:
         """
+        if self._created:
+            return 'fail', 'Cannot run ?create twice.'
         try:
             iname = instrument_name or 'corr_%s' % str(time.time())
             self.instrument = fxcorrelator.FxCorrelator(
                 iname, config_source=config_file)
+            self._created = True
             return 'ok',
         except Exception as ex:
             return self._log_excep(ex, 'Failed to create instrument.')
@@ -141,6 +146,8 @@ class Corr2Server(katcp.DeviceServer):
         :param monitor_vacc: start the VACC monitoring ioloop
         :return:
         """
+        if self._initialised:
+            return 'fail', 'Cannot run ?initialise twice.'
         try:
             self.instrument.initialise(program=program,
                                        qdr_cal=qdr_cal,
@@ -155,6 +162,7 @@ class Corr2Server(katcp.DeviceServer):
             IOLoop.current().add_callback(self.periodic_issue_metadata)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
+            self._initialised = True
             return 'ok',
         except Exception as ex:
             return self._log_excep(ex, 'Failed to initialise '

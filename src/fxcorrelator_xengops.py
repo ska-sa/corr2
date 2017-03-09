@@ -491,12 +491,16 @@ class XEngineOperations(object):
         self.logger.info('Checking X hosts are receiving data...')
         results = THREADED_FPGA_FUNC(
             self.hosts, timeout=max_waittime+1,
-            target_function=('check_rx', (max_waittime,),))
+            target_function=('check_rx_reorder', (), {}))
         all_okay = True
         for _v in results.values():
             all_okay = all_okay and _v
         if not all_okay:
-            self.logger.error('\tERROR in X-engine rx data.')
+            self.logger.error('\tERROR in X-engine rx data. '
+                              'Checking higher up.')
+            results = THREADED_FPGA_FUNC(
+                self.hosts, timeout=max_waittime + 1,
+                target_function=('check_rx', (max_waittime,),))
         self.logger.info('\tdone.')
         return all_okay
 

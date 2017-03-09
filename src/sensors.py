@@ -452,6 +452,13 @@ class Corr2SensorManager(SensorManager):
                 Sensor.UNKNOWN)
             sensor.set_value(self.instrument.n_chans)
 
+            sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-n-chans-per-substream'.format(strmnm),
+                'Number of channels in each x-engine substream.',
+                Sensor.UNKNOWN)
+            n_xeng = len(self.instrument.xhosts) * self.instrument.x_per_fpga
+            sensor.set_value(self.instrument.n_chans / n_xeng)
+
         self.sensors_xeng_acc_time()
         self.sensors_baseline_ordering()
 

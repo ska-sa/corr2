@@ -142,7 +142,6 @@ class SPEADStream(object):
         self.category = category
         self.destination = None
         self.source = None
-        self.descr_tx = None
         self.tx_enabled = False
         self.descr_ig = spead2.send.ItemGroup(
             flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
@@ -185,26 +184,20 @@ class SPEADStream(object):
         if not hasattr(new_dest, 'ip_address'):
             new_dest = StreamAddress.from_address_string(new_dest)
         self.destination = new_dest
-        # make the SPEAD transmitters, one for every address
-        self.descr_tx = []
-        for dest_ctr in range(self.destination.ip_range):
-            ip = IpAddress.ip2str(int(self.destination.ip_address) + dest_ctr)
-            LOGGER.info('Making speadtx for stream %s: %s:%d' % (
-                self.name, str(ip), self.destination.port))
-            tx = _setup_spead_tx(ip, self.destination.port)
-            self.descr_tx.append(tx)
 
     def descriptors_issue(self):
         """
         Issue the data descriptors for this data stream
         :return:
         """
-        if (not self.descr_ig) or (not self.descr_tx):
+        if (not self.descr_ig) or (not self.destination):
             LOGGER.debug('%s: descriptors have not been set up for '
                          'stream yet.' % self.name)
             return
         ctr = 0
-        for tx in self.descr_tx:
+        for dest_ctr in range(self.destination.ip_range):
+            ip = IpAddress.ip2str(int(self.destination.ip_address) + dest_ctr)
+            tx = _setup_spead_tx(ip, self.destination.port)
             tx.send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
             ctr += 1
         LOGGER.info('SPEADStream %s: sent descriptors to %d destination%s' % (
