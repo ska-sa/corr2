@@ -18,6 +18,8 @@ parser.add_argument('--deprogram', dest='deprogram', action='store_true',
                     default=False, help='deprogram the fake digitiser')
 parser.add_argument('--start', dest='start', action='store_true', default=False,
                     help='start the fake digitiser transmission')
+parser.add_argument('--status', dest='status', action='store_true', default=False,
+                    help='Checks the status of digitiser transmission')
 parser.add_argument('--pulse', action='store_true', default=False, help=
                     'Send a pulse of fake packets. Does nothing if digitiser '
                     'is already transmitting, use --stop first. It will only '
@@ -121,6 +123,16 @@ if args.start:
     dhost.enable_data_output(enabled=True)
     dhost.registers.control.write(gbe_txen=True)
     print 'done.'
+    sys.stdout.flush()
+    something_happened = True
+
+if args.status:
+    # start tx
+    sys.stdout.flush()
+    if dhost.check_tx_raw():
+        print 'Digitiser tx raw data success.'
+    else:
+        print 'Digitiser tx raw data failed.'
     sys.stdout.flush()
     something_happened = True
 
