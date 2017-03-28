@@ -11,10 +11,10 @@ import Queue
 import re
 import spead2
 import spead2.recv as s2rx
+import subprocess
 import sys
 import threading
 import time
-import subprocess
 
 from casperfpga import tengbe
 from corr2 import utils, data_stream
@@ -23,13 +23,22 @@ from inspect import getframeinfo
 
 LOGGER = logging.getLogger(__name__)
 
+def confirm_multicast_subs(mul_ip='239.100.0.10' ,interface='eth2'):
+    """
+    Confirm whether the multicast subscription was a success or fail.
+    :param str: multicast ip
+    :param str: network interface
+    :retur str: successful or failed
+    """
+    list_inets = subprocess.check_output(['ip','maddr','show', interface])
+    return 'Successful' if str(mul_ip) in list_inets else 'Failed'
 
-def process_xeng_data(heap_data, ig, NUM_XENG, n_chans, n_accs, logger):
+def process_xeng_data(self, heap_data, ig):
     """
     Assemble data for the the plotting/printing thread to deal with.
+    :param self: corr_rx object
     :param heap_data: heaps of data from the x-engines
     :param ig: the SPEAD2 item group
-    :param logger: the logger to use
     :return:
     """
     if 'xeng_raw' not in ig.keys():
@@ -48,18 +57,18 @@ def process_xeng_data(heap_data, ig, NUM_XENG, n_chans, n_accs, logger):
             # already have this frequency - this seems to be a bug
             old_data = heap_data[this_time][this_freq]
             if np.shape(old_data) != np.shape(xeng_raw):
-                logger.error('Got repeat freq %i for time %i, with a '
+                self.logger.error('Got repeat freq %i for time %i, with a '
                              'DIFFERENT SHAPE?!\n\tFile:%s Line:%s' % (this_freq, this_time,
                                 getframeinfo(currentframe()).filename.split('/')[-1],
                                 getframeinfo(currentframe()).lineno))
             else:
                 if (xeng_raw == old_data).all():
-                    logger.error('Got repeat freq %i with SAME data for time '
+                    self.logger.error('Got repeat freq %i with SAME data for time '
                                  '%i\n\tFile:%s Line:%s' % (this_freq, this_time,
                                     getframeinfo(currentframe()).filename.split('/')[-1],
                                     getframeinfo(currentframe()).lineno))
                 else:
-                    logger.error('Got repeat freq %i with DIFFERENT data '
+                    self.logger.error('Got repeat freq %i with DIFFERENT data '
                                  'for time %i\n\tFile:%s Line:%s' % (
                                     this_freq, this_time,
                                     getframeinfo(currentframe()).filename.split('/')[-1],
@@ -71,12 +80,12 @@ def process_xeng_data(heap_data, ig, NUM_XENG, n_chans, n_accs, logger):
 
     # housekeeping - are the older heaps in the data?
     if len(heap_data) > 5:
-        logger.info('Culling stale timestamps:')
+        self.logger.info('Culling stale timestamps:')
         heaptimes = heap_data.keys()
         heaptimes.sort()
         for ctr in range(0, len(heaptimes)-5):
             heap_data.pop(heaptimes[ctr])
-            logger.info('\ttime heaptimes[ctr] culled')
+            self.logger.info('\ttime heaptimes[ctr] culled')
 
     def process_heaptime(htime, hdata):
         """
@@ -87,8 +96,8 @@ def process_xeng_data(heap_data, ig, NUM_XENG, n_chans, n_accs, logger):
         """
         freqs = hdata.keys()
         freqs.sort()
-        if freqs != range(0, n_chans, n_chans / NUM_XENG):
-            logger.error('Did not get all frequencies from the x-engines for '
+        if freqs != range(0, self.n_chans, self.n_chans / self.NUM_XENG):
+            self.logger.error('Did not get all frequencies from the x-engines for '
                          'time %i: %s' % (htime, str(freqs)))
             heap_data.pop(htime)
             return None
@@ -97,8 +106,8 @@ def process_xeng_data(heap_data, ig, NUM_XENG, n_chans, n_accs, logger):
             vals.append((htime, freq, xdata))
         vals = sorted(vals, key=lambda val: val[1])
         xeng_raw = np.concatenate([val[2] for val in vals], axis=0)
-        time_s = ig['timestamp'].value / (n_chans * 2 * n_accs)
-        logger.info('Processing xeng_raw heap with time %i (%i) and '
+        time_s = ig['timestamp'].value / (self.n_chans * 2 * self.n_accs)
+        self.logger.info('Processing xeng_raw heap with time %i (%i) and '
                     'shape: %s' % (ig['timestamp'].value, time_s,
                                    str(np.shape(xeng_raw))))
         heap_data.pop(htime)
@@ -110,11 +119,12 @@ def process_xeng_data(heap_data, ig, NUM_XENG, n_chans, n_accs, logger):
     heaptimes = heap_data.keys()
 
     for heaptime in heaptimes:
-        if len(heap_data[heaptime]) == NUM_XENG:
+        if len(heap_data[heaptime]) == self.NUM_XENG:
             rv = process_heaptime(
                 heaptime, heap_data[heaptime])
             if rv:
                 rvs['timestamp'] = rv[0]
+                rvs['dump_timestamp'] = (self.sync_time + float(rv[0]) / self.scale_factor_timestamp)
                 rvs['xeng_raw'] = rv[1]
     return rvs
 
@@ -157,13 +167,17 @@ class CorrRx(threading.Thread):
             if not reply.reply_ok():
                 raise RuntimeError('Could not read sensors from corr2_servlet, '
                                    'request failed.')
-            sensors_required = ['{}-n-chans'.format(product_name),
+            sensors_required = [
                                 'n-ants',
-                                '{}-n-accs'.format(product_name),
-                                '{}-destination'.format(product_name),
-                                '{}-n-bls'.format(product_name),
+                                'scale-factor-timestamp',
+                                'sync-time',
                                 '{}-bls-ordering'.format(product_name),
-                                '{}-n-accs'.format(product_name)]
+                                '{}-destination'.format(product_name),
+                                '{}-n-accs'.format(product_name),
+                                '{}-n-accs'.format(product_name),
+                                '{}-n-bls'.format(product_name),
+                                '{}-n-chans'.format(product_name),
+                                ]
             sensors = {}
             srch = re.compile('|'.join(sensors_required))
             for inf in informs:
@@ -172,6 +186,8 @@ class CorrRx(threading.Thread):
             self.n_chans = int(sensors['{}-n-chans'.format(product_name)])
             self.n_accs = int(sensors['{}-n-accs'.format(product_name)])
             self.n_ants = int(sensors['n-ants'])
+            self.sync_time = float(sensors['sync-time'])
+            self.scale_factor_timestamp = float(sensors['scale-factor-timestamp'])
         except Exception:
             msg = 'Failed to connect to corr2_servlet and retrieve sensors values'
             self.logger.exception(msg)
@@ -233,10 +249,10 @@ class CorrRx(threading.Thread):
 
                 # join group
                 for addrctr in range(output['address'].ip_range):
-                    addr = int(output['address'].ip_address) + addrctr
-                    addr = tengbe.IpAddress(addr)
-                    join_group(str(addr))
-                return confirm_multicast_subs(mul_ip=str(addr))
+                    self._addr = int(output['address'].ip_address) + addrctr
+                    self._addr = tengbe.IpAddress(self._addr)
+                    join_group(str(self._addr))
+                return confirm_multicast_subs(mul_ip=str(self._addr))
             else:
                 mcast_sock = None
                 self.logger.info('Source is not multicast: %s' % output['src_ip'])
@@ -287,8 +303,7 @@ class CorrRx(threading.Thread):
                 logger.debug('Contents dict is now %i long' % len(heap_contents))
                 # output item values specified
 
-                data = process_xeng_data(heap_contents, ig, self.NUM_XENG, self.n_chans,
-                    self.n_accs, logger)
+                data = process_xeng_data(self, heap_contents, ig)
                 ig_copy = copy.deepcopy(data)
                 if ig_copy:
                     try:
@@ -310,8 +325,9 @@ class CorrRx(threading.Thread):
             self.running_event.clear()
 
     def get_clean_dump(self, dump_timeout=10, discard=2):
-        """Discard any queued dumps, discard one more, then return the next dump"""
-        # discard any existing queued dumps -- they may be from another test
+        """
+        Discard any queued dumps, discard one more, then return the next dump
+        """
         try:
             while True:
                 dump = self.data_queue.get_nowait()
@@ -319,16 +335,26 @@ class CorrRx(threading.Thread):
             pass
 
         # discard next dump too, in case
-        LOGGER.info('Discarding %s initial dump(s):'%discard)
         for i in xrange(discard):
-            dump = self.data_queue.get(timeout=dump_timeout)
-        LOGGER.info('Waiting for a clean dump:')
-
-        if not (self.data_queue.get(timeout=dump_timeout)['xeng_raw'].shape[0] == self.n_chans):
-            errmsg = ('No of channels (%s) in the spead data is inconsistent with the no of'
-                      ' channels (%s) expected' %(
-                        self.data_queue.get(timeout=dump_timeout)['xeng_raw'].shape[0], self.n_chans))
+            LOGGER.info('Discarding #%s dump(s):'%i)
+            try:
+                _dump = self.data_queue.get(timeout=dump_timeout)
+            except Queue.Empty:
+                _stat = confirm_multicast_subs(self._addr)
+                _errmsg = ('Data queue empty, Multicast subscription %s.'%_stat)
+                self.logger.exception(_errmsg)
+                raise RuntimeError(_errmsg)
+            except Exception:
+                self.logger.exception()
+        try:
+            LOGGER.info('Waiting for a clean dump:')
+            _dump = self.data_queue.get(timeout=dump_timeout)
+            assert _dump['xeng_raw'].shape[0] == self.n_chans
+        except AssertionError:
+            errmsg = ('No of channels in the spead data is inconsistent with the no of'
+                      ' channels (%s) expected' %self.n_chans)
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
         else:
-            return self.data_queue.get(timeout=dump_timeout)
+            LOGGER.info('Received clean dump.')
+            return _dump
