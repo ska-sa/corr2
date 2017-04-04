@@ -154,7 +154,7 @@ class Corr2Server(katcp.DeviceServer):
                                        require_epoch=require_epoch)
             # add a sensor manager
             sensor_manager = sensors.Corr2SensorManager(self, self.instrument)
-            self.instrument.sensor_manager = sensor_manager
+            self.instrument.set_sensor_manager(sensor_manager)
             # set up the main loop sensors
             sensor_manager.sensors_clear()
             sensor_manager.setup_mainloop_sensors()
@@ -388,7 +388,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if source_name.strip() == '':
-            return self._log_excep(None, 'No source name given')
+            return self._log_excep(None, 'No source name given.')
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
                 self.instrument.fops.eq_set(True, source_name, list(eq_vals))
@@ -417,6 +417,29 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(None).values()[0]
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
+    @request(Str(), Float(default=-1.0), Str(default=''))
+    @return_reply(Str())
+    def request_delay_input(self, sock, input_name, loadtime, delay_string):
+        """
+        Set delay for an input on the instrument.
+        :param sock:
+        :param input_name: the name of the source for which to set delays
+        :param loadtime: the load time, in seconds
+        :param delay_string: the coefficients, a string, described in ICD.
+        :return:
+        """
+        if input_name.strip() == '':
+            return self._log_excep(None, 'No source name given.')
+        try:
+            from corr2 import delay as delayops
+            delay = delayops.process_list([delay_string])[0]
+            actual = self.instrument.fops.delays_set(
+                input_name, loadtime, delay[0][0], delay[0][1],
+                delay[1][0], delay[1][1])
+            return 'ok', str(actual)
+        except Exception as ex:
+            return self._log_excep(ex, 'Failed setting delays.')
+
     @request(Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):
@@ -424,14 +447,15 @@ class Corr2Server(katcp.DeviceServer):
         Set delays for the instrument.
         :param sock:
         :param loadtime: the load time, in seconds
-        :param sock: the coefficient set, as a list of strings, described in
-        ICD.
+        :param delay_strings: the coefficient set, as a list of strings,
+            described in ICD.
         :return:
         """
         try:
-            actual = self.instrument.fops.delays_process_parallel(
+            actual = self.instrument.fops._delay_set_all(
                 loadtime, delay_strings)
-            return tuple(['ok'] + actual)
+            rv = [str(val) for val in actual.values()]
+            return tuple(['ok'] + rv)
         except Exception as ex:
             return self._log_excep(ex, 'Failed setting delays.')
 
@@ -463,6 +487,8 @@ class Corr2Server(katcp.DeviceServer):
         :param source_name: the source to query
         :return:
         """
+        if source_name.strip() == '':
+            return self._log_excep(None, 'No source name given.')
         try:
             snapdata = self.instrument.fops.get_quant_snap(source_name)
         except ValueError as ex:
@@ -485,6 +511,8 @@ class Corr2Server(katcp.DeviceServer):
         :param capture_time: the UNIX time from which to capture data
         :return:
         """
+        if source_name.strip() == '':
+            return self._log_excep(None, 'No source name given.')
         try:
             data = self.instrument.fops.get_adc_snapshot(
                 source_name, capture_time)
@@ -763,23 +791,6 @@ class Corr2Server(katcp.DeviceServer):
         sys.stderr.write('This should go to standard error. %s\n' % ts)
         return 'ok',
 
-    @request(Int())
-    @return_reply()
-    def request_debug_delay_logging(self, sock, enable_disable):
-        """
-        Change the cadence of sending the periodic metadata.
-        :param sock:
-        :param enable_disable - 1 for logging enabled, 0 for not
-        :return:
-        """
-        import corr2.delay as delayops
-        if enable_disable == 1:
-            delayops.debug_logging = True
-            self.instrument.logger.info('Enabled delay logging.')
-        else:
-            delayops.debug_logging = False
-            self.instrument.logger.info('Disabled delay logging.')
-        return 'ok',
 
     @request(Int())
     @return_reply()

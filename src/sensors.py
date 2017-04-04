@@ -48,11 +48,9 @@ class Corr2Sensor(Sensor):
                  params=None, default=None, initial_status=None,
                  manager=None, executor=None):
         if '_' in name:
-            LOGGER.warning(
-                'Sensor names cannot have underscores in them, so {name} '
-                'becomes {name_conv}'.format(name=name,
-                                             name_conv=name.replace('_', '-')
-                                             ))
+            LOGGER.warning('Sensor names cannot have underscores in them, '
+                           'so {name} becomes {name_conv}'.format(
+                name=name, name_conv=name.replace('_', '-')))
             name = name.replace('_', '-')
         self.manager = manager
         self.executor = executor
@@ -508,7 +506,8 @@ class Corr2SensorManager(SensorManager):
         """
         streams = self.instrument.get_data_streams_by_type(
             data_stream.FENGINE_CHANNELISED_DATA)
-        assert len(streams) == 1
+        if len(streams) != 1:
+            raise RuntimeError('Expecting one stream, got %i?' % (len(streams)))
         for stream in streams:
             strmnm = stream.name
             for feng in self.instrument.fops.fengines:
@@ -519,20 +518,21 @@ class Corr2SensorManager(SensorManager):
                     'The delay settings for this input: (loadtime, delay, '
                     'delay-rate, phase, phase-rate)',
                     Sensor.UNKNOWN)
-                if feng.delay.load_time:
-                    _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
-                        feng.delay.load_time,
-                        feng.delay_actual.delay,
-                        feng.delay_actual.delay_delta,
-                        feng.delay_actual.phase_offset,
-                        feng.delay_actual.phase_offset_delta
-                    )
-                    sensor.set_value(_val)
-                sensor = self.do_sensor(
+                err_sensor = self.do_sensor(
                     Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
                     'Delays for this input are functioning correctly.',
                     Sensor.UNKNOWN)
-                sensor.set_value(False if feng.delay.error.is_set() else True)
+                if feng.last_delay is not None:
+                    _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
+                        feng.last_delay.load_time,
+                        feng.last_delay.delay,
+                        feng.last_delay.delay_delta,
+                        feng.last_delay.phase_offset,
+                        feng.last_delay.phase_offset_delta
+                    )
+                    sensor.set_value(_val)
+                    err = False if feng.last_delay.error.is_set() else True
+                    err_sensor.set_value(err)
 
     def sensors_feng_streams(self):
         """
@@ -726,7 +726,8 @@ class Corr2SensorManager(SensorManager):
 
     def setup_mainloop_sensors(self):
         """
-        Set up compound sensors to be reported to CAM from the main katcp servlet
+        Set up compound sensors to be reported to CAM from the main 
+            katcp servlet.
         :return:
         """
         # # Set up a 1-worker pool per host to

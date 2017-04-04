@@ -158,10 +158,6 @@ class FEngineOperations(object):
         # where does the F-engine data go?
         self.data_stream.write_destination()
 
-        # set the sample rate on the Fhosts
-        for host in self.hosts:
-            host.rx_data_sample_rate_hz = self.corr.sample_rate_hz
-
     def configure(self):
         """
         Configure the fengine operations - this is done whenever a correlator
@@ -194,8 +190,7 @@ class FEngineOperations(object):
             new_feng = fhost_fpga.Fengine(
                 input_stream=self.corr.get_data_stream(stream[0]),
                 host=None,
-                offset=stream[1] % self.corr.f_per_fpga,
-                sensor_manager=None)
+                offset=stream[1] % self.corr.f_per_fpga)
             new_feng.eq_poly = eq_polys[new_feng.name]
             new_feng.eq_bram_name = 'eq%i' % new_feng.offset
             dest_ip_range = new_feng.input.destination.ip_range
@@ -247,6 +242,10 @@ class FEngineOperations(object):
             [feng.input.destination for feng in self.fengines]
         )
         self.corr.add_data_stream(self.data_stream)
+
+        # set the sample rate on the Fhosts
+        for host in self.hosts:
+            host.rx_data_sample_rate_hz = self.corr.sample_rate_hz
 
     def sys_reset(self, sleeptime=0):
         """
@@ -326,7 +325,6 @@ class FEngineOperations(object):
             else:
                 feng_times_unix[host.host] = -1
             feng_times[host.host] = feng_mcnt
-
         # are they all within 500ms of one another?
         diff = max(feng_times.values()) - min(feng_times.values())
         diff_ms = diff / self.corr.sample_rate_hz * 1000.0
@@ -337,120 +335,92 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return True, feng_times, feng_times_unix
 
-    # def delays_process(self, loadtime, delays):
-    #     """
-    #
-    #     :param loadtime:
-    #     :param delays:
-    #     :return:
-    #     """
-    #     if loadtime <= time.time():
-    #         raise ValueError('Loadtime %.3f is in the past?' % loadtime)
-    #     # This was causing an error
-    #     dlist = delays#.split(' ')
-    #     ant_delay = []
-    #     for delay in dlist:
-    #         bits = delay.strip().split(':')
-    #         if len(bits) != 2:
-    #             raise ValueError('%s is not a valid delay setting' % delay)
-    #         delay = bits[0]
-    #         delay = delay.split(',')
-    #         delay = (float(delay[0]), float(delay[1]))
-    #         fringe = bits[1]
-    #         fringe = fringe.split(',')
-    #         fringe = (float(fringe[0]), float(fringe[1]))
-    #         ant_delay.append((delay, fringe))
-    #
-    #     labels = []
-    #     for feng in self.corr.fengines:
-    #         labels.append(feng['input'].name)
-    #     if len(ant_delay) != len(labels):
-    #         raise ValueError(
-    #             'Too few values provided: expected(%i) got(%i)' %
-    #             (len(labels), len(ant_delay)))
-    #
-    #     rv = ''
-    #     for ctr in range(0, len(labels)):
-    #         res = self.set_delay(labels[ctr],
-    #                              ant_delay[ctr][0][0], ant_delay[ctr][0][1],
-    #                              ant_delay[ctr][1][0], ant_delay[ctr][1][1],
-    #                              loadtime, False)
-    #         res_str = '%.3f,%.3f:%.3f,%.3f' % \
-    #                   (res['act_delay'], res['act_delay_delta'],
-    #                    res['act_phase_offset'], res['act_phase_offset_delta'])
-    #         rv = '%s %s' % (rv, res_str)
-    #     return rv
-
-    def delays_process_parallel(self, loadtime, delay_list):
+    def _delay_set_all(self, loadtime, delay_list):
         """
-        Given a load time and a set of delay values, apply them to the
-        F-engines in this system.
-        :param loadtime:
-        :param delay_list:
+        Set the delays for all inputs in the system
+        :param loadtime: the UNIX time at which to effect the changes
+        :param delay_list: a list of ICD strings, one for each input
         :return:
         """
-        if loadtime > 0:
-            time_now = time.time()
-            # check that load time is not too soon or in the past
-            if loadtime < (time_now + self.corr.min_load_time):
-                errmsg = 'Time given is in the past or does not allow for ' \
-                         'enough time to set values'
-                self.logger.error(errmsg)
-                raise RuntimeError(errmsg)
-            loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
-            load_wait_delay = (loadtime - time_now + self.corr.min_load_time)
-            numfeng = len(self.fengines)
-            if len(delay_list) != numfeng:
-                errmsg = 'Too few delay setup parameters given. Need as ' \
-                       'many as there are inputs (%i), given %i delay ' \
-                       'settings' % (numfeng, len(delay_list))
-                self.logger.error(errmsg)
-                raise ValueError(errmsg)
-            input_delays = delayops.process_list(delay_list)
-            # set them in the objects and then write them to hardware
-            actual_vals = self.set_delays_all(loadtime_mcnt, input_delays)
-        else:
-            actual_vals = self.get_delays_all()
-        rv = []
-        for val in actual_vals:
-            res_str = '{},{}:{},{}'.format(
-                val['act_delay'], val['act_delay_delta'],
-                val['act_phase_offset'], val['act_phase_offset_delta'])
-            rv.append(res_str)
+        loadmcnt = self._delays_check_loadtime(loadtime)
+        delays = delayops.process_list(delay_list)
+        if len(delays) != len(self.fengines):
+            raise ValueError('Have %i F-engines, received %i delay coefficient '
+                             'sets.' % (len(self.fengines), len(delays)))
+        # collect delay coefficient sets and fhosts
+        delays_by_host = {host.host: [] for host in self.hosts}
+        for feng in self.fengines:
+            delays_by_host[feng.host.host].append(delays[feng.input_number])
+        actual_vals = THREADED_FPGA_FUNC(
+            self.corr.fhosts, timeout=0.5,
+            target_function=('_delay_set_all', [loadmcnt, delays_by_host], {}))
+        rv = {}
+        for val in actual_vals.values():
+            rv.update(
+                {fengkey: fengvalue for fengkey, fengvalue in val.items()})
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_feng_delays()
-        return rv
+        return {fengkey: fengdelay for fengkey, fengdelay in rv.items()}
 
-    def set_delays_all(self, loadtime_mcnt, coefficients):
+    def delays_set(self, input_name, loadtime=None,
+                   delay=None, delay_rate=None,
+                   phase=None, phase_rate=None):
         """
-        Set delays on all fhosts
-        :param loadtime_mcnt: the load time, converted to system tick time
-        :param coefficients: a list of coefficient tuples, one per input
+        Set the delay for a given input.
+        :param input_name: the name of the input to which we should 
+            apply the delays 
+        :param loadtime: the UNIX time to effect the changes
+        :param delay:
+        :param delay_rate:
+        :param phase:
+        :param phase_rate:
         :return:
         """
-        # spawn threads to write values out, giving a maximum time of 0.75
-        # seconds to do them all
-        target_func = ('set_and_write_delays_all',
-                       [loadtime_mcnt, coefficients, self.corr.sample_rate_hz],
-                       {})
-        actual_vals = THREADED_FPGA_FUNC(
-            self.corr.fhosts, timeout=0.5, target_function=target_func)
-        return [actual_vals[feng.host.host][feng.offset]
-                for feng in self.fengines]
+        fengine = self.get_fengine(input_name)
+        if loadtime is None:
+            loadtime = time.time() + 25
+            self.logger.debug('input %s delay setting: no loadtime given, '
+                              'setting to 25s in the future.' % input_name)
+        loadmcnt = self._delays_check_loadtime(loadtime)
+        fengine.delay_set(loadmcnt, delay, delay_rate, phase, phase_rate)
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_feng_delays()
+        return fengine.delay_get()
 
-    def get_delays_all(self):
+    def delays_get(self, input_name=None):
         """
-        Get delays from all fhosts
+        Get the delays for a given source name or index.
+        :param input_name: a source name or index. If None, get all the
+            fengine delay data.
         :return:
         """
-        return [
-            {
-                'act_delay': feng.delay_actual.delay,
-                'act_delay_delta': feng.delay_actual.delay_delta,
-                'act_phase_offset': feng.delay_actual.phase_offset,
-                'act_phase_offset_delta': feng.delay_actual.phase_offset_delta
-            } for feng in self.fengines
-        ]
+        if input_name is None:
+            actual_vals = THREADED_FPGA_FUNC(
+                self.corr.fhosts, timeout=0.5,
+                target_function=('delays_get', [], {}))
+            rv = {}
+            for val in actual_vals.values():
+                rv.update(
+                    {fengkey: fengvalue for fengkey, fengvalue in val.items()})
+            return {fengkey: fengdelay for fengkey, fengdelay in rv.items()}
+        feng = self.get_fengine(input_name)
+        return feng.delay_get()
+
+    def _delays_check_loadtime(self, loadtime):
+        """
+        Check a given delay load time.
+        :param loadtime: the UNIX time
+        :return: the system sample count
+        """
+        # check that load time is not too soon or in the past
+        time_now = time.time()
+        if loadtime < (time_now + self.corr.min_load_time):
+            errmsg = 'Time given is in the past or does not allow for ' \
+                     'enough time to set values'
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
+        loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
+        return loadtime_mcnt
 
     def check_tx(self):
         """
@@ -469,6 +439,25 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return all_okay
 
+    def resync_and_check(self):
+        """
+        Resynchronise all the f-engines and then check if they still have RX
+        or TX errors.
+        :return:
+        """
+        attempts = 5
+        self.logger.info('Attempting to resync the f-engines.')
+        while attempts > 0:
+            logstr = '\tattempt 1: '
+            self.sys_reset()
+            if self.check_rx():
+                if self.check_tx():
+                    self.logger.info(logstr + 'succeeded')
+                    return True
+            self.logger.info(logstr + 'failed')
+            attempts -= 1
+        return False
+
     def tx_enable(self):
         """
         Enable TX on all tengbe cores on all F hosts
@@ -485,14 +474,18 @@ class FEngineOperations(object):
 
     def get_fengine(self, input_name):
         """
-
+        Find an f-engine by name or index
         :param input_name:
         :return:
         """
-        for feng in self.fengines:
-            if input_name == feng.name:
-                return feng
-        raise ValueError('Could not find F-engine with input %s' % input_name)
+        try:
+            for fhost in self.hosts:
+                return fhost.get_fengine(input_name)
+        except fhost_fpga.InputNotFoundError:
+            pass
+        errmsg = 'Could not find F-engine \'%s\'' % input_name
+        self.logger.error(errmsg)
+        raise ValueError(errmsg)
 
     def eq_get(self, input_name=None):
         """

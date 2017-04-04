@@ -200,7 +200,7 @@ class SPEADStream(object):
             tx = _setup_spead_tx(ip, self.destination.port)
             tx.send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
             ctr += 1
-        LOGGER.info('SPEADStream %s: sent descriptors to %d destination%s' % (
+        LOGGER.debug('SPEADStream %s: sent descriptors to %d destination%s' % (
             self.name, ctr, '' if ctr == 1 else 's'))
 
     def tx_enable(self):

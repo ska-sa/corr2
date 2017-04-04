@@ -206,6 +206,14 @@ class Instrument(object):
         for stream in self.data_streams:
             stream.descriptors_issue()
 
+    def set_sensor_manager(self, sensor_manager):
+        """
+        Set the sensor manager for this instrument
+        :param sensor_manager: a SensorManager instance 
+        :return: 
+        """
+        self.sensor_manager = sensor_manager
+
     @property
     def synchronisation_epoch(self):
         # LOGGER.info('@synchronisation_epoch getter')
