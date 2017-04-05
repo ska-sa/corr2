@@ -474,16 +474,16 @@ class FEngineOperations(object):
 
     def get_fengine(self, input_name):
         """
-        Find an f-engine by name or index
+        Find an f-engine by name or index.
         :param input_name:
         :return:
         """
-        try:
-            for fhost in self.hosts:
+        for fhost in self.hosts:
+            try:
                 return fhost.get_fengine(input_name)
-        except fhost_fpga.InputNotFoundError:
-            pass
-        errmsg = 'Could not find F-engine \'%s\'' % input_name
+            except fhost_fpga.InputNotFoundError:
+                pass
+        errmsg = 'Fengine \'%s\' not found on any host.' % input_name
         self.logger.error(errmsg)
         raise ValueError(errmsg)
 
