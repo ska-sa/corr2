@@ -149,9 +149,11 @@ class Corr2Server(katcp.DeviceServer):
         if self._initialised:
             return 'fail', 'Cannot run ?initialise twice.'
         try:
-            self.instrument.initialise(program=program,
-                                       qdr_cal=qdr_cal,
+            self.instrument.initialise(program=program, qdr_cal=qdr_cal,
                                        require_epoch=require_epoch)
+            # update the servlet's version list with version information
+            # from the running firmware
+            self.extra_versions.update(self.instrument.get_version_info())
             # add a sensor manager
             sensor_manager = sensors.Corr2SensorManager(self, self.instrument)
             self.instrument.set_sensor_manager(sensor_manager)
@@ -197,8 +199,8 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.synchronisation_epoch = synch_time
             except Exception as ex:
-                return self._log_excep(ex,
-                                       'Failed to set digitiser synch epoch.')
+                return self._log_excep(
+                    ex, 'Failed to set digitiser synch epoch.')
         return 'ok', self.instrument.synchronisation_epoch
 
     @request(Str(), Str())

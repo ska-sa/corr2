@@ -484,16 +484,14 @@ def hosts_from_dhcp_leases(host_pref='roach',
     hosts = []
     if not isinstance(host_pref, list):
         host_pref = [host_pref]
-    masqfile = open(leases_file)
-    for line in masqfile:
+    with open(leases_file) as masqfile:
+        masqlines = masqfile.readlines()
+    for line in masqlines:
+        (leasetime, mac, ip, host, mac2) = line.replace('\n', '').split(' ')
         for host_prefix in host_pref:
-            _spos = line.find(host_prefix)
-            if _spos > 0:
-                _epos = line.find(' ', _spos + 1)
-                roachname = line[_spos:_epos].strip()
-                hosts.append(roachname)
+            if host.startswith(host_prefix):
+                hosts.append(host if host != '*' else ip)
                 break
-    masqfile.close()
     return hosts, leases_file
 
 
@@ -527,6 +525,5 @@ def parse_output_products(dictionary):
     for ctr, addr in enumerate(addresses):
         addresses[ctr] = StreamAddress.from_address_string(addr)
     return prods, addresses
-
 
 # end

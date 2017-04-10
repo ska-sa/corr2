@@ -630,4 +630,16 @@ class FxCorrelator(Instrument):
                 self.logger.debug('SPEADStream {} is not a metadata stream'
                                   ''.format(stream.name))
 
+    def get_version_info(self):
+        """
+        Get the version information for this instrument.
+        :return: a dict of items: [(name, (version, build-state)), ]
+        """
+        rv = {}
+        for fname, fver in self.fops.get_version_info():
+            rv['fengine_firmware_' + fname] = (fver, '')
+        for fname, fver in self.xops.get_version_info():
+            rv['xengine_firmware_' + fname] = (fver, '')
+        return rv
+
 # end

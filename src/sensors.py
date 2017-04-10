@@ -340,11 +340,11 @@ class Corr2SensorManager(SensorManager):
         :return:
         """
         val = self.instrument.synchronisation_epoch
-        val = 0 if val < 0 else val
-        sensor = self.do_sensor(Corr2Sensor.float, 'sync-time',
-                                'The time at which the digitisers were '
-                                'synchronised. Seconds since the Unix Epoch.',
-                                Sensor.UNKNOWN, 's')
+        val = 0.0 if val < 0.0 else float(val)
+        sensor = self.do_sensor(
+            Corr2Sensor.float, 'sync-time',
+            'The time at which the digitisers were synchronised. Seconds '
+            'since the Unix Epoch.', Sensor.UNKNOWN, 's')
         sensor.set_value(val)
 
     def sensors_transient_buffer_ready(self):
@@ -912,24 +912,24 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value('({start},{end})'.format(
                 start=bid*chans_per_x, end=(bid+1)*chans_per_x-1))
 
-        hosts = [('fengine', self.instrument.fhosts[0]),
-                 ('xengine', self.instrument.xhosts[0])]
-        for _htype, _h in hosts:
-            if 'git' in _h.rcs_info:
-                filectr = 0
-                for gitfile, gitparams in _h.rcs_info['git'].items():
-                    namepref = 'git-' + _htype + '-' + str(filectr)
-                    for param, value in gitparams.items():
-                        sensname = namepref + '-' + param
-                        sensname = sensname.replace('_', '-')
-                        sensor = Corr2Sensor.string(
-                            name=sensname,
-                            description='Git info: %s' % sensname,
-                            initial_status=Sensor.UNKNOWN,
-                            manager=self)
-                        self.sensor_create(sensor)
-                        sensor.set_value(str(value))
-                    filectr += 1
+        # hosts = [('fengine', self.instrument.fhosts[0]),
+        #          ('xengine', self.instrument.xhosts[0])]
+        # for _htype, _h in hosts:
+        #     if 'git' in _h.rcs_info:
+        #         filectr = 0
+        #         for gitfile, gitparams in _h.rcs_info['git'].items():
+        #             namepref = 'git-' + _htype + '-' + str(filectr)
+        #             for param, value in gitparams.items():
+        #                 sensname = namepref + '-' + param
+        #                 sensname = sensname.replace('_', '-')
+        #                 sensor = Corr2Sensor.string(
+        #                     name=sensname,
+        #                     description='Git info: %s' % sensname,
+        #                     initial_status=Sensor.UNKNOWN,
+        #                     manager=self)
+        #                 self.sensor_create(sensor)
+        #                 sensor.set_value(str(value))
+        #             filectr += 1
 
         self.sensors_xeng_streams()
 

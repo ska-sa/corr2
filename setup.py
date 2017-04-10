@@ -1,10 +1,7 @@
 from distutils.core import setup
 import glob
 
-__version__ = '2.0.1'
-
 setup(name='corr2',
-      version=__version__,
       description='Interfaces to MeerKAT CBF',
       long_description='Provides interfaces and functions to '
                        'configure MeerKAT packetised digital backend; '

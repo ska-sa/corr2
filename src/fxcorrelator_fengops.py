@@ -786,3 +786,15 @@ class FEngineOperations(object):
             if not result:
                 return False
         return True
+
+    def get_version_info(self):
+        """
+        Get the version information for the hosts
+        :return: a dict of {file: version_info, }
+        """
+        try:
+            return self.hosts[0].get_version_info()
+        except AttributeError:
+            return {}
+
+# end

@@ -239,9 +239,16 @@ class Instrument(object):
                 new_synch_time, time_now)
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
-        self._synchronisation_epoch = new_synch_time
+        self._synchronisation_epoch = float(new_synch_time)
         if self.sensor_manager:
             self.sensor_manager.sensors_sync_time()
         self.logger.info('Set synch epoch to %.5f.' % new_synch_time)
+
+    def get_version_info(self):
+        """
+        Get the version information for this instrument.
+        :return: a list of items: [(name, (version, build-state)), ]
+        """
+        return []
 
 # end
