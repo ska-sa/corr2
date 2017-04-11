@@ -340,8 +340,14 @@ class FEngineOperations(object):
         Set the delays for all inputs in the system
         :param loadtime: the UNIX time at which to effect the changes
         :param delay_list: a list of ICD strings, one for each input
-        :return:
+        :return: an in-order list of fengine delay results
         """
+        if loadtime <= 0:
+            actual_vals = self.delays_get()
+            rv = []
+            for feng in self.fengines:
+                rv.append(actual_vals[feng.name])
+            return rv
         loadmcnt = self._delays_check_loadtime(loadtime)
         delays = delayops.process_list(delay_list)
         if len(delays) != len(self.fengines):
@@ -360,7 +366,11 @@ class FEngineOperations(object):
                 {fengkey: fengvalue for fengkey, fengvalue in val.items()})
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_feng_delays()
-        return {fengkey: fengdelay for fengkey, fengdelay in rv.items()}
+        actual_vals = rv
+        rv = []
+        for feng in self.fengines:
+            rv.append(actual_vals[feng.name])
+        return rv
 
     def delays_set(self, input_name, loadtime=None,
                    delay=None, delay_rate=None,
@@ -381,10 +391,11 @@ class FEngineOperations(object):
             loadtime = time.time() + 25
             self.logger.debug('input %s delay setting: no loadtime given, '
                               'setting to 25s in the future.' % input_name)
-        loadmcnt = self._delays_check_loadtime(loadtime)
-        fengine.delay_set(loadmcnt, delay, delay_rate, phase, phase_rate)
-        if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_feng_delays()
+        if loadtime > 0:
+            loadmcnt = self._delays_check_loadtime(loadtime)
+            fengine.delay_set(loadmcnt, delay, delay_rate, phase, phase_rate)
+            if self.corr.sensor_manager:
+                self.corr.sensor_manager.sensors_feng_delays()
         return fengine.delay_get()
 
     def delays_get(self, input_name=None):
@@ -402,7 +413,7 @@ class FEngineOperations(object):
             for val in actual_vals.values():
                 rv.update(
                     {fengkey: fengvalue for fengkey, fengvalue in val.items()})
-            return {fengkey: fengdelay for fengkey, fengdelay in rv.items()}
+            return rv
         feng = self.get_fengine(input_name)
         return feng.delay_get()
 

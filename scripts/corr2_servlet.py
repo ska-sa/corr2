@@ -433,12 +433,16 @@ class Corr2Server(katcp.DeviceServer):
         if input_name.strip() == '':
             return self._log_excep(None, 'No source name given.')
         try:
-            from corr2 import delay as delayops
-            delay = delayops.process_list([delay_string])[0]
-            actual = self.instrument.fops.delays_set(
-                input_name, loadtime, delay[0][0], delay[0][1],
-                delay[1][0], delay[1][1])
+            if loadtime > -1:
+                from corr2 import delay as delayops
+                delay = delayops.process_list([delay_string])[0]
+                actual = self.instrument.fops.delays_set(
+                    input_name, loadtime, delay[0][0], delay[0][1],
+                    delay[1][0], delay[1][1])
+            else:
+                actual = self.instrument.fops.delays_get(input_name)
             return 'ok', str(actual)
+
         except Exception as ex:
             return self._log_excep(ex, 'Failed setting delays.')
 
@@ -456,7 +460,7 @@ class Corr2Server(katcp.DeviceServer):
         try:
             actual = self.instrument.fops._delay_set_all(
                 loadtime, delay_strings)
-            rv = [str(val) for val in actual.values()]
+            rv = [str(val) for val in actual]
             return tuple(['ok'] + rv)
         except Exception as ex:
             return self._log_excep(ex, 'Failed setting delays.')
