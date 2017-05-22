@@ -351,16 +351,20 @@ class FEngineOperations(object):
             vals = self._prepare_actual_delay_vals(actual_vals[host][offset])
             act_vals.append(vals)
             self.logger.info(
-                '[%s] Phase offset actually set to %6.3f rad with rate %e '
-                'rad/s.' %
+                '[%s] Delay actually set to %e samples (%e requested) with rate %e (%e requested).' %
                 (src['source'].name,
-                 actual_vals[host][offset]['act_phase_offset'],
-                 actual_vals[host][offset]['act_delta_phase_offset']))
+                 vals['act_delay'],
+                 coeffs[count][0][0],
+                 vals['act_delta_delay'],
+                 coeffs[count][0][1]))
             self.logger.info(
-                '[%s] Delay actually set to %e samples with rate %e.' %
+                '[%s] Phase offset actually set to %f rad (%f requested) with rate %e'
+                'rad/s (%e requested).' %
                 (src['source'].name,
-                 actual_vals[host][offset]['act_delay'],
-                 actual_vals[host][offset]['act_delta_delay']))
+                 vals['act_phase_offset'],
+                 coeffs[count][1][0],
+                 vals['act_delta_phase_offset'],
+                 coeffs[count][1][1]))
         return act_vals
 
     # def set_delay(self, source_name, delay=0, delta_delay=0, phase_offset=0,

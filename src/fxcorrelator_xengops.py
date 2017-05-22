@@ -389,7 +389,7 @@ class XEngineOperations(object):
         for _v in results.values():
             all_okay = all_okay and _v
         if not all_okay:
-            self.logger.error('\tERROR in X-engine rx data.')
+            self.logger.warn('\tERROR in X-engine rx data.')
         self.logger.info('\tdone.')
         return all_okay
 

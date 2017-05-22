@@ -22,6 +22,7 @@ def _setup_spead(meta_address):
     :param meta_address:
     :return:
     """
+    # meta_ig = sptx.ItemGroup(flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE, spead2.BUG_COMPAT_PYSPEAD_0_5_2))
     meta_ig = sptx.ItemGroup(flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
     streamconfig = sptx.StreamConfig(max_packet_size=4096, max_heaps=8)
     streamsocket = socket.socket(family=socket.AF_INET,

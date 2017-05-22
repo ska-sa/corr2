@@ -419,8 +419,8 @@ class FpgaFHost(DigitiserDataReceiver):
         reg_bp = int(reg_info['bin_pts'])
         max_delay = 2**(reg_bw - reg_bp) - 1/float(2**reg_bp)
 
-        LOGGER.info('%s attempting initial delay of %f samples.' %
-                    (infostr, delay))
+        LOGGER.debug('%s attempting initial delay of %f samples and delta to %f.' %
+                    (infostr, delay, delta_delay))
         if delay < 0:
             LOGGER.warn('%s smallest delay is 0, setting to zero' % infostr)
             delay = 0
@@ -428,7 +428,6 @@ class FpgaFHost(DigitiserDataReceiver):
             LOGGER.warn('%s largest possible delay is %f data samples' % (
                 infostr, max_delay))
             delay = max_delay
-        LOGGER.info('%s setting delay to %f data samples' % (infostr, delay))
         try:
             delay_reg.write(initial=delay)
         except ValueError as e:
@@ -442,8 +441,6 @@ class FpgaFHost(DigitiserDataReceiver):
         dds = delta_delay_shifted
         dd = dds / bitshift
 
-        LOGGER.info('%s attempting delay delta to %e (%e after shift)' %
-                    (infostr, delta_delay, delta_delay_shifted))
         reg_info = delta_delay_reg.block_info
         b = int(reg_info['bin_pts'])
 
@@ -464,8 +461,6 @@ class FpgaFHost(DigitiserDataReceiver):
                         'data samples/sample' % (infostr, dd))
             LOGGER.warn('%s setting delay delta to %e data samples/sample '
                         '(%e after shift)' % (infostr, dd, dds))
-        LOGGER.info('%s writing delay delta to %e (%e after shift)' %
-                    (infostr, dd, dds))
         try:
             delta_delay_reg.write(delta=dds)
         except ValueError as e:
@@ -473,6 +468,8 @@ class FpgaFHost(DigitiserDataReceiver):
                    (infostr, dds, e.message)
             LOGGER.error(_err)
             raise ValueError(_err)
+        LOGGER.debug('%s wrote delay to %f data samples and delay delta to %e (%e after shift)' %
+                    (infostr, delay, dd, dds))
 
     @staticmethod
     def _write_delay_phase(infostr, bitshift, phase_reg, phase_offset,
@@ -483,7 +480,7 @@ class FpgaFHost(DigitiserDataReceiver):
         # multiply by amount shifted down by on FPGA
         delta_phase_offset_shifted = float(delta_phase_offset) * bitshift
 
-        LOGGER.info('%s attempting to set initial phase to %f and phase '
+        LOGGER.debug('%s attempting to set initial phase to %f and phase '
                     'delta to %e' % (infostr, phase_offset,
                                      delta_phase_offset_shifted))
         # setup the phase offset
@@ -534,8 +531,6 @@ class FpgaFHost(DigitiserDataReceiver):
                         '(%e after shift)' % (infostr, dp, dpos))
 
         # actually write the values to the register
-        LOGGER.info('%s writing initial phase to %f' % (infostr, phase_offset))
-        LOGGER.info('%s writing phase delta to %e' % (infostr, dpos))
         try:
             phase_reg.write(initial=phase_offset, delta=dpos)
         except ValueError as e:
@@ -543,6 +538,7 @@ class FpgaFHost(DigitiserDataReceiver):
                    (infostr, phase_offset, dpos, e.message)
             LOGGER.error(_err)
             raise ValueError(_err)
+        LOGGER.debug('%s wrote initial phase to %f and delta to %e' % (infostr, phase_offset,dpos))
 
     def write_delay(self, offset, delay=0.0, delta_delay=0.0, 
                     phase_offset=0.0, delta_phase_offset=0.0, 
