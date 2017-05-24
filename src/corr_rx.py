@@ -23,15 +23,6 @@ from inspect import getframeinfo
 
 LOGGER = logging.getLogger(__name__)
 
-def confirm_multicast_subs(mul_ip='239.100.0.10' ,interface='eth2'):
-    """
-    Confirm whether the multicast subscription was a success or fail.
-    :param str: multicast ip
-    :param str: network interface
-    :retur str: successful or failed
-    """
-    list_inets = subprocess.check_output(['ip','maddr','show', interface])
-    return 'Successful' if str(mul_ip) in list_inets else 'Failed'
 
 def process_xeng_data(self, heap_data, ig):
     """
@@ -63,10 +54,8 @@ def process_xeng_data(self, heap_data, ig):
                                 getframeinfo(currentframe()).lineno))
             else:
                 if (xeng_raw == old_data).all():
-                    self.logger.error('Got repeat freq %i with SAME data for time '
-                                 '%i\n\tFile:%s Line:%s' % (this_freq, this_time,
-                                    getframeinfo(currentframe()).filename.split('/')[-1],
-                                    getframeinfo(currentframe()).lineno))
+                    self.logger.error('Got repeat freq %i with SAME data for time %i' % (
+                        this_freq, this_time))
                 else:
                     self.logger.error('Got repeat freq %i with DIFFERENT data '
                                  'for time %i\n\tFile:%s Line:%s' % (
@@ -148,6 +137,16 @@ class CorrRx(threading.Thread):
         self.multicast_subs()
         threading.Thread.__init__(self)
 
+    def confirm_multicast_subs(self, mul_ip='239.100.0.10' ,interface='eth2'):
+        """
+        Confirm whether the multicast subscription was a success or fail.
+        :param str: multicast ip
+        :param str: network interface
+        :retur str: successful or failed
+        """
+        list_inets = subprocess.check_output(['ip','maddr','show', interface])
+        return 'Successful' if str(mul_ip) in list_inets else 'Failed'
+
     def multicast_subs(self):
         # before doing much of anything, need to get metadata from sensors
         product_name = self.product_name
@@ -200,18 +199,6 @@ class CorrRx(threading.Thread):
             }
             self.NUM_XENG = output['address'].ip_range
 
-            def confirm_multicast_subs(mul_ip='239.100.0.10', interface='eth2'):
-                """
-                Confirmation as to the multicast subscription.
-                """
-                list_inets = subprocess.check_output(['ip','maddr','show', interface])
-                if mul_ip in list_inets:
-                    self.logger.info('Successfully subscribed to multicast.')
-                    return True
-                else:
-                    self.logger.error('Failed to subscribed to multicast.')
-                    return False
-
             if output['address'].ip_address.is_multicast():
                 import socket
                 import struct
@@ -252,7 +239,7 @@ class CorrRx(threading.Thread):
                     self._addr = int(output['address'].ip_address) + addrctr
                     self._addr = tengbe.IpAddress(self._addr)
                     join_group(str(self._addr))
-                return confirm_multicast_subs(mul_ip=str(self._addr))
+                return self.confirm_multicast_subs(mul_ip=str(self._addr))
             else:
                 mcast_sock = None
                 self.logger.info('Source is not multicast: %s' % output['src_ip'])
@@ -340,10 +327,9 @@ class CorrRx(threading.Thread):
             try:
                 _dump = self.data_queue.get(timeout=dump_timeout)
             except Queue.Empty:
-                _stat = confirm_multicast_subs(self._addr)
+                _stat = self.confirm_multicast_subs(self._addr)
                 _errmsg = ('Data queue empty, Multicast subscription %s.'%_stat)
                 self.logger.exception(_errmsg)
-                raise RuntimeError(_errmsg)
             except Exception:
                 self.logger.exception()
         try:
@@ -355,6 +341,10 @@ class CorrRx(threading.Thread):
                       ' channels (%s) expected' %self.n_chans)
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
+        except Queue.Empty:
+            _stat = self.confirm_multicast_subs(self._addr)
+            _errmsg = ('Data queue empty, Multicast subscription %s.'%_stat)
+            self.logger.exception(_errmsg)
         else:
-            LOGGER.info('Received clean dump.')
+            self.logger.info('Received clean dump.')
             return _dump
