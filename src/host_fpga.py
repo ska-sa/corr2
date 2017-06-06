@@ -38,26 +38,25 @@ class FpgaHost(Host, KatcpFpga):
         :param max_waittime: the maximum time to wait
         :return:
         """
-        if not self.check_rx_raw(0.2, 5):
-            LOGGER.error('{}: Raw RX failed.'.format(self.host))
-            return False
+        # check the reorder, if it fails, go lower
+        if not self.check_rx_reorder():
+            LOGGER.error('{}: reorder RX check failed.'.format(self.host))
         else:
-            LOGGER.info('{}: Raw RX passed '.format(self.host))
-
+            LOGGER.info('{}: reorder RX passed '.format(self.host))
+            return True
+        # SPEAD okay?
         if not self.check_rx_spead(max_waittime=max_waittime):
             LOGGER.error('{}: SPEAD RX check failed. Ignoring '
                          'for now'.format(self.host))
         else:
             LOGGER.info('{}: SPEAD RX passed.'.format(self.host))
-
-        if not self.check_rx_reorder():
-            LOGGER.error('{}: reorder RX check failed.'.format(self.host))
-            return False
+        # raw?
+        if not self.check_rx_raw(0.2, 5):
+            LOGGER.error('{}: Raw RX failed.'.format(self.host))
         else:
-            LOGGER.info('{}: reorder RX passed '.format(self.host))
-
-        LOGGER.info('{}: check_rx() - TRUE.'.format(self.host))
-        return True
+            LOGGER.info('{}: Raw RX passed '.format(self.host))
+        LOGGER.info('{}: check_rx() - FALSE.'.format(self.host))
+        return False
 
     def check_rx_spead(self, max_waittime=5):
         """

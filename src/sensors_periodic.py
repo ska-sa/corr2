@@ -342,7 +342,7 @@ def _xhost_check_network_rx(sensor, x_host):
     """
     executor = sensor.executor
     try:
-        result = yield executor.submit(x_host.check_rx_raw, 0.2, 5)
+        result = yield executor.submit(x_host.check_rx)
         sensor.set(time.time(),
                    Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR, result)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):

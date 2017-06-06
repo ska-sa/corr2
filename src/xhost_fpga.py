@@ -140,8 +140,8 @@ class FpgaXHost(FpgaHost):
                 LOGGER.error('%s: not receiving reordered data.' % self.host)
                 return False
             if ((_new['ercv%i' % ctr] != _old['ercv%i' % ctr]) or
-                    (_new['etim%i' % ctr] != _old['etim%i' % ctr]) or
-                    (_new['edisc%i' % ctr] != _old['edisc%i' % ctr])):
+                    (_new['etim%i' % ctr] != _old['etim%i' % ctr])):  # or
+                    # (_new['edisc%i' % ctr] != _old['edisc%i' % ctr])):
                 LOGGER.error(
                     '%s: reports reorder errors: ercv(%i) etime(%i) edisc(%i)' %
                     (self.host,
