@@ -458,8 +458,7 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         try:
-            actual = self.instrument.fops._delay_set_all(
-                loadtime, delay_strings)
+            actual = self.instrument.fops.delay_set_all(loadtime, delay_strings)
             rv = [str(val) for val in actual]
             return tuple(['ok'] + rv)
         except Exception as ex:
@@ -586,7 +585,7 @@ class Corr2Server(katcp.DeviceServer):
     @return_reply(Str(multiple=True))
     def request_beam_quant_gains(self, sock, beam_name, new_gain):
         """
-        Set the quantiser gain for an beam.
+        Set the quantiser gain for a beam.
         :param sock:
         :param beam_name: required beam stream
         :param new_gain: the new gain to apply - a real float

@@ -335,7 +335,7 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return True, feng_times, feng_times_unix
 
-    def _delay_set_all(self, loadtime, delay_list):
+    def delay_set_all(self, loadtime, delay_list):
         """
         Set the delays for all inputs in the system
         :param loadtime: the UNIX time at which to effect the changes
@@ -359,7 +359,7 @@ class FEngineOperations(object):
             delays_by_host[feng.host.host].append(delays[feng.input_number])
         actual_vals = THREADED_FPGA_FUNC(
             self.corr.fhosts, timeout=0.5,
-            target_function=('_delay_set_all', [loadmcnt, delays_by_host], {}))
+            target_function=('delay_set_all', [loadmcnt, delays_by_host], {}))
         rv = {}
         for val in actual_vals.values():
             rv.update(

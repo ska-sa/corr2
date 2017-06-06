@@ -81,9 +81,9 @@ class Fengine(object):
     def input_number(self, value):
         raise NotImplementedError('This is not currently defined.')
 
-    def _delay_set_calculate_and_write_regs(
-            self, loadcnt, delay=None, delay_delta=None,
-            phase=None, phase_delta=None):
+    def delay_set_calculate_and_write_regs(self, loadcnt,
+                                           delay=None, delay_delta=None,
+                                           phase=None, phase_delta=None):
         """
         Same parameters as for self.delay_set 
         """
@@ -100,16 +100,32 @@ class Fengine(object):
         if phase_delta is not None:
             self._delay_write_phase_rate(phase_delta, loadcnt)
 
-    def _delay_set_arm_timed_latches(self, loadcnt):
+    def delay_set_arm_timed_latches(self, loadcnt, load_check=False):
         """
         
+        :param loadcnt: 
+        :param load_check: 
         :return: 
         """
-        infostr = '%s:%i:%i:' % (self.host.host, self.offset, loadcnt)
         cd_tl_name = 'tl_cd%i' % self.offset
         fd_tl_name = 'tl_fd%i' % self.offset
         status = self.host.arm_timed_latches(
             [cd_tl_name, fd_tl_name], mcnt=loadcnt)
+        return self.check_timed_latch(status, loadcnt, load_check)
+
+    def check_timed_latch(self, status, loadmcnt, load_check=False):
+        """
+        Given the results from timed latches being armed, check them and print
+        results.
+        :param loadmcnt: when were the latches to have armed?
+        :param status: A dictionary of load statuses, as returned 
+            by self.host.arm_timed_latches()
+        :param load_check: 
+        :return: 
+        """
+        infostr = '%s:%i:%i:' % (self.host.host, self.offset, loadmcnt)
+        cd_tl_name = 'tl_cd%i' % self.offset
+        fd_tl_name = 'tl_fd%i' % self.offset
         cd_before = status['status_before'][cd_tl_name]
         cd_after = status['status_after'][cd_tl_name]
         fd_before = status['status_before'][fd_tl_name]
@@ -129,7 +145,8 @@ class Fengine(object):
         # did the system arm correctly
         if (not cd_before['armed']) and \
                 (cd_before['arm_count'] == cd_after['arm_count']):
-            LOGGER.error('%s coarse delay arm count did not change.' % infostr)
+            LOGGER.error('%s coarse delay arm count did not '
+                         'change.' % infostr)
             LOGGER.error('%s BEFORE: coarse arm_count(%i) ld_count(%i)' % (
                 infostr, cd_before['arm_count'], cd_before['load_count']))
             LOGGER.error('%s AFTER:  coarse arm_count(%i) ld_count(%i)' % (
@@ -147,7 +164,6 @@ class Fengine(object):
                                            fd_after['load_count']))
             arm_error = True
         # did the system load?
-        load_check = False
         if load_check:
             if cd_before['load_count'] == cd_after['load_count']:
                 LOGGER.error('%s coarse delay load count did not change. '
@@ -159,7 +175,7 @@ class Fengine(object):
                 arm_error = True
         return arm_error
 
-    def _delay_set_actual_values(self, loadcnt):
+    def delay_set_actual_values(self, loadcnt):
         """
 
         :return: 
@@ -184,12 +200,12 @@ class Fengine(object):
         :return actual values to be loaded
         """
         # set up the delays
-        self._delay_set_calculate_and_write_regs(
+        self.delay_set_calculate_and_write_regs(
             loadcnt, delay, delay_delta, phase, phase_delta)
         # arm the timed load latches
-        arm_error = self._delay_set_arm_timed_latches(loadcnt)
+        arm_error = self.delay_set_arm_timed_latches(loadcnt)
         # get and return the actual values loaded
-        actual_delay = self._delay_set_actual_values(loadcnt)
+        actual_delay = self.delay_set_actual_values(loadcnt)
         if arm_error:
             actual_delay.error.set()
         return actual_delay
@@ -574,7 +590,24 @@ class FpgaFHost(DigitiserStreamReceiver):
         LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
-    def _delay_set_all(self, loadmcnt, delay_list):
+    def _delay_arm_all_latches(self, loadmcnt, load_check=False):
+        """
+        
+        :param loadmcnt: 
+        :param load_check: 
+        :return: 
+        """
+        latch_names = []
+        for feng in self.fengines:
+            latch_names.append('tl_cd%i' % feng.offset)
+            latch_names.append('tl_fd%i' % feng.offset)
+        status = self.arm_timed_latches(latch_names, mcnt=loadmcnt)
+        arm_error = False
+        for feng in self.fengines:
+            arm_error = arm_error or feng.check_timed_latch(status, load_check)
+        return arm_error
+
+    def delay_set_all(self, loadmcnt, delay_list):
         """
         Set the delays for all inputs in the system
         :param loadmcnt: the system mcount at which to effect the delays
@@ -587,15 +620,15 @@ class FpgaFHost(DigitiserStreamReceiver):
         an_fengine = None
         for feng in self.fengines:
             delay = delays_to_apply[feng.offset]
-            feng._delay_set_calculate_and_write_regs(
+            feng.delay_set_calculate_and_write_regs(
                 loadmcnt, delay[0][0], delay[0][1], delay[1][0], delay[1][1])
             an_fengine = feng
-        # arm the timed latches only once per host
-        arm_error = an_fengine._delay_set_arm_timed_latches(loadmcnt)
+        # arm them all
+        arm_error = self._delay_arm_all_latches(loadmcnt)
         # get and return the actual values loaded per fengine
         rv = {}
         for feng in self.fengines:
-            actual_delay = feng._delay_set_actual_values(loadmcnt)
+            actual_delay = feng.delay_set_actual_values(loadmcnt)
             if arm_error:
                 actual_delay.error.set()
             rv[feng.name] = actual_delay

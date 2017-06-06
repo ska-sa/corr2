@@ -192,7 +192,8 @@ if args.noise_source:
             source_from = getattr(dhost.noise_sources, 'noise_{}'.format(
                 noise_sources))
         except AttributeError:
-            print "You can only select between:", dhost.noise_sources.names()
+            print "You can only select between noise " \
+                  "sources:", dhost.noise_sources.names()
             sys.exit(1)
         try:
             source_from.set(scale=noise_scale)
