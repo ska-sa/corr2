@@ -349,7 +349,8 @@ class FEngineOperations(object):
                 rv.append(actual_vals[feng.name])
             return rv
         loadmcnt = self._delays_check_loadtime(loadtime)
-        delays = delayops.process_list(delay_list)
+        sample_rate_hz = self.corr.get_scale_factor()
+        delays = delayops.process_list(delay_list, sample_rate_hz)
         if len(delays) != len(self.fengines):
             raise ValueError('Have %i F-engines, received %i delay coefficient '
                              'sets.' % (len(self.fengines), len(delays)))

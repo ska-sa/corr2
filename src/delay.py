@@ -9,12 +9,14 @@ class DelaysUnsetError(Exception):
     pass
 
 
-def process_list(delay_list):
+def process_list(delay_list, sample_rate_hz):
     """
     Given a list of strings or delay tuples, return a list of delay tuples
+    NOTE: THIS WILL CONVERT SECONDS TO SAMPLES FOR DELAY!
     :param delay_list: a list of strings (delay,rate:phase,rate) or
         delay tuples ((delay,rate),(phase,rate))
-    :return:
+    :param sample_rate_hz: the sample rate of the incoming data
+    :return: a list of Delay objects
     """
     def process_string(delaystr):
         bits = delaystr.strip().split(':')
@@ -32,7 +34,10 @@ def process_list(delay_list):
                 delaytup = process_string(delay)
             else:
                 delaytup = delay
-            rv.append(delaytup)
+            converted = prepare_delay_vals(delaytup, sample_rate_hz)
+            to_add = ((converted.delay, converted.delay_delta),
+                      (converted.phase_offset, converted.phase_offset_delta))
+            rv.append(to_add)
         except:
             errmsg = 'delay.process_list(): given delay \'%s\' at position %i' \
                      ' is not a valid delay setting' % (delay, ctr)
