@@ -112,8 +112,12 @@ def process_xeng_data(self, heap_data, ig):
             rv = process_heaptime(
                 heaptime, heap_data[heaptime])
             if rv:
+                _dump_timestamp = (self.sync_time + float(rv[0]) / self.scale_factor_timestamp)
+                _dump_timestamp_readable = time.strftime("%H:%M:%S", time.localtime(
+                    _dump_timestamp))
                 rvs['timestamp'] = rv[0]
-                rvs['dump_timestamp'] = (self.sync_time + float(rv[0]) / self.scale_factor_timestamp)
+                rvs['dump_timestamp'] = _dump_timestamp
+                rvs['dump_timestamp_readable'] = _dump_timestamp_readable
                 rvs['xeng_raw'] = rv[1]
     return rvs
 
@@ -322,7 +326,7 @@ class CorrRx(threading.Thread):
             pass
 
         # discard next dump too, in case
-        for i in xrange(discard):
+        for i in xrange(int(discard)):
             LOGGER.info('Discarding #%s dump(s):'%i)
             try:
                 _dump = self.data_queue.get(timeout=dump_timeout)
