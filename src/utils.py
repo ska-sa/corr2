@@ -191,10 +191,10 @@ def baselines_from_source_list(source_list):
     order1 = []
     order2 = []
     for ant_ctr in range(n_antennas):
-        # print 'ant_ctr(%d)' % ant_ctr
+        # print('ant_ctr(%d)' % ant_ctr
         for ctr2 in range(int(n_antennas / 2), -1, -1):
             temp = (ant_ctr - ctr2) % n_antennas
-            # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
+            # print('\tctr2(%d) temp(%d)' % (ctr2, temp)
             if ant_ctr >= temp:
                 order1.append((temp, ant_ctr))
             else:
@@ -235,10 +235,10 @@ def baselines_from_config(config_file=None, config=None):
     # order1 = []
     # order2 = []
     # for ant_ctr in range(n_antennas):
-    #     # print 'ant_ctr(%d)' % ant_ctr
+    #     # print('ant_ctr(%d)' % ant_ctr
     #     for ctr2 in range(int(n_antennas / 2), -1, -1):
     #         temp = (ant_ctr - ctr2) % n_antennas
-    #         # print '\tctr2(%d) temp(%d)' % (ctr2, temp)
+    #         # print('\tctr2(%d) temp(%d)' % (ctr2, temp)
     #         if ant_ctr >= temp:
     #             order1.append((temp, ant_ctr))
     #         else:
@@ -403,7 +403,7 @@ def disable_test_gbes(corr_instance):
     :return:
     """
     for hosts in (corr_instance.xhosts + corr_instance.fhosts):
-        for gbe in hosts.tengbes:
+        for gbe in hosts.gbes:
             if gbe.name.startswith('test_'):
                 corr_instance.logger.info(
                     '%s: disabled fabric on '

@@ -11,7 +11,7 @@ import os
 from corr2.fhost_fpga import FpgaFHost
 from casperfpga import spead as casperspead
 from casperfpga import snap as caspersnap
-from casperfpga import tengbe
+from casperfpga.network import IpAddress
 from casperfpga.memory import bin2fp
 from matplotlib import pyplot
 from corr2 import utils
@@ -74,9 +74,9 @@ spectrum_count = [[0] * NUM_FREQ, [0] * NUM_FREQ]
 
 def print_ips():
     for ipint in ips_and_freqs:
-        print str(tengbe.IpAddress(ipint)), ':', len(ips_and_freqs[ipint])
-    print '********** - press ctrl-c to quit or wait for %i fchans' % \
-          FREQS_PER_X
+        print(str(IpAddress(ipint)), ':', len(ips_and_freqs[ipint]))
+    print('********** - press ctrl-c to quit or wait for %i '
+          'fchans' % FREQS_PER_X)
 
 
 def b2fp(dword):
@@ -129,12 +129,12 @@ while True:
                     pwr2 = b2fp((data >> 16) & 0xffff)
                     pwr3 = b2fp((data >> 0)  & 0xffff)
 
-                    # print freq, ':'
-                    # print '\t', pwr0
-                    # print '\t', pwr1
-                    # print '\t', pwr2
-                    # print '\t', pwr3
-                    # print ''
+                    # print(freq, ':'
+                    # print('\t', pwr0
+                    # print('\t', pwr1
+                    # print('\t', pwr2
+                    # print('\t', pwr3
+                    # print(''
 
                     # if (pwr1 != 0) or (pwr3 != 0):
                     #     raise RuntimeError('pol1 isnt zero?')
@@ -148,9 +148,8 @@ while True:
                     pkt_words += 2
 
                 if pkt_words != 256:
-                    print 'WARNING: packet for freq(%i) had %i words?' % (
-                        freq, pkt_words
-                    )
+                    print('WARNING: packet for freq(%i) had %i words?' %
+                          (freq, pkt_words))
 
             print_ips()
 
@@ -160,7 +159,7 @@ while True:
                 all_freqs = False
                 break
         if all_freqs:
-            print 'Got all frequencies for each IP.'
+            print('Got all frequencies for each IP.')
             break
     except KeyboardInterrupt:
         break

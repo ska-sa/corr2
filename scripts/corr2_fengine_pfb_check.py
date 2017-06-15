@@ -16,7 +16,6 @@ import os
 import signal
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
@@ -56,7 +55,7 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 registers_missing = []
 max_hostname = -1
@@ -71,8 +70,8 @@ for fpga_ in fpgas:
         registers_missing.append(fpga_.host)
         continue
 if len(registers_missing) > 0:
-    print 'The following hosts are missing necessary registers. Bailing.'
-    print registers_missing
+    print('The following hosts are missing necessary registers. Bailing.')
+    print(registers_missing)
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
 
@@ -94,7 +93,7 @@ def get_fpga_data(fpga):
 
 
 def exit_gracefully(sig, frame):
-    print sig, frame
+    print('%s %s' % (sig, frame))
     scroll.screen_teardown()
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)

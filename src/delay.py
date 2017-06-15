@@ -92,10 +92,10 @@ class Delay(object):
         self.load_count = -1
         self.error = Event()
 
-    @classmethod
-    def from_coefficients(cls, coefficients, sample_rate):
-        coeff_tuple = process_list([coefficients])[0]
-        return prepare_delay_vals(coeff_tuple, sample_rate)
+    # @classmethod
+    # def from_coefficients(cls, coefficients, sample_rate):
+    #     coeff_tuple = process_list([coefficients])[0]
+    #     return prepare_delay_vals(coeff_tuple, sample_rate)
 
     def __str__(self):
         return '{},{}:{},{}'.format(self.delay, self.delay_delta,

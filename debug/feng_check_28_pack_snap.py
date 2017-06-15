@@ -11,8 +11,6 @@ Created on Fri Jan  3 10:40:53 2014
 """
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='Read a post-pack snapshot from an fengine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -42,7 +40,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -50,7 +48,7 @@ else:
 fpga = HOSTCLASS(args.host)
 fpga.get_system_information()
 if 'wintime_snap_ss' not in fpga.snapshots.names():
-    print fpga.snapshots
+    print(fpga.snapshots
     fpga.disconnect()
     raise RuntimeError('The host %s does not have the necessary snapshot, %s.' % (fpga.host, 'wintime_snap_ss'))
 
@@ -83,7 +81,7 @@ while (args.timestep and (not got_time_step)) or (not args.timestep):
             else:
                 if this_time - lasttime != 512:  # 2^9 - 2^8 from the corner turn and 2^1 from 4k PFB needing 8k samples
                     ending += ' !!!!!!!!!!!!!!!!!!ERROR!!!!!!!!!!!!!!!!!!!'
-        print '%5d: freq(%5d) feng(%3d) time(%15d)%s' % (ctr, this_freq, this_feng, this_time, ending)
+        print('%5d: freq(%5d) feng(%3d) time(%15d)%s' % (ctr, this_freq, this_feng, this_time, ending)
         lasttime = this_time
     if not args.timestep:
         break

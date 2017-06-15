@@ -16,7 +16,6 @@ import signal
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
@@ -54,15 +53,17 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 
 # check for 10gbe cores
 for fpga_ in fpgas:
-    numgbes = len(fpga_.tengbes)
+    numgbes = len(fpga_.gbes)
     if numgbes < 1:
-        raise RuntimeError('Cannot have an F-engine with no 10gbe cores? %s' % fpga_.host)
-    print '%s: found %i 10gbe core%s.' % (fpga_.host, numgbes, '' if numgbes == 1 else 's')
+        raise RuntimeError('Cannot have an F-engine with no '
+                           'gbe cores? %s' % fpga_.host)
+    print('%s: found %i gbe core%s.' % (
+        fpga_.host, numgbes, '' if numgbes == 1 else 's'))
     if args.rstcnt:
         fpga_.registers.control.write(cnt_rst='pulse')
 
@@ -79,7 +80,7 @@ def fengine_rxtime(fpga_):
 
 def get_fpga_data(fpga_):
     rv = {
-        'gbe': {core_.name: core_.read_counters() for core_ in fpga_.tengbes},
+        'gbe': {core_.name: core_.read_counters() for core_ in fpga_.gbes},
         'rxtime': fengine_rxtime(fpga_),
         'mcnt_nolock': 555
     }

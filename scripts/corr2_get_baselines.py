@@ -49,6 +49,6 @@ for ctr, baseline in enumerate(baselines):
 
 for ctr, baseline in enumerate(baselines):
     ax = 'A' if baseline[0] == baseline[1] else ''
-    print ctr, ':', baseline, '-', bls_hosts[ctr], ax
+    print(ctr, ':', baseline, '-', bls_hosts[ctr], ax
 
 # end

@@ -12,19 +12,19 @@ LOGGER = logging.getLogger(__name__)
 
 
 class FpgaBHost(FpgaXHost):
-    def __init__(self, host, index, katcp_port=7147, boffile=None,
+    def __init__(self, host, index, katcp_port=7147, bitstream=None,
                  connect=True, config=None):
         # parent constructor
         FpgaXHost.__init__(self, host, index, katcp_port=katcp_port,
-                           boffile=boffile, connect=connect, config=config)
+                           bitstream=bitstream, connect=connect, config=config)
         self.beng_per_host = int(self.config['x_per_fpga'])
         LOGGER.info('FpgaBHost %i:%s created' % (
             self.index, self.host))
 
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port, config_source):
-        boffile = config_source['bitstream']
-        return cls(hostname, index, katcp_port=katcp_port, boffile=boffile,
+        bitstream = config_source['bitstream']
+        return cls(hostname, index, katcp_port=katcp_port, bitstream=bitstream,
                    connect=True, config=config_source)
 
     def beam_destination_set(self, beam):

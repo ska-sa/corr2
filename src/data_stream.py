@@ -4,7 +4,7 @@ import spead2.send
 import struct
 import socket
 
-from casperfpga.tengbe import IpAddress
+from casperfpga.network import IpAddress
 
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
 

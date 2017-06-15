@@ -878,7 +878,7 @@ class BEngineOperations(object):
     #                 rx_udp_port = get_beam_param(corr, beam, 'rx_udp_port')
     #             else:
     #                 rx_udp_port = dest_port
-    #             dest_ip = tengbe.IpAddress.str2ip(corr.configd['bengine']
+    #             dest_ip = IpAddress.str2ip(corr.configd['bengine']
     #                                               ['bf_rx_meta_ip_str_beam%i' % beam_idx[0]])
     #
     #             # restart if currently transmitting

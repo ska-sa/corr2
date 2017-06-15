@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import logging
 import sys
 import argparse
@@ -12,7 +13,7 @@ import Queue
 import time
 from concurrent import futures
 
-from corr2 import fxcorrelator, sensors
+from corr2 import fxcorrelator, sensors, delay as delayops
 
 
 class KatcpStreamHandler(logging.StreamHandler):
@@ -178,7 +179,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return: 'fail' and a test fail message
         """
-        print multiargs
+        print(multiargs)
         return self._log_excep(None, 'A test failure, like it should')
 
     @request(Float(default=-1.0))
@@ -442,7 +443,6 @@ class Corr2Server(katcp.DeviceServer):
             else:
                 actual = self.instrument.fops.delays_get(input_name)
             return 'ok', str(actual)
-
         except Exception as ex:
             return self._log_excep(ex, 'Failed setting delays.')
 
@@ -680,7 +680,7 @@ class Corr2Server(katcp.DeviceServer):
             'Currently not working.')
         # if self.instrument is None:
         #     return self._log_excep(None, '... you have not connected yet!')
-        # print '\nlog:'
+        # print('\nlog:'
         # self.instrument.loghandler.print_messages()
         # logstrings = self.instrument.loghandler.get_log_strings()
         # for logstring in logstrings:
@@ -789,10 +789,9 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        # from __future__ import print_function
         import time
         ts = str(time.time())
-        print 'This should go to standard out. ' + ts
+        print('This should go to standard out. ' + ts)
         sys.stderr.write('This should go to standard error. %s\n' % ts)
         return 'ok',
 
@@ -894,7 +893,7 @@ def on_shutdown(ioloop, server):
     :param server: a katcp.DeviceServer instance
     :return:
     """
-    print 'corr2 server shutting down'
+    print('corr2 server shutting down')
     yield server.stop()
     ioloop.stop()
 
@@ -940,7 +939,7 @@ if __name__ == '__main__':
         root_logger.addHandler(console_handler)
 
     server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
-    print 'Server listening on port %d,' % args.port,
+    print('Server listening on port %d' % args.port, end='')
 
     if not args.no_tornado:
         ioloop = IOLoop.current()
@@ -951,15 +950,15 @@ if __name__ == '__main__':
         server.set_ioloop(ioloop)
         ioloop.add_callback(server.start)
         # ioloop.add_callback(send_test_informs, server)
-        print 'started with ioloop. Running somewhere in the ether... ' \
-              'exit however you see fit.'
+        print('started with ioloop. Running somewhere in the ether... '
+              'exit however you see fit.')
         ioloop.start()
     else:
         queue = Queue.Queue()
         server.set_restart_queue(queue)
         server.start()
-        print 'started with no ioloop. Running somewhere in the ether... ' \
-              'exit however you see fit.'
+        print('started with no ioloop. Running somewhere in the ether... '
+              'exit however you see fit.')
         try:
             while True:
                 try:
@@ -967,14 +966,14 @@ if __name__ == '__main__':
                 except Queue.Empty:
                     device = None
                 if device is not None:
-                    print 'Stopping...'
+                    print('Stopping...')
                     device.stop()
                     device.join()
-                    print 'Restarting...'
+                    print('Restarting...')
                     device.start()
-                    print 'Started.'
+                    print('Started.')
         except KeyboardInterrupt:
-            print 'Shutting down...'
+            print('Shutting down...')
             server.stop()
             server.join()
 # end

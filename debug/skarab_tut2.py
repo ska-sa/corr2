@@ -68,13 +68,13 @@ def print_txsnap(numlines=-1):
     if numlines < 1:
         numlines = len(d['eof'])
     for ctr in range(numlines):
-        print '%04i' % ctr, 'pkt_ctr(%015i)' % d['pkt_ctr'][ctr], \
+        print('%04i' % ctr, 'pkt_ctr(%015i)' % d['pkt_ctr'][ctr], \
             'ramp(%05i)' % d['ramp'][ctr], \
             'walking(%s)' % format(d['walking'][ctr], '#066b'),
         if d['eof'][ctr] == 1:
-            print 'EOF'
+            print('EOF'
         else:
-            print ''
+            print(''
 
 
 def print_rxsnap(numlines=-1):
@@ -99,32 +99,32 @@ def print_rxsnap(numlines=-1):
     if numlines < 1:
         numlines = len(d0['src_ip'])
     for ctr in range(numlines):
-        print '%04i' % ctr,
-        print 'pkt_ctr(%015i)' % d0['ctr0'][ctr],
-        print 'ramp(%05i)' % d0['ramp0'][ctr],
-        print 'walk(%s)' % format(d0['walking0'][ctr], '#066b'),
+        print('%04i' % ctr,
+        print('pkt_ctr(%015i)' % d0['ctr0'][ctr],
+        print('ramp(%05i)' % d0['ramp0'][ctr],
+        print('walk(%s)' % format(d0['walking0'][ctr], '#066b'),
         if d0['ctr0'][ctr] != d0['ctr1'][ctr]:
-            print 'PKTCTR_ERROR',
+            print('PKTCTR_ERROR',
         if d0['ramp0'][ctr] != d0['ramp1'][ctr]:
-            print 'RAMP_ERROR',
+            print('RAMP_ERROR',
         if d0['walking0'][ctr] != d0['walking1'][ctr]:
-            print 'WALK_ERROR',
+            print('WALK_ERROR',
         if d0['overrun'][ctr] != 0:
-            print 'OVERRUN',
+            print('OVERRUN',
         if d0['badframe'][ctr] != 0:
-            print 'BADFRAME',
+            print('BADFRAME',
         if d0['src_ip'][ctr] != ip:
-            print 'IP_ERROR',
+            print('IP_ERROR',
         if d0['src_port'][ctr] != port:
-            print 'PORT_ERROR',
+            print('PORT_ERROR',
         if ctr == 0:
             last_pkt = d0['ctr0'][0]
             last_ramp = -1
             last_walk = d0['walking0'][1] / 2
         if d0['eof'][ctr] == 1:
-            print 'EOF'
+            print('EOF'
         else:
-            print ''
+            print(''
 
 if __name__ == '__main__':
 
@@ -175,7 +175,7 @@ if __name__ == '__main__':
                  % frx.registers.rx_overrun.read()['data']['reg'])
 
     print_txsnap(int(args.pktsize * 2.5))
-    print ''
+    print(''
     print_rxsnap(int(args.pktsize* 2.5))
 
     import IPython

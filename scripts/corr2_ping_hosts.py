@@ -10,7 +10,6 @@ import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
@@ -54,7 +53,7 @@ def pingfpga(fpga):
         return 'connected'
 
 # make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 
 # ping them
 connected = []
@@ -74,9 +73,9 @@ fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 sconn = set(connected)
 sprog = set(programmed)
 connected = list(sconn.difference(sprog))
-print '%d hosts:' % len(hosts)
-print '\tProgrammed:', programmed
-print '\tConnected:', connected
-print '\tUnavailable:', unavailable
+print('%d hosts:' % len(hosts))
+print('\tProgrammed: %s' % programmed)
+print('\tConnected: %s' % connected)
+print('\tUnavailable: %s' % unavailable)
 
 # end

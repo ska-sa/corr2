@@ -4,7 +4,6 @@ import argparse
 import sys
 import signal
 
-from casperfpga import katcp_fpga
 
 parser = argparse.ArgumentParser(description='Control a TVG digitiser on a ROACH2.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -32,7 +31,7 @@ def exit_gracefully(signal, frame):
 signal.signal(signal.SIGINT, exit_gracefully)
 
 # make the fake dig
-fpga = katcp_fpga.KatcpFpga(args.host)
+fpga = CasperFpga(args.host)
 fpga.get_system_information()
 
 # do stuff

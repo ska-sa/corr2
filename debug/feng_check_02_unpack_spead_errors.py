@@ -12,8 +12,6 @@ import numpy
 import argparse
 import os
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Check the SPEAD error counter and valid counter in the '
@@ -42,7 +40,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -70,32 +68,32 @@ for ctr, val in enumerate(snapdata['dramp']):
     if val == 0:
         if lastval != 511:
             errors = True
-            print 'ERROR over rollover at %i'%ctr
+            print('ERROR over rollover at %i'%ctr
     else:
         if val != lastval + 1:
             errors = True
-            print 'ERROR in the ramp at %i'%ctr
+            print('ERROR in the ramp at %i'%ctr
     lastval = val
 if errors:
-    print 'DATA RAMP ERRORS ENCOUNTERED'
+    print('DATA RAMP ERRORS ENCOUNTERED'
 
 # check the time and pkt_time
 errors = False
 for ctr, p in enumerate(snapdata['dtime']):
     if p != snapdata['pkt_time'][ctr]:
-        print 'ERROR:', ctr-1, snapdata['dtime'][ctr-1], numpy.binary_repr(snapdata['dtime'][ctr-1]),\
+        print('ERROR:', ctr-1, snapdata['dtime'][ctr-1], numpy.binary_repr(snapdata['dtime'][ctr-1]),\
             snapdata['pkt_time'][ctr-1]
-        print 'ERROR:', ctr, p, numpy.binary_repr(p), snapdata['pkt_time'][ctr]
+        print('ERROR:', ctr, p, numpy.binary_repr(p), snapdata['pkt_time'][ctr]
         errors = True
 if errors:
-    print 'TIME vs PKT_TIME ERRORS ENCOUNTERED'
+    print('TIME vs PKT_TIME ERRORS ENCOUNTERED'
 
 # check the unique times and timestep
 errors = False
 unique_times = list(numpy.unique(snapdata['pkt_time']))
 for ctr, utime in enumerate(unique_times[1:]):
     if utime != unique_times[ctr] + 2:
-        print 'ERROR:', ctr, utime, unique_times[ctr-1]
+        print('ERROR:', ctr, utime, unique_times[ctr-1]
         errors = True
 if errors:
-    print 'TIMESTEP ERRORS ENCOUNTERED'
+    print('TIMESTEP ERRORS ENCOUNTERED'

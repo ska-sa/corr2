@@ -6,7 +6,6 @@ import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 from casperfpga import memory
 from corr2 import utils
 
@@ -45,10 +44,10 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 
-print fpgautils.threaded_fpga_operation(
+print(fpgautils.threaded_fpga_operation(
     fpgas, 10,
     lambda fpga_:
         fpga_.registers.vacctvg_control.read()['data'], )

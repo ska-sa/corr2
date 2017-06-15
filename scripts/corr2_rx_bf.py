@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
 import spead2
 import spead2.recv as s2rx
 import time
@@ -29,7 +30,7 @@ class CorrRx(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
-        print 'Starting target with kwargs ', self._kwargs
+        print('Starting target with kwargs %s' % self._kwargs)
         self._target(**self._kwargs)
 
     def rx_cont(self, **kwargs):
@@ -86,7 +87,7 @@ class CorrRx(threading.Thread):
                                     self.xeng_acclen, numspec))
                         intdata = [0] * speclen
                         for specctr in range(0, numspec):
-                            # print 'processing spectrum %i' % specctr
+                            # print('processing spectrum %i' % specctr
                             specdata = bfraw[:, specctr, :]
                             for ctr, _d in enumerate(specdata):
                                 _pwr = np.sqrt(_d[0]**2 + _d[1]**2)
@@ -141,10 +142,10 @@ if __name__ == '__main__':
     config = utils.parse_ini_file(args.config)
 
     if args.listbeams:
-        print 'Available beams:'
+        print('Available beams:')
         for section_name in config:
             if section_name.startswith('beam'):
-                print '\t', section_name
+                print('\t %s' % section_name)
         import sys
         sys.exit(0)
     beam_config = config[args.beam]
@@ -152,10 +153,10 @@ if __name__ == '__main__':
     xeng_acclen = int(config['xengine']['xeng_accumulation_len'])
     num_chans = int(config['fengine']['n_chans'])
     heap_ctr_step = xeng_acclen * num_chans * 2
-    print 'Loaded instrument info from config file:\n\t%s' % args.config
+    print('Loaded instrument info from config file:\n\t%s' % args.config)
 
-print 'Initialising SPEAD transports for data:'
-print '\tData reception on port', data_port
+print('Initialising SPEAD transports for data:')
+print('\tData reception on port %s' % data_port)
 
 quit_event = threading.Event()
 memory_error_event = threading.Event()
@@ -205,16 +206,16 @@ try:
         time.sleep(0.1)
         if plotqueue is not None:
             plot()
-    print 'RX process ended.'
+    print('RX process ended.')
     crx.join()
 except KeyboardInterrupt:
     import sys
     quit_event.set()
-    print 'Stopping, waiting for thread to exit...',
+    print('Stopping, waiting for thread to exit...', end='')
     sys.stdout.flush()
     while quit_event.is_set():
         time.sleep(0.1)
-    print 'all done.'
+    print('all done.')
 
 if memory_error_event.is_set():
     srx = spead_queue.get()

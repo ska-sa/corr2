@@ -364,7 +364,7 @@ def _xhost_report_network_tx(sensor_manager, x_host):
     """
     xhost = host_lookup[x_host.host]
     counters_ticking = True
-    for gbe in x_host.tengbes:
+    for gbe in x_host.gbes:
         sensor = sensor_manager.sensor_get(
             '{xhost}-network-{gbe}-tx-ctr'.format(
                 xhost=xhost, gbe=gbe.name))
@@ -565,43 +565,43 @@ def _sensor_cb_pps(host, host_executor, manager):
     Host PPS counters
     :return:
     """
-    def read_tengbe_tx_rx(fpga):
+    def read_gbe_tx_rx(fpga):
         rv = {}
-        for tengbe in fpga.tengbes:
-            ctrs = tengbe.read_counters()
-            link_info = tengbe.get_10gbe_core_details()['xaui_status']
-            rv[tengbe.name] = (ctrs['%s_txctr' % tengbe.name],
-                               ctrs['%s_rxctr' % tengbe.name],
-                               str(link_info))
+        for gbe in fpga.gbes:
+            ctrs = gbe.read_counters()
+            link_info = gbe.get_10gbe_core_details()['xaui_status']
+            rv[gbe.name] = (ctrs['%s_txctr' % gbe.name],
+                            ctrs['%s_rxctr' % gbe.name],
+                            str(link_info))
         return rv
     try:
-        new_values = yield host_executor.submit(read_tengbe_tx_rx, host)
-        for tengbe in host.tengbes:
+        new_values = yield host_executor.submit(read_gbe_tx_rx, host)
+        for gbe in host.gbes:
             hpref = '{host}-{gbe}'.format(host=host_lookup[host.host],
-                                          gbe=tengbe.name)
+                                          gbe=gbe.name)
             # TX
             sensor_name = '{pref}{suf}'.format(pref=hpref, suf=TX_PPS_SUFFIX)
             sensor = manager.sensor_get(sensor_name)
             previous_value = sensor.previous_value
-            pps = (new_values[tengbe.name][0] - previous_value) / 10.0
-            sensor.previous_value = new_values[tengbe.name][0]
+            pps = (new_values[gbe.name][0] - previous_value) / 10.0
+            sensor.previous_value = new_values[gbe.name][0]
             sensor.set_value(pps)
             # RX
             sensor_name = '{pref}{suf}'.format(pref=hpref, suf=RX_PPS_SUFFIX)
             sensor = manager.sensor_get(sensor_name)
             previous_value = sensor.previous_value
-            pps = (new_values[tengbe.name][1] - previous_value) / 10.0
-            sensor.previous_value = new_values[tengbe.name][1]
+            pps = (new_values[gbe.name][1] - previous_value) / 10.0
+            sensor.previous_value = new_values[gbe.name][1]
             sensor.set_value(pps)
             # link-status
             sensor_name = '{pref}{suf}'.format(
                 pref=hpref, suf=LINK_STATUS_SUFFIX)
             sensor = manager.sensor_get(sensor_name)
-            sensor.set_value(new_values[tengbe.name][2])
+            sensor.set_value(new_values[gbe.name][2])
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        for tengbe in host.tengbes:
+        for gbe in host.gbes:
             hpref = '{host}-{gbe}'.format(host=host_lookup[host.host],
-                                          gbe=tengbe.name)
+                                          gbe=gbe.name)
             # TX
             sensor_name = '{pref}{suf}'.format(pref=hpref, suf=TX_PPS_SUFFIX)
             sensor = manager.sensor_get(sensor_name)
@@ -618,9 +618,9 @@ def _sensor_cb_pps(host, host_executor, manager):
     except Exception as e:
         LOGGER.error('Error updating PPS sensors for {} - '
                      '{}'.format(host.host, e.message))
-        for tengbe in host.tengbes:
+        for gbe in host.gbes:
             hpref = '{host}-{gbe}'.format(host=host_lookup[host.host],
-                                          gbe=tengbe.name)
+                                          gbe=gbe.name)
             # TX
             sensor_name = '{pref}{suf}'.format(pref=hpref, suf=TX_PPS_SUFFIX)
             sensor = manager.sensor_get(sensor_name)
@@ -714,17 +714,17 @@ def _setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop):
             'X-engine PHY okay', Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_sensor_xeng_phy, sensor, _x)
 
-        # Raw RX - tengbe counters must increment
+        # Raw RX - gbe counters must increment
         sensor = sens_man.do_sensor(
             Corr2Sensor.boolean, '{}-network-rx-ok'.format(xhost),
             'X-engine network RX okay', Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_xhost_check_network_rx, sensor, _x)
 
-        # Raw TX - tengbe counters must increment, report the counters also
+        # Raw TX - gbe counters must increment, report the counters also
         sensor = sens_man.do_sensor(
             Corr2Sensor.boolean, '{}-network-tx-ok'.format(xhost),
             'X-engine network TX okay', Corr2Sensor.UNKNOWN, '', None)
-        for gbe in _x.tengbes:
+        for gbe in _x.gbes:
             sensor = sens_man.do_sensor(
                 Corr2Sensor.integer,
                 '{xhost}-network-{gbe}-tx-ctr'.format(
@@ -841,13 +841,13 @@ def _setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop):
             'F-engine PFB okay', Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_feng_pfb_okay, sensor, _f)
 
-        # Raw RX - tengbe counters must increment
+        # Raw RX - gbe counters must increment
         sensor = sens_man.do_sensor(
             Corr2Sensor.boolean, '{}-network-rx-ok'.format(fhost),
             'F-engine network RX okay', Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_fhost_check_network_rx, sensor, _f)
 
-        # Raw TX - tengbe counters must increment
+        # Raw TX - gbe counters must increment
         sensor = sens_man.do_sensor(
             Corr2Sensor.boolean, '{}-network-tx-ok'.format(fhost),
             'F-engine network TX okay', Corr2Sensor.UNKNOWN, '', executor)
@@ -919,28 +919,28 @@ def setup_sensors(sensor_manager, enable_counters=False):
                 Corr2Sensor.NOMINAL, '', None)
     sensor.set_value(str(host_lookup))
 
-    # tengbe packet-per-second counters
+    # gbe packet-per-second counters
     for _h in all_hosts:
         executor = host_executors[_h.host]
-        for tengbe in _h.tengbes:
+        for gbe in _h.gbes:
             hpref = '{host}-{gbe}'.format(host=host_lookup[_h.host],
-                                          gbe=tengbe.name)
+                                          gbe=gbe.name)
             sensor = sens_man.do_sensor(
                 Corr2Sensor.float,
                 '{pref}{suf}'.format(pref=hpref, suf=TX_PPS_SUFFIX),
-                '%s %s TX packet-per-second counter' % (_h.host, tengbe.name),
+                '%s %s TX packet-per-second counter' % (_h.host, gbe.name),
                 Corr2Sensor.UNKNOWN, '', executor)
             sensor.previous_value = 0
             sensor = sens_man.do_sensor(
                 Corr2Sensor.float,
                 '{pref}{suf}'.format(pref=hpref, suf=RX_PPS_SUFFIX),
-                '%s %s RX packet-per-second counter' % (_h.host, tengbe.name),
+                '%s %s RX packet-per-second counter' % (_h.host, gbe.name),
                 Corr2Sensor.UNKNOWN, '', executor)
             sensor.previous_value = 0
             sensor = sens_man.do_sensor(
                 Corr2Sensor.string,
                 '{pref}{suf}'.format(pref=hpref, suf=LINK_STATUS_SUFFIX),
-                '%s %s link status' % (_h.host, tengbe.name),
+                '%s %s link status' % (_h.host, gbe.name),
                 Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_sensor_cb_pps, _h, executor, sens_man)
 

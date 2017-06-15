@@ -81,99 +81,99 @@ if __name__ == "__main__":
     reply_msg, informs = client.katcprequest('ping', request_timeout=-1.0, require_ok=True)
 
     reply_msg, informs = client.katcprequest('testfail', request_timeout=-1.0, require_ok=False, request_args=['lots', 'of', 'arguments', 'go', 'here'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('create', request_timeout=-1.0, require_ok=True, request_args=['/home/paulp/code/corr2.ska.github/src/fxcorr.ini'])
     #reply_msg, informs = client.katcprequest('create', request_timeout=-1.0, require_ok=True, request_args=['/etc/corr/x'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     #reply_msg, informs = client.katcprequest('initialise', request_timeout=240.0, require_ok=True, request_args=[1])
     reply_msg, informs = client.katcprequest('initialise', request_timeout=40.0, require_ok=True)
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('accumulation-length', request_timeout=-1.0, require_ok=True)
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('accumulation-length', request_timeout=-1.0, require_ok=True, request_args=[1.0])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('capture-destination', request_timeout=-1.0, require_ok=True, request_args=['cross_products', '10.1.0.1:8888'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('meta-destination', request_timeout=-1.0, require_ok=True, request_args=['cross_products', '127.0.0.1:8888'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('capture-start', request_timeout=-1.0, require_ok=True,
                                              request_args=['cross_products'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     """
     reply_msg, informs = client.katcprequest('capture-list', request_timeout=-1.0, require_ok=True)
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('capture-list', request_timeout=-1.0, require_ok=False, request_args=['boobs!'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('capture-destination', request_timeout=-1.0, require_ok=True, request_args=['bob', '12.13.14.15:6666'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True)
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=['bob', 'sally', 'margaret', 'steve', 'arthur', 'kevin', 'jane', 'jim'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
     reply_msg, informs = client.katcprequest('input-labels', request_timeout=-1.0, require_ok=True, request_args=['bob', 'sally', 'margaret', 'steve', 'arthur', 'kevin', 'jane'])
-    print reply_msg.arguments
-    print reply_msg.mid
-    print reply_msg.mtype
-    print informs
+    print(reply_msg.arguments
+    print(reply_msg.mid
+    print(reply_msg.mtype
+    print(informs
 
 
     # reply_msg, informs = client.katcprequest('capture-start', request_timeout=-1.0, require_ok=True, request_args=['asdasdasd'])
-    # print reply_msg.arguments
-    # print reply_msg.mid
-    # print reply_msg.mtype
-    # print informs
+    # print(reply_msg.arguments
+    # print(reply_msg.mid
+    # print(reply_msg.mtype
+    # print(informs
 
     client.katcprequest('digitiser-synch-epoch', request_timeout=-1.0, require_ok=True, request_args=(23,))
     """

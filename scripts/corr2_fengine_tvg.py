@@ -7,7 +7,6 @@ import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 from corr2 import utils
 
 fpga_throps = fpgautils.threaded_fpga_operation
@@ -44,7 +43,7 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 fpga_thrfunc(fpgas, 10, 'get_system_information')
 
 # pre corner turn

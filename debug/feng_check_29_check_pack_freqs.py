@@ -12,8 +12,6 @@ Created on Fri Jan  3 10:40:53 2014
 import sys
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Read a post-pack snapshot from an fengine.',
@@ -37,7 +35,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -50,7 +48,7 @@ EXPECTED_FREQS = int(config['fengine']['n_chans'])
 fpga = HOSTCLASS(args.host)
 fpga.get_system_information()
 if 'wintime_snap_ss' not in fpga.snapshots.names():
-    print fpga.snapshots
+    print(fpga.snapshots
     fpga.disconnect()
     raise RuntimeError('The host %s does not have the necessary snapshot, %s.' % (fpga.host, 'wintime_snap_ss'))
 
@@ -58,7 +56,7 @@ fpga.registers.control.write(wintime_snap_wesel=1)
 
 import signal
 def signal_handler(sig, frame):
-    print sig, frame
+    print(sig, frame
     fpga.disconnect()
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
@@ -82,7 +80,7 @@ while True:
         offset = ctr * SNAPLEN * 8
         freq_offset = ctr * freqs_per_snap
         snapdata = fpga.snapshots.wintime_snap_ss.read(offset=offset)['data']
-        print 'Read snapshot at offset %d.' % offset
+        print('Read snapshot at offset %d.' % offset
         sys.stdout.flush()
         # want WORDS_PER_FREQ of every channel
         target_freq = -1
@@ -93,19 +91,19 @@ while True:
             this_feng = snapdata['fengid'][wordctr]
             this_time = snapdata['time36'][wordctr]
             if this_freq != expected_freqs[freq_offset + target_freq]:
-                print 50*'#'
-                print 'Iteration ctr:', ctr
-                print 'Read offset:', offset
-                print 'Freq offset:', freq_offset
-                print 'Word ctr:', wordctr
-                print 'Snap freq:', this_freq
-                print 'Expected freq:', expected_freqs[freq_offset + target_freq]
-                print 'Target freq', target_freq
-                print expected_freqs
-                print 50*'#'
+                print(50*'#'
+                print('Iteration ctr:', ctr
+                print('Read offset:', offset
+                print('Freq offset:', freq_offset
+                print('Word ctr:', wordctr
+                print('Snap freq:', this_freq
+                print('Expected freq:', expected_freqs[freq_offset + target_freq]
+                print('Target freq', target_freq
+                print(expected_freqs
+                print(50*'#'
                 raise RuntimeError('Something was wrong. Check the debug data above.')
     successes += 1
-    print 'Run %d passes okay.' % successes
+    print('Run %d passes okay.' % successes
     sys.stdout.flush()
 
 fpga.disconnect()

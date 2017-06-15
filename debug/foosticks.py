@@ -3,14 +3,14 @@
 def pauls_decorator(func):
 
     def decorator(*args):
-        print 'boop', args
+        print('boop', args
         return func()
 
     return decorator
 
 @pauls_decorator
 def fooboo(*args):
-    print 'woop', sum(args)
+    print('woop', sum(args)
 
 fooboo(1, 2, 3)
 
@@ -43,13 +43,13 @@ fooboo(1, 2, 3)
 #         par ^= thisbit
 #     par2 = len(bin(num).replace('0b', '').replace('0', '')) % 2
 #     if par2 != par:
-#         print ''
-#         print num, bin(num), len(bin(num)), bits, par, par2
+#         print(''
+#         print(num, bin(num), len(bin(num)), bits, par, par2
 #         raise RuntimeError
 #     return par
 #
-# print 4, par_check(4, 64)
-# print 5, par_check(5, 64)
+# print(4, par_check(4, 64)
+# print(5, par_check(5, 64)
 #
 # # 'bram_qdr0' 'qdr0_memory'
 #
@@ -67,7 +67,7 @@ fooboo(1, 2, 3)
 # #         num2 = (num2[1] << 32) | num2[0]
 # #         assert num2 == num
 # #     num_masked = num & ((2**60)-1)
-# #     print ctr, num, num_masked, par_check(num, 63), bin(num_0), bin(num_1)
+# #     print(ctr, num, num_masked, par_check(num, 63), bin(num_0), bin(num_1)
 #
 # # # bram
 # # for ctr in range(0, mem_depth):
@@ -78,7 +78,7 @@ fooboo(1, 2, 3)
 # #         num2 = struct.unpack('>Q', d2)[0]
 # #         assert num2 == num
 # #     num_masked = num & ((2**63)-1)
-# #     print ctr, num, num_masked, len(bin(num)), par_check(num, 64)
+# #     print(ctr, num, num_masked, len(bin(num)), par_check(num, 64)
 #
 # attctr = 0
 #
@@ -88,7 +88,7 @@ fooboo(1, 2, 3)
 #
 #     time.sleep(0.1)
 #
-#     print 'attempt %i' % attctr
+#     print('attempt %i' % attctr
 #
 #     d = f.snapshots.sys3_vacc0_qv_sv_ss.read(man_trig=True)['data']
 #
@@ -98,13 +98,13 @@ fooboo(1, 2, 3)
 #         parbit = dataword >> 63
 #
 #         for key in d.keys():
-#             print '%s(%i)' % (key, d[key][ctr]),
+#             print('%s(%i)' % (key, d[key][ctr]),
 #
 #         softparerr = par_check(dataword, 64)
 #
-#         print 'dataword(%i) softERR(%i) parbit(%i)' % (dataword, softparerr, parbit),
+#         print('dataword(%i) softERR(%i) parbit(%i)' % (dataword, softparerr, parbit),
 #
-#         print ''
+#         print(''
 #
 #         # if d['datamsb'][ctr] == 128:
 #         #     assert softparerr == 0
@@ -130,12 +130,12 @@ fooboo(1, 2, 3)
 #
 #
 # # while not_done:
-# #     print 'attempt', attctr
+# #     print('attempt', attctr
 # #     d = f.snapshots.sys3_vacc0_qv_sv2_ss.read(man_trig=True, man_valid=True)['data']
 # #     for ctr in range(0, len(d[d.keys()[0]])):
 # #         if d['parerr'][ctr] == 1:
 # #             not_done = False
-# #             print 'got a parity error'
+# #             print('got a parity error'
 # #     attctr += 1
 # #
 # # raw = f.read('sys3_vacc0_qv_sv2_ss_bram', 32768)
@@ -144,8 +144,8 @@ fooboo(1, 2, 3)
 # #
 # # for byte in range(0, len(raw_bytes), 16):
 # #     # for bytectr in range(0, 16):
-# #     #     print raw_bytes[byte + bytectr],
-# #     # print ''
+# #     #     print(raw_bytes[byte + bytectr],
+# #     # print(''
 # #     parerr = raw_bytes[byte + 15] & 0b1
 # #     dv = (raw_bytes[byte + 15] >> 1) & 0b1
 # #     address = (raw_bytes[byte + 15] >> 2) & 0b111111
@@ -161,4 +161,4 @@ fooboo(1, 2, 3)
 # #     data |= raw_bytes[byte + 7] << 49
 # #     data |= raw_bytes[byte + 6] << 57
 # #
-# #     print parerr, dv, address, data
+# #     print(parerr, dv, address, data

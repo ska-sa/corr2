@@ -118,13 +118,20 @@ class FxCorrelator(Instrument):
         # if we need to program the FPGAs, do so
         if program:
             self.logger.info('Programming FPGA hosts')
-            fpgautils.program_fpgas([(host, host.boffile) for host in
-                                     (self.fhosts + self.xhosts)],
-                                    progfile=None, timeout=15)
+            fpgautils.program_fpgas(
+                [(host, host.bitstream) for host in (self.fhosts + self.xhosts)],
+                progfile=None, timeout=180)
         else:
             self.logger.info('Loading design information')
-            THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=10,
-                               target_function='get_system_information')
+            xbof = self.xhosts[0].bitstream
+            fbof = self.fhosts[0].bitstream
+            THREADED_FPGA_FUNC(self.fhosts, timeout=10,
+                               target_function=('get_system_information',
+                                                [fbof], {}))
+            THREADED_FPGA_FUNC(self.xhosts, timeout=10,
+                               target_function=('get_system_information',
+                                                [xbof], {}))
+        program = True
 
         # remove test hardware from designs
         utils.disable_test_gbes(self)
@@ -153,7 +160,7 @@ class FxCorrelator(Instrument):
         info_dict = {host.host: (feng_port, 'fhost') for host in self.fhosts}
         info_dict.update(
             {host.host: (xeng_port, 'xhost') for host in self.xhosts})
-        timeout = len(self.fhosts[0].tengbes) * 30 * 1.1
+        timeout = len(self.fhosts[0].gbes) * 30 * 1.1
         THREADED_FPGA_FUNC(
                 self.fhosts + self.xhosts, timeout=timeout,
                 target_function=('setup_host_gbes',
@@ -183,7 +190,7 @@ class FxCorrelator(Instrument):
         self.fops.initialise_pre_gbe()
         self.xops.initialise_pre_gbe()
 
-        # set up the tengbe ports in parallel
+        # set up the gbe ports in parallel
         self._gbe_setup()
 
         # continue with init
@@ -192,9 +199,25 @@ class FxCorrelator(Instrument):
         if self.found_beamformer:
             self.bops.initialise()
 
+        # set up f-engine RX registers
+        self.fops.setup_rx_ip_masks()
+
+        self.logger.info(100 * '^')
+        for host in self.hosts:
+            port = host.gbes[0].get_port()
+            self.logger.info('%s: gbe_port(%i, 0x%x)' % (host, port, port))
+        self.logger.info(100 * '^')
+
         # subscribe all the engines to the multicast groups
         self.fops.subscribe_to_multicast()
         self.xops.subscribe_to_multicast()
+
+        self.logger.info('AFTER MULTICAST')
+        self.logger.info(100 * '^')
+        for host in self.hosts:
+            port = host.gbes[0].get_port()
+            self.logger.info('%s: gbe_port(%i, 0x%x)' % (host, port, port))
+        self.logger.info(100 * '^')
 
         # start F-engine TX
         self.logger.info('Starting F-engine datastream')
@@ -483,6 +506,10 @@ class FxCorrelator(Instrument):
                     self.logger.error('Host %s is assigned to '
                                       'both X- and F-engines' % _fh.host)
                     raise RuntimeError
+        # # reset the data port on skarabs?
+        # for host in self.hosts:
+        #     if hasattr(host.transport, '_forty_gbe_set_port'):
+        #         host.transport._forty_gbe_set_port(7148)
 
     def _read_config(self):
         """

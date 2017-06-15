@@ -59,15 +59,15 @@ if args.product == '':
     prod_list = c.data_products.values()
 else:
     if args.product not in c.data_products:
-        print 'ERROR: %s not in data products for this ' \
-              'instrument.' % args.product
+        print('ERROR: %s not in data products for this '
+              'instrument.' % args.product)
     else:
         prod_list = [c.data_products[args.product]]
 
 if args.listproducts or (len(prod_list) == 0):
-    print 'Available products:'
+    print('Available products:')
     for prod in c.data_products.values():
-        print '\t', prod
+        print('\t%s' % prod)
     import sys
     sys.exit()
 

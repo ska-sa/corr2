@@ -1,5 +1,4 @@
 from __future__ import division
-
 import logging
 import time
 import re
@@ -10,7 +9,7 @@ import os.path
 import numpy as np
 import matplotlib.pyplot as plt
 from casperfpga.attribute_container import AttributeContainer
-from casperfpga import tengbe
+from casperfpga.network import Mac, IpAddress
 from corr2.host_fpga import FpgaHost
 
 LOGGER = logging.getLogger(__name__)
@@ -357,7 +356,7 @@ class PulsarSource(Source):
         for p in range(len(c_x)/lfft):
             power = np.abs(np.fft.fft(c_x[(p1-1)*lfft:p1*lfft], lfft))**2
             p1 += 1
-            print 'p1 = %d' % p1
+            print('p1 = %d' % p1)
             power_array[:, p] = power
         power_array = np.fliplr(power_array)
         plt.imshow(power_array, extent=[0, self.sim_time, fc-max(fbin),
@@ -413,25 +412,24 @@ class FpgaDsimHost(FpgaHost):
     """
     An FpgaHost that acts as a Digitiser unit.
     """
-    def __init__(self, host, katcp_port=7147, boffile=None,
+    def __init__(self, host, katcp_port=7147, bitstream=None,
                  connect=True, config=None):
         """
 
         :param host:
         :param katcp_port:
-        :param boffile:
+        :param bitstream:
         :param connect:
         :param config:
         """
         if config:
-            if boffile:
-                raise ValueError('Cannot specify "boffile" parameter if '
+            if bitstream:
+                raise ValueError('Cannot specify "bitstream" parameter if '
                                  'config is used')
-            boffile = config['bitstream']
+            bitstream = config['bitstream']
         self.config = config
-        FpgaHost.__init__(
-            self, host, katcp_port=katcp_port, boffile=boffile, connect=connect)
-        self.boffile = boffile
+        FpgaHost.__init__(self, host=host, katcp_port=katcp_port)
+        self.bitstream = bitstream
         self.sine_sources = AttributeContainer()
         self.noise_sources = AttributeContainer()
         self.pulsar_sources = AttributeContainer()
@@ -492,21 +490,21 @@ class FpgaDsimHost(FpgaHost):
 
     def initialise(self):
         """
-        Program (if self.boffile is specified) and init Dsim roach
+        Program (if self.bitstream is specified) and init Dsim roach
         :return:
         """
         if not self.is_connected():
             self.connect()
-        if self.boffile:
+        if self.bitstream:
             self._program()
         else:
-            LOGGER.info('Not programming host {} since no boffile is '
+            LOGGER.info('Not programming host {} since no bitstream is '
                         'configured'.format(self.host))
         if not self.is_running():
             raise RuntimeError('D-engine {host} not '
                                'running'.format(**self.__dict__))
         self.get_system_information()
-        self.setup_tengbes()
+        self.setup_gbes()
         # Set digitizer polarisation IDs, 0 - h, 1 - v
         self.registers.receptor_id.write(pol0_id=0, pol1_id=1)
         self.data_resync()
@@ -550,35 +548,35 @@ class FpgaDsimHost(FpgaHost):
 
     def _program(self):
         """
-        Program the boffile to fpga and ensure 10GbE's are not transmitting
+        Program the bitstream to fpga and ensure 10GbE's are not transmitting
         """
-        LOGGER.info('Programming Dsim roach {host} with file {boffile}'
+        LOGGER.info('Programming Dsim roach {host} with file {bitstream}'
                     .format(**self.__dict__))
         stime = time.time()
-        self.upload_to_ram_and_program(self.boffile)
+        self.upload_to_ram_and_program(self.bitstream)
         LOGGER.info('Programmed %s in %.2f seconds.' % (
             self.host, time.time() - stime))
-        # Ensure data is not sent before the tengbe's are configured
+        # Ensure data is not sent before the gbes are configured
         self.enable_data_output(False)
 
-    def setup_tengbes(self):
+    def setup_gbes(self):
         """
         Set up 10GbE MACs, IPs and destination address/port
         """
         port = int(self.config['10gbe_port'])
-        num_tengbes = len(self.tengbes)
-        if num_tengbes < 1:
+        num_gbes = len(self.gbes)
+        if num_gbes < 1:
             raise RuntimeError('D-engine with no 10gbe cores %s' % self.host)
         gbes_per_pol = 2        # Hardcoded assumption
-        num_pols = num_tengbes // gbes_per_pol
+        num_pols = num_gbes // gbes_per_pol
 
         mac_ctr = 1
-        for ctr in range(num_tengbes):
-            this_mac = tengbe.Mac.from_roach_hostname(self.host, mac_ctr)
-            self.tengbes['gbe%d' % ctr].setup(
+        for ctr in range(num_gbes):
+            this_mac = Mac.from_roach_hostname(self.host, mac_ctr)
+            self.gbes['gbe%d' % ctr].setup(
                 mac=this_mac, ipaddress='0.0.0.0', port=port)
             mac_ctr += 1
-        for gbe in self.tengbes:
+        for gbe in self.gbes:
             gbe.dhcp_start()
 
         # set the destination IP and port for the tx
@@ -598,9 +596,9 @@ class FpgaDsimHost(FpgaHost):
                 txip = txaddr_base + addr_offset
                 LOGGER.info('%s sending to: %s.%d port %d' % (
                     self.host, txaddr_prefix, txip, port))
-                self.write_int('gbe_iptx%i' % gbe_ctr,
-                               tengbe.IpAddress.str2ip(
-                                   '%s.%d' % (txaddr_prefix, txip)))
+                self.write_int(
+                    'gbe_iptx%i' % gbe_ctr,
+                    IpAddress.str2ip('%s.%d' % (txaddr_prefix, txip)))
                 if not single_destination:
                     addr_offset += 1
 

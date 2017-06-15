@@ -10,10 +10,10 @@ class FpgaXHost(FpgaHost):
     """
     A Host, that hosts Xengines, that is a CASPER KATCP FPGA.
     """
-    def __init__(self, host, index, katcp_port=7147, boffile=None,
+    def __init__(self, host, index, katcp_port=7147, bitstream=None,
                  connect=True, config=None):
-        FpgaHost.__init__(self, host, katcp_port=katcp_port,
-                          boffile=boffile, connect=connect)
+        FpgaHost.__init__(self, host=host, katcp_port=katcp_port,
+                          bitstream=bitstream, connect=connect)
         self.config = config
         self.index = index
         if self.config is not None:
@@ -32,14 +32,14 @@ class FpgaXHost(FpgaHost):
         :param fpg_info: a tuple containing device_info and coreinfo dictionaries
         :return: <nothing> the information is populated in the class
         """
-        super(FpgaXHost, self).get_system_information()
+        super(FpgaXHost, self).get_system_information(filename, fpg_info)
         self.x_per_fpga = self._determine_x_per_fpga()
         self._vaccs_per_sec_last_values = [0] * self.x_per_fpga
 
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port, config_source):
-        boffile = config_source['bitstream']
-        return cls(hostname, index, katcp_port=katcp_port, boffile=boffile,
+        bitstream = config_source['bitstream']
+        return cls(hostname, index, katcp_port=katcp_port, bitstream=bitstream,
                    connect=True, config=config_source)
 
     def _determine_x_per_fpga(self):
@@ -159,7 +159,7 @@ class FpgaXHost(FpgaHost):
         """
         rv = []
         _regs = self.registers
-        for core_ctr in range(0, len(self.tengbes)):
+        for core_ctr in range(0, len(self.gbes)):
             counter = _regs['rx_cnt%i' % core_ctr].read()['data']['reg']
             error = _regs['rx_err_cnt%i' % core_ctr].read()['data']['reg']
             rv.append((counter, error))

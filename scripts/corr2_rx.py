@@ -16,6 +16,7 @@ Revs:
 2010-11-26  JRM Added command-line option for autoscaling.
 """
 
+from __future__ import print_function
 import spead2
 import spead2.recv as s2rx
 import numpy as np
@@ -28,7 +29,7 @@ import logging
 import argparse
 import sys
 
-from casperfpga import tengbe
+from casperfpga.network import IpAddress
 
 from corr2 import utils, data_stream
 
@@ -51,7 +52,7 @@ class PrintConsumer(object):
             if data is None:
                 raise RuntimeError('print_data: got None data - this is wrong')
 
-            print 'PROCESSING PRINT DATA'
+            print('PROCESSING PRINT DATA')
 
             powerdata = data[0]
             phasedata = data[1]
@@ -93,7 +94,7 @@ class PlotConsumer(object):
             return
         if plotdata is None:
             raise RuntimeError('plot_data: got None data - this is wrong')
-        # print 'SHOULD BE PLOTTING NOW %i' % self.plot_counter, \
+        # print('SHOULD BE PLOTTING NOW %i' % self.plot_counter, \
         #     self.need_data_flag.is_set()
         # sys.stdout.flush()
 
@@ -141,7 +142,7 @@ class PlotConsumer(object):
             self.need_data_flag.set()
 
     # def redraw(self, key_event):
-    #     print 'KEYPRESS'
+    #     print('KEYPRESS'
     #     sys.stdout.flush()
     #     if self.animated:
     #         return
@@ -151,7 +152,7 @@ class PlotConsumer(object):
     # def on_close(self, close_event):
     #     plt.close(self.figure)
     #     if not self.animated:
-    #         print 'WOOOTOT'
+    #         print('WOOOTOT'
     #         figure = plt.figure()
     #         figure.add_subplot(2, 1, 1)
     #         figure.add_subplot(2, 1, 2)
@@ -445,7 +446,7 @@ class CorrReceiver(threading.Thread):
         self.need_plot_data = flag
 
     def run(self):
-        print 'Starting RX target'
+        print('Starting RX target')
         self._target()
 
     def rx_cont(self):
@@ -666,7 +667,7 @@ if __name__ == '__main__':
     if output['address'].ip_address.is_multicast():
         import socket
         import struct
-        print 'Source is multicast: %s' % output['address']
+        print('Source is multicast: %s' % output['address'])
 
         # look up multicast group address in name server
         # and find out IP version
@@ -683,7 +684,7 @@ if __name__ == '__main__':
         #
         # # bind it to the port
         # mcast_sock.bind(('', data_port))
-        # print 'Receiver bound to port %i.' % data_port
+        # print('Receiver bound to port %i.' % data_port
 
         def join_group(address):
             group_bin = socket.inet_pton(ip_version, address)
@@ -691,7 +692,7 @@ if __name__ == '__main__':
                 mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
                 mcast_sock.setsockopt(socket.IPPROTO_IP,
                                       socket.IP_ADD_MEMBERSHIP, mreq)
-                print 'Subscribing to %s.' % address
+                print('Subscribing to %s.' % address)
             else:
                 mreq = group_bin + struct.pack('@I', 0)
                 mcast_sock.setsockopt(socket.IPPROTO_IPV6,
@@ -700,11 +701,11 @@ if __name__ == '__main__':
         # join group
         for addrctr in range(output['address'].ip_range):
             addr = int(output['address'].ip_address) + addrctr
-            addr = tengbe.IpAddress(addr)
+            addr = IpAddress(addr)
             join_group(str(addr))
     else:
         mcast_sock = None
-        print 'Source is not multicast: %s' % output['src_ip']
+        print('Source is not multicast: %s' % output['src_ip'])
 
     NUM_XENG = output['address'].ip_range
     NUM_BASELINES = int(sensors['{}-n-bls'.format(product_name)])
@@ -713,12 +714,12 @@ if __name__ == '__main__':
 
     if args.items:
         track_list = args.items.split(',')
-        print 'Tracking:'
+        print('Tracking:')
         for item in track_list:
-            print '\t%s' % item
+            print('\t%s' % item)
     else:
         track_list = None
-        print 'Not tracking any items.'
+        print('Not tracking any items.')
 
     h5_filename = None
     if args.writefile:
@@ -726,9 +727,9 @@ if __name__ == '__main__':
     if args.filename != '':
         h5_filename = args.filename + '.corr2.h5'
     if h5_filename:
-        print 'Storing to H5 file: %s' % h5_filename
+        print('Storing to H5 file: %s' % h5_filename)
     else:
-        print 'Not saving to disk.'
+        print('Not saving to disk.')
 
     baselines = []
     channels = []
@@ -739,9 +740,9 @@ if __name__ == '__main__':
             else:
                 baselines = [int(bls) for bls in args.baselines.split(',')]
         if not baselines:
-            print 'No baselines to plot or print.'
+            print('No baselines to plot or print.')
         else:
-            print 'Given baselines:', baselines
+            print('Given baselines: %s' % baselines)
             temp = args.channels.split(',')
             plot_startchan = int(temp[0].strip())
             plot_endchan = int(temp[1].strip())
@@ -750,10 +751,10 @@ if __name__ == '__main__':
             if plot_endchan == -1:
                 plot_endchan = n_chans
             channels = (plot_startchan, plot_endchan)
-            print 'Given channel range:', channels
+            print('Given channel range: %s' % channels)
         if (not baselines) or (not channels):
-            print 'Print or plot requested, but no baselines and/or ' \
-                  'channels specified.'
+            print('Print or plot requested, but no baselines and/or '
+                  'channels specified.')
 
     # if there are baselines to plot, set up a plotter that will pull
     # data from a data queue
@@ -772,7 +773,7 @@ if __name__ == '__main__':
             plt.show(block=False)
         else:
             plotsumer = PlotConsumer(None, args.ion)
-        print 'Plot started, waiting for data.'
+        print('Plot started, waiting for data.')
 
     # are we printing data to the screen?
     printsumer = None
@@ -785,8 +786,8 @@ if __name__ == '__main__':
     data_port = output['address'].port
 
     # start the receiver thread
-    print 'Initialising SPEAD transports for data:'
-    print '\tData reception on port', data_port
+    print('Initialising SPEAD transports for data:')
+    print('\tData reception on port %s' % data_port)
     corr_rx = CorrReceiver(
         port=data_port,
         log_level=eval('logging.%s' % log_level),
@@ -814,17 +815,17 @@ if __name__ == '__main__':
                 printsumer.print_data(logger)
             time.sleep(0.1)
             sys.stdout.flush()
-        print 'RX process ended.'
+        print('RX process ended.')
         quit_event.set()
         corr_rx.join()
     except KeyboardInterrupt:
         quit_event.set()
-        print 'Stopping, waiting for thread to exit...',
+        print('Stopping, waiting for thread to exit...', end='')
         sys.stdout.flush()
         while quit_event.is_set():
-            print '.',
+            print('.', end='')
             sys.stdout.flush()
             time.sleep(0.1)
-        print 'all done.'
+        print('all done.')
 
 # end

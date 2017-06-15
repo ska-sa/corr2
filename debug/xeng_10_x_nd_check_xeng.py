@@ -3,8 +3,6 @@
 """
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import corr2
 
 parser = argparse.ArgumentParser(description='Debug the shift in the x-engine, check that baselines are only'
@@ -31,7 +29,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -69,12 +67,12 @@ for input_ctr in range(0, 8):
     c.feng_set_eq_all(eq_array)
     expected_pos = POL_POSITIONS[input_ctr]
 
-    print 'input %i set to zero' % input_ctr
+    print('input %i set to zero' % input_ctr
 
     for args.hostnumber, args.host in enumerate(['roach02095e', 'roach020960', 'roach020a0b',
                                                  'roach020927', 'roach020919', 'roach020925',
                                                  'roach02091a', 'roach020923']):
-        print '\tchecking host %s' % args.host
+        print('\tchecking host %s' % args.host
         xeng_fpga = HOSTCLASS(args.host)
         xeng_fpga.get_system_information()
 
@@ -87,18 +85,18 @@ for input_ctr in range(0, 8):
         def print_snap(data):
             snapkeys = data.keys()
             snaplen = len(data[snapkeys[0]])
-            print 'Read %d values from snapblock:\n' % snaplen
+            print('Read %d values from snapblock:\n' % snaplen
             for ctr in range(0, snaplen):
-                print '%5d:' % ctr,
+                print('%5d:' % ctr,
                 for key in snapkeys:
-                    print '%s(%d)\t' % (key, data[key][ctr]),
-                print ''
-            print 50 * '*'
+                    print('%s(%d)\t' % (key, data[key][ctr]),
+                print(''
+            print(50 * '*'
         d = xeng_fpga.snapshots.snap_xeng0_ss.read()['data']
         num_sets = len(d['valid']) / 40
         for set in range(0, num_sets):
             set_offset = set * 40
-            print '\t\tchecking baselines starting at %i' % set_offset
+            print('\t\tchecking baselines starting at %i' % set_offset
             for baseline in range(0, 40):
                 baseline_pos = set_offset + baseline
                 if baseline == expected_pos:

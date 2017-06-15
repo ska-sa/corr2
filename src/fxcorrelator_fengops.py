@@ -144,7 +144,9 @@ class FEngineOperations(object):
             self.logger.info('Found FIXED num_x F-engines')
 
         # set eq and shift
-        self.eq_write_all()
+        # TODO - replace this when it's working on SKARAB
+        # self.eq_write_all()
+        # /TODO
         self.set_fft_shift_all()
 
         # set up the fpga comms
@@ -617,58 +619,43 @@ class FEngineOperations(object):
         """
         THREADED_FPGA_FUNC(self.hosts, 10, 'clear_status')
 
+    def setup_rx_ip_masks(self):
+        """
+        
+        :return: 
+        """
+        self.logger.info('Setting F-engine destination IP masks.')
+
+        def range_mask(iprange):
+            return (255 << 24) + (255 << 16) + (255 << 8) + (256 - iprange)
+
+        for fhost in self.hosts:
+            # andrew's ar1.5 changes
+            if 'rx_dest_ip_mask0' in fhost.registers.names():
+                destination = fhost.fengines[0].input.destination
+                base = int(destination.ip_address)
+                fhost.registers.rx_dest_ip0.write_int(base)
+                mask = range_mask(destination.ip_range)
+                fhost.registers.rx_dest_ip_mask0.write_int(mask)
+
+            if 'rx_dest_ip_mask1' in fhost.registers.names():
+                destination = fhost.fengines[1].input.destination
+                base = int(destination.ip_address)
+                fhost.registers.rx_dest_ip1.write_int(base)
+                mask = range_mask(destination.ip_range)
+                fhost.registers.rx_dest_ip_mask1.write_int(mask)
+
     def subscribe_to_multicast(self):
         """
         Subscribe all F-engine data inputs to their multicast data
         :return:
         """
-        self.logger.info('Subscribing F-engine inputs...')
+        self.logger.info('Subscribing F-engine inputs:')
         for fhost in self.hosts:
-            self.logger.info('\t%s:' % fhost.host)
-
-            # andrew's ar1.5 changes
-            if 'rx_dest_ip_mask0' in fhost.registers._items:
-                destination = fhost.fengines[0].input.destination    
-                base = int(destination.ip_address)
-                fhost.registers.rx_dest_ip0.write_int(base)
-
-                mask = (255 << 24) + (255 << 16) + (255 << 8) + (256 - destination.ip_range)
-                fhost.registers.rx_dest_ip_mask0.write_int(mask)
-            
-            if 'rx_dest_ip_mask1' in fhost.registers._items:
-                destination = fhost.fengines[1].input.destination    
-                base = int(destination.ip_address)
-                fhost.registers.rx_dest_ip1.write_int(base)
-
-                mask = (255 << 24) + (255 << 16) + (255 << 8) + (256 - destination.ip_range)
-                fhost.registers.rx_dest_ip_mask1.write_int(mask)
-
-            gbe_ctr = 0
-            for feng in fhost.fengines:
-                input_addr = feng.input.destination
-                if not input_addr.is_multicast():
-                    self.logger.info('\t\tsource address %s is not '
-                                     'multicast?' % input_addr.ip_address)
-                else:
-                    rxaddr = str(input_addr.ip_address)
-                    rxaddr_bits = rxaddr.split('.')
-                    rxaddr_base = int(rxaddr_bits[3])
-                    rxaddr_prefix = '%s.%s.%s.' % (rxaddr_bits[0],
-                                                   rxaddr_bits[1],
-                                                   rxaddr_bits[2])
-                    if ((len(fhost.tengbes) / self.corr.f_per_fpga) !=
-                            input_addr.ip_range):
-                        raise RuntimeError(
-                            '10Gbe ports (%d) do not match sources IPs (%d)' %
-                            (len(fhost.tengbes), input_addr.ip_range))
-                    for ctr in range(0, input_addr.ip_range):
-                        gbename = fhost.tengbes.names()[gbe_ctr]
-                        gbe = fhost.tengbes[gbename]
-                        rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-                        self.logger.info('\t\t%s subscribing to '
-                                         'address %s' % (gbe.name, rxaddress))
-                        gbe.multicast_receive(rxaddress, 0)
-                        gbe_ctr += 1
+            fhost.subscribe_to_multicast(self.corr.f_per_fpga)
+        # res = THREADED_FPGA_FUNC(self.hosts, timeout=10,
+        #                          target_function=('subscribe_to_multicast',
+        #                                           [self.corr.f_per_fpga], {}))
         self.logger.info('done.')
 
     def sky_freq_to_chan(self, freq):

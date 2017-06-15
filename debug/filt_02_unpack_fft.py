@@ -11,7 +11,6 @@ import signal
 import matplotlib.pyplot as pyplot
 import numpy
 
-from casperfpga import katcp_fpga
 from corr2.utils import AdcData
 
 FFT_CHANS = 4096
@@ -50,7 +49,7 @@ def exit_gracefully(signal, frame):
 signal.signal(signal.SIGINT, exit_gracefully)
 
 # make the FPGA objects
-fpga = katcp_fpga.KatcpFpga(args.host)
+fpga = CasperFpga(args.host)
 fpga.get_system_information()
 
 # check for the required snapshot
@@ -118,10 +117,10 @@ integration_counter = 0
 plot_counter = 0
 fig.canvas.manager.window.after(100, plot_func, fig, subplots, integrated_data, integration_counter, plot_counter)
 pyplot.show()
-print 'Plot started.'
+print('Plot started.'
 
 # wait here so that the plot can be viewed
-print 'Press Ctrl-C to exit...'
+print('Press Ctrl-C to exit...'
 sys.stdout.flush()
 import time
 while True:

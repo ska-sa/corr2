@@ -117,8 +117,8 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
 
     p0_data = data['p0'][plotrange[0]:topstop]
 
-    # print '\tMean:   %.10f' % numpy.mean(p0_data[1000:3000])
-    # print '\tStddev: %.10f' % numpy.std(p0_data[1000:3000])
+    # print('\tMean:   %.10f' % numpy.mean(p0_data[1000:3000])
+    # print('\tStddev: %.10f' % numpy.std(p0_data[1000:3000])
 
     if args.fft:
         plot_data0 = numpy.abs(numpy.fft.fft(p0_data))
@@ -165,7 +165,7 @@ data = get_data()
 
 if args.noplot:
     while True:
-        print data
+        print(data)
         time.sleep(1)
         data = get_data()
 else:
@@ -182,10 +182,10 @@ else:
                                     subplots, integrated_data,
                                     integration_counter, plot_counter)
     pyplot.show()
-    print 'Plot started.'
+    print('Plot started.')
 
     # wait here so that the plot can be viewed
-    print 'Press Ctrl-C to exit...'
+    print('Press Ctrl-C to exit...')
     sys.stdout.flush()
     while True:
         time.sleep(1)

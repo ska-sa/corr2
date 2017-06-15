@@ -12,12 +12,11 @@ import re
 import spead2
 import spead2.recv as s2rx
 import subprocess
-import sys
 import threading
 import time
 
-from casperfpga import tengbe
-from corr2 import utils, data_stream
+from casperfpga import network as caspernetwork
+from corr2 import data_stream
 from inspect import currentframe
 from inspect import getframeinfo
 
@@ -220,7 +219,7 @@ class CorrRx(threading.Thread):
                 #
                 # # bind it to the port
                 # mcast_sock.bind(('', data_port))
-                # print 'Receiver bound to port %i.' % data_port
+                # print('Receiver bound to port %i.' % data_port
 
                 def join_group(address):
                     group_bin = socket.inet_pton(ip_version, address)
@@ -237,7 +236,7 @@ class CorrRx(threading.Thread):
                 # join group
                 for addrctr in range(output['address'].ip_range):
                     self._addr = int(output['address'].ip_address) + addrctr
-                    self._addr = tengbe.IpAddress(self._addr)
+                    self._addr = caspernetwork.IpAddress(self._addr)
                     join_group(str(self._addr))
                 return self.confirm_multicast_subs(mul_ip=str(self._addr))
             else:

@@ -46,11 +46,11 @@ class CorrRx(threading.Thread):
         else:
             raise RuntimeError('Mode not understood. Expecting inter or cont.')
         self._kwargs = kwargs
-        #print kwargs
+        # print(kwargs)
         threading.Thread.__init__(self)
 
     def run(self):
-        #print 'starting target with kwargs ',self._kwargs
+        # print('starting target with kwargs ',self._kwargs)
         self._target(**self._kwargs)
 
     def rx_cont(self,data_port=7148, sd_ip='127.0.0.1', sd_port=7149,acc_scale=True, filename=None,**kwargs):
@@ -72,7 +72,7 @@ class CorrRx(threading.Thread):
         datasets = {}
         datasets_index = {}
         meta_required = ['n_chans','bandwidth','n_bls','n_xengs','center_freq','bls_ordering']
-         # we need these bits of meta data before being able to assemble and transmit signal display data
+        # we need these bits of meta data before being able to assemble and transmit signal display data
         meta_desired = ['n_accs']
         meta = {}
         for heap in spead.iterheaps(rx):
@@ -175,7 +175,7 @@ class CorrRx(threading.Thread):
         '''
         Process SPEAD data from X engines and forward it to the SD.
         '''
-        print 'WARNING: This function is not yet tested. YMMV.'
+        print('WARNING: This function is not yet tested. YMMV.')
         logger=self.logger
         logger.info("Data reception on port %i."%data_port)
         rx = spead.TransportUDPrx(data_port, pkt_count=1024, buffer_size=51200000)
@@ -266,7 +266,7 @@ class CorrRx(threading.Thread):
                   xeng_id = int(name[9:])
                   timestamp = ig['sync_time'] + (ig[name] / ig['scale_factor_timestamp']) #in seconds since unix epoch
                   localTime = time.time()
-                  print "Decoded timestamp for Xeng", xeng_id, ":", timestamp, " (", time.ctime(timestamp),") @ %.4f" % localTime, " ", time.ctime(localTime), "diff(", localTime-timestamp, ")"
+                  # print("Decoded timestamp for Xeng", xeng_id, ":", timestamp, " (", time.ctime(timestamp),") @ %.4f" % localTime, " ", time.ctime(localTime), "diff(", localTime-timestamp, ")")
 
                   # is this timestamp in the past?
                   if currentTimestamp > timestamp:
@@ -355,13 +355,13 @@ if __name__ == '__main__':
     acc_scale = opts.acc_scale
     verbose = opts.verbose
 
-# print 'Parsing config file...',
+# print('Parsing config file...', end='')
 # sys.stdout.flush()
 # c = corr.corr_functions.Correlator(config_file=config_file,
 #                                    log_level=(logging.DEBUG if verbose else logging.WARN),
 #                                    connect=False)
 # config = c.config
-# print 'done.'
+# print('done.')
 
 data_port = 7148 # config['rx_udp_port']
 sd_ip = '127.0.0.1' # config['sig_disp_ip_str']
@@ -370,10 +370,10 @@ mode = 'cont' #config['xeng_format']
 
 filename = str(time.time()) + '.corr.h5'
 
-print 'Initalising SPEAD transports for %s data...' % mode
-print 'Data reception on port', data_port
-print 'Sending Signal Display data to %s:%i.' % (sd_ip, sd_port)
-print 'Storing to file %s' % filename
+print('Initalising SPEAD transports for %s data...' % mode)
+print('Data reception on port', data_port)
+print('Sending Signal Display data to %s:%i.' % (sd_ip, sd_port))
+print('Storing to file %s' % filename)
 
 crx = CorrRx(
     mode=mode,
@@ -389,7 +389,7 @@ try:
     crx.start()
     while crx.isAlive():
         time.sleep(0.1)
-    print 'RX process ended.'
+    print('RX process ended.')
     crx.join()
 except KeyboardInterrupt:
-    print 'Stopping...'
+    print('Stopping...')

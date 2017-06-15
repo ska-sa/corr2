@@ -9,12 +9,13 @@ Created on Fri Jan  3 10:40:53 2014
 
 @author: paulp
 """
+
+from __future__ import print_function
 import time
 import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
@@ -52,7 +53,7 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 
 
@@ -74,26 +75,26 @@ def check_sync(all_fpgas):
 
 # check the current sync times
 synced, times = check_sync(fpgas)
-print 'Current F-engine sync times:'
+print('Current F-engine sync times:')
 for host, synctime in times.items():
-    print '\t%s: %i' % (host, synctime)
+    print('\t%s: %i' % (host, synctime))
 
 if ((not synced) or args.force) and (not args.checkonly):
     # sync the F-engines
     tries = 0
     while tries < args.retry:
-        print 'Syncing...',
+        print('Syncing...', end='')
         fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'))
-        print 'checking...',
+        print('checking...', end='')
         time.sleep(1)
         synced, times = check_sync(fpgas)
         if synced:
-            print 'done. Synced at %d.' % times[times.keys()[0]]
+            print('done. Synced at %d.' % times[times.keys()[0]])
             break
-        print 'failed. Trying again.', times
+        print('failed. Trying again. %s' % times)
     if tries == args.retry:
         if args.log_level != '':
             logging.error('FAILED to sync!')
-        print 'FAILED to sync!'
+        print('FAILED to sync!')
 
 fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')

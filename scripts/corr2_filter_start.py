@@ -49,7 +49,7 @@ for ctr, h in enumerate(hosts):
     fpgas.append(_fpga)
 
 # program the boards
-THREADED_FPGA_FUNC(fpgas, timeout=10, target_function=('upload_to_ram_and_program', (fpgas[0].boffile,),))
+THREADED_FPGA_FUNC(fpgas, timeout=10, target_function=('upload_to_ram_and_program', (fpgas[0].bitstream,),))
 
 # initialise them
 THREADED_FPGA_FUNC(fpgas, timeout=10, target_function=('initialise', (),))

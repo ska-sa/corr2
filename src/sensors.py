@@ -279,7 +279,7 @@ class Corr2SensorManager(SensorManager):
                 Sensor.UNKNOWN)
             sensor.set_value(stream.source or '')
 
-    def sensors_tengbe_interfacing(self):
+    def sensors_gbe_interfacing(self):
         """
         Information about the host 10gbe interfaces.
         :return:
@@ -289,9 +289,9 @@ class Corr2SensorManager(SensorManager):
                 eng=eng, iface=iface)
 
             sensor_value = '({mac},{ip},{port})'.format(
-                mac=str(host.tengbes[iface].mac),
-                ip=str(host.tengbes[iface].ip_address),
-                port=str(host.tengbes[iface].port))
+                mac=str(host.gbes[iface].mac),
+                ip=str(host.gbes[iface].ip_address),
+                port=str(host.gbes[iface].port))
             sensor = self.do_sensor(
                 Corr2Sensor.string,
                 '{eng}-{iface}-details'.format(eng=eng, iface=iface),
@@ -303,20 +303,20 @@ class Corr2SensorManager(SensorManager):
                 '{eng}-{iface}-multicast-subscriptions'.format(
                     eng=eng, iface=iface),
                 '{prf} multicast subscriptions'.format(prf=dpref))
-            sensor.set_value(str(host.tengbes[iface].multicast_subscriptions))
+            sensor.set_value(str(host.gbes[iface].multicast_subscriptions))
 
         for ctr, host in enumerate(self.instrument.fhosts):
-            for gbe in host.tengbes:
+            for gbe in host.gbes:
                 iface_sensors_for_host(host, 'fhost{0}'.format(ctr), gbe.name)
 
         for ctr, host in enumerate(self.instrument.xhosts):
-            for gbe in host.tengbes:
+            for gbe in host.gbes:
                 iface_sensors_for_host(host, 'xhost{0}'.format(ctr), gbe.name)
 
         # TODO
         # if self.instrument.bhosts:
         #     for ctr, host in enumerate(self.instrument.bhosts):
-        #         for gbe in host.tengbes:
+        #         for gbe in host.gbes:
         #             iface_sensors_for_host(host, 'beng{}'.format(ctr), gbe.name)
 
     def sensors_host_mapping(self):
@@ -756,7 +756,7 @@ class Corr2SensorManager(SensorManager):
 
         self.sensors_stream_destinations()
 
-        self.sensors_tengbe_interfacing()
+        self.sensors_gbe_interfacing()
 
         self.sensors_host_mapping()
 

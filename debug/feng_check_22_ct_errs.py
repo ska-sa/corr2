@@ -15,8 +15,6 @@ import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
@@ -46,11 +44,6 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
-
 if 'CORR2INI' in os.environ.keys() and args.hosts == '':
     args.hosts = os.environ['CORR2INI']
 hosts = utils.parse_hosts(args.hosts, section='fengine')
@@ -58,7 +51,7 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 registers_missing = []
 max_hostname = -1
@@ -73,8 +66,8 @@ for fpga_ in fpgas:
         registers_missing.append(fpga_.host)
         continue
 if len(registers_missing) > 0:
-    print 'The following hosts are missing necessary registers. Bailing.'
-    print registers_missing
+    print('The following hosts are missing necessary registers. Bailing.'
+    print(registers_missing
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
 
@@ -95,7 +88,7 @@ def get_fpga_data(fpga):
 
 import signal
 def exit_gracefully(sig, frame):
-    print sig, frame
+    print(sig, frame
     scroll.screen_teardown()
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)

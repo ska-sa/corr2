@@ -86,10 +86,10 @@ if program:
     ftuple.extend([(fpga, ffpg) for fpga in ffpgas])
     ftuple.extend([(fpga, xfpg) for fpga in xfpgas])
     stime = time.time()
-    print 'Programming: ',
+    print('Programming: ',
     sys.stdout.flush()
     misc.program_fpgas(ftuple, timeout=45)
-    print time.time() - stime
+    print(time.time() - stime
     ftuple = None
 
 for fpga in all_fpgas:
@@ -176,10 +176,10 @@ if setup_gbe:
         arptime = 200
         stime = time.time()
         while time.time() < stime + arptime:
-            print '\rWaiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
+            print('\rWaiting for ARP, %ds   ' % (arptime-(time.time()-stime)),
             sys.stdout.flush()
             time.sleep(1)
-        print 'done.'
+        print('done.'
 
     # release from reset
     for fpga in xfpgas:
@@ -202,20 +202,20 @@ if setup_gbe:
     fdig.registers.id2.write(pol1_id=1)
 
     # start tx
-    print 'Starting TX...',
+    print('Starting TX...',
     sys.stdout.flush()
     fdig.registers.control.write(gbe_txen=True)
     sleeptime = 5
     stime = time.time()
     while time.time() < stime + sleeptime:
-        print '\rStarting TX... %ds   ' % (sleeptime-(time.time()-stime)),
+        print('\rStarting TX... %ds   ' % (sleeptime-(time.time()-stime)),
         sys.stdout.flush()
         time.sleep(1)
     for fpga in ffpgas:
         fpga.registers.control.write(gbe_txen=True)
-    print 'done.'
+    print('done.'
 
-## print 10gbe core details
+## print(10gbe core details
 #fdig.tengbes.gbe0.print_10gbe_core_details(arp=True)
 #fdig.tengbes.gbe1.print_10gbe_core_details(arp=True)
 #fdig.tengbes.gbe2.print_10gbe_core_details(arp=True)
@@ -250,9 +250,9 @@ def print_gbe_tx(only_eofs=False, num_lines=-1):
             pstr2 = '%s %i' % (pstr2, txgbedata[key][ctr])
         if only_eofs:
             if txgbedata['eof'][ctr]:
-                print pstr
+                print(pstr
         else:
-            print pstr
+            print(pstr
 
 def print_gbe_rx(only_eofs=False):
     srx = ffpgas[0].devices['snap_gbe_rx00_ss']
@@ -263,9 +263,9 @@ def print_gbe_rx(only_eofs=False):
             pstr = '%s%s(%i) ' % (pstr, key, rxgbedata[key][ctr])
         if only_eofs:
             if rxgbedata['eof'][ctr]:
-                print pstr
+                print(pstr
         else:
-            print pstr
+            print(pstr
 
 def print_tx_stats(numtimes = 2):
     oldcnt = 0
@@ -275,7 +275,7 @@ def print_tx_stats(numtimes = 2):
     while(times > 0):
         newcnt = fdig.read_uint('gbetx_cnt00')
         newerr = fdig.read_uint('gbetx_errcnt00')
-        print 'cnt(%i,%i) err(%i,%i)' % (newcnt, newcnt-oldcnt, newerr, newerr-olderr)
+        print('cnt(%i,%i) err(%i,%i)' % (newcnt, newcnt-oldcnt, newerr, newerr-olderr)
         oldcnt = newcnt
         olderr = newerr
         time.sleep(1)
@@ -296,7 +296,7 @@ def print_rx_stats(numtimes = 3):
             badcnt = f.read_uint('gbe_rx_bad_cnt00')
             rxvalid = f.read_uint('gbe_rx_valid_cnt00')
             rxeof = f.read_uint('gbe_rx_eof_cnt00')
-            print 'cnt(%i,%i) err(%i,%i) over(%i,%i) bad(%i,%i) gbevalid(%i) gbeeof(%i)' % \
+            print('cnt(%i,%i) err(%i,%i) over(%i,%i) bad(%i,%i) gbevalid(%i) gbeeof(%i)' % \
                 (newcnt, newcnt-oldcnt, newerr, newerr-olderr, overcnt, overcnt-oldover, badcnt, badcnt-oldbad, rxvalid, rxeof)
             oldcnt = newcnt
             olderr = newerr
@@ -330,18 +330,18 @@ def check_snap80_output(fpga):
     for n,_ in enumerate(d0['d80']):
         d0_now = (d0['d80'][n], d0['timestamp'][n])
         d1_now = (d1['d80'][n], d1['timestamp'][n])
-        print '0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d - timediff(%10d)' % (
+        print('0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d - timediff(%10d)' % (
             d0_now[0], d0_now[0] - old0[0], d0_now[1], d0_now[1] - old0[1],
             d1_now[0], d1_now[0] - old1[0], d1_now[1], d1_now[1] - old1[1],
             d1_now[1] - d0_now[1])
 #        if d['timestamp'][n] != old[0]:
-#            print d['timestamp'][n], d['timestamp'][n] - old[0], d['d80'][n], d['d80'][n] - old[1]
+#            print(d['timestamp'][n], d['timestamp'][n] - old[0], d['d80'][n], d['d80'][n] - old[1]
 #        else:
 #            if abs(d['d80'][n] - old[1]) > 10:
-#                print '\tDATA JUMP IN PACKET:\n\t\t',
+#                print('\tDATA JUMP IN PACKET:\n\t\t',
 #                for ctr in range(n-4, n+4):
-#                    print d['d80'][ctr],
-#                print ''
+#                    print(d['d80'][ctr],
+#                print(''
         old0 = d0_now
         old1 = d1_now
 
@@ -371,7 +371,7 @@ def check_snap80_eof(fpga, snaps):
             timediff0 = d0_now[1] - old0[1]
             timediff1 = d1_now[1] - old1[1]
             timediff_channels = d1_now[1] - d0_now[1]
-            print '%6d: 0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d - timediff(%10d)' % (
+            print('%6d: 0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d - timediff(%10d)' % (
                 n,
                 d0_now[0], datadiff0, d0_now[1], timediff0,
                 d1_now[0], datadiff1, d1_now[1], timediff1,
@@ -408,7 +408,7 @@ def check_snap80_data(fpga, snaps):
             timediff0 = d0_now[1] - old0[1]
             timediff1 = d1_now[1] - old1[1]
             timediff_channels = d1_now[1] - d0_now[1]
-            print '%6d: 0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d - timediff(%10d)' % (
+            print('%6d: 0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d - timediff(%10d)' % (
                 n,
                 d0_now[0], datadiff0, d0_now[1], timediff0,
                 d1_now[0], datadiff1, d1_now[1], timediff1,
@@ -446,7 +446,7 @@ def check_fifo_output(fpga, pol, numrows = -1):
             timediff0 = d0_now[1] - old0[1]
             timediff1 = d1_now[1] - old1[1]
             timediff_channels = d1_now[1] - d0_now[1]
-            print '%6d: 0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d - timediff(%10d)' % (
+            print('%6d: 0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d - timediff(%10d)' % (
                 n,
                 d0_now[0], datadiff0, d0_now[1], timediff0,
                 d1_now[0], datadiff1, d1_now[1], timediff1,
@@ -498,7 +498,7 @@ def check_reordered(fpga):
             for snap in snaps:
                 current.append(data[snap]['current'])
                 diff.append(diffs[snap])
-            print '%6d,%6d: 0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d\t%2d' % (n, pkt_ctr,
+            print('%6d,%6d: 0: %10d, %10d, %10d, %5d\t\t1: %10d, %10d, %10d, %5d\t%2d' % (n, pkt_ctr,
                 current[0]['d80'], diff[0]['data'], current[0]['timestamp'], diff[0]['time'],
                 current[1]['d80'], diff[1]['data'], current[1]['timestamp'], diff[1]['time'],
                 data['snapreord1_ss']['d']['recvd'][n],)
@@ -531,11 +531,11 @@ def check_timestamps(fpga, sleeptime=1):
     time.sleep(sleeptime)
     gbe0 = read_timestamp_data(0)
     gbe1 = read_timestamp_data(1)
-    print '0(%13i,%13i,%13i,%13i)' % (gbe0[0], gbe0[1], gbe0[2], gbe0[3]), \
+    print('0(%13i,%13i,%13i,%13i)' % (gbe0[0], gbe0[1], gbe0[2], gbe0[3]), \
             '1(%13i,%13i,%13i,%13i)' % (gbe1[0], gbe1[1], gbe1[2], gbe1[3]), 'diff(%10i)' % (gbe0[1] - gbe1[1])
 
-#print fdig.listdev()
-#print fdig.registers['snap_ctrl']
+#print(fdig.listdev()
+#print(fdig.registers['snap_ctrl']
 #check_snap80_data(fdig, ['d80_00_ss', 'd80_01_ss'])
 
 #check_snap80_data(ffpgas[0], ['snap80_0_ss', 'snap80_1_ss'])
@@ -557,14 +557,14 @@ for f in ffpgas:
     f.registers.control.write(rst_unpack_cnt='pulse')
 ctr = 0
 while False:
-    print ctr
+    print(ctr
     for f in ffpgas:
-        print '\t', f.host, ':',
-        print f.devices['step_d0'].read()['reg'],
-        print f.devices['step_d1'].read()['reg'],
-        print f.devices['step_time'].read()['reg'],
-        print f.devices['recvd0'].read()['reg'],
-        print f.devices['recvd1'].read()['reg']
+        print('\t', f.host, ':',
+        print(f.devices['step_d0'].read()['reg'],
+        print(f.devices['step_d1'].read()['reg'],
+        print(f.devices['step_time'].read()['reg'],
+        print(f.devices['recvd0'].read()['reg'],
+        print(f.devices['recvd1'].read()['reg']
     time.sleep(1)
     ctr = ctr + 1
 
@@ -573,4 +573,4 @@ for ctr in range(0,1000):
     for f in ffpgas:
         check_reordered(f)
 
-#print ffpgas[0]
+#print(ffpgas[0]

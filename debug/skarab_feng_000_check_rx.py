@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.INFO)
 # sys.exit()
 
 if os.environ['CORR2UUT'].strip() == '' or os.environ['CORR2UUT'].strip() == '':
-    print 'CORR2UUT or CORR2FUT environment variables not found.'
+    print('CORR2UUT or CORR2FUT environment variables not found.'
     sys.exit(0)
 
 f = skarab_fpga.SkarabFpga(os.environ['CORR2UUT'])
@@ -57,7 +57,7 @@ def read_gbe_snaps():
     for ctr in range(len(d2['eof'])):
         if ((d2['eof'][ctr] == 0) and (d2['rawdv'][ctr] != 15)) or (
                     (d2['eof'][ctr] == 1) and (d2['rawdv'][ctr] != 1)):
-            print 'DV_ERROR(%i,%i,%i)' % (ctr, d2['rawdv'][ctr],
+            print('DV_ERROR(%i,%i,%i)' % (ctr, d2['rawdv'][ctr],
                                           d2['eof'][ctr]),
     return d0, d1, d2
 
@@ -106,16 +106,16 @@ def check_ramps(spead_packets):
     last_hdr_time = 0
     errors = False
     for ctr, packet in enumerate(spead_packets):
-        print ctr, packet.headers[0x1600], \
+        print(ctr, packet.headers[0x1600], \
             packet.headers[0x1600] - last_hdr_time,
         last_hdr_time = packet.headers[0x1600]
         if packet.headers[0x1600] != packet.headers[0x1]:
-            print 'ID_ERROR',
+            print('ID_ERROR',
             errors = True
         if packet.data != range(640):
-            print 'DATA_ERROR',
+            print('DATA_ERROR',
             errors = True
-        print ''
+        print(''
     return errors
 
 # read the data straight out of the 40gbe core
@@ -135,16 +135,16 @@ for ctr in range(len(d2['port'])):
     if d2['destport'][ctr] not in destports:
         destports.append(d2['destport'][ctr])
 
-print 'IPS:',
+print('IPS:',
 for ip in ips:
-    print str(tengbe.IpAddress(ip)),
-print ''
-print 'PORTS:', ports
-print 'DEST_IPS:',
+    print(str(tengbe.IpAddress(ip)),
+print(''
+print('PORTS:', ports
+print('DEST_IPS:',
 for ip in destips:
-    print str(tengbe.IpAddress(ip)),
-print ''
-print 'DEST_PORTS:', destports
+    print(str(tengbe.IpAddress(ip)),
+print(''
+print('DEST_PORTS:', destports
 
 # interleave the four 64-bit words
 d0.update(d1)
@@ -239,7 +239,7 @@ try:
     if check_ramps(spead_processor.packets):
         IPython.embed()
 except Exception as exc:
-    print exc.message
+    print(exc.message
     IPython.embed()
 
 # process the SPEAD data
@@ -248,7 +248,7 @@ gbe_packets = caspersnap.Snap.packetise_snapdata(rawdata, 'eof')
 lasttime = rawdata['timestamp'][0]
 lastheapid = rawdata['heapid'][0]
 if lastheapid != lasttime:
-    print 'HEAP_ID DOES NOT MATCH TIMESTAMP?!'
+    print('HEAP_ID DOES NOT MATCH TIMESTAMP?!'
     IPython.embed()
 spead_errors = 0
 packet_jumps = []
@@ -271,27 +271,27 @@ for ctr, packet in enumerate(gbe_packets[1:]):
         spead_errors += 1
         errstr += 'PACKET_LEN!=160(%i)' % len(packet['timestamp'])
     for pktctr in range(len(packet['timestamp'])):
-        print packet['timestamp'][pktctr], packet['heapid'][pktctr], \
+        print(packet['timestamp'][pktctr], packet['heapid'][pktctr], \
             packet['polid'][pktctr], packet['dv'][pktctr], \
             packet['eof'][pktctr], \
             '%4i' % packet['d3'][pktctr], '%4i' % packet['d2'][pktctr], \
             '%4i' % packet['d1'][pktctr], '%4i' % packet['d0'][pktctr],
         if packet['timestamp'][pktctr] != packettime:
             spead_errors += 1
-            print 'TIME_ERROR',
+            print('TIME_ERROR',
         if packet['heapid'][pktctr] != packetheapid:
             spead_errors += 1
-            print 'HEAP_ERROR',
+            print('HEAP_ERROR',
         if packet['eof'][pktctr] == 1:
             timediff = packettime - lasttime
             if timediff not in packet_jumps:
                 packet_jumps.append(timediff)
-            print 'EOF(%i)' % timediff,
+            print('EOF(%i)' % timediff,
             lasttime = packettime
-        print ''
-    print errstr
-print 'spead_errors:', spead_errors
-print 'spead packet jumps:', packet_jumps
+        print(''
+    print(errstr
+print('spead_errors:', spead_errors
+print('spead packet jumps:', packet_jumps
 
 IPython.embed()
 

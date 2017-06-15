@@ -24,11 +24,9 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    from casperfpga import katcp_fpga
-    HOSTCLASS = katcp_fpga.KatcpFpga
+        HOSTCLASS = CasperFpga
 else:
-    from casperfpga import dcp_fpga
-    HOSTCLASS = dcp_fpga.DcpFpga
+        HOSTCLASS = dcp_fpga.DcpFpga
 
 import logging
 log_level = 'INFO'

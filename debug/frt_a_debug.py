@@ -14,8 +14,6 @@ import time
 import argparse
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
@@ -49,7 +47,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -87,8 +85,8 @@ for fpga, error in regcheck.items():
     if error:
         registers_missing.append(fpga)
 if len(registers_missing) > 0:
-    print 'The following hosts are missing necessary registers. Bailing.'
-    print registers_missing
+    print('The following hosts are missing necessary registers. Bailing.'
+    print(registers_missing
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit()
 
@@ -123,7 +121,7 @@ reg_names.sort()
 
 import signal
 def signal_handler(sig, frame):
-    print sig, frame
+    print(sig, frame
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
     sys.exit(0)

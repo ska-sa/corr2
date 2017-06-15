@@ -56,13 +56,13 @@ class Corr2LogHandler(logging.Handler):
 
     def print_messages(self, num_to_print=-1):
         """
-        Print the last num_to_print messages. -1 is all of them.
+        Print the last num_to_print(messages. -1 is all of them.
         :return:
         """
         for ctr, record in enumerate(self._records):
             if ctr == num_to_print:
                 break
             if record.exc_info:
-                print '%s: %s Exception: ' % (record.name, record.msg)
+                print('%s: %s Exception: ' % (record.name, record.msg))
             else:
-                print '%s: %s' % (record.name, record.msg)
+                print('%s: %s' % (record.name, record.msg))

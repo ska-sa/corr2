@@ -8,7 +8,6 @@ import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
@@ -42,9 +41,9 @@ if args.log_level != '':
 # look for hosts in the leases file
 if args.dnsmasq:
     hosts, lease_filename = utils.hosts_from_dhcp_leases()
-    print 'Found %i roaches in %s.' % (len(hosts), lease_filename)
+    print('Found %i roaches in %s.' % (len(hosts), lease_filename))
     for host in hosts:
-        print '\t', host
+        print('\t%s' % host)
 else:
     # are we doing it by class?
     if 'CORR2INI' in os.environ.keys() and args.hosts == '':
@@ -63,7 +62,7 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # create the devices and deprogram them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 running = fpgautils.threaded_fpga_function(fpgas, 10, 'is_running')
 deprogrammed = []
 to_deprogram = []
@@ -77,15 +76,15 @@ for fpga in fpgas:
 running = fpgautils.threaded_fpga_function(to_deprogram, 10, 'deprogram')
 
 if len(deprogrammed) != 0:
-    print deprogrammed, ': deprogrammed okay.'
+    print('%s: deprogrammed okay.' % deprogrammed)
 if len(already_deprogrammed) != 0:
-    print already_deprogrammed, ': already deprogrammed.'
+    print('%s: already deprogrammed.' % already_deprogrammed)
 
 if args.reboot:
     for fpga in fpgas:
         fpga.katcprequest(name='restart', request_timeout=-1.0,
                           require_ok=True, request_args=())
-        print 'Restarting {}'.format(fpga.host)
+        print('Restarting {}'.format(fpga.host))
 fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 
 # end

@@ -10,19 +10,19 @@ import time
 import sys
 
 def check_vaccs_okay(arg1, arg2):
-    print arg1, arg2, time.time()
+    print(arg1, arg2, time.time()
     threading.Timer(5, check_vaccs_okay, [arg1+1], {'arg2': arg2}).start()
 
 
 threading.Timer(5, check_vaccs_okay, [3], {'arg2': 'sam'}).start()
 
-print 'timer is running'
+print('timer is running'
 
 stime = time.time()
 while time.time() < stime + 21:
     time.sleep(0.2)
 
-print 'all done'
+print('all done'
 sys.exit(0)
 
 import logging
@@ -56,23 +56,23 @@ import Queue
 import threading
 
 fpgas = utils.threaded_create_fpgas_from_hosts(hosts)
-print fpgas
+print(fpgas
 
 stime = time.time()
 utils.program_fpgas(fpgas, '/home/paulp/test_2014_Aug_12_1438.fpg')
-print 'that took %.3f seconds' % (time.time() - stime)
+print('that took %.3f seconds' % (time.time() - stime)
 
-print utils.threaded_fpga_function(fpgas, 10, 'listdev')
+print(utils.threaded_fpga_function(fpgas, 10, 'listdev')
 
-print utils.threaded_fpga_function(fpgas, 10, 'deprogram')
+print(utils.threaded_fpga_function(fpgas, 10, 'deprogram')
 
-print utils.threaded_fpga_function(fpgas, 10, 'disconnect')
+print(utils.threaded_fpga_function(fpgas, 10, 'disconnect')
 
 sys.exit()
 
 def countlettersinstrings(strings, funcname, *args):
     for word in strings:
-        print eval('word.%s' % funcname)(*args)
+        print(eval('word.%s' % funcname)(*args)
 
 a = ['asddasdasdasd', 'bnmbnmbnmbnm', 'tyutyutyutyu']
 countlettersinstrings(a, 'capitalize')
@@ -86,15 +86,15 @@ fpgas = []
 for h in hosts:
     f = casperfpga.KatcpClientFpga(h)
     fpgas.append(f)
-print 'that took %.3f' % (time.time() - stime)
+print('that took %.3f' % (time.time() - stime)
 for fpga in fpgas:
-    print fpga.host, fpga.is_connected()
+    print(fpga.host, fpga.is_connected()
 
 stime = time.time()
 othefpgas = utils.create_fpgas_from_hosts(hosts)
-print 'and that took %.3f' % (time.time() - stime)
+print('and that took %.3f' % (time.time() - stime)
 for fpga in othefpgas:
-    print fpga.host, fpga.is_connected()
+    print(fpga.host, fpga.is_connected()
 
 sys.exit()
 
@@ -143,24 +143,24 @@ waittime = 0.1
 iterations = 0
 stime = time.time()
 while len(waitlist) > 0:
-    print 'WHLOOP, %d items left' % len(waitlist)
+    print('WHLOOP, %d items left' % len(waitlist)
     for w in waitlist:
-        print '\t%d' % w
+        print('\t%d' % w
         waitlist.pop(waitlist.index(w))
         iterations += 1
     if len(waitlist) > 0:
         time.sleep(waittime)
 etime = time.time()
-print 'that took %d iterations and %0.3f seconds' % (iterations, etime - stime)
+print('that took %d iterations and %0.3f seconds' % (iterations, etime - stime)
 
 waitlist = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
 iterations = 0
 stime = time.time()
 while len(waitlist) > 0:
     donelist = []
-    print 'WHLOOP, %d items left' % len(waitlist)
+    print('WHLOOP, %d items left' % len(waitlist)
     for w in waitlist:
-        print '\t%d' % w
+        print('\t%d' % w
         donelist.append(w)
         iterations += 1
     for done in donelist:
@@ -168,7 +168,7 @@ while len(waitlist) > 0:
     if len(waitlist) > 0:
         time.sleep(waittime)
 etime = time.time()
-print 'that took %d iterations and %0.3f seconds' % (iterations, etime - stime)
+print('that took %d iterations and %0.3f seconds' % (iterations, etime - stime)
 
 sys.exit(0)
 
@@ -233,7 +233,7 @@ f.get_system_information()
 #sd = f.snapshot_get('snap_reord0_ss', circular_capture=True, man_trig=True)
 #up = struct.unpack('>2048Q', sd['data'])
 #for ctr in range(0, 2048, 2):
-#    print ctr, ':',
+#    print(ctr, ':',
 #    w1 = up[ctr]
 #    w2 = up[ctr+1]
 #    sync = (w1 >> 63) & 0x01
@@ -245,14 +245,14 @@ f.get_system_information()
 #    feng_err = (w2 >> 2) & 0x01
 #    adc_err = (w2 >> 1) & 0x01
 #    nd_on = (w2 >> 0) & 0x01
-#    print '%10d\t%10d\t%10d\t%2d\t%2d\t%2d\t%2d\t%2d\t%2d' % (data, dtime, freq, sync, valid, xeng_err, feng_err, adc_err, nd_on)
-#print ''
+#    print('%10d\t%10d\t%10d\t%2d\t%2d\t%2d\t%2d\t%2d\t%2d' % (data, dtime, freq, sync, valid, xeng_err, feng_err, adc_err, nd_on)
+#print(''
 
 f = KatcpClientFpga('roach020921')
 f.get_system_information()
 snapdata = f.snapshots.snap_reord0_ss.read(circular_capture=True, man_trig=True)['data']
 for ctr in range(0, len(snapdata['sync'])):
-    print ctr, ':',
+    print(ctr, ':',
     sync = snapdata['sync'][ctr]
     data = snapdata['data'][ctr]
     valid = snapdata['valid'][ctr]
@@ -262,7 +262,7 @@ for ctr in range(0, len(snapdata['sync'])):
     feng_err = snapdata['feng_err'][ctr]
     adc_err = snapdata['adc_over'][ctr]
     nd_on = snapdata['nd_on'][ctr]
-    print '%10d\t%10d\t%10d\t%2d\t%2d\t%2d\t%2d\t%2d\t%2d' % (data, dtime, freq, sync, valid, xeng_err, feng_err, adc_err, nd_on)
+    print('%10d\t%10d\t%10d\t%2d\t%2d\t%2d\t%2d\t%2d\t%2d' % (data, dtime, freq, sync, valid, xeng_err, feng_err, adc_err, nd_on)
 
 sys.exit()
 
@@ -313,18 +313,18 @@ for ctr in range(0, 500):
                         xfreqs[f.host][snapctr][fengid].sort()
     except KeyboardInterrupt:
         done = True
-    print ctr,
+    print(ctr,
     sys.stdout.flush()
     if done:
         break
-print ''
+print(''
 
 for f in xfpgas:
-    print f.host, f.registers.board_id.read()['data'], ':'
+    print(f.host, f.registers.board_id.read()['data'], ':'
     for snapctr in range(0,4):
-        print '\t', 'stream%i'%snapctr, ':'
+        print('\t', 'stream%i'%snapctr, ':'
         for ctr in range(0,4):
-            print '\t\t', 'ant%i'%ctr, xfreqs[f.host][snapctr][ctr]
+            print('\t\t', 'ant%i'%ctr, xfreqs[f.host][snapctr][ctr]
 
 for f in xfpgas:
     f.disconnect()
@@ -348,7 +348,7 @@ sys.exit()
 #
 #for iplist in collected_ips:
 #    iplist.sort()
-#    print [tengbe.ip2str(ip) for ip in iplist]
+#    print([tengbe.ip2str(ip) for ip in iplist]
 #
 #sys.exit()
 
@@ -358,7 +358,7 @@ sys.exit()
 #    f.upload_to_ram_and_program('/home/paulp/r2_2f_4x_4a_4k_r366_2014_Mar_18_1306.fpg', wait_complete=True)
 #    f.test_connection()
 #    f.get_system_information()
-#    print f.host
+#    print(f.host
 #sys.exit()
 
 #fdig = Digitiser(txhost)
@@ -366,10 +366,10 @@ sys.exit()
 #fdig.test_connection()
 #fdig.get_system_information()
 #numgbes = len(fdig.dev_tengbes)
-#print numgbes
-#print fdig.get_current_time()
-#print fdig.devices['gbe3'].tap_info()
-#print fdig.devices['gbe3'].read_counters()
+#print(numgbes
+#print(fdig.get_current_time()
+#print(fdig.devices['gbe3'].tap_info()
+#print(fdig.devices['gbe3'].read_counters()
 #sys.exit()
 
 #f = KatcpClientFpga('roa       ch020914')
@@ -385,31 +385,31 @@ f.get_system_information()
 f.registers.control.write(cnt_rst='toggle')
 
 while True:
-    print 50*'='
-    print f.registers.mcnt_nolock.read()
-    print ''
-    print f.registers.fifo_of0.read()
-    print f.registers.fifo_of1.read()
-    print f.registers.fifo_of2.read()
-    print f.registers.fifo_of3.read()
-    print ''
-    print f.registers.fifo_pktof0.read()
-    print f.registers.fifo_pktof1.read()
-    print f.registers.fifo_pktof2.read()
-    print f.registers.fifo_pktof3.read()
-    print ''
-    print f.registers.spead_err0.read()
-    print f.registers.spead_err1.read()
-    print f.registers.spead_err2.read()
-    print f.registers.spead_err3.read()
-    print ''
-    print 'CT_SYNC \t', f.registers.ct_synccnt.read()
-    print 'CT_valid\t', f.registers.ct_validcnt.read()
-    print f.registers.ct_errcnt0.read()
-    print f.registers.ct_parity_errcnt0.read()
-    print f.registers.ct_errcnt1.read()
-    print f.registers.ct_parity_errcnt1.read()
-    print ''
+    print(50*'='
+    print(f.registers.mcnt_nolock.read()
+    print(''
+    print(f.registers.fifo_of0.read()
+    print(f.registers.fifo_of1.read()
+    print(f.registers.fifo_of2.read()
+    print(f.registers.fifo_of3.read()
+    print(''
+    print(f.registers.fifo_pktof0.read()
+    print(f.registers.fifo_pktof1.read()
+    print(f.registers.fifo_pktof2.read()
+    print(f.registers.fifo_pktof3.read()
+    print(''
+    print(f.registers.spead_err0.read()
+    print(f.registers.spead_err1.read()
+    print(f.registers.spead_err2.read()
+    print(f.registers.spead_err3.read()
+    print(''
+    print('CT_SYNC \t', f.registers.ct_synccnt.read()
+    print('CT_valid\t', f.registers.ct_validcnt.read()
+    print(f.registers.ct_errcnt0.read()
+    print(f.registers.ct_parity_errcnt0.read()
+    print(f.registers.ct_errcnt1.read()
+    print(f.registers.ct_parity_errcnt1.read()
+    print(''
     time.sleep(1)
 
 
@@ -421,8 +421,8 @@ while True:
 #        if not thistime in timestamp_list:
 #            timestamp_list.append(thistime)
 #    for vvvvv in timestamp_list:
-#        print vvvvv, ',',
-#    print ''
+#        print(vvvvv, ',',
+#    print(''
 #    time.sleep(1)
 #
 #sys.exit()
@@ -435,8 +435,8 @@ while True:
 #        if not ip_address in ip_list:
 #            ip_list.append(ip_address)
 #    for vvvvv in ip_list:
-#        print tengbe.ip2str(vvvvv), ',',
-#    print ''
+#        print(tengbe.ip2str(vvvvv), ',',
+#    print(''
 #    time.sleep(1)
 #
 #sys.exit()
@@ -455,7 +455,7 @@ while not gotmyshit:
             (data['d20_1'][ctr] << 20) | (data['d20_0'][ctr] << 0)
         timestamp = data['timestamp'][ctr]
 #        timestamp = -1
-        print timestamp, '-', d0, '-', d1, '-', dx, '-', d7, '-', d80
+        print(timestamp, '-', d0, '-', d1, '-', dx, '-', d7, '-', d80
     gotmyshit = True
 
 #f.snapshots.snapreord0_ss.print_snap()

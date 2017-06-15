@@ -14,9 +14,8 @@ import time
 import argparse
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
+
 from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Display reorder debug info on the xengines.',
@@ -29,8 +28,6 @@ parser.add_argument('-p', '--polltime', dest='polltime', action='store',
 parser.add_argument('-r', '--reset_count', dest='rstcnt', action='store_true',
                     default=False,
                     help='reset all counters at script startup')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
 parser.add_argument('--loglevel', dest='log_level', action='store', default='',
                     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -43,17 +40,12 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
-
 hosts = utils.parse_hosts(args.hosts, section='xengine')
 if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(HOSTCLASS, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
 registers_missing = []
 max_hostname = -1
@@ -71,8 +63,8 @@ for fpga_ in fpgas:
         registers_missing.append(fpga_.host)
         continue
 if len(registers_missing) > 0:
-    print 'The following hosts are missing necessary registers. Bailing.'
-    print registers_missing
+    print('The following hosts are missing necessary registers. Bailing.')
+    print(registers_missing)
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
 
@@ -115,7 +107,7 @@ reg_names.sort()
 
 import signal
 def signal_handler(sig, frame):
-    print sig, frame
+    print(sig, frame)
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
     sys.exit(0)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import logging
 import sys
 import argparse
@@ -118,10 +119,11 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT,
                   lambda sig, frame: ioloop.add_callback_from_signal(
                       on_shutdown, ioloop, sensor_server))
-    print 'Sensor server listening on port %d:' % args.port,
+    print('Sensor server listening on port %d:' % args.port, end='')
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
-    print 'started. Running somewhere in the ether... exit however you see fit.'
+    print('started. Running somewhere in the ether... '
+          'exit however you see fit.')
     instrument = fxcorrelator.FxCorrelator('dummy corr for sensors',
                                            config_source=args.config)
     ioloop.add_callback(sensor_server.initialise, instrument)

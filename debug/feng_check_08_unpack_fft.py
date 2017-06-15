@@ -10,8 +10,6 @@ import sys
 import signal
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Perform an FFT on the ADC snapshot data.',
@@ -46,7 +44,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -76,8 +74,8 @@ for fpga_ in fpgas:
     if 'snap_adc0_ss' not in fpga_.snapshots.names():
         snapshot_missing.append(fpga_.host)
 if len(snapshot_missing) > 0:
-    print 'The following hosts are missing the post-unpack snapshot. Bailing.'
-    print snapshot_missing
+    print('The following hosts are missing the post-unpack snapshot. Bailing.'
+    print(snapshot_missing
     exit_gracefully(None, None)
 
 def get_data():
@@ -91,14 +89,14 @@ def get_data():
             if 'data' not in value.keys():
                 raise RuntimeError('Did not get p0 snap data from host %s' % key)
     except:
-        print snapdata_p0
+        print(snapdata_p0
         raise RuntimeError('Error getting p0 snap data')
     try:
         for key, value in snapdata_p1.items():
             if 'data' not in value.keys():
                 raise RuntimeError('Did not get p1 snap data from host %s' % key)
     except:
-        print snapdata_p1
+        print(snapdata_p1
         raise RuntimeError('Error getting p1 snap data')
 
     # unpack the data
@@ -125,7 +123,7 @@ if args.checktvg:
         return timeramp, dataramp, pol
     unpacked_data = get_data()
     for fpga, fpga_data in unpacked_data.items():
-        print '%s data started at time %d' % (fpga, fpga_data['packettime48']),
+        print('%s data started at time %d' % (fpga, fpga_data['packettime48']),
         timep0 = eighty_to_tvg(fpga_data['p0'][0])[0]
         timep1 = eighty_to_tvg(fpga_data['p1'][0])[0]
         assert timep0 == timep1, 'p0 and p1 start times do not agree, %d - %d' % (timep0, timep1)
@@ -137,7 +135,7 @@ if args.checktvg:
             ctr = 0
             for pdata in pol_data[0]:
                 timestamp, dataramp, pol = eighty_to_tvg(pdata)
-                # print ctr, timestamp, dataramp, pol
+                # print(ctr, timestamp, dataramp, pol
                 assert pol == pol_data[1], 'pol%d is not %d?' % (pol_data[1], pol_data[1])
                 assert timestamp == lasttime + 8, 'ctr_%d: Time stepped from %d to %d diff(%d)?' % \
                                                   (ctr, lasttime, timestamp, timestamp - lasttime)
@@ -147,7 +145,7 @@ if args.checktvg:
                 assert dataramp == lastdata + 1, 'ctr_%d: Data ramp went from %d to %d?' % (ctr, lastdata, dataramp)
                 lastdata = dataramp
                 ctr += 1
-        print 'and ended at %d %d samples later. All okay.' % (lasttime, ctr)
+        print('and ended at %d %d samples later. All okay.' % (lasttime, ctr)
 else:
     import numpy
     import matplotlib.pyplot as pyplot
@@ -157,7 +155,7 @@ else:
         unpacked_data = get_data()
         ictr += 1
         for fpga, fpga_data in unpacked_data.items():
-            # print '%i: %s data started at %d' % (pctr, fpga, fpga_data['packettime48']),
+            # print('%i: %s data started at %d' % (pctr, fpga, fpga_data['packettime48']),
             if fpga not in idata.keys():
                 idata[fpga] = {}
             for polctr, pol in enumerate(['p0', 'p1']):
@@ -165,24 +163,24 @@ else:
                 EXPECTED_FREQS = len(pol_samples) / 2
                 if pol not in idata[fpga].keys():
                     idata[fpga][pol] = EXPECTED_FREQS * [0]
-                # print 'A snapshot of length %i gave a sample array of length %i' % (len(pol_data[0]), len(allsamples))
+                # print('A snapshot of length %i gave a sample array of length %i' % (len(pol_data[0]), len(allsamples))
                 fftdata = numpy.fft.fft(pol_samples)
-                # print 'The fft was then length %i' % len(fftdata)
+                # print('The fft was then length %i' % len(fftdata)
                 showdata = EXPECTED_FREQS * [0]
                 for ctr, sample in enumerate(fftdata[:EXPECTED_FREQS]):
                     showdata[ctr] = pow(sample.real, 2) + pow(sample.imag, 2)
-                # print 'and showdata ended up being %i' % len(showdata)
+                # print('and showdata ended up being %i' % len(showdata)
                 # showdata = numpy.abs()
                 # showdata = showdata[len(showdata)/2:]
                 for ctr, _ in enumerate(showdata):
                     idata[fpga][pol][ctr] += showdata[ctr]
-            # print 'and ended %d samples later. All okay.' % (len(pol_samples))
+            # print('and ended %d samples later. All okay.' % (len(pol_samples))
         # actually draw the plots
         for fpga_ctr, intdata in enumerate(idata.values()):
             sub_plots[fpga_ctr].cla()
             sub_plots[fpga_ctr].set_title(idata.keys()[fpga_ctr])
             for ctr, data in enumerate(intdata.values()):
-                # print fpga_ctr, ctr, len(data)
+                # print(fpga_ctr, ctr, len(data)
                 if args.linear:
                     sub_plots[fpga_ctr].plot(data)
                 else:
@@ -214,10 +212,10 @@ else:
     plot_counter = 0
     fig.canvas.manager.window.after(10, plot_func, fig, subplots, integrated_data, integration_counter, plot_counter)
     pyplot.show()
-    print 'Plot started.'
+    print('Plot started.'
 
 # wait here so that the plot can be viewed
-print 'Press Ctrl-C to exit...'
+print('Press Ctrl-C to exit...'
 sys.stdout.flush()
 import time
 while True:

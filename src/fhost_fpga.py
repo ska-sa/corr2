@@ -81,9 +81,9 @@ class Fengine(object):
     def input_number(self, value):
         raise NotImplementedError('This is not currently defined.')
 
-    def delay_set_calculate_and_write_regs(self, loadcnt,
-                                           delay=None, delay_delta=None,
-                                           phase=None, phase_delta=None):
+    def delay_set_calculate_and_write_regs(
+            self, loadcnt, delay=None, delay_delta=None,
+            phase=None, phase_delta=None):
         """
         Same parameters as for self.delay_set 
         """
@@ -396,12 +396,10 @@ class FpgaFHost(DigitiserStreamReceiver):
     """
     A Host, that hosts Fengines, that is a CASPER KATCP FPGA.
     """
-    def __init__(self, host, katcp_port=7147, boffile=None,
+    def __init__(self, host, katcp_port=7147, bitstream=None,
                  connect=True, config=None):
-        super(FpgaFHost, self).__init__(host,
-                                        katcp_port=katcp_port,
-                                        boffile=boffile,
-                                        connect=connect)
+        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port,
+                                        bitstream=bitstream, connect=connect)
 
         self._config = config
 
@@ -428,8 +426,8 @@ class FpgaFHost(DigitiserStreamReceiver):
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source):
-        boffile = config_source['bitstream']
-        return cls(hostname, katcp_port=katcp_port, boffile=boffile,
+        bitstream = config_source['bitstream']
+        return cls(hostname, katcp_port, bitstream=bitstream,
                    connect=True, config=config_source)
 
     def cd_okay(self, wait_time=1):
@@ -1057,6 +1055,67 @@ class FpgaFHost(DigitiserStreamReceiver):
         :return:
         """
         return self.registers.reorder_ctrs.read()['data']
+
+    def _skarab_subscribe_to_multicast(self):
+        gbename = self.gbes.names()[0]
+        gbe = self.gbes[gbename]
+        for feng in self.fengines:
+            input_addr = feng.input.destination
+            if not input_addr.is_multicast():
+                LOGGER.info('\t\tsource address %s is not '
+                            'multicast?' % input_addr.ip_address)
+                continue
+            ip_str = str(input_addr.ip_address)
+            LOGGER.info('\t\t%s subscribing to address %s' % (gbe.name, ip_str))
+            gbe.multicast_receive(ip_str, input_addr.ip_range)
+            # rxaddr = str(input_addr.ip_address)
+            # rxaddr_bits = rxaddr.split('.')
+            # rxaddr_base = int(rxaddr_bits[3])
+            # rxaddr_prefix = '%s.%s.%s.' % (
+            #     rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
+            # for ctr in range(0, input_addr.ip_range):
+            #     rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
+            #     LOGGER.info('\t\t%s subscribing to '
+            #                 'address %s' % (gbe.name, rxaddress))
+            #     gbe.multicast_receive(rxaddress, 0)
+
+    def _roach2_subscribe_to_multicast(self, f_per_fpga):
+        gbe_ctr = 0
+        for feng in self.fengines:
+            input_addr = feng.input.destination
+            if not input_addr.is_multicast():
+                LOGGER.info('\t\tsource address %s is not '
+                            'multicast?' % input_addr.ip_address)
+                continue
+            rxaddr = str(input_addr.ip_address)
+            rxaddr_bits = rxaddr.split('.')
+            rxaddr_base = int(rxaddr_bits[3])
+            rxaddr_prefix = '%s.%s.%s.' % (
+                rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
+            if (len(self.gbes) / f_per_fpga) != input_addr.ip_range:
+                raise RuntimeError(
+                    '10Gbe ports (%d) do not match sources IPs (%d)' %
+                    (len(self.gbes), input_addr.ip_range))
+            for ctr in range(0, input_addr.ip_range):
+                gbename = self.gbes.names()[gbe_ctr]
+                gbe = self.gbes[gbename]
+                rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
+                LOGGER.info('\t\t%s subscribing to '
+                            'address %s' % (gbe.name, rxaddress))
+                gbe.multicast_receive(rxaddress, 0)
+                gbe_ctr += 1
+
+    def subscribe_to_multicast(self, f_per_fpga):
+        """
+        
+        :return: 
+        """
+        LOGGER.info('\t%s:' % self.host)
+        gbe0_name = self.gbes.names()[0]
+        if self.gbes[gbe0_name].block_info['tag'] == 'xps:forty_gbe':
+            self._skarab_subscribe_to_multicast()
+        else:
+            self._roach2_subscribe_to_multicast(f_per_fpga)
 
 '''
     def _get_fengine_fpga_config(self):

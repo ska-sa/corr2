@@ -75,7 +75,8 @@ def get_fpga_data(fpga):
 
 
 def exit_gracefully(sig, frame):
-    print sig, frame
+    print(sig)
+    print(frame)
     scroll.screen_teardown()
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)

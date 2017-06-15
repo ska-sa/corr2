@@ -16,7 +16,6 @@ import signal
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
@@ -64,17 +63,17 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
 
 # check for 10gbe cores
 for fpga_ in fpgas:
-    numgbes = len(fpga_.tengbes)
+    numgbes = len(fpga_.gbes)
     if numgbes < 1:
         raise RuntimeError('Cannot have a b-engine with no '
                            '10gbe cores? %s' % fpga_.host)
-    print '%s: found %i 10gbe core%s.' % \
-          (fpga_.host, numgbes, '' if numgbes == 1 else 's')
+    print('%s: found %i 10gbe core%s.' % (
+        fpga_.host, numgbes, '' if numgbes == 1 else 's'))
 
 # look for b-engine registers
 num_beams = 0
@@ -84,20 +83,20 @@ for ctr in range(512):
     else:
         break
 if num_beams == 0:
-    print 'ERROR: cannot carry on with no beams on x-engines'
+    print('ERROR: cannot carry on with no beams on x-engines')
     signal_handler(None, None)
-print 'Found %i beams on FPGA 0' % num_beams
+print('Found %i beams on FPGA 0' % num_beams)
 for fpga_ in fpgas:
     for ctr in range(num_beams):
         if 'bf%i_out_count' % ctr not in fpga_.registers.names():
-            print 'ERROR: host %s does not have necessary beamformer ' \
-                  'register %s' % (fpga_.host, 'bf%i_out_count' % ctr)
-            print fpga_.registers.names()
+            print('ERROR: host %s does not have necessary beamformer '
+                  'register %s' % (fpga_.host, 'bf%i_out_count' % ctr))
+            print(fpga_.registers.names())
             raise RuntimeError
         if 'bf%i_of_count' % ctr not in fpga_.registers.names():
-            print 'ERROR: host %s does not have necessary beamformer ' \
-                  'register %s' % (fpga_.host, 'bf%i_of_count' % ctr)
-            print fpga_.registers.names()
+            print('ERROR: host %s does not have necessary beamformer '
+                  'register %s' % (fpga_.host, 'bf%i_of_count' % ctr))
+            print(fpga_.registers.names())
             raise RuntimeError
 
 

@@ -1,4 +1,4 @@
-from casperfpga.tengbe import IpAddress
+from casperfpga.network import IpAddress
 import logging
 
 LOGGER = logging.getLogger(__name__)

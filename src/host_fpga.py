@@ -1,22 +1,18 @@
 import logging
 import time
 
-from casperfpga.katcp_fpga import KatcpFpga
-from casperfpga import tengbe
+from casperfpga.casperfpga import CasperFpga
+from casperfpga.network import Mac
 
 from host import Host
 
 LOGGER = logging.getLogger(__name__)
 
 
-class FpgaHost(Host, KatcpFpga):
+class FpgaHost(CasperFpga):
     """
-    A Host that is a CASPER KATCP FPGA.
+    A Host that is a CASPER FPGA, ROACH2 or SKARAB.
     """
-    def __init__(self, host, katcp_port=7147, boffile=None, connect=False):
-        Host.__init__(self, host, katcp_port)
-        KatcpFpga.__init__(self, host, katcp_port, connect=connect)
-        self.boffile = boffile
 
     def check_rx_reorder(self):
         """
@@ -58,17 +54,27 @@ class FpgaHost(Host, KatcpFpga):
         LOGGER.info('{}: check_rx() - FALSE.'.format(self.host))
         return False
 
+    def _check_rx_spead_skarab(self):
+        """
+
+        :return: 
+        """
+        # TODO - this must actually work
+        return True
+
     def check_rx_spead(self, max_waittime=5):
         """
         Check that this host is receiving SPEAD data.
         :param max_waittime: the maximum time to wait
         :return:
         """
+        if 'status_spead0' in self.registers.names():
+            return self._check_rx_spead_skarab()
         start_time = time.time()
         ctrs0 = self.read_spead_counters()
-        if len(ctrs0) != len(self.tengbes):
+        if len(ctrs0) != len(self.gbes):
             errmsg = '{}: has {} 10gbe cores, but read_spead_counters ' \
-                     'returned {} results'.format(self.host, len(self.tengbes),
+                     'returned {} results'.format(self.host, len(self.gbes),
                                                   len(ctrs0))
             LOGGER.error(errmsg)
             raise RuntimeError(errmsg)
@@ -84,12 +90,10 @@ class FpgaHost(Host, KatcpFpga):
                 if counter_incr and errors_the_same:
                     spead_errors[_core_ctr] = False
         if spead_errors.count(True) > 0:
-            LOGGER.error('%s: not receiving good SPEAD data '
-                         'over a %i second period. Errors on '
-                         'interfaces: %s.\n\t%s -> %s' % (self.host,
-                                                          max_waittime,
-                                                          spead_errors,
-                                                          ctrs0, ctrs1, ))
+            LOGGER.error(
+                '%s: not receiving good SPEAD data over a %i second period. '
+                'Errors on interfaces: %s.\n\t%s -> %s' % (
+                    self.host, max_waittime, spead_errors, ctrs0, ctrs1, ))
             return False
         else:
             LOGGER.info('%s: receiving good SPEAD data.' % self.host)
@@ -97,7 +101,7 @@ class FpgaHost(Host, KatcpFpga):
 
     def setup_host_gbes(self, logger, info_dict):
         """
-        Set up the tengbe ports on hosts
+        Set up the gbe ports on hosts
         :param logger: a logger instance
         :param info_dict: a dictionary with the port and hoststr for this
         fpga host
@@ -105,15 +109,24 @@ class FpgaHost(Host, KatcpFpga):
         """
         port = info_dict[self.host][0]
         hoststr = info_dict[self.host][1]
-        for gbe in self.tengbes:
-            if gbe.block_info['flavour']=='sfp+': 
-                mac_ctr=int(gbe.block_info['slot'])*4 + int(gbe.block_info['port_r2_sfpp'])
+        for gbe in self.gbes:
+            if gbe.block_info['tag'] == 'xps:forty_gbe':
+                # this is not applicable for SKARAB forty gbe ports
+                gbe.set_port(30000)
+                gbe.enable()
+                continue
+            if gbe.block_info['flavour'] == 'sfp+':
+                mac_ctr = int(gbe.block_info['slot']) * 4 + int(
+                    gbe.block_info['port_r2_sfpp'])
             else:
-                raise RuntimeError("Non-SFP+ network link configurations are not supported!")
-            this_mac = tengbe.Mac.from_roach_hostname(self.host, mac_ctr)
+                raise RuntimeError(
+                    'Non-SFP+ network link configurations '
+                    'are not supported!')
+            this_mac = Mac.from_roach_hostname(self.host, mac_ctr)
             gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=port)
             logger.info('%s(%s) gbe(%s) mac(%s) port(%i)' %
-                        (hoststr, self.host, gbe.name, str(gbe.mac), port))
+                        (hoststr, self.host, gbe.name, str(gbe.mac),
+                         port))
             # gbe.tap_start(restart=True)
             gbe.dhcp_start()
 

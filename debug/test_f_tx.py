@@ -37,7 +37,7 @@ while True:
         packet_counter += 1
         if eof:
             if packet_counter != packet_length:
-                print time.time(), 'AIIIIIIIIIIIEEEEEEEE - packet length should be %d, is actually %d - now %d errors' % (packet_length, packet_counter, errors['packet_length'])
+                print(time.time(), 'AIIIIIIIIIIIEEEEEEEE - packet length should be %d, is actually %d - now %d errors' % (packet_length, packet_counter, errors['packet_length'])
                 errors['packet_length'] += 1
             else:
                 if packet_counter not in packet_lengths:
@@ -45,7 +45,7 @@ while True:
             packet_counter = 0
             num_packets += 1
     if read_counter % 10 == 0:
-        print read_counter,
+        print(read_counter,
     read_counter += 1
 
 #    if (errors['valid'] > 0) or (errors['packet_length'] > 1):
@@ -54,11 +54,11 @@ while True:
 #            data = coredata['data'][ctr]
 #            eof = coredata['eof'][ctr]
 #            valid = coredata['valid'][ctr]
-#            print '%3d: vld(%1d) eof(%1d)' % (packet_counter, valid, eof)
+#            print('%3d: vld(%1d) eof(%1d)' % (packet_counter, valid, eof)
 #            packet_counter += 1
 #            if eof:
 #                packet_counter = 0
-#        print errors
+#        print(errors
 #        break
 #    read_counter += 1
-#    print read_counter, num_packets, packet_lengths
+#    print(read_counter, num_packets, packet_lengths

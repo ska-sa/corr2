@@ -7,8 +7,6 @@
 """
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='Display reorder preprocess snapblock info.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -32,7 +30,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -50,7 +48,7 @@ for bid in range(board_id, board_id + 4):
     fmin = bid * fperx
     fmax = fmin + fperx - 1
     frange.append((fmin, fmax))
-print frange
+print(frange
 snapdata = []
 snapdata.append(xeng_fpga.snapshots.snap_unpack0_ss.read()['data'])
 # snapdata.append(xeng_fpga.snapshots.snap_unpack1_ss.read()['data'])
@@ -61,13 +59,13 @@ for ctr in range(0, len(snapdata[0]['eof'])):
         for bid, snap in enumerate(snapdata):
             assert snap['freq'][ctr] >= frange[bid][0]
             assert snap['freq'][ctr] <= frange[bid][1]
-            print 'valid(%i) fengid(%i) eof(%i) freq(%i) time(%i) |' % (
+            print('valid(%i) fengid(%i) eof(%i) freq(%i) time(%i) |' % (
                 snap['valid'][ctr],
                 snap['feng_id'][ctr],
                 snap['eof'][ctr],
                 snap['freq'][ctr],
                 snap['time'][ctr], ),
-        print ''
+        print(''
 
 # handle exits cleanly
 xeng_fpga.disconnect()

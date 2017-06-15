@@ -64,7 +64,7 @@ reg_names.sort()
 
 import signal
 def signal_handler(sig, frame):
-    print sig, frame
+    print(sig, frame
     for fpga in ffpgas:
         fpga.disconnect()
     scroll.screen_teardown()

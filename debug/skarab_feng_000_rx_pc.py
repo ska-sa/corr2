@@ -30,7 +30,7 @@ finally:
     sock.close()
 
 for ctr, pkt in enumerate(pkts):
-    print ctr, len(pkt[0])
+    print(ctr, len(pkt[0])
 
 pkt_len = len(pkts[0][0])
 
@@ -55,13 +55,13 @@ for ctr, packet in enumerate(spead_processor.packets[1:]):
 # check the packets for the ramp
 last_hdr_time = 0
 for ctr, packet in enumerate(sorted_packets):
-    print '%5i' % ctr, '%16i' % packet.headers[0x1600], '%10i' % (packet.headers[0x1600] - last_hdr_time), packet.headers[0x3101],
+    print('%5i' % ctr, '%16i' % packet.headers[0x1600], '%10i' % (packet.headers[0x1600] - last_hdr_time), packet.headers[0x3101],
     last_hdr_time = packet.headers[0x1600]
     if packet.headers[0x1600] != packet.headers[0x1]:
-        print 'ID_ERROR',
+        print('ID_ERROR',
     if packet.data != range(640):
-        print 'DATA_ERROR',
-    print ''
+        print('DATA_ERROR',
+    print(''
 
 import IPython
 IPython.embed()

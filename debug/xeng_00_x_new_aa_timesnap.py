@@ -3,8 +3,6 @@
 """
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='Display reorder preprocess timesnap block - to figure '
                                              'out what timestamps are being used.',
@@ -32,7 +30,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -85,16 +83,16 @@ for snapdata in [snapdata1, snapdata2, snapdata3, snapdata4,
     for ctr, newtime in enumerate(snapdata):
         if newtime != oldtime:
             if args.verbose:
-                print oldtime,
+                print(oldtime,
             assert newtime == oldtime + 1, '%d, %d' % (newtime, oldtime)
             assert ctr == oldctr + 128, '%d, %d' % (ctr, oldctr)
             oldtime = newtime
             oldctr = ctr
     if args.verbose:
-        print ''
+        print(''
     endtime.append(oldtime)
-    print 'All times increased monotonically. Check the starts and stops across f-engines and frequencies.'
-print starttime
-print endtime
+    print('All times increased monotonically. Check the starts and stops across f-engines and frequencies.'
+print(starttime
+print(endtime
 
 # end
