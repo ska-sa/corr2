@@ -18,6 +18,7 @@ matplotlib.use('TkAgg')
 
 from matplotlib import pyplot
 
+import casperfpga.memory as caspermem
 from corr2 import utils
 from corr2 import fhost_fpga
 
@@ -151,14 +152,25 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
 
 def get_data():
     if 'snap_adc0_ss' not in fpga.snapshots.names():
-        d0 = fpga.snapshots.snap_cd0_ss.read()['data']
-        d1 = fpga.snapshots.snap_cd1_ss.read()['data']
+        fpga.registers.fft_shift.write(cdsnap_arm=0)
+        fpga.snapshots.snap_cd0_ss.arm()
+        fpga.snapshots.snap_cd1_ss.arm()
+        fpga.registers.fft_shift.write(cdsnap_arm=1)
+        time.sleep(0.1)
+        d0 = fpga.snapshots.snap_cd0_ss.read(arm=False)['data']
+        d1 = fpga.snapshots.snap_cd1_ss.read(arm=False)['data']
+        fpga.registers.fft_shift.write(cdsnap_arm=0)
         rvp0 = []
         rvp1 = []
         for ctr in range(0, len(d0['d0'])):
             for ctr2 in range(8):
                 rvp0.append(d0['d%i' % ctr2][ctr])
-                rvp1.append(d1['d%i' % ctr2][ctr])
+            for ctr2 in range(4):
+                rvp1.append(d0['p1_d%i' % ctr2][ctr])
+            tmp = (d0['p1_d4_u8'][ctr] << 2) | d1['p1_d4_l2'][ctr]
+            rvp1.append(caspermem.bin2fp(tmp, 10, 9, True))
+            for ctr2 in range(5, 8):
+                rvp1.append(d1['p1_d%i' % ctr2][ctr])
         return {'p0': fhost_fpga.AdcData(-1, rvp0),
                 'p1': fhost_fpga.AdcData(-1, rvp1)}
     else:

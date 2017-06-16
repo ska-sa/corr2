@@ -1002,8 +1002,8 @@ class FpgaFHost(DigitiserStreamReceiver):
         # process p1_d4, which was broken up over two snapshots
         d['p1_d4'] = []
         for ctr in range(len(d['p1_d4_u8'])):
-            _tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
-            d['p1_d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
+            tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
+            d['p1_d4'].append(caspermem.bin2fp(tmp, 10, 9, True))
         # pack the data into simple lists
         rvp0 = []
         rvp1 = []
