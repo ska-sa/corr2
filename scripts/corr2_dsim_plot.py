@@ -13,7 +13,7 @@ import signal
 import numpy
 from matplotlib import pyplot
 
-from casperfpga import KatcpFpga
+from casperfpga import CasperFpga
 
 from corr2 import utils
 
@@ -86,9 +86,7 @@ def exit_gracefully(_, __):
 signal.signal(signal.SIGINT, exit_gracefully)
 
 # make the FPGA object
-fpga = KatcpFpga(hostname)
-time.sleep(0.5)
-fpga.get_system_information()
+fpga = utils.feng_script_get_fpga(args)
 
 
 def get_data():

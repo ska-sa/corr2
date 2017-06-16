@@ -939,7 +939,7 @@ if __name__ == '__main__':
         root_logger.addHandler(console_handler)
 
     server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
-    print('Server listening on port %d' % args.port, end='')
+    print('Server listening on port %d ' % args.port, end='')
 
     if not args.no_tornado:
         ioloop = IOLoop.current()

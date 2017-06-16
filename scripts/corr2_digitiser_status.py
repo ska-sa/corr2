@@ -16,7 +16,7 @@ import copy
 import threading
 import Queue
 
-from casperfpga import dcp_fpga
+from casperfpga import CasperFpga
 
 parser = argparse.ArgumentParser(
     description='Display information about a MeerKAT digitiser.',
@@ -34,9 +34,6 @@ parser.add_argument(
     '--get_tx_ips', dest='get_tx_ips', action='store_true', default=False,
     help='query outgoing IPs, takes a few seconds')
 parser.add_argument(
-    '--comms', dest='comms', action='store', default='katcp', type=str,
-    help='katcp (default) or dcp?')
-parser.add_argument(
     '--loglevel', dest='log_level', action='store', default='',
     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -53,13 +50,8 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
-
 # create the device and connect to it
-digitiser_fpga = HOSTCLASS(args.hostname, 7147)
+digitiser_fpga = CasperFpga(args.hostname, 7147)
 time.sleep(0.2)
 if not digitiser_fpga.is_connected():
     digitiser_fpga.connect()

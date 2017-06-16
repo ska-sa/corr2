@@ -1057,27 +1057,21 @@ class FpgaFHost(DigitiserStreamReceiver):
         return self.registers.reorder_ctrs.read()['data']
 
     def _skarab_subscribe_to_multicast(self):
+        first_ip = self.fengines[0].input.destination.ip_address
+        ip_str = str(first_ip)
+        ip_range = 0
+        for ctr, feng in enumerate(self.fengines):
+            this_ip = feng.input.destination
+            if int(this_ip.ip_address) != int(first_ip) + ip_range:
+                raise RuntimeError('F-engine input sources IPs are not '
+                                   'in a contiguous chunk. This will cause '
+                                   'multicast subscription problems.')
+            ip_range += this_ip.ip_range
         gbename = self.gbes.names()[0]
         gbe = self.gbes[gbename]
-        for feng in self.fengines:
-            input_addr = feng.input.destination
-            if not input_addr.is_multicast():
-                LOGGER.info('\t\tsource address %s is not '
-                            'multicast?' % input_addr.ip_address)
-                continue
-            ip_str = str(input_addr.ip_address)
-            LOGGER.info('\t\t%s subscribing to address %s' % (gbe.name, ip_str))
-            gbe.multicast_receive(ip_str, input_addr.ip_range)
-            # rxaddr = str(input_addr.ip_address)
-            # rxaddr_bits = rxaddr.split('.')
-            # rxaddr_base = int(rxaddr_bits[3])
-            # rxaddr_prefix = '%s.%s.%s.' % (
-            #     rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
-            # for ctr in range(0, input_addr.ip_range):
-            #     rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-            #     LOGGER.info('\t\t%s subscribing to '
-            #                 'address %s' % (gbe.name, rxaddress))
-            #     gbe.multicast_receive(rxaddress, 0)
+        LOGGER.info('\t\t%s subscribing to address %s+%i' % (
+            gbe.name, ip_str, ip_range - 1))
+        gbe.multicast_receive(ip_str, ip_range)
 
     def _roach2_subscribe_to_multicast(self, f_per_fpga):
         gbe_ctr = 0

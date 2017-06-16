@@ -202,22 +202,9 @@ class FxCorrelator(Instrument):
         # set up f-engine RX registers
         self.fops.setup_rx_ip_masks()
 
-        self.logger.info(100 * '^')
-        for host in self.hosts:
-            port = host.gbes[0].get_port()
-            self.logger.info('%s: gbe_port(%i, 0x%x)' % (host, port, port))
-        self.logger.info(100 * '^')
-
         # subscribe all the engines to the multicast groups
         self.fops.subscribe_to_multicast()
         self.xops.subscribe_to_multicast()
-
-        self.logger.info('AFTER MULTICAST')
-        self.logger.info(100 * '^')
-        for host in self.hosts:
-            port = host.gbes[0].get_port()
-            self.logger.info('%s: gbe_port(%i, 0x%x)' % (host, port, port))
-        self.logger.info(100 * '^')
 
         # start F-engine TX
         self.logger.info('Starting F-engine datastream')

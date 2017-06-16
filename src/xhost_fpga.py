@@ -47,12 +47,12 @@ class FpgaXHost(FpgaHost):
         Query registers to find out how many x-engines there are on this host
         :return:
         """
-        _regs = self.registers.names()
-        if len(_regs) <= 0:
+        regs = self.registers.names()
+        if len(regs) <= 0:
             raise RuntimeError('Running this on an unprogrammed FPGA'
                                'is not going to work.')
         ctr = 0
-        while ('status%i' % ctr) in _regs:
+        while ('status%i' % ctr) in regs:
             ctr += 1
             if ctr == 64:
                 break
@@ -89,38 +89,41 @@ class FpgaXHost(FpgaHost):
         return data
 
     def get_rx_reorder_status(self):
-        _regs = self.registers
+        regs = self.registers
         # older versions had other register names
-        _OLD = 'reorderr_timeout0' in _regs.names()
+        old_regs_found = 'reorderr_timeout0' in regs.names()
+
+        def get_reg(reg):
+            return reg.read()['data']['reg']
 
         def get_gbe_data_old():
-            data = []
-            for ctr in range(0, self.x_per_fpga):
-                _data = {
-                    'miss%i' % ctr: _regs['reord_missant%i' % ctr].read()['data']['reg'],
-                    'rcvcnt%i' % ctr: _regs['reordcnt_recv%i' % ctr].read()['data']['reg'],
-                    'ercv%i' % ctr: _regs['reorderr_recv%i' % ctr].read()['data']['reg'],
-                    'etim%i' % ctr: _regs['reorderr_timeout%i' % ctr].read()['data']['reg'],
-                    'edisc%i' % ctr: _regs['reorderr_disc%i' % ctr].read()['data']['reg'],
-                }
-                data.append(_data)
-            return data
+            return [
+                {'miss%i' % ctr: get_reg(regs['reord_missant%i' % ctr]),
+                 'rcvcnt%i' % ctr: get_reg(regs['reordcnt_recv%i' % ctr]),
+                 'ercv%i' % ctr: get_reg(regs['reorderr_recv%i' % ctr]),
+                 'etim%i' % ctr: get_reg(regs['reorderr_timeout%i' % ctr]),
+                 'edisc%i' % ctr: get_reg(regs['reorderr_disc%i' % ctr]),
+                 } for ctr in range(0, self.x_per_fpga)
+            ]
 
         def get_gbe_data():
             data = []
             for ctr in range(0, self.x_per_fpga):
-                _tmp = _regs['reorderr_timedisc%i' % ctr].read()['data']
-                _data = {
-                    'miss%i' % ctr: _regs['reordcnt_spec%i' % ctr].read()['data']['missed_ant'],
-                    'rcvcnt%i' % ctr: _regs['reordcnt_recv%i' % ctr].read()['data']['reg'],
-                    'ercv%i' % ctr: _regs['reorderr_recv%i' % ctr].read()['data']['reg'],
-                    'etim%i' % ctr: _tmp['timeout'],
-                    'edisc%i' % ctr: _tmp['disc'],
+                tmp = regs['reorderr_timedisc%i' % ctr].read()['data']
+                regdata = {
+                    'miss%i' % ctr: regs['reordcnt_spec%i' % ctr].read()[
+                        'data']['missed_ant'],
+                    'rcvcnt%i' % ctr: regs['reordcnt_recv%i' % ctr].read()[
+                        'data']['reg'],
+                    'ercv%i' % ctr: regs['reorderr_recv%i' % ctr].read()[
+                        'data']['reg'],
+                    'etim%i' % ctr: tmp['timeout'],
+                    'edisc%i' % ctr: tmp['disc'],
                 }
-                data.append(_data)
+                data.append(regdata)
             return data
 
-        return get_gbe_data_old() if _OLD else get_gbe_data()
+        return get_gbe_data_old() if old_regs_found else get_gbe_data()
 
     def check_rx_reorder(self, sleeptime=1):
         """
@@ -158,10 +161,18 @@ class FpgaXHost(FpgaHost):
         :return:
         """
         rv = []
-        _regs = self.registers
+        regs = self.registers
+        # TODO
+        # the first skarab build has rx_cnt, not rx_cnt0. So this is a hack
+        # until that is fixed
+        if 'rx_cnt' in regs.names():
+            counter = regs['rx_cnt'].read()['data']['reg']
+            error = regs['rx_err_cnt'].read()['data']['reg']
+            return [(counter, error)]
+        # normal operation
         for core_ctr in range(0, len(self.gbes)):
-            counter = _regs['rx_cnt%i' % core_ctr].read()['data']['reg']
-            error = _regs['rx_err_cnt%i' % core_ctr].read()['data']['reg']
+            counter = regs['rx_cnt%i' % core_ctr].read()['data']['reg']
+            error = regs['rx_err_cnt%i' % core_ctr].read()['data']['reg']
             rv.append((counter, error))
         return rv
 
@@ -171,15 +182,15 @@ class FpgaXHost(FpgaHost):
         :param xnums: a list of x-engine indices to read, all if None
         :return: a list of the VACC counters
         """
-        _regs = self.registers
+        regs = self.registers
         if xnums is None:
             xnums = range(0, self.x_per_fpga)
 
         def read_reg(_xengnum):
-            if 'vacccnt0' in _regs.names():
-                return _regs['vacccnt%d' % _xengnum].read()['data']['reg']
+            if 'vacccnt0' in regs.names():
+                return regs['vacccnt%d' % _xengnum].read()['data']['reg']
             else:
-                return _regs['vacc_cnt%d' % _xengnum].read()['data']['cnt']
+                return regs['vacc_cnt%d' % _xengnum].read()['data']['cnt']
 
         return [read_reg(xnum) for xnum in xnums]
 
@@ -216,19 +227,19 @@ class FpgaXHost(FpgaHost):
         :param xnum: a specific xengine's vacc
         :return: True or False
         """
-        _regs = self.registers
+        regs = self.registers
         if xnum > -1:
             xnums = [xnum]
         else:
             xnums = range(self.x_per_fpga)
         # is this an older bitstream with old registers?
-        if 'vaccerr0' in _regs.names():
+        if 'vaccerr0' in regs.names():
             for xnum in xnums:
-                if _regs['vaccerr%d' % xnum].read()['data']['reg'] > 0:
+                if regs['vaccerr%d' % xnum].read()['data']['reg'] > 0:
                     return False
         else:
             for xnum in xnums:
-                if _regs['vacc_cnt%d' % xnum].read()['data']['err'] > 0:
+                if regs['vacc_cnt%d' % xnum].read()['data']['err'] > 0:
                     return False
         return True
 
@@ -238,19 +249,19 @@ class FpgaXHost(FpgaHost):
         :return: tuple with errors, count, arm count and load count
         """
         stats = []
-        _regs = self.registers
+        regs = self.registers
         for xnum in range(0, self.x_per_fpga):
             # is this an older bitstream with old registers?
-            if 'vaccerr0' in _regs.names():
+            if 'vaccerr0' in regs.names():
                 xengdata = {
-                    'errors': _regs['vaccerr%d' % xnum].read()['data']['reg'],
-                    'count': _regs['vacccnt%d' % xnum].read()['data']['reg']}
+                    'errors': regs['vaccerr%d' % xnum].read()['data']['reg'],
+                    'count': regs['vacccnt%d' % xnum].read()['data']['reg']}
             else:
-                temp = _regs['vacc_cnt%d' % xnum].read()['data']
+                temp = regs['vacc_cnt%d' % xnum].read()['data']
                 xengdata = {
                     'errors': temp['err'],
                     'count': temp['cnt']}
-            temp = _regs['vacc_ld_status%i' % xnum].read()['data']
+            temp = regs['vacc_ld_status%i' % xnum].read()['data']
             if 'reg' in temp.keys():
                 xengdata['armcount'] = temp['reg'] >> 16
                 xengdata['loadcount'] = temp['reg'] & 0xffff

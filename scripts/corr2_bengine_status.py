@@ -56,15 +56,8 @@ if args.log_level:
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts, section='xengine')
-if len(hosts) == 0:
-    raise RuntimeError('No good carrying on without hosts.')
-
-# make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
-fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
+# create the fpgas
+fpgas = utils.xeng_script_get_fpgas(args)
 
 # check for 10gbe cores
 for fpga_ in fpgas:

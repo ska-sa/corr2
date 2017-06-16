@@ -4,8 +4,6 @@ import time
 from casperfpga.casperfpga import CasperFpga
 from casperfpga.network import Mac
 
-from host import Host
-
 LOGGER = logging.getLogger(__name__)
 
 

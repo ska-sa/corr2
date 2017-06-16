@@ -29,16 +29,13 @@ if __name__ == '__main__':
             logging.basicConfig(level=eval('logging.%s' % log_level))
         except AttributeError:
             raise RuntimeError('No such log level: %s' % log_level)
+else:
+    args = {}
 
-    if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-        args.hosts = os.environ['CORR2INI']
-    hosts = utils.parse_hosts(args.hosts)
-    if (not hosts) or (len(hosts) == 0):
-        raise RuntimeError('No good carrying on without hosts.')
 try:
     print('Connecting...', end='')
     sys.stdout.flush()
-    fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
+    fpgas = utils.script_get_fpgas(args)
     print('done.')
 
     print('Calculating all clocks...', end='')

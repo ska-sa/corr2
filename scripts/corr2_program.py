@@ -30,6 +30,8 @@ parser.add_argument(
     help='.fpg file to program')
 args = parser.parse_args()
 
+raise RuntimeError('Not working with Skarabs yet.')
+
 if args.log_level != '':
     import logging
     log_level = args.log_level.strip()

@@ -7,7 +7,6 @@ Ping a list of hosts by connecting to them.
 """
 import time
 import argparse
-import os
 
 from casperfpga import utils as fpgautils
 from corr2 import utils
@@ -15,13 +14,16 @@ from corr2 import utils
 parser = argparse.ArgumentParser(
     description='Ping a list of hosts by connecting to them.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(
-    '--hosts', dest='hosts', type=str, action='store', default='',
-    help='comma-delimited list of hosts, or a corr2 config file')
-parser.add_argument(
-    '--loglevel', dest='log_level', action='store', default='',
-    help='log level to use, default None, options INFO, DEBUG, ERROR')
+parser.add_argument('--hosts', dest='hosts', type=str, action='store',
+                    default='', help='comma-delimited list of hosts')
+parser.add_argument('--config', type=str, action='store', default='', help=
+                    'corr2 config file. (default: Use CORR2INI env var)')
+parser.add_argument('--loglevel', dest='log_level', action='store', default='',
+                    help='log level to use, default None, options INFO, '
+                         'DEBUG, ERROR')
 args = parser.parse_args()
+
+raise RuntimeError('Not working with Skarabs yet.')
 
 if args.log_level != '':
     import logging
@@ -30,12 +32,6 @@ if args.log_level != '':
         logging.basicConfig(level=eval('logging.%s' % log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
-
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts)
-if len(hosts) == 0:
-    raise RuntimeError('No good carrying on without hosts.')
 
 
 def pingfpga(fpga):
@@ -52,8 +48,8 @@ def pingfpga(fpga):
     except:
         return 'connected'
 
-# make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
+# create the devices and connect to them
+fpgas = utils.script_get_fpgas(args)
 
 # ping them
 connected = []
@@ -73,7 +69,7 @@ fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
 sconn = set(connected)
 sprog = set(programmed)
 connected = list(sconn.difference(sprog))
-print('%d hosts:' % len(hosts))
+print('%d hosts:' % len(fpgas))
 print('\tProgrammed: %s' % programmed)
 print('\tConnected: %s' % connected)
 print('\tUnavailable: %s' % unavailable)

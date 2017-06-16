@@ -3,7 +3,6 @@
 from __future__ import print_function
 import argparse
 import sys
-import os
 
 from corr2 import utils
 from corr2.dsimhost_fpga import FpgaDsimHost
@@ -76,54 +75,42 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.config:
-    config_filename = args.config
-else:
-    try:
-        config_filename = os.environ['CORR2INI']
-    except KeyError:
-        raise RuntimeError('No config file speficied and environment var '
-                           '"CORR2INI" not defined')
-
-corr_conf = utils.parse_ini_file(config_filename, ['dsimengine'])
-dsim_conf = corr_conf['dsimengine']
-dig_host = dsim_conf['host']
-
-dhost = FpgaDsimHost(dig_host, config=dsim_conf)
-print('Connected to %s.' % dhost.host)
+# make the fpga
+dfpga = utils.script_get_fpga(args, ['dsimengine'], FpgaDsimHost)
+print('Connected to %s.' % dfpga.host)
 
 if args.start and args.stop:
     raise RuntimeError('Start and stop? You must be crazy!')
 
 something_happened = False
 if args.program:
-    dhost.initialise()
+    dfpga.initialise()
     something_happened = True
 else:
-    dhost.get_system_information()
+    dfpga.get_system_information()
 
 # TODO HACK
-if 'cwg0_en' in dhost.registers.names():
-    dhost.registers.cwg0_en.write(en=1)
-    dhost.registers.cwg1_en.write(en=1)
+if 'cwg0_en' in dfpga.registers.names():
+    dfpga.registers.cwg0_en.write(en=1)
+    dfpga.registers.cwg1_en.write(en=1)
 # /HACK
 
 if args.deprogram:
-    dhost.deprogram()
+    dfpga.deprogram()
     something_happened = True
-    print('Deprogrammed %s.' % dhost.host)
+    print('Deprogrammed %s.' % dfpga.host)
 
 if args.resync:
     print('Reset digitiser timer and sync timer')
-    dhost.data_resync()
+    dfpga.data_resync()
     something_happened = True
 
 if args.start:
     # start tx
-    print('Starting TX on %s' % dhost.host, end='')
+    print('Starting TX on %s' % dfpga.host, end='')
     sys.stdout.flush()
-    dhost.enable_data_output(enabled=True)
-    dhost.registers.control.write(gbe_txen=True)
+    dfpga.enable_data_output(enabled=True)
+    dfpga.registers.control.write(gbe_txen=True)
     print('done.')
     sys.stdout.flush()
     something_happened = True
@@ -131,7 +118,7 @@ if args.start:
 if args.status:
     # start tx
     sys.stdout.flush()
-    if dhost.check_tx_raw():
+    if dfpga.check_tx_raw():
         print('Digitiser tx raw data success.')
     else:
         print('Digitiser tx raw data failed.')
@@ -139,12 +126,12 @@ if args.status:
     something_happened = True
 
 if args.stop:
-    dhost.enable_data_output(enabled=False)
-    print('Stopped transmission on %s.' % dhost.host)
+    dfpga.enable_data_output(enabled=False)
+    print('Stopped transmission on %s.' % dfpga.host)
     something_happened = True
 
 if args.pulse:
-    dhost.pulse_data_output(args.pulse_packets)
+    dfpga.pulse_data_output(args.pulse_packets)
     print('Pulsed {} packets per polarisation'.format(args.pulse_packets))
     something_happened = True
 
@@ -153,11 +140,11 @@ if args.sine_source:
         xscale = float(xscale_s)
         yfreq = float(yfreq_s)
         try:
-            sine_source = getattr(dhost.sine_sources,
+            sine_source = getattr(dfpga.sine_sources,
                                   'sin_{}'.format(sine_name))
         except AttributeError:
             print("You can only select between sine sources: {}".format(
-                [ss.name for ss in dhost.sine_sources]))
+                [ss.name for ss in dfpga.sine_sources]))
             sys.exit(1)
         try:
             sine_source.set(scale=xscale, frequency=yfreq)
@@ -175,10 +162,10 @@ if args.sine_source:
 
 if args.zeros_sine:
     """Set all sine sources to zeros"""
-    sources_names = dhost.sine_sources.names()
+    sources_names = dfpga.sine_sources.names()
     for source in sources_names:
         try:
-            sine_source = getattr(dhost.sine_sources, '{}'.format(source))
+            sine_source = getattr(dfpga.sine_sources, '{}'.format(source))
             sine_source.set(0, 0)
             print("sine source {}, set to {}.".format(sine_source.name,
                                                       sine_source.scale))
@@ -191,11 +178,11 @@ if args.noise_source:
     for noise_sources, noise_scale_s in args.noise_source:
         noise_scale = float(noise_scale_s)
         try:
-            source_from = getattr(dhost.noise_sources, 'noise_{}'.format(
+            source_from = getattr(dfpga.noise_sources, 'noise_{}'.format(
                 noise_sources))
         except AttributeError:
             print("You can only select between noise sources:"
-                  " %s" % dhost.noise_sources.names())
+                  " %s" % dfpga.noise_sources.names())
             sys.exit(1)
         try:
             source_from.set(scale=noise_scale)
@@ -209,10 +196,10 @@ if args.noise_source:
 
 if args.zeros_noise:
     """Set all sine sources to zeros"""
-    sources_names = dhost.noise_sources.names()
+    sources_names = dfpga.noise_sources.names()
     for source in sources_names:
         try:
-            noise_source = getattr(dhost.noise_sources, '{}'.format(source))
+            noise_source = getattr(dfpga.noise_sources, '{}'.format(source))
             noise_source.set(0)
             print("noise source {}, set to {}.".format(noise_source.name,
                                                        noise_source.scale))
@@ -226,11 +213,11 @@ if args.pulsar_source:
         xscale = float(xscale_s)
         yfreq = float(yfreq_s)
         try:
-            pulsar_sources = getattr(dhost.pulsar_sources, 'pulsar_{}'.format(
+            pulsar_sources = getattr(dfpga.pulsar_sources, 'pulsar_{}'.format(
                 pulsar_source))
         except AttributeError:
             print("You can only select between pulsar sources: {}".format([
-                ss.name for ss in dhost.pulsar_sources]))
+                ss.name for ss in dfpga.pulsar_sources]))
             sys.exit(1)
         try:
             pulsar_sources.set(scale=xscale, frequency=yfreq)
@@ -256,7 +243,7 @@ if args.pulsar_source:
 if args.output_type:
     for output_type, output_type_s in args.output_type:
         try:
-            type_from = getattr(dhost.outputs, 'out_{}'.format(output_type))
+            type_from = getattr(dfpga.outputs, 'out_{}'.format(output_type))
         except AttributeError:
             print("You can only select between, Output_0 or Output_1.")
             sys.exit(1)
@@ -274,9 +261,9 @@ if args.output_scale:
     for output_scale, output_scale_s in args.output_scale:
         scale_value = float(output_scale_s)
         try:
-            scale_from = getattr(dhost.outputs, 'out_{}'.format(output_scale))
+            scale_from = getattr(dfpga.outputs, 'out_{}'.format(output_scale))
         except AttributeError:
-            print("You can only select between, %s" % dhost.outputs.names())
+            print("You can only select between, %s" % dfpga.outputs.names())
             sys.exit(1)
         try:
             scale_from.scale_output(scale_value)
@@ -293,10 +280,10 @@ if args.repeat_sine:
     something_happened = True
     for sine_name, repeat in args.repeat_sine:
         try:
-            sine = getattr(dhost.sine_sources, 'sin_{}'.format(sine_name))
+            sine = getattr(dfpga.sine_sources, 'sin_{}'.format(sine_name))
         except AttributeError:
             print("You can only select between sine sources: {}".format([
-                ss.name for ss in dhost.sine_sources]))
+                ss.name for ss in dfpga.sine_sources]))
             sys.exit(1)
         try:
             sine.set(repeatN=int(repeat))
@@ -313,4 +300,4 @@ if args.ipython:
 
 if not something_happened:
     parser.print_help()
-# dhost.disconnect()
+# dfpga.disconnect()

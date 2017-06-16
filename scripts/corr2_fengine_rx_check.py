@@ -10,7 +10,6 @@ View the RX status on fengines.
 import sys
 import time
 import argparse
-import os
 import signal
 
 from casperfpga import utils as fpgautils
@@ -50,15 +49,8 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts, section='fengine')
-if len(hosts) == 0:
-    raise RuntimeError('No good carrying on without hosts.')
-
 # create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
-fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
+fpgas = utils.feng_script_get_fpgas(args)
 
 regs = ['spead_ctrs', 'reorder_ctrs']
 
@@ -88,8 +80,8 @@ for fpga, error in regcheck.items():
     if error:
         registers_missing.append(fpga)
 if len(registers_missing) > 0:
-    print('The following hosts are missing necessary registers. Bailing.'
-    print(registers_missing
+    print('The following hosts are missing necessary registers. Bailing.')
+    print(registers_missing)
     fpgautils.threaded_fpga_function(fpgas, 10, target_function=('disconnect',))
     sys.exit()
 

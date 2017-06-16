@@ -6,9 +6,7 @@
 Plot the spectrum using the output snapshots on the F-engine
 """
 import argparse
-import os
 
-from corr2.fhost_fpga import FpgaFHost
 from casperfpga import spead as casperspead
 from casperfpga import snap as caspersnap
 from casperfpga.network import IpAddress
@@ -42,21 +40,8 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.config == '':
-    args.config = os.environ['CORR2INI']
-if args.config != '':
-    host_list = utils.parse_hosts(args.config, section='fengine')
-else:
-    host_list = []
-
-try:
-    hostname = host_list[int(args.host)]
-    logging.info('Got hostname %s from config file.' % hostname)
-except ValueError:
-    hostname = args.host
-
-f = FpgaFHost(hostname)
-f.get_system_information()
+# make the FPGA
+fpga = utils.feng_script_get_fpga(args)
 
 # read the config
 config = utils.parse_ini_file(args.config)

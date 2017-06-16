@@ -2,19 +2,15 @@
 # -*- coding: utf-8 -*-
 """
 Plot the output of the quantiser snapshot.
-
-@author: paulp
 """
 import time
 import argparse
-import os
 import sys
 import signal
 import numpy
 from matplotlib import pyplot
 import math
 
-from corr2.fhost_fpga import FpgaFHost
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
@@ -30,6 +26,10 @@ parser.add_argument(
 parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',
     help='a corr2 config file, will use $CORR2INI if none given')
+parser.add_argument(
+    '--bitstream', dest='bitstream', type=str, action='store', default='',
+    help='a bitstream for the f-engine hosts (Skarabs need this given '
+         'if no config is found)')
 parser.add_argument(
     '--range', dest='range', action='store', default='-1,-1',
     help='range to plot, -1 means start/end')
@@ -64,19 +64,6 @@ if args.log_level != '':
 if args.noplot and (not args.printvals):
     raise RuntimeError('Must either plot or print(vals!')
 
-if 'CORR2INI' in os.environ.keys() and args.config == '':
-    args.config = os.environ['CORR2INI']
-if args.config != '':
-    host_list = utils.parse_hosts(args.config, section='fengine')
-else:
-    host_list = []
-
-try:
-    hostname = host_list[int(args.host)]
-    logging.info('Got hostname %s from config file.' % hostname)
-except ValueError:
-    hostname = args.host
-
 # read the config
 config = utils.parse_ini_file(args.config)
 
@@ -98,10 +85,8 @@ def exit_gracefully(_, __):
     sys.exit(0)
 signal.signal(signal.SIGINT, exit_gracefully)
 
-# make the FPGA object
-fpga = FpgaFHost(hostname)
-time.sleep(0.5)
-fpga.get_system_information()
+# make the FPGA
+fpga = utils.feng_script_get_fpga(args)
 
 # set the FFT shift
 if args.fftshift != -1:
@@ -120,13 +105,14 @@ print('Snapshot is %i samples long' % snapshot_samples)
 # loops_necessary = EXPECTED_FREQS / snapshot_samples
 # print('Will need to read the snapshot %i times' % loops_necessary
 
-print('Range: %s' % plotrange)
+print('Range: %s' % str(plotrange))
 numtoplot = plotrange[1] - plotrange[0]
 print('Chans to plot: %s' % numtoplot)
 loopnec = int(math.ceil((numtoplot * 1.0) / snapshot_samples))
 loopstart = plotrange[0] / snapshot_samples
 loopstop = loopstart + loopnec
-plotrange_shifted = (plotrange[0] - (loopstart * snapshot_samples), plotrange[1] - (loopstart * snapshot_samples))
+plotrange_shifted = (plotrange[0] - (loopstart * snapshot_samples),
+                     plotrange[1] - (loopstart * snapshot_samples))
 
 # print('loopsnec:', loopnec
 # print('loopstart:', loopstart

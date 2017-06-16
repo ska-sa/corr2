@@ -14,7 +14,57 @@ class DigitiserStreamReceiver(FpgaHost):
 
     def __init__(self, host, katcp_port=7147, bitstream=None, connect=True):
         super(DigitiserStreamReceiver, self).__init__(
-            host=host, katcp_port=katcp_port, bitstream=bitstream, connect=connect)
+            host=host, katcp_port=katcp_port, bitstream=bitstream,
+            connect=connect)
+
+    def _skarab_print_reorder_regs(self):
+        """
+        Debugging the SKARAB RX reorder problems... 
+        :return: 
+        """
+        print('status_reo0: %s' % self.registers.status_reo0.read()['data'])
+        print('status_reo1: %s' % self.registers.status_reo1.read()['data'])
+
+    def _check_rx_reorder_skarab(self):
+        """
+        Is a SKARAB fhost receiving reordered data?
+        :return: 
+        """
+        required_repetitions = 5
+        sleeptime = 0.2
+        num_gbes = len(self.gbes)
+        if num_gbes != 1:
+            raise RuntimeError('FHost %s: should have only '
+                               'one FortyGbe?' % self.host)
+        test_data = []
+        for _ctr in range(0, required_repetitions):
+            reorder_ctrs = self.registers.status_reo0.read()['data']
+            reorder_ctrs.update(self.registers.status_reo1.read()['data'])
+            test_data.append(reorder_ctrs)
+            time.sleep(sleeptime)
+        getting_data = False
+        for ctr in range(1, required_repetitions):
+            if test_data[ctr]['pkt_cnt'] != test_data[0]['pkt_cnt']:
+                getting_data = True
+        if not getting_data:
+            LOGGER.error('FHost %s: pkt_cnt is NOT changing: %i' % (
+                self.host, test_data[0]['pkt_cnt']))
+            return False
+        got_errors = False
+        for ctr in range(1, required_repetitions):
+            for key in ['err_disc', 'err_relock', 'err_pkttime',
+                        'err_timestep', 'err_recv', 'err_of']:
+                v0 = test_data[0][key]
+                v1 = test_data[ctr][key]
+                if v1 != v0:
+                    LOGGER.error('FHost %s: %s is changing. %i -> %i' % (
+                        self.host, key, v1, v0))
+                    got_errors = True
+        if got_errors:
+            LOGGER.error('One or more errors detected, check logs.')
+            return False
+        LOGGER.info('%s: is reordering data okay.' % self.host)
+        return True
 
     def _get_rxreg_data(self):
         """
@@ -37,14 +87,6 @@ class DigitiserStreamReceiver(FpgaHost):
             data['recverr_ctr%i' % pol] = reorder_ctrs['recverr%i' % pol]
         return data
 
-    def _check_rx_reorder_skarab(self):
-        """
-        
-        :return: 
-        """
-        # TODO - this must actually work
-        return True
-
     def check_rx_reorder(self):
         """
         Is this F host reordering received data correctly?
@@ -52,45 +94,45 @@ class DigitiserStreamReceiver(FpgaHost):
         """
         if 'status_reo0' in self.registers.names():
             return self._check_rx_reorder_skarab()
-        _required_repetitions = 5
-        _sleeptime = 0.2
+        required_repetitions = 5
+        sleeptime = 0.2
         num_gbes = len(self.gbes)
         if num_gbes < 1:
-            raise RuntimeError('F-host with no 10gbe cores %s?' % self.host)
+            raise RuntimeError('FHost with no 10gbe cores %s?' % self.host)
         test_data = []
-        for _ctr in range(0, _required_repetitions):
+        for _ctr in range(0, required_repetitions):
             test_data.append(self._get_rxreg_data())
-            time.sleep(_sleeptime)
+            time.sleep(sleeptime)
         got_errors = False
-        for _ctr in range(1, _required_repetitions):
+        for _ctr in range(1, required_repetitions):
             for gbe in range(num_gbes):
                 _key = 'pktof_ctr%i' % gbe
                 if test_data[_ctr][_key] != test_data[0][_key]:
                     LOGGER.error(
-                        'F host %s packet overflow on interface gbe%i. '
+                        'FHost %s: packet overflow on interface gbe%i. '
                         '%i -> %i' % (self.host, gbe, test_data[_ctr][_key],
                                       test_data[0][_key]))
                     got_errors = True
             for pol in range(0, 2):
                 _key = 'recverr_ctr%i' % pol
                 if test_data[_ctr][_key] != test_data[0][_key]:
-                    LOGGER.error('F host %s pol %i reorder count error. %i '
+                    LOGGER.error('FHost %s: pol %i reorder count error. %i '
                                  '-> %i' % (self.host, pol,
                                             test_data[_ctr][_key],
                                             test_data[0][_key]))
                     got_errors = True
             if test_data[_ctr]['mcnt_relock'] != test_data[0]['mcnt_relock']:
-                LOGGER.error('F host %s mcnt_relock is changing. %i -> %i' % (
+                LOGGER.error('FHost %s: mcnt_relock is changing. %i -> %i' % (
                     self.host, test_data[_ctr]['mcnt_relock'],
                     test_data[0]['mcnt_relock']))
                 got_errors = True
             if test_data[_ctr]['timerror'] != test_data[0]['timerror']:
-                LOGGER.error('F host %s timestep error is changing. %i -> %i' %
+                LOGGER.error('FHost %s: timestep error is changing. %i -> %i' %
                              (self.host, test_data[_ctr]['timerror'],
                               test_data[0]['timerror']))
                 got_errors = True
             if test_data[_ctr]['discard'] != test_data[0]['discard']:
-                LOGGER.error('F host %s discarding packets. %i -> %i' % (
+                LOGGER.error('FHost %s: discarding packets. %i -> %i' % (
                     self.host, test_data[_ctr]['discard'],
                     test_data[0]['discard']))
                 got_errors = True

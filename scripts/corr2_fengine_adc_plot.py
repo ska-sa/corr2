@@ -32,6 +32,10 @@ parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',
     help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument(
+    '--bitstream', dest='bitstream', type=str, action='store', default='',
+    help='a bitstream for the f-engine hosts (Skarabs need this given '
+         'if no config is found)')
+parser.add_argument(
     '--range', dest='range', action='store', default='-1,-1',
     help='range to plot, -1 means start/end')
 parser.add_argument(
@@ -62,19 +66,6 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.config == '':
-    args.config = os.environ['CORR2INI']
-if args.config != '':
-    host_list = utils.parse_hosts(args.config, section='fengine')
-else:
-    host_list = []
-
-try:
-    hostname = host_list[int(args.host)]
-    logging.info('Got hostname %s from config file.' % hostname)
-except ValueError:
-    hostname = args.host
-
 # process the range argument
 plotrange = [int(a) for a in args.range.split(',')]
 if plotrange[0] == -1:
@@ -89,10 +80,8 @@ def exit_gracefully(_, __):
     sys.exit(0)
 signal.signal(signal.SIGINT, exit_gracefully)
 
-# make the FPGA object
-fpga = FpgaFHost(hostname)
-time.sleep(0.5)
-fpga.get_system_information()
+# make the FPGA
+fpga = utils.feng_script_get_fpga(args)
 
 
 def plot_func(figure, sub_plots, idata, ictr, pctr):
@@ -164,7 +153,7 @@ data = fpga.get_adc_snapshots()
 
 if args.noplot:
     while True:
-        print(data
+        print(data)
         time.sleep(1)
         data = fpga.get_adc_snapshots()
 else:
@@ -181,10 +170,10 @@ else:
                                     subplots, integrated_data,
                                     integration_counter, plot_counter)
     pyplot.show()
-    print('Plot started.'
+    print('Plot started.')
 
     # wait here so that the plot can be viewed
-    print('Press Ctrl-C to exit...'
+    print('Press Ctrl-C to exit...')
     sys.stdout.flush()
     while True:
         time.sleep(1)

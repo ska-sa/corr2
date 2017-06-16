@@ -6,8 +6,10 @@ import Queue
 import threading
 
 from casperfpga.memory import bin2fp
+import casperfpga.utils as fpgautils
 
 from data_stream import StreamAddress
+from casperfpga import CasperFpga
 
 LOGGER = logging.getLogger(__name__)
 
@@ -99,6 +101,32 @@ def parse_ini_file(ini_file='', required_sections=None):
     return config
 
 
+def parse_hosts(str_file_dict, section=None):
+    """
+    Make a list of hosts from the argument given to a script.
+    :param str_file_dict: a string, file or dictionary where hosts may be found
+    :param section: the config section from which to take hosts, if applicable
+    :return: a list of hosts, if no section was given, the list is all sections
+    """
+    # issit a config dict?
+    if hasattr(str_file_dict, 'keys'):
+        host_list = hosts_from_config(config=str_file_dict, section=section)
+    else:
+        try:
+            # it's a file
+            host_list = hosts_from_config(config_file=str_file_dict,
+                                          section=section)
+        except IOError:
+            # it's a string
+            hosts = str_file_dict.strip().split(',')
+            for ctr, host_ in enumerate(hosts):
+                hosts[ctr] = host_.strip()
+            host_list = hosts
+    num_hosts = len(host_list)
+    LOGGER.debug('Ended up with %i hosts.' % num_hosts)
+    return host_list
+
+
 def hosts_from_config(config_file=None, config=None, section=None):
     """
     Make lists of hosts from a given correlator config file.
@@ -115,12 +143,120 @@ def hosts_from_config(config_file=None, config=None, section=None):
             section_keys = section_dict.keys()
             if 'hosts' in section_keys:
                 hosts = section_dict['hosts'].split(',')
-                for ctr, host_ in enumerate(hosts):
-                    hosts[ctr] = host_.strip()
+                for ctr, host in enumerate(hosts):
+                    hosts[ctr] = host.strip()
                 host_list.extend(hosts)
             elif 'host' in section_keys:
                 host_list.append(section_dict['host'])
     return host_list
+
+
+def host_and_bitstream_from_config(config_file=None, config=None, section=None):
+    """
+    Make lists of hosts and their corresponding bitstream from a given 
+    correlator config file.
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :param section: 'fengine' or 'xengine'
+    :return: a dictionary of hosts, by type
+    """
+    if section is None:
+        return hosts_from_config, None
+    config = config or parse_ini_file(config_file)[section]
+    bitstream = config['bitstream'].strip()
+    host_list = config['hosts'].split(',')
+    for ctr, host in enumerate(host_list):
+        host_list[ctr] = host.strip()
+    return host_list, bitstream
+
+
+# def fhost_and_bitstream_from_config(config_file=None, config=None):
+#     return host_and_bitstream_from_config(config_file, config, 'fengine')
+#
+#
+# def xhost_and_bitstream_from_config(config_file=None, config=None):
+#     return host_and_bitstream_from_config(config_file, config, 'xengine')
+
+
+def _script_get_hosts(cmdline_args, section=None):
+    """
+    
+    :param cmdline_args: 
+    :return: 
+    """
+    if 'CORR2INI' in os.environ.keys() and cmdline_args.config == '':
+        cmdline_args.config = os.environ['CORR2INI']
+    if cmdline_args.config != '':
+        (host_list, bitstream) = host_and_bitstream_from_config(
+            config_file=cmdline_args.config, section=section)
+    else:
+        host_list = []
+        bitstream = ''
+    if cmdline_args.bitstream != '':
+        bitstream = cmdline_args.bitstream
+    return host_list, bitstream
+
+
+def feng_script_get_fpgas(cmdline_args):
+    from fhost_fpga import FpgaFHost
+    return script_get_fpgas(cmdline_args, 'fengine', FpgaFHost)
+
+
+def feng_script_get_fpga(cmdline_args):
+    from fhost_fpga import FpgaFHost
+    return script_get_fpga(cmdline_args, 'fengine', FpgaFHost)
+
+
+def xeng_script_get_fpgas(cmdline_args):
+    from xhost_fpga import FpgaXHost
+    return script_get_fpgas(cmdline_args, 'xengine', FpgaXHost)
+
+
+def xeng_script_get_fpga(cmdline_args):
+    from xhost_fpga import FpgaXHost
+    return script_get_fpga(cmdline_args, 'xengine', FpgaXHost)
+
+
+def script_get_fpgas(cmdline_args, section=None, fpga_class=CasperFpga):
+    """
+    
+    :param cmdline_args: 
+    :param section
+    :param fpga_class: 
+    :return: 
+    """
+    (host_list, bitstream) = _script_get_hosts(cmdline_args, section)
+    fpgas = fpgautils.threaded_create_fpgas_from_hosts(host_list, fpga_class)
+    if hasattr(fpgas[0].transport, 'katcprequest'):
+        gsi_args = []
+    else:
+        gsi_args = [bitstream]
+    fpgautils.threaded_fpga_function(
+        fpga_list=fpgas, timeout=15,
+        target_function=('get_system_information', gsi_args, {}))
+    return fpgas
+
+
+def script_get_fpga(cmdline_args, section=None, fpga_class=CasperFpga):
+    """
+    
+    :param cmdline_args:
+    :param section:
+    :param fpga_class: 
+    :return: 
+    """
+    (host_list, bitstream) = _script_get_hosts(cmdline_args, section)
+    try:
+        hostname = host_list[int(cmdline_args.host)]
+        logging.info('Got hostname %s from config file.' % hostname)
+    except ValueError:
+        hostname = cmdline_args.host
+    fpga = fpga_class(hostname)
+    if hasattr(fpga.transport, 'katcprequest'):
+        fpga.get_system_information()
+    else:
+        fpga.get_system_information(bitstream)
+    return fpga
 
 
 def sources_from_config(config_file=None, config=None):
@@ -261,32 +397,6 @@ def baselines_from_config(config_file=None, config=None):
     # return rv
 
 
-def parse_hosts(str_file_dict, section=None):
-    """
-    Make a list of hosts from the argument given to a script.
-    :param str_file_dict: a string, file or dictionary where hosts may be found
-    :param section: the config section from which to take hosts, if applicable
-    :return: a list of hosts, if no section was given, the list is all sections
-    """
-    # issit a config dict?
-    if hasattr(str_file_dict, 'keys'):
-        host_list = hosts_from_config(config=str_file_dict, section=section)
-    else:
-        try:
-            # it's a file
-            host_list = hosts_from_config(config_file=str_file_dict,
-                                          section=section)
-        except IOError:
-            # it's a string
-            hosts = str_file_dict.strip().split(',')
-            for ctr, host_ in enumerate(hosts):
-                hosts[ctr] = host_.strip()
-            host_list = hosts
-    num_hosts = len(host_list)
-    LOGGER.debug('Ended up with %i hosts.' % num_hosts)
-    return host_list
-
-
 def process_new_eq(eq):
     """
     Handle a new EQ - it could be an int, a string, a polynomial string
@@ -358,17 +468,18 @@ class UnpackDengPacketCapture(object):
         LOGGER.info('Decoding SPEAD packets')
         for i, (ts, pkt) in enumerate(self.pcap_reader):
             LOGGER.debug('Packet {}'.format(i))
-            # WARNING (NM, 2015-05-29): Stuff stolen from simonr, now idea how he
-            # determined the various hard-coded constants below, though I assume it
-            # involved studying the structure of a SPEAD packet.
+            # WARNING (NM, 2015-05-29): Stuff stolen from simonr, now
+            # idea how he determined the various hard-coded constants
+            # below, though I assume it involved studying the structure
+            # of a SPEAD packet.
             enc = pkt.encode('hex_codec')
             header_line = enc[84:228]
             bs = bitstring.BitString(hex='0x' + header_line[22:32])
             timestamp = bs.unpack('uint:40')[0]
             data_line = enc[228:]
             if len(data_line) != 10240:
-                LOGGER.warn("Error reading packet for ts {}. Expected 10240 but "
-                            "got {}.".format(timestamp, len(data_line)))
+                LOGGER.warn("Error reading packet for ts {}. Expected 10240 "
+                            "but got {}.".format(timestamp, len(data_line)))
                 continue
 
             datalist = []
