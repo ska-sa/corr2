@@ -1008,7 +1008,7 @@ class FpgaFHost(DigitiserStreamReceiver):
         rvp0 = []
         rvp1 = []
         for ctr in range(0, len(d['p0_d0'])):
-            for ctr2 in range(0, 8):
+            for ctr2 in range(8):
                 rvp0.append(d['p0_d%i' % ctr2][ctr])
                 rvp1.append(d['p1_d%i' % ctr2][ctr])
         return {'p0': AdcData(time48, rvp0),
@@ -1043,7 +1043,7 @@ class FpgaFHost(DigitiserStreamReceiver):
         rvp0 = []
         rvp1 = []
         for ctr in range(0, len(p0['d0'])):
-            for ctr2 in range(0, 8):
+            for ctr2 in range(8):
                 rvp0.append(p0['d%i' % ctr2][ctr])
                 rvp1.append(p1['d%i' % ctr2][ctr])
         return {'p0': AdcData(-1, rvp0),

@@ -18,8 +18,8 @@ matplotlib.use('TkAgg')
 
 from matplotlib import pyplot
 
-from corr2.fhost_fpga import FpgaFHost
 from corr2 import utils
+from corr2 import fhost_fpga
 
 parser = argparse.ArgumentParser(
     description='Plot a histogram of the incoming ADC data for a fengine host.',
@@ -85,7 +85,7 @@ fpga = utils.feng_script_get_fpga(args)
 
 
 def plot_func(figure, sub_plots, idata, ictr, pctr):
-    data = fpga.get_adc_snapshots()
+    data = get_data()
     ictr += 1
 
     topstop = plotrange[1] if plotrange[1] != -1 else len(data['p0'].data)
@@ -148,14 +148,34 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
     fig.canvas.manager.window.after(10, plot_func, figure,
                                     sub_plots, idata, ictr, pctr)
 
+
+def get_data():
+    if 'snap_adc0_ss' not in fpga.snapshots.names():
+        d0 = fpga.snapshots.snap_cd0_ss.read()['data']
+        d1 = fpga.snapshots.snap_cd1_ss.read()['data']
+        rvp0 = []
+        rvp1 = []
+        for ctr in range(0, len(d0['d0'])):
+            for ctr2 in range(8):
+                rvp0.append(d0['d%i' % ctr2][ctr])
+                rvp1.append(d1['d%i' % ctr2][ctr])
+        return {'p0': fhost_fpga.AdcData(-1, rvp0),
+                'p1': fhost_fpga.AdcData(-1, rvp1)}
+    else:
+        return fpga.get_adc_snapshots()
+
+if 'snap_adc0_ss' not in fpga.snapshots.names():
+    print('Could not find ADC snapshots, attempting to use '
+          'CD snaps instead.')
+
 # set up the figure with a subplot to be plotted
-data = fpga.get_adc_snapshots()
+data = get_data()
 
 if args.noplot:
     while True:
         print(data)
         time.sleep(1)
-        data = fpga.get_adc_snapshots()
+        data = get_data()
 else:
     fig = pyplot.figure()
     subplots = []
