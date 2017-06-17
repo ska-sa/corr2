@@ -43,7 +43,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 # create the fpgas
-fpga = utils.xeng_script_get_fpga(args)
+fpga = utils.script_get_fpga(args, section='xengine')
 
 
 def get_fpga_data(fpga):
@@ -79,10 +79,9 @@ def print_snap_data(dd):
         dest_ip = network.IpAddress(dd['dest_ip'][ctr])
         src_ip_str = '%s:%i' % (str(src_ip), dd['src_port'][ctr])
         dest_ip_str = '%s:%i' % (str(dest_ip), dd['dest_port'][ctr])
-        print('%10x %10x %10x %10x rawdv(%2i) src(%s) dest(%s) %s%s%s' % (
+        print('%20x %20x %20x %20x rawdv(%2i) src(%s) dest(%s) %s%s%s' % (
             d64_0, d64_1, d64_2, d64_3, raw_dv, src_ip_str, dest_ip_str,
             eof_str, badframe_str, overrun_str))
-        print('')
 
 
 def exit_gracefully(sig, frame):
