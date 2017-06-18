@@ -62,7 +62,7 @@ class SineSource(Source):
         self.sample_rate_hz = float(self.parent.config['sample_rate_hz'])
         freq_field = self.freq_register.field_get_by_name('frequency')
         self.nr_freq_steps = 2**freq_field.width_bits
-        self.max_freq = self.sample_rate_hz / 2.
+        self.max_freq = self.sample_rate_hz / 2.0
         self.delta_freq = self.max_freq / (self.nr_freq_steps - 1)
 
     @property
@@ -79,7 +79,8 @@ class SineSource(Source):
             return None
         if not self.repeat_en_register.read()['data']['en']:
             return None
-        return self.repeat_len_register.read()['data'][self.repeat_len_field_name]
+        return self.repeat_len_register.read()['data'][
+            self.repeat_len_field_name]
 
     def set(self, scale=None, frequency=None, repeat_n=None):
         """Set source parameters
@@ -482,7 +483,7 @@ class FpgaDsimHost(FpgaHost):
                 setattr(self.pulsar_sources, 'pulsar_' + pulsar_name,
                         PulsarSource(reg, scale_reg, pulsar_name))
             elif output_scale_name is not None:
-                # TEMP hack due to misnamed register
+                # TODO TEMP hack due to misnamed register
                 if output_scale_name.startswith('arb'):
                     continue
                 setattr(self.outputs, 'out_' + output_scale_name,

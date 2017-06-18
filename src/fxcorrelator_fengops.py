@@ -561,7 +561,7 @@ class FEngineOperations(object):
         """
         if new_eq_dict is not None:
             self.logger.info('Updating some EQ values before writing.')
-            for feng, new_eq in new_eq_dict.iteritems():
+            for feng, new_eq in new_eq_dict.items():
                 self.eq_set(write=False, input_name=feng, new_eq=new_eq)
         self.logger.info('Writing EQ on all fhosts based on stored '
                          'per-input EQ values...')

@@ -164,7 +164,10 @@ def host_and_bitstream_from_config(config_file=None, config=None, section=None):
         return hosts_from_config, None
     config = config or parse_ini_file(config_file)[section]
     bitstream = config['bitstream'].strip()
-    host_list = config['hosts'].split(',')
+    try:
+        host_list = config['hosts'].split(',')
+    except KeyError:
+        host_list = [config['host']]
     for ctr, host in enumerate(host_list):
         host_list[ctr] = host.strip()
     return host_list, bitstream
@@ -184,7 +187,8 @@ def _script_get_hosts(cmdline_args, section=None):
     :param cmdline_args: 
     :return: 
     """
-    if 'CORR2INI' in os.environ.keys() and cmdline_args.config == '':
+    if 'CORR2INI' in os.environ.keys() and (cmdline_args.config == '' or
+                                            cmdline_args.config is None):
         cmdline_args.config = os.environ['CORR2INI']
     if cmdline_args.config != '':
         (host_list, bitstream) = host_and_bitstream_from_config(
@@ -192,8 +196,9 @@ def _script_get_hosts(cmdline_args, section=None):
     else:
         host_list = []
         bitstream = ''
-    if cmdline_args.bitstream != '':
-        bitstream = cmdline_args.bitstream
+    if hasattr(cmdline_args, 'bitstream'):
+        if cmdline_args.bitstream != '':
+            bitstream = cmdline_args.bitstream
     return host_list, bitstream
 
 
@@ -249,6 +254,8 @@ def script_get_fpga(cmdline_args, section=None, fpga_class=CasperFpga):
     try:
         hostname = host_list[int(cmdline_args.host)]
         logging.info('Got hostname %s from config file.' % hostname)
+    except AttributeError:
+        hostname = host_list[0]
     except ValueError:
         hostname = cmdline_args.host
     fpga = fpga_class(hostname)

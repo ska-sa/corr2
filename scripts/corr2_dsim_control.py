@@ -3,6 +3,7 @@
 from __future__ import print_function
 import argparse
 import sys
+import os
 
 from corr2 import utils
 from corr2.dsimhost_fpga import FpgaDsimHost
@@ -76,7 +77,14 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 # make the fpga
-dfpga = utils.script_get_fpga(args, ['dsimengine'], FpgaDsimHost)
+# dfpga = utils.script_get_fpga(args, 'dsimengine', FpgaDsimHost)
+if 'CORR2INI' in os.environ.keys() and \
+        (args.config == '' or args.config is None):
+    args.config = os.environ['CORR2INI']
+host_list, bitstream = utils.host_and_bitstream_from_config(
+    config_file=args.config, section='dsimengine')
+config = utils.parse_ini_file(args.config)
+dfpga = FpgaDsimHost(host_list[0], config=config['dsimengine'])
 print('Connected to %s.' % dfpga.host)
 
 if args.start and args.stop:
@@ -88,6 +96,10 @@ if args.program:
     something_happened = True
 else:
     dfpga.get_system_information()
+
+# TODO HACK
+if 'gbecontrol' in dfpga.registers.names():
+    dfpga.registers.gbecontrol.write_int(15)
 
 # TODO HACK
 if 'cwg0_en' in dfpga.registers.names():
