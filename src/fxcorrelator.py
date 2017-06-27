@@ -193,18 +193,18 @@ class FxCorrelator(Instrument):
         # set up the gbe ports in parallel
         self._gbe_setup()
 
-        # continue with init
-        self.fops.initialise_post_gbe()
-        self.xops.initialise_post_gbe()
-        if self.found_beamformer:
-            self.bops.initialise()
-
         # set up f-engine RX registers
         self.fops.setup_rx_ip_masks()
 
         # subscribe all the engines to the multicast groups
         self.fops.subscribe_to_multicast()
         self.xops.subscribe_to_multicast()
+
+        # continue with init
+        self.fops.initialise_post_gbe()
+        self.xops.initialise_post_gbe()
+        if self.found_beamformer:
+            self.bops.initialise()
 
         # start F-engine TX
         self.logger.info('Starting F-engine datastream')
@@ -229,14 +229,16 @@ class FxCorrelator(Instrument):
             raise RuntimeError('The F-engines RX have a problem.')
 
         # check that the timestamps received on the F-engines make sense
-        result, times, times_unix = self.fops.check_rx_timestamps()
+        result, times, times_unix = self.fops.check_rx_timestamps() #does this also check that timestamps are the same across boards? TX timestamps may be different?
         if not result:
             raise RuntimeError('The timestamps received by the F-engines '
                                'are not okay. Check the logs')
 
-        # check the F-engine QDR uses for parity errors
-        if not self.fops.check_qdr_devices():
-            raise RuntimeError('The F-engine QDRs are reporting errors.')
+#   Not needed; handled by sensor servlet now.
+# TODO: add generic memory check to corr2. Should do HMC test instead of QDR on SKARAB.
+#        # check the F-engine QDR uses for parity errors
+#        if not self.fops.check_qdr_devices():
+#            raise RuntimeError('The F-engine QDRs are reporting errors.')
 
         # check that the F-engines are transmitting data correctly
         if not self.fops.check_tx():

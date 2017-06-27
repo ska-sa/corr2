@@ -68,7 +68,7 @@ class FengineStream(SPEADStream):
         Disable TX for this data stream
         :return:
         """
-        self.fops.logger.info('{}: F-engine streams cannot be stopped.'.format(
+        self.fops.logger.warn('{}: Stopping F-engine streams will break the correlator.'.format(
             self.name))
 
     def _tx_disable(self):
@@ -102,20 +102,12 @@ class FEngineOperations(object):
 
     def initialise_post_gbe(self):
         """
-        Perform post-gbe setup initialisation steps
+        Perform post-gbe setup initialisation steps.
         :return:
         """
-        # write the board IDs to the fhosts
-        output_port = self.data_stream.destination.port
-        board_id = 0
-        for f in self.hosts:
-            f.registers.tx_metadata.write(board_id=board_id,
-                                          porttx=output_port)
-            board_id += 1
-
-        # release from reset
-        THREADED_FPGA_OP(self.hosts, timeout=10, target_function=(
-            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+        # release from reset; not needed on SKARAB?
+#        THREADED_FPGA_OP(self.hosts, timeout=10, target_function=(
+#            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
 
     def initialise_pre_gbe(self):
         """
@@ -123,7 +115,7 @@ class FEngineOperations(object):
         devices in the instrument.
         :return:
         """
-
+        self.data_stream._tx_disable() #this shouldn't be necessary directly after programming; F-engines start-up disabled. However, is needed if re-initialising an already-running correlator.
         if 'x_setup' in self.hosts[0].registers.names():
             self.logger.info('Found num_x independent F-engines')
             # set up the x-engine information in the F-engine hosts
@@ -131,7 +123,7 @@ class FEngineOperations(object):
             x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
             num_x = num_x_hosts * x_per_fpga
             f_per_x = self.corr.n_chans / num_x
-            ip_per_x = 1.0
+            ip_per_x = 1.0 #TODO put this in config file
             THREADED_FPGA_OP(
                 self.hosts, timeout=10,
                 target_function=(
@@ -143,22 +135,31 @@ class FEngineOperations(object):
         else:
             self.logger.info('Found FIXED num_x F-engines')
 
+        # write the board IDs to the fhosts
+        output_port = self.data_stream.destination.port
+        board_id = 0
+        for f in self.hosts:
+            f.registers.tx_metadata.write(board_id=board_id,
+                                          porttx=output_port)
+            board_id += 1
+
+        # where does the F-engine data go?
+        self.data_stream.write_destination()
+
+        # set up the fpga comms
+#ROACH2 may need this, but disabled for now, since SKARAB's 40G behaviour is unknown.
+#        THREADED_FPGA_OP(
+#            self.hosts, timeout=10,
+#            target_function=(
+#                lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
         # set eq and shift
         # TODO - replace this when it's working on SKARAB
         # self.eq_write_all()
         # /TODO
         self.set_fft_shift_all()
 
-        # set up the fpga comms
-        self.tx_disable()
-        THREADED_FPGA_OP(
-            self.hosts, timeout=10,
-            target_function=(
-                lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
-        self.clear_status_all()
+        #self.clear_status_all()  #Why would this be needed here?
 
-        # where does the F-engine data go?
-        self.data_stream.write_destination()
 
     def configure(self):
         """
@@ -479,12 +480,15 @@ class FEngineOperations(object):
         """
         self.data_stream.tx_enable()
 
-    def tx_disable(self):
+    def tx_disable(self,force_disable=False):
         """
         Disable TX on all tengbe cores on all F hosts
         :return:
         """
-        self.data_stream.tx_disable()
+        if force_disable:
+            self.data_stream._tx_disable()
+        else: 
+            self.data_stream.tx_disable()
 
     def get_fengine(self, input_name):
         """
@@ -621,13 +625,15 @@ class FEngineOperations(object):
 
     def setup_rx_ip_masks(self):
         """
-        
+        Configure software registers on F-engines to accept a range of source IP addresses. 
         :return: 
         """
-        self.logger.info('Setting F-engine destination IP masks.')
+        self.logger.info('Setting Feng RX IP mask software registers.')
 
         def range_mask(iprange):
-            return (255 << 24) + (255 << 16) + (255 << 8) + (256 - iprange)
+            if iprange%2 !=0:
+                self.logger.error("Multicast range is not a multiple of 2!")
+            return (2**32)-1-iprange
 
         for fhost in self.hosts:
             # andrew's ar1.5 changes
@@ -647,7 +653,7 @@ class FEngineOperations(object):
 
     def subscribe_to_multicast(self):
         """
-        Subscribe all F-engine data inputs to their multicast data
+        Subscribe all F-engine network cores to their multicast data
         :return:
         """
         self.logger.info('Subscribing F-engine inputs:')
@@ -656,7 +662,6 @@ class FEngineOperations(object):
         # res = THREADED_FPGA_FUNC(self.hosts, timeout=10,
         #                          target_function=('subscribe_to_multicast',
         #                                           [self.corr.f_per_fpga], {}))
-        self.logger.info('done.')
 
     def sky_freq_to_chan(self, freq):
         raise NotImplementedError

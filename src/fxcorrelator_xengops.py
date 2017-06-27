@@ -483,7 +483,7 @@ class XEngineOperations(object):
         else:
             self.logger.info('F > X is unicast from base %s' % source_address)
 
-    def check_rx(self, max_waittime=30):
+    def check_rx(self, max_waittime=10):
         """
         Check that the x hosts are receiving data correctly
         :param max_waittime:
