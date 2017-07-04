@@ -141,14 +141,13 @@ class CorrRx(threading.Thread):
         self.multicast_subs()
         threading.Thread.__init__(self)
 
-    def confirm_multicast_subs(self, mul_ip='239.100.0.10' ,interface='eth2'):
+    def confirm_multicast_subs(self, mul_ip='239.100.0.10'):
         """
         Confirm whether the multicast subscription was a success or fail.
         :param str: multicast ip
-        :param str: network interface
         :retur str: successful or failed
         """
-        list_inets = subprocess.check_output(['ip','maddr','show', interface])
+        list_inets = subprocess.check_output(['ip','maddr','show'])
         return 'Successful' if str(mul_ip) in list_inets else 'Failed'
 
     def multicast_subs(self):
@@ -164,7 +163,7 @@ class CorrRx(threading.Thread):
                 client.stop()
                 raise RuntimeError('Could not connect to corr2_servlet, timed out.')
             reply, informs = client.blocking_request(
-                katcp.Message.request('sensor-value'), timeout=5)
+                katcp.Message.request('sensor-value'), timeout=10)
             client.stop()
             client = None
             if not reply.reply_ok():
@@ -187,7 +186,7 @@ class CorrRx(threading.Thread):
                 if srch.match(inf.arguments[2]):
                     sensors[inf.arguments[2]] = inf.arguments[4]
             self.n_chans = int(sensors['{}-n-chans'.format(product_name)])
-            self.n_accs = int(sensors['{}-n-accs'.format(product_name)])
+            self.n_accs = int(float(sensors['{}-n-accs'.format(product_name)]))
             self.n_ants = int(sensors['n-ants'])
             self.sync_time = float(sensors['sync-time'])
             self.scale_factor_timestamp = float(sensors['scale-factor-timestamp'])
