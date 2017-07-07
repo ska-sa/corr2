@@ -142,10 +142,12 @@ class FxCorrelator(Instrument):
 
         # run post-programming initialisation
         self.post_program_initialise(program, qdr_cal)
+        import sys
+        sys.stdout.flush()
 
         # reset all counters on fhosts and xhosts
-        self.fops.clear_status_all()
-        self.xops.clear_status_all()
+#        self.fops.clear_status_all()
+#        self.xops.clear_status_all()
 
         # set an initialised flag
         self._initialised = True
@@ -224,32 +226,32 @@ class FxCorrelator(Instrument):
         self.fops.clear_status_all()
         self.xops.clear_status_all()
 
-        # check to see if the f engines are receiving all their data
-        if not self.fops.check_rx():
-            raise RuntimeError('The F-engines RX have a problem.')
-
-        # check that the timestamps received on the F-engines make sense
-        result, times, times_unix = self.fops.check_rx_timestamps() #does this also check that timestamps are the same across boards? TX timestamps may be different?
-        if not result:
-            raise RuntimeError('The timestamps received by the F-engines '
-                               'are not okay. Check the logs')
-
-#   Not needed; handled by sensor servlet now.
+#   Checks not needed anymore; handled by sensor servlet now.
+#        # check to see if the f engines are receiving all their data
+#        if not self.fops.check_rx():
+#            raise RuntimeError('The F-engines RX have a problem.')
+#
+#        # check that the timestamps received on the F-engines make sense
+#        result, times, times_unix = self.fops.check_rx_timestamps()
+#        if not result:
+#            raise RuntimeError('The timestamps received by the F-engines '
+#                               'are not okay. Check the logs')
+#
 # TODO: add generic memory check to corr2. Should do HMC test instead of QDR on SKARAB.
 #        # check the F-engine QDR uses for parity errors
 #        if not self.fops.check_qdr_devices():
 #            raise RuntimeError('The F-engine QDRs are reporting errors.')
-
-        # check that the F-engines are transmitting data correctly
-        if not self.fops.check_tx():
-            LOGGER.info('The F-engines TX have a problem, retrying.')
-            if not self.fops.resync_and_check():
-                raise RuntimeError('The F-engines TX have a problem.')
-
-        # check that the X-engines are receiving data
-        if not self.xops.check_rx():
-            raise RuntimeError('The x-engines RX have a problem.')
-
+#
+#        # check that the F-engines are transmitting data correctly
+#        if not self.fops.check_tx():
+#            LOGGER.info('The F-engines TX have a problem, retrying.')
+#            if not self.fops.resync_and_check():
+#                raise RuntimeError('The F-engines TX have a problem.')
+#
+#        # check that the X-engines are receiving data
+#        if not self.xops.check_rx():
+#            raise RuntimeError('The x-engines RX have a problem.')
+#
         # arm the vaccs on the x-engines
         self.xops.vacc_sync()
 

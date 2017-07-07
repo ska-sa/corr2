@@ -268,8 +268,8 @@ class XEngineOperations(object):
         self.data_stream.tx_disable()
 
         XEngineOperations._gberst(self.hosts, True)
-
-        self.clear_status_all()
+        #Why is this needed here:?
+        #self.clear_status_all()
 
     def configure(self):
         """
@@ -444,7 +444,7 @@ class XEngineOperations(object):
 
     def clear_status_all(self):
         """
-        Clear the various status registers and counters on all the fengines
+        Clear the various status registers and counters on all the xengines
         :return:
         """
         THREADED_FPGA_FUNC(self.hosts, timeout=10,
@@ -625,6 +625,7 @@ class XEngineOperations(object):
         vacc_status = self.vacc_status()
         arm_count0 = vacc_status[self.hosts[0].host][0]['armcount']
         load_count0 = vacc_status[self.hosts[0].host][0]['loadcount']
+        reset_required=False
         # check the xhosts load and arm counts
         for host in self.hosts:
             for status in vacc_status[host.host]:
@@ -632,10 +633,26 @@ class XEngineOperations(object):
                 _bad_armcnt = status['armcount'] != arm_count0
                 if _bad_ldcnt or _bad_armcnt:
                     errmsg = 'All hosts do not have matching arm and ' \
-                           'load counts.'
+                           'load counts. Forcing reset'
                     self.logger.error(errmsg)
                     self._vacc_sync_print_vacc_statuses(vacc_status)
+                    reset_required=True
+                    #raise RuntimeError(errmsg)
+        if reset_required:
+            THREADED_FPGA_FUNC(self.hosts, timeout=10,
+                               target_function='vacc_reset')
+            vaccstat = THREADED_FPGA_FUNC(
+                self.hosts, timeout=10,
+                target_function='vacc_check_reset_status')
+            for xhost, result in vaccstat.items():
+                if not result:
+                    errmsg = 'xeng_vacc_sync: resetting vaccs on ' \
+                             '%s failed.' % xhost
+                    self.logger.error(errmsg)
                     raise RuntimeError(errmsg)
+
+        arm_count0 = vacc_status[self.hosts[0].host][0]['armcount']
+        load_count0 = vacc_status[self.hosts[0].host][0]['loadcount']
         self.logger.info('\tBefore arming: arm_count(%i) load_count(%i)' %
                          (arm_count0, load_count0))
         return arm_count0, load_count0
@@ -896,17 +913,18 @@ class XEngineOperations(object):
                 THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                    target_function='clear_status')
 
-                # wait for a good accumulation to finish.
-                self.logger.info('\tWaiting %2.2fs for an accumulation to '
-                                 'flush before checking counters.' %
-                                 self.get_acc_time())
-                time.sleep(self.get_acc_time() + 0.2)
-
-                # check the vacc status, errors and accumulations
-                if not self._vacc_sync_final_check():
-                    continue
-
+#                # wait for a good accumulation to finish.
+#                self.logger.info('\tWaiting %2.2fs for an accumulation to '
+#                                 'flush before checking counters.' %
+#                                 self.get_acc_time())
+#                time.sleep(self.get_acc_time() + 0.2)
+#
+#                # check the vacc status, errors and accumulations
+#                if not self._vacc_sync_final_check():
+#                    continue
+#
                 # done
+
                 synch_time = self.corr.time_from_mcnt(load_mcount)
                 self.vacc_synch_running.clear()
                 return synch_time

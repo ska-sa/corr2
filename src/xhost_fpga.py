@@ -189,8 +189,10 @@ class FpgaXHost(FpgaHost):
         def read_reg(_xengnum):
             if 'vacccnt0' in regs.names():
                 return regs['vacccnt%d' % _xengnum].read()['data']['reg']
-            else:
+            elif vacc_cnt0 in regs.names:
                 return regs['vacc_cnt%d' % _xengnum].read()['data']['cnt']
+            elif vacc_status0 in regs.names:
+                return regs['vacc_status%d' % _xengnum].read()['data']['acc_cnt']
 
         return [read_reg(xnum) for xnum in xnums]
 
@@ -237,9 +239,13 @@ class FpgaXHost(FpgaHost):
             for xnum in xnums:
                 if regs['vaccerr%d' % xnum].read()['data']['reg'] > 0:
                     return False
-        else:
+        elif "vacc_cnt0" in regs.names():
             for xnum in xnums:
                 if regs['vacc_cnt%d' % xnum].read()['data']['err'] > 0:
+                    return False
+        else:
+            for xnum in xnums:
+                if regs['vacc_status%d' % xnum].read()['data']['err_cnt'] > 0:
                     return False
         return True
 
@@ -256,18 +262,26 @@ class FpgaXHost(FpgaHost):
                 xengdata = {
                     'errors': regs['vaccerr%d' % xnum].read()['data']['reg'],
                     'count': regs['vacccnt%d' % xnum].read()['data']['reg']}
-            else:
+            elif "vacc_cnt0" in regs.names():
                 temp = regs['vacc_cnt%d' % xnum].read()['data']
                 xengdata = {
                     'errors': temp['err'],
                     'count': temp['cnt']}
-            temp = regs['vacc_ld_status%i' % xnum].read()['data']
-            if 'reg' in temp.keys():
-                xengdata['armcount'] = temp['reg'] >> 16
-                xengdata['loadcount'] = temp['reg'] & 0xffff
-            else:
-                xengdata['armcount'] = temp['armcnt']
-                xengdata['loadcount'] = temp['ldcnt']
+            elif "vacc_status0" in regs.names():
+                temp = regs['vacc_status%d' % xnum].read()['data']
+                xengdata = {
+                    'errors': temp['err_cnt'],
+                    'count': temp['acc_cnt']}
+                xengdata['armcount'] = temp['arm_cnt']
+                xengdata['loadcount'] = temp['ld_cnt']
+            if 'vacc_ld_status0' in regs.names():
+                temp = regs['vacc_ld_status%i' % xnum].read()['data']
+                if 'reg' in temp.keys():
+                    xengdata['armcount'] = temp['reg'] >> 16
+                    xengdata['loadcount'] = temp['reg'] & 0xffff
+                elif 'armcnt' in temp.keys():
+                    xengdata['armcount'] = temp['armcnt']
+                    xengdata['loadcount'] = temp['ldcnt']
             stats.append(xengdata)
         return stats
 
@@ -277,8 +291,12 @@ class FpgaXHost(FpgaHost):
         :return: dictionary with error counters
         """
         errors = []
+        regs = self.registers
         for xnum in range(0, self.x_per_fpga):
-            temp = self.registers['vacc_errors%i' % xnum].read()['data']
+            if 'vaccerr0' in regs.names():
+                temp = self.registers['vacc_errors%i' % xnum].read()['data']
+            elif 'vacc_status0' in regs.names():
+                temp = self.registers['vacc_status%i' % xnum].read()['data']['err_cnt']
             errors.append(temp)
         return errors
 

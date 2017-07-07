@@ -75,6 +75,7 @@ def get_fpga_data(fpga):
 
 def print_snap_data(dd):
     packet_counter = 0
+    lasteof=-1
     data_len = len(dd[dd.keys()[0]])
     rv={'data':[],'eof':[],'src_ip':[]}
     print "IDX, PKT_IDX        64b MSB              64b                    64b                 64b LSB"
@@ -100,7 +101,9 @@ def print_snap_data(dd):
         if dd['valid'][ctr]>0: print "[valid: %d]"%dd['valid'][ctr],
         if dd['overrun'][ctr]: print "[RX OVERFLOW]",
         if dd['eof'][ctr] == 1: 
-            print 'EOF ',
+            print 'EOF, len:',
+            print ctr-lasteof
+            lasteof=ctr
             for wrd in range(3):
                 rv['eof'].append(False)
             rv['eof'].append(True)
