@@ -92,6 +92,8 @@ class FpgaXHost(FpgaHost):
         regs = self.registers
         # older versions had other register names
         old_regs_found = 'reorderr_timeout0' in regs.names()
+        roach2_regs_found = 'reorderr_timedisc0' in regs.names()
+        skarab_regs_found = 'reord_status0' in regs.names()
 
         def get_reg(reg):
             return reg.read()['data']['reg']
@@ -106,7 +108,7 @@ class FpgaXHost(FpgaHost):
                  } for ctr in range(0, self.x_per_fpga)
             ]
 
-        def get_gbe_data():
+        def get_gbe_data_r2():
             data = []
             for ctr in range(0, self.x_per_fpga):
                 tmp = regs['reorderr_timedisc%i' % ctr].read()['data']
@@ -123,7 +125,29 @@ class FpgaXHost(FpgaHost):
                 data.append(regdata)
             return data
 
-        return get_gbe_data_old() if old_regs_found else get_gbe_data()
+        def get_gbe_data_skarab():
+            data = []
+            for ctr in range(0, self.x_per_fpga):
+                tmp = regs['reord_status%i' % ctr].read()['data']
+                regdata = {
+                    'miss%i' % ctr: tmp['last_missed_ant'],
+                    'rcvcnt%i' % ctr: tmp['sync_cnt'],
+                    'ercv%i' % ctr: tmp['missed_err_cnt'],
+                    'etim%i' % ctr: tmp['timeout_err_cnt'],
+                    'edisc%i' % ctr: tmp['discard_err_cnt'],
+                }
+                data.append(regdata)
+            return data
+
+        if old_regs_found:
+            return get_gbe_data_old()
+        elif roach2_regs_found:
+            return get_gbe_data_r2()
+        elif skarab_regs_found:
+            return get_gbe_data_skarab()
+        else:
+            raise RuntimeError("Unable to find reord status registers.")
+
 
     def check_rx_reorder(self, sleeptime=1):
         """
@@ -189,9 +213,9 @@ class FpgaXHost(FpgaHost):
         def read_reg(_xengnum):
             if 'vacccnt0' in regs.names():
                 return regs['vacccnt%d' % _xengnum].read()['data']['reg']
-            elif vacc_cnt0 in regs.names:
+            elif 'vacc_cnt0' in regs.names():
                 return regs['vacc_cnt%d' % _xengnum].read()['data']['cnt']
-            elif vacc_status0 in regs.names:
+            elif 'vacc_status0' in regs.names():
                 return regs['vacc_status%d' % _xengnum].read()['data']['acc_cnt']
 
         return [read_reg(xnum) for xnum in xnums]
@@ -356,20 +380,6 @@ class FpgaXHost(FpgaHost):
         lsw = self.registers.vacc_time_lsw.read()['data']['lsw']
         return msw | lsw
 
-    def qdr_okay(self):
-        """
-        Checks if parity bits on x-eng are zero
-        :return: True/False
-        """
-        for xeng in range(0, self.x_per_fpga):
-            err = self.registers['vacc_errors%d' % xeng].read()['data']['parity']
-            if err == 0:
-                LOGGER.info('%s: xeng %d okay.' % (self.host, xeng))
-            else:
-                LOGGER.error('%s: xeng %d has parity errors.' % (self.host, xeng))
-                return False
-        LOGGER.info('%s: QDR okay.' % self.host)
-        return True
 
     # def set_accumulation_length(self, accumulation_length, issue_meta=True):
     #     """ Set the accumulation time for the vector accumulator

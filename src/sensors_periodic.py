@@ -177,92 +177,6 @@ def _sensor_cb_xlru(sensor, x_host):
     IOLoop.current().call_later(10, _sensor_cb_xlru, sensor, x_host)
 
 
-@tornado.gen.coroutine
-def _sensor_feng_phy(sensor, f_host):
-    """
-    F-engine PHY counters
-    :param sensor:
-    :return:
-    """
-    executor = sensor.executor
-    try:
-        result = yield executor.submit(f_host.check_phy_counter)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR, result)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    except Exception as e:
-        LOGGER.error('Error updating feng_phy sensor for {} - '
-                     '{}'.format(f_host, e.message))
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_sensor_feng_phy ran on {}'.format(f_host))
-    IOLoop.current().call_later(10, _sensor_feng_phy, sensor, f_host)
-
-
-@tornado.gen.coroutine
-def _sensor_xeng_phy(sensor, x_host):
-    """
-    x-engine PHY counters
-    :param sensor:
-    :return:
-    """
-    executor = sensor.executor
-    try:
-        result = yield executor.submit(x_host.check_phy_counter)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR, result)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    except Exception as e:
-        LOGGER.error('Error updating xeng_phy sensor for {} - '
-                     '{}'.format(x_host, e.message))
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_sensor_xeng_phy ran on {}'.format(x_host))
-    IOLoop.current().call_later(10, _sensor_xeng_phy, sensor, x_host)
-
-
-@tornado.gen.coroutine
-def _xeng_qdr_okay(sensor, x_host):
-    """
-    x-engine QDR check
-    :param sensor:
-    :return:
-    """
-    executor = sensor.executor
-    try:
-        result = yield executor.submit(x_host.qdr_okay)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR, result)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    except Exception as e:
-        LOGGER.error('Error updating xeng qdr sensor for {} - '
-                     '{}'.format(x_host, e.message))
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_xeng_qdr_okay ran on {}'.format(x_host))
-    IOLoop.current().call_later(10, _xeng_qdr_okay, sensor, x_host)
-
-
-@tornado.gen.coroutine
-def _feng_qdr_okay(sensor, f_host):
-    """
-    F-engine QDR check
-    :param sensor:
-    :return:
-    """
-    executor = sensor.executor
-    try:
-        result = yield executor.submit(f_host.check_qdr_devices)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR, result)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    except Exception as e:
-        LOGGER.error('Error updating feng qdr sensor for {} - '
-                     '{}'.format(f_host, e.message))
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_feng_qdr_okay ran on {}'.format(f_host))
-    IOLoop.current().call_later(10, _feng_qdr_okay, sensor, f_host)
 
 
 @tornado.gen.coroutine
@@ -702,36 +616,11 @@ def _setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop):
             'X-engine %s LRU okay' % _x.host, Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_sensor_cb_xlru, sensor, _x)
 
-        # QDR errors
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-qdr-ok'.format(xhost),
-            'X-engine QDR okay', Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_xeng_qdr_okay, sensor, _x)
-
-        # PHY counters
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-phy-ok'.format(xhost),
-            'X-engine PHY okay', Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_sensor_xeng_phy, sensor, _x)
-
         # Raw RX - gbe counters must increment
         sensor = sens_man.do_sensor(
             Corr2Sensor.boolean, '{}-network-rx-ok'.format(xhost),
             'X-engine network RX okay', Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_xhost_check_network_rx, sensor, _x)
-
-        # Raw TX - gbe counters must increment, report the counters also
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-network-tx-ok'.format(xhost),
-            'X-engine network TX okay', Corr2Sensor.UNKNOWN, '', None)
-        for gbe in _x.gbes:
-            sensor = sens_man.do_sensor(
-                Corr2Sensor.integer,
-                '{xhost}-network-{gbe}-tx-ctr'.format(
-                    xhost=xhost, gbe=gbe.name),
-                'X-engine network TX counter', Corr2Sensor.UNKNOWN,
-                '', executor)
-        ioloop.add_callback(_xhost_report_network_tx, sens_man, _x)
 
         # Rx reorder counters
         sensor = sens_man.do_sensor(
@@ -781,6 +670,19 @@ def _setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop):
             Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_sensor_xeng_vacc_sync_time, sensor, _x)
 
+        # Raw TX - gbe counters must increment, report the counters also
+        sensor = sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}-network-tx-ok'.format(xhost),
+            'X-engine network TX okay', Corr2Sensor.UNKNOWN, '', None)
+        for gbe in _x.gbes:
+            sensor = sens_man.do_sensor(
+                Corr2Sensor.integer,
+                '{xhost}-network-{gbe}-tx-ctr'.format(
+                    xhost=xhost, gbe=gbe.name),
+                'X-engine network TX counter', Corr2Sensor.UNKNOWN,
+                '', executor)
+        ioloop.add_callback(_xhost_report_network_tx, sens_man, _x)
+
 
 def _setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop):
     """
@@ -817,41 +719,13 @@ def _setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop):
         executor = host_executors[_f.host]
         fhost = host_lookup[_f.host]
 
-        # LRU okay
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-lru-ok'.format(fhost),
-            'F-engine %s LRU okay' % _f.host, Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_sensor_cb_flru, sensor, _f)
-
-        # QDR errors
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-qdr-ok'.format(fhost),
-            'F-engine QDR okay', Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_feng_qdr_okay, sensor, _f)
-
-        # PHY counters
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-phy-ok'.format(fhost),
-            'F-engine PHY okay', Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_sensor_feng_phy, sensor, _f)
-
-        # PFB counters
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-pfb-ok'.format(fhost),
-            'F-engine PFB okay', Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_feng_pfb_okay, sensor, _f)
+        #TODO: add check for sync cnt. If SKARAB requires resync, must set delay to zero, resync and then continue delay operations.
 
         # Raw RX - gbe counters must increment
         sensor = sens_man.do_sensor(
             Corr2Sensor.boolean, '{}-network-rx-ok'.format(fhost),
             'F-engine network RX okay', Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_fhost_check_network_rx, sensor, _f)
-
-        # Raw TX - gbe counters must increment
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-network-tx-ok'.format(fhost),
-            'F-engine network TX okay', Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_fhost_check_network_tx, sensor, _f)
 
         # Rx reorder counters
         sensor = sens_man.do_sensor(
@@ -860,12 +734,34 @@ def _setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop):
             Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_sensor_feng_rx_reorder, sensor, _f)
 
+        # TODO: reenable this check. Go into warning if no updates received in period.
         # # Delay functionality
         # sensor = sens_man.do_sensor(
         #     Corr2Sensor.boolean, '{}-delays-ok'.format(fhost),
         #     'F-engine delay functionality okay',
         #     Corr2Sensor.UNKNOWN, '', executor)
         # ioloop.add_callback(_sensor_cb_fdelays, sensor, _f)
+
+        # PFB counters
+        sensor = sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}-pfb-ok'.format(fhost),
+            'F-engine PFB okay', Corr2Sensor.UNKNOWN, '', executor)
+        ioloop.add_callback(_feng_pfb_okay, sensor, _f)
+
+        #TODO: Add CT/HMC counters.
+
+        # Raw TX - gbe counters must increment
+        sensor = sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}-network-tx-ok'.format(fhost),
+            'F-engine network TX okay', Corr2Sensor.UNKNOWN, '', executor)
+        ioloop.add_callback(_fhost_check_network_tx, sensor, _f)
+
+        # Overall LRU okay
+        sensor = sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}-lru-ok'.format(fhost),
+            'F-engine %s LRU okay' % _f.host, Corr2Sensor.UNKNOWN, '', executor)
+        ioloop.add_callback(_sensor_cb_flru, sensor, _f)
+
 
 
 def setup_sensors(sensor_manager, enable_counters=False):
