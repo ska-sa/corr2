@@ -52,20 +52,20 @@ class FpgaBHost(FpgaXHost):
         LOGGER.info('%s:%i: Beam %i:%s index set - %i' % (
             self.host, self.index, beam.index, beam.name, beam.index))
 
-    def beam_num_partitions_set(self, beam):
-        """
-        :param beam: The Beam() on which to act
-        :return
-        """
-        beam_cfgreg = self.registers['bf%i_config' % beam.index]
-        # in newer versions this moved to a different register
-        if 'n_partitions' not in beam_cfgreg.field_names():
-            beam_cfgreg = self.registers['bf%i_num_parts' % beam.index]
-        numparts = len(beam.partitions_active)
-        beam_cfgreg.write(n_partitions=numparts)
-        LOGGER.debug('%s:%i: Beam %i:%s num_partitions set - %i' % (
-            self.host, self.index, beam.index, beam.name, numparts))
-
+#    def beam_num_partitions_set(self, beam):
+#        """
+#        :param beam: The Beam() on which to act
+#        :return
+#        """
+#        beam_cfgreg = self.registers['bf%i_config' % beam.index]
+#        # in newer versions this moved to a different register
+#        if 'n_partitions' not in beam_cfgreg.field_names():
+#            beam_cfgreg = self.registers['bf%i_num_parts' % beam.index]
+#        numparts = len(beam.partitions_active)
+#        beam_cfgreg.write(n_partitions=numparts)
+#        LOGGER.debug('%s:%i: Beam %i:%s num_partitions set - %i' % (
+#            self.host, self.index, beam.index, beam.name, numparts))
+#
     # def beam_partitions_set(self, beam):
     #     """
     #     :param beam: a Beam object
@@ -184,61 +184,61 @@ class FpgaBHost(FpgaXHost):
                     raise ValueError(errmsg)
             return drv[0]
 
-    def beam_partitions_read(self, beam):
-        """
-        Determine which partitions are currently active in the hardware.
-        :param beam: The Beam() on which to act
-        """
-        self.registers.bf_control.write(stream=beam.index)
-        vals = self.registers.bf_valout_filt.read()['data']
-        rv = [vals['filt%i' % beng_ctr] for beng_ctr in range(self.x_per_fpga)]
-        return rv
+#    def beam_partitions_read(self, beam):
+#        """
+#        Determine which partitions are currently active in the hardware.
+#        :param beam: The Beam() on which to act
+#        """
+#        self.registers.bf_control.write(stream=beam.index)
+#        vals = self.registers.bf_valout_filt.read()['data']
+#        rv = [vals['filt%i' % beng_ctr] for beng_ctr in range(self.x_per_fpga)]
+#        return rv
 
-    def beam_partitions_control(self, beam):
-        """
-        Enable the active partitions for a beam on this host.
-        :param beam: The Beam() on which to act
-        """
-        host_parts = beam.partitions_by_host[self.index]
-        actv_parts = beam.partitions_active
-        parts_to_set = set(host_parts).intersection(actv_parts)
-        parts_to_clr = set(host_parts).difference(parts_to_set)
-        if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
-            LOGGER.debug('%s:%i: Beam %i:%s beam_active(%s) host(%s) toset(%s) '
-                         'toclr(%s)' %
-                         (self.host, self.index, beam.index, beam.name,
-                          list(actv_parts), list(host_parts),
-                          list(parts_to_set), list(parts_to_clr),))
-        if (len(parts_to_set) > 4) or (len(parts_to_clr) > 4):
-            raise RuntimeError('Cannot set or clear more than 4 partitions'
-                               'per host?')
-        # set the total number of partitions
-        if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
-            self.beam_num_partitions_set(beam)
-        # clear first
-        if len(parts_to_clr) > 0:
-            self.registers.bf_value_in1.write(filt=0)
-            for part in parts_to_clr:
-                beng_for_part = host_parts.index(part)
-                self.registers.bf_control.write(stream=beam.index,
-                                                beng=beng_for_part)
-                self.registers.bf_value_ctrl.write(filt='pulse')
-        # enable next
-        if len(parts_to_set) > 0:
-            # set the offsets
-            part_offsets = {}
-            for part in parts_to_set:
-                beng_for_part = host_parts.index(part)
-                part_offset = actv_parts.index(part)
-                part_offsets['partition%i_offset' % beng_for_part] = part_offset
-            LOGGER.debug('%s:%i: Beam %i:%s %s' % (
-                self.host, self.index, beam.index, beam.name, part_offsets))
-            beam_poffset_reg = self.registers['bf%i_partitions' % beam.index]
-            beam_poffset_reg.write(**part_offsets)
-            # enable filter stages
-            self.registers.bf_value_in1.write(filt=1)
-            for part in parts_to_set:
-                beng_for_part = host_parts.index(part)
-                self.registers.bf_control.write(stream=beam.index,
-                                                beng=beng_for_part)
-                self.registers.bf_value_ctrl.write(filt='pulse')
+#    def beam_partitions_control(self, beam):
+#        """
+#        Enable the active partitions for a beam on this host.
+#        :param beam: The Beam() on which to act
+#        """
+#        host_parts = beam.partitions_by_host[self.index]
+#        actv_parts = beam.partitions_active
+#        parts_to_set = set(host_parts).intersection(actv_parts)
+#        parts_to_clr = set(host_parts).difference(parts_to_set)
+#        if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
+#            LOGGER.debug('%s:%i: Beam %i:%s beam_active(%s) host(%s) toset(%s) '
+#                         'toclr(%s)' %
+#                         (self.host, self.index, beam.index, beam.name,
+#                          list(actv_parts), list(host_parts),
+#                          list(parts_to_set), list(parts_to_clr),))
+#        if (len(parts_to_set) > 4) or (len(parts_to_clr) > 4):
+#            raise RuntimeError('Cannot set or clear more than 4 partitions'
+#                               'per host?')
+#        # set the total number of partitions
+#        if (len(parts_to_set) > 0) or (len(parts_to_clr) > 0):
+#            self.beam_num_partitions_set(beam)
+#        # clear first
+#        if len(parts_to_clr) > 0:
+#            self.registers.bf_value_in1.write(filt=0)
+#            for part in parts_to_clr:
+#                beng_for_part = host_parts.index(part)
+#                self.registers.bf_control.write(stream=beam.index,
+#                                                beng=beng_for_part)
+#                self.registers.bf_value_ctrl.write(filt='pulse')
+#        # enable next
+#        if len(parts_to_set) > 0:
+#            # set the offsets
+#            part_offsets = {}
+#            for part in parts_to_set:
+#                beng_for_part = host_parts.index(part)
+#                part_offset = actv_parts.index(part)
+#                part_offsets['partition%i_offset' % beng_for_part] = part_offset
+#            LOGGER.debug('%s:%i: Beam %i:%s %s' % (
+#                self.host, self.index, beam.index, beam.name, part_offsets))
+#            beam_poffset_reg = self.registers['bf%i_partitions' % beam.index]
+#            beam_poffset_reg.write(**part_offsets)
+#            # enable filter stages
+#            self.registers.bf_value_in1.write(filt=1)
+#            for part in parts_to_set:
+#                beng_for_part = host_parts.index(part)
+#                self.registers.bf_control.write(stream=beam.index,
+#                                                beng=beng_for_part)
+#                self.registers.bf_value_ctrl.write(filt='pulse')

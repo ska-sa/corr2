@@ -51,7 +51,7 @@ class BEngineOperations(object):
         for beam in self.beams.values():
             beam.initialise()
         # disable all beams
-        self.partitions_deactivate()
+        # self.partitions_deactivate()
         # done
         self.logger.info('Beamformer initialised.')
 
@@ -92,11 +92,11 @@ class BEngineOperations(object):
 
     def tx_enable(self, beams=None):
         """
-        Start transmission of active partitions on beams
+        Start transmission on beams
         :param beams - list of beam names
         :return:
         """
-        raise DeprecationWarning
+        #raise DeprecationWarning
         if not beams:
             beams = self.beams.keys()
         for beam_name in beams:
@@ -105,41 +105,41 @@ class BEngineOperations(object):
 
     def tx_disable(self, beams=None):
         """
-        Stop transmission of active partitions on beams
+        Stop transmission on beams
         :param beams - list of beam names
         :return:
         """
-        raise DeprecationWarning
+        #raise DeprecationWarning
         if not beams:
             beams = self.beams.keys()
         for beam_name in beams:
             beam = self.beams[beam_name]
             beam.tx_disable()
 
-    def partitions_current(self):
-        """
-        Get the currently active partitions for each beam, directly from
-        the host.
-        :return:
-        """
-        return {beam.name: beam.partitions_current()
-                for beam in self.beams.values()}
-
-    def partitions_activate(self, partitions_to_activate=None):
-        """
-        Activate partitions for all beams.
-        :param partitions_to_activate: a list of partitions to activate
-        """
-        for beam in self.beams.values():
-            beam.partitions_activate(partitions_to_activate)
-
-    def partitions_deactivate(self, partitions_to_deactivate=None):
-        """
-        Deactivate partitions for all beams
-        :param partitions_to_deactivate: a list of partitions to activate
-        """
-        for beam in self.beams.values():
-            beam.partitions_deactivate(partitions_to_deactivate)
+#    def partitions_current(self):
+#        """
+#        Get the currently active partitions for each beam, directly from
+#        the host.
+#        :return:
+#        """
+#        return {beam.name: beam.partitions_current()
+#                for beam in self.beams.values()}
+#
+#    def partitions_activate(self, partitions_to_activate=None):
+#        """
+#        Activate partitions for all beams.
+#        :param partitions_to_activate: a list of partitions to activate
+#        """
+#        for beam in self.beams.values():
+#            beam.partitions_activate(partitions_to_activate)
+#
+#    def partitions_deactivate(self, partitions_to_deactivate=None):
+#        """
+#        Deactivate partitions for all beams
+#        :param partitions_to_deactivate: a list of partitions to activate
+#        """
+#        for beam in self.beams.values():
+#            beam.partitions_deactivate(partitions_to_deactivate)
 
     def get_beam_by_name(self, beam_name):
         """
@@ -152,32 +152,32 @@ class BEngineOperations(object):
                 beam_name, self.beams))
         return self.beams[beam_name]
 
-    def set_beam_bandwidth(self, beam_name, bandwidth, centerfreq):
-        """
-        Set the partitions for a given beam based on a provided bandwidth
-        and center frequency.
-        :param beam_name: the name of the beam to set
-        :param bandwidth: the bandwidth, in hz
-        :param centerfreq: the center freq of this band, in hz
-        :return: tuple, the set (bw, cf) for that beam
-        """
-        beam = self.get_beam_by_name(beam_name)
-        rv = beam.set_beam_bandwidth(bandwidth, centerfreq)
-        if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_beng_passband()
-        return rv
-
-    def get_beam_bandwidth(self, beam_name=None):
-        """
-        Get the partitions for a given beam i.t.o. bandwidth
-        and center frequency.
-        :param beam_name: the name of the beam to set
-        :return: (beam bandwidth, beam_cf)
-        """
-        if beam_name is None:
-            return {bm: self.get_beam_bandwidth(bm) for bm in self.beams}
-        beam = self.get_beam_by_name(beam_name)
-        return beam.get_beam_bandwidth()
+#    def set_beam_bandwidth(self, beam_name, bandwidth, centerfreq):
+#        """
+#        Set the partitions for a given beam based on a provided bandwidth
+#        and center frequency.
+#        :param beam_name: the name of the beam to set
+#        :param bandwidth: the bandwidth, in hz
+#        :param centerfreq: the center freq of this band, in hz
+#        :return: tuple, the set (bw, cf) for that beam
+#        """
+#        beam = self.get_beam_by_name(beam_name)
+#        rv = beam.set_beam_bandwidth(bandwidth, centerfreq)
+#        if self.corr.sensor_manager:
+#            self.corr.sensor_manager.sensors_beng_passband()
+#        return rv
+#
+#    def get_beam_bandwidth(self, beam_name=None):
+#        """
+#        Get the partitions for a given beam i.t.o. bandwidth
+#        and center frequency.
+#        :param beam_name: the name of the beam to set
+#        :return: (beam bandwidth, beam_cf)
+#        """
+#        if beam_name is None:
+#            return {bm: self.get_beam_bandwidth(bm) for bm in self.beams}
+#        beam = self.get_beam_by_name(beam_name)
+#        return beam.get_beam_bandwidth()
 
     def set_beam_weights(self, new_weight, beam_name=None, input_name=None):
         """
