@@ -89,6 +89,7 @@ class FxCorrelator(Instrument):
             if self.synchronisation_epoch == -1:
                 raise RuntimeError('System synch epoch has not been set prior'
                                    ' to initialisation!')
+        
 
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self)
@@ -225,6 +226,9 @@ class FxCorrelator(Instrument):
         # reset all counters on fhosts and xhosts
         self.fops.clear_status_all()
         self.xops.clear_status_all()
+
+        if self.synchronisation_epoch == -1:
+            self.est_synch_epoch()
 
 #   Checks not needed anymore; handled by sensor servlet now.
 #        # check to see if the f engines are receiving all their data

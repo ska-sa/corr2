@@ -15,7 +15,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 use_xeng_sim = False
 
-MAX_VACC_SYNCH_ATTEMPTS = 5
+MAX_VACC_SYNCH_ATTEMPTS = 1
 
 
 class XengineStream(data_stream.SPEADStream):
@@ -514,6 +514,14 @@ class XEngineOperations(object):
         return THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                   target_function='vacc_get_status')
 
+    def vacc_reset_all(self):
+        """
+        Reset all Xengine VACCs
+        """
+        self.logger.info('Resetting all VACCs.')
+        THREADED_FPGA_FUNC(self.hosts, timeout=10,
+                               target_function='vacc_reset')
+
     def _vacc_sync_check_reset(self):
         """
         Do the vaccs need resetting before a synch?
@@ -530,8 +538,7 @@ class XEngineOperations(object):
                 reset_required = True
 
         if reset_required:
-            THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                               target_function='vacc_reset')
+            self.vacc_reset_all()
             vaccstat = THREADED_FPGA_FUNC(
                 self.hosts, timeout=10,
                 target_function='vacc_check_reset_status')
@@ -542,18 +549,24 @@ class XEngineOperations(object):
                     self.logger.error(errmsg)
                     raise RuntimeError(errmsg)
 
-    def _vacc_sync_create_loadtime(self, min_loadtime):
+    def _vacc_sync_create_loadtime(self, load_time=None):
         """
-        Calculate the load time for the vacc synch based on a
-        given minimum load time
+        Returns a valid load time for the vacc synch.
+        Checks minimum load time.
+        Generates a suitable loadtime if none is provided.
         :param min_loadtime:
         :return: the vacc load time, in seconds since the UNIX epoch
         """
-        # how long should we wait for the vacc load
-        self.logger.info('Vacc sync time not specified. Syncing in '
-                         '%2.2f seconds\' time.' % (min_loadtime*2))
+        #TODO scale this based on accumulation length?
+        min_loadtime=2
         t_now = time.time()
-        vacc_load_time = t_now + (min_loadtime*2)
+        if load_time==None:
+            # how long should we wait for the vacc load
+            self.logger.info('\tVacc sync time not specified. Syncing in '
+                             '%2.2f seconds\' time.' % (min_loadtime*2))
+            vacc_load_time = t_now + (min_loadtime*2)
+        else:
+            vacc_load_time = load_time
 
         if vacc_load_time < (t_now + min_loadtime):
             raise RuntimeError(
@@ -565,6 +578,13 @@ class XEngineOperations(object):
                     (vacc_load_time-int(vacc_load_time))*100,
                     time.strftime('%H:%M:%S', time.gmtime(t_now)),
                     (t_now-int(t_now))*100))
+        elif vacc_load_time > (t_now + 10):
+            self.logger.warn('\tRequested loadtime is more than 10 seconds away.'
+                'You asked for %s.%i, and it is now %s.%i.' % (
+                    time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
+                    (vacc_load_time-int(vacc_load_time))*100,
+                    time.strftime('%H:%M:%S', time.gmtime(t_now)),
+                    (t_now-int(t_now))*100))
 
         self.logger.info('\txeng vaccs will sync at %s (in %2.2fs)'
                          % (time.ctime(t_now), vacc_load_time-t_now))
@@ -572,7 +592,9 @@ class XEngineOperations(object):
 
     def _vacc_sync_calc_load_mcount(self, vacc_loadtime):
         """
-        Calculate the loadtime in clock ticks
+        Calculate the loadtime in clock ticks,
+         from a vacc_loadtime in seconds since the unix epoch. 
+        Accounts for quantisation due to Feng PFB.
         :param vacc_loadtime:
         :return:
         """
@@ -639,8 +661,7 @@ class XEngineOperations(object):
                     reset_required=True
                     #raise RuntimeError(errmsg)
         if reset_required:
-            THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                               target_function='vacc_reset')
+            self.vacc_reset_all()
             vaccstat = THREADED_FPGA_FUNC(
                 self.hosts, timeout=10,
                 target_function='vacc_check_reset_status')
@@ -840,7 +861,7 @@ class XEngineOperations(object):
             return True
         return False
 
-    def vacc_sync(self):
+    def vacc_sync(self,sync_time=None):
         """
         Sync the vector accumulators on all the x-engines.
         Assumes that the x-engines are all receiving data.
@@ -851,7 +872,6 @@ class XEngineOperations(object):
             self.logger.error('vacc_sync called when it was already running?')
             return
         self.vacc_synch_running.set()
-        min_load_time = 2
 
         attempts = 0
         try:
@@ -862,16 +882,24 @@ class XEngineOperations(object):
                     raise VaccSynchAttemptsMaxedOut(
                         'Reached maximum vacc synch attempts, aborting')
 
-                # check if the vaccs need resetting
-                self._vacc_sync_check_reset()
+#                # check if the vaccs need resetting
+#                self._vacc_sync_check_reset()
 
-                # estimate the sync time, if needed
-                self._vacc_sync_calc_load_mcount(time.time())
+                # reset all the vaccs
+                self.vacc_reset_all()
+
+                #debugging:
+#                feng_mcnt=self.corr.fhosts[0].get_local_time()
+#                feng_time=self.corr.time_from_mcnt(feng_mcnt)
+#                self.logger.info('Current Feng0 mcnt: %i (%i; %s)'%
+#                    (feng_mcnt,feng_time,time.ctime(feng_time)))
+#                self._vacc_sync_calc_load_mcount(time.time())
 
                 # work out the load time
-                vacc_load_time = self._vacc_sync_create_loadtime(min_load_time)
+                vacc_load_time = self._vacc_sync_create_loadtime(load_time=sync_time)
 
                 # set the vacc load time on the xengines
+                # should automatically estimate sync time, if needed.
                 load_mcount = self._vacc_sync_calc_load_mcount(vacc_load_time)
 
                 # set the load mcount on the x-engines
@@ -879,6 +907,7 @@ class XEngineOperations(object):
                 THREADED_FPGA_FUNC(
                     self.hosts, timeout=10,
                     target_function=('vacc_set_loadtime', (load_mcount,),))
+
 
                 # check the current counts
                 (arm_count0,
@@ -896,11 +925,16 @@ class XEngineOperations(object):
                 if not self._vacc_sync_check_loadtimes():
                     continue
 
-                # wait for the vaccs to arm
+                # wait for the vaccs to trigger
                 self._vacc_sync_wait_for_arm(load_mcount)
 
                 # check the status to see that the load count increased
                 if not self._vacc_sync_check_load_count(load_count0):
+                    feng_mcnt=self.corr.fhosts[0].get_local_time()
+                    feng_time=self.corr.time_from_mcnt(feng_mcnt)
+                    self.logger.info('Current Feng0 mcnt: %i (%i; %s)'%
+                        (feng_mcnt,feng_time,time.ctime(feng_time)))
+ 
                     continue
 
                 # allow vacc to flush and correctly populate parity bits:
