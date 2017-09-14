@@ -230,7 +230,9 @@ class FxCorrelator(Instrument):
 
         # check that the F-engines are transmitting data correctly
         if not self.fops.check_tx():
-            raise RuntimeError('The F-engines TX have a problem.')
+            LOGGER.info('The F-engines TX have a problem, retrying.')
+            if not self.fops.resync_and_check():
+                raise RuntimeError('The F-engines TX have a problem.')
 
         # check that the X-engines are receiving data
         if not self.xops.check_rx():

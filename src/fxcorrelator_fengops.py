@@ -469,6 +469,25 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return all_okay
 
+    def resync_and_check(self):
+        """
+        Resynchronise all the f-engines and then check if they still have RX
+        or TX errors.
+        :return:
+        """
+        attempts = 5
+        self.logger.info('Attempting to resync the f-engines:')
+        while attempts > 0:
+            logstr = '\tattempt 1: '
+            self.sys_reset()
+            if self.check_rx():
+                if self.check_tx():
+                    self.logger.info(logstr + 'succeeded')
+                    return True
+            self.logger.info(logstr + 'failed')
+            attempts -= 1
+        return False
+
     def tx_enable(self):
         """
         Enable TX on all tengbe cores on all F hosts
