@@ -5,7 +5,7 @@ import tornado.gen
 from tornado.ioloop import IOLoop
 from concurrent import futures
 
-from casperfpga.katcp_fpga import KatcpRequestError, KatcpRequestFail, \
+from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
 
 from sensors import Corr2Sensor
