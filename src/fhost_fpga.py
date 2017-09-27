@@ -1054,7 +1054,10 @@ class FpgaFHost(DigitiserStreamReceiver):
         Read the reorder block counters
         :return:
         """
-        return self.registers.reorder_ctrs.read()['data']
+        if 'reorder_ctrs' in self.registers.names():
+            return self.registers.reorder_ctrs.read()['data']
+        else:
+            return self.registers.reorder_status.read()['data']
 
     def _skarab_subscribe_to_multicast(self):
         first_ip = self.fengines[0].input.destination.ip_address

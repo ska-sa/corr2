@@ -148,7 +148,6 @@ class FpgaXHost(FpgaHost):
         else:
             raise RuntimeError("Unable to find reord status registers.")
 
-
     def check_rx_reorder(self, sleeptime=1):
         """
         Is this X host reordering received data correctly?

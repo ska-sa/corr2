@@ -50,7 +50,7 @@ class Corr2Sensor(Sensor):
         if '_' in name:
             LOGGER.warning('Sensor names cannot have underscores in them, '
                            'so {name} becomes {name_conv}'.format(
-                name=name, name_conv=name.replace('_', '-')))
+                            name=name, name_conv=name.replace('_', '-')))
             name = name.replace('_', '-')
         self.manager = manager
         self.executor = executor
@@ -676,7 +676,7 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in selected beam passband.',
                 Sensor.UNKNOWN)
-            sensor.set_value(beam.active_channels())
+            sensor.set_value(self.instrument.n_chans)
 
     def sensors_beng_streams(self):
         """

@@ -1,6 +1,8 @@
 import logging
 import time
 
+import casperfpga
+
 from host_fpga import FpgaHost
 
 LOGGER = logging.getLogger(__name__)
@@ -11,7 +13,6 @@ class DigitiserStreamReceiver(FpgaHost):
     The RX section of a fengine and filter engine are the same - receive
     the digitiser data.
     """
-
     def __init__(self, host, katcp_port=7147, bitstream=None, connect=True):
         super(DigitiserStreamReceiver, self).__init__(
             host=host, katcp_port=katcp_port, bitstream=bitstream,
@@ -22,8 +23,9 @@ class DigitiserStreamReceiver(FpgaHost):
         Debugging the SKARAB RX reorder problems... 
         :return: 
         """
-        print('status_reo0: %s' % self.registers.status_reo0.read()['data'])
-        print('status_reo1: %s' % self.registers.status_reo1.read()['data'])
+        regs = self.registers
+        print('reorder_status: %s' % regs.reorder_status.read()['data'])
+        print('reorder_status1: %s' % regs.reorder_status1.read()['data'])
 
     def _check_rx_reorder_skarab(self):
         """
@@ -38,22 +40,22 @@ class DigitiserStreamReceiver(FpgaHost):
                                'one FortyGbe?' % self.host)
         test_data = []
         for _ctr in range(0, required_repetitions):
-            reorder_ctrs = self.registers.status_reo0.read()['data']
-            reorder_ctrs.update(self.registers.status_reo1.read()['data'])
+            reorder_ctrs = self.registers.reorder_status.read()['data']
+            reorder_ctrs['dv_per_sec'] = self.registers.reorder_status1.read()['data']
             test_data.append(reorder_ctrs)
             time.sleep(sleeptime)
         getting_data = False
         for ctr in range(1, required_repetitions):
-            if test_data[ctr]['pkt_cnt'] != test_data[0]['pkt_cnt']:
+            if test_data[ctr]['dv_cnt'] != test_data[0]['dv_cnt']:
                 getting_data = True
         if not getting_data:
-            LOGGER.error('FHost %s: pkt_cnt is NOT changing: %i' % (
-                self.host, test_data[0]['pkt_cnt']))
+            LOGGER.error('FHost %s: dv_cnt is NOT changing: %i' % (
+                self.host, test_data[0]['dv_cnt']))
             return False
         got_errors = False
         for ctr in range(1, required_repetitions):
-            for key in ['err_disc', 'err_relock', 'err_pkttime',
-                        'err_timestep', 'err_recv', 'err_of']:
+            for key in ['discard_cnt', 'overflow_err_cnt', 'receive_err_cnt',
+                        'relock_err_cnt', 'timestep_err_cnt']:
                 v0 = test_data[0][key]
                 v1 = test_data[ctr][key]
                 if v1 != v0:
@@ -92,8 +94,10 @@ class DigitiserStreamReceiver(FpgaHost):
         Is this F host reordering received data correctly?
         :return:
         """
-        if 'status_reo0' in self.registers.names():
+        if isinstance(self.transport, casperfpga.SkarabTransport):
             return self._check_rx_reorder_skarab()
+        raise DeprecationWarning('Have to properly accomodate both SKARABs'
+                                 'and ROACHs in the future.')
         required_repetitions = 5
         sleeptime = 0.2
         num_gbes = len(self.gbes)
@@ -175,6 +179,8 @@ class DigitiserStreamReceiver(FpgaHost):
         Clear the status registers and counters on this host
         :return:
         """
-        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
-                                     cnt_rst='pulse')
+        # TODO - redo cnt_rst pulse
+        # self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
+        #                              cnt_rst='pulse')
+        self.registers.control.write(gbe_cnt_rst='pulse')
         LOGGER.debug('{}: status cleared.'.format(self.host))

@@ -1,22 +1,24 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-
-"""
- Capture utility for a relatively generic packetised correlator data output stream.
-
- The script performs two primary roles:
-
- Storage of stream data on disk in hdf5 format. This includes placing meta data into the file as attributes.
-
- Regeneration of a SPEAD stream suitable for us in the online signal displays. At the moment this is basically
- just an aggregate of the incoming streams from the multiple x engines scaled with n_accumulations (if set)
-
-Author: Simon Ratcliffe
-Revs:
-2010-11-26  JRM Added command-line option for autoscaling.
-"""
-
+# #!/usr/bin/python
+# # -*- coding: utf-8 -*-
+#
+# """
+#  Capture utility for a relatively generic packetised correlator data output stream.
+#
+#  The script performs two primary roles:
+#
+#  Storage of stream data on disk in hdf5 format. This includes placing meta data into the file as attributes.
+#
+#  Regeneration of a SPEAD stream suitable for us in the online signal displays. At the moment this is basically
+#  just an aggregate of the incoming streams from the multiple x engines scaled with n_accumulations (if set)
+#
+# Author: Simon Ratcliffe
+# Revs:
+# 2010-11-26  JRM Added command-line option for autoscaling.
+# """
 from __future__ import print_function
+import matplotlib.pyplot as plt
+import numpy as np
+
 import spead2
 import spead2.recv as s2rx
 import numpy as np
@@ -32,6 +34,18 @@ import sys
 from casperfpga.network import IpAddress
 
 from corr2 import utils, data_stream
+
+
+# x = np.arange(0, 10, 0.2)
+# y = np.sin(x)
+# fig = plt.figure()
+# ax = fig.add_subplot(111)
+# ax.plot(x, y)
+# plt.show()
+#
+# time.sleep(3)
+#
+# raise RuntimeError
 
 
 class PrintConsumer(object):
@@ -60,8 +74,10 @@ class PrintConsumer(object):
                 bls = powerdata[blsctr][0]
                 pwr = powerdata[blsctr][1]
                 phs = phasedata[blsctr][1]
+                # logger.info('%i-%s:\n\tpwr: %s\n\tphs: %s' % (
+                #     bls, BASELINES[bls], pwr, phs))
                 logger.info('%i-%s:\n\tpwr: %s\n\tphs: %s' % (
-                    bls, BASELINES[bls], pwr, phs))
+                    bls, BASELINES[bls], pwr[0:100], phs[0:100]))
 
         self.need_data_flag.set()
 
@@ -274,6 +290,9 @@ def process_xeng_data(heap_data, ig, logger, baselines,
     if xeng_raw is None:
         return None
 
+    print('BASELINES:', baselines)
+    print('CHANNELS: ', channels)
+
     this_time = ig['timestamp'].value
     this_freq = ig['frequency'].value
 
@@ -296,14 +315,14 @@ def process_xeng_data(heap_data, ig, logger, baselines,
     else:
         heap_data[this_time] = {this_freq: xeng_raw}
 
-    # housekeeping - are the older heaps in the data?
+    # housekeeping - are there older heaps in the data?
     if len(heap_data) > 5:
         logger.info('Culling stale timestamps:')
         heaptimes = heap_data.keys()
         heaptimes.sort()
         for ctr in range(0, len(heaptimes)-5):
             heap_data.pop(heaptimes[ctr])
-            logger.info('\ttime heaptimes[ctr] culled')
+            logger.info('\ttime %i culled' % heaptimes[ctr])
 
     def process_heaptime(htime, hdata):
         """
@@ -314,6 +333,8 @@ def process_xeng_data(heap_data, ig, logger, baselines,
         """
         freqs = hdata.keys()
         freqs.sort()
+        print(freqs)
+        print(range(0, n_chans, n_chans / NUM_XENG))
         if freqs != range(0, n_chans, n_chans / NUM_XENG):
             logger.error('Did not get all frequencies from the x-engines for '
                          'time %i: %s' % (htime, str(freqs)))
@@ -370,11 +391,34 @@ def process_xeng_data(heap_data, ig, logger, baselines,
     rvs = {}
     heaptimes = heap_data.keys()
     for heaptime in heaptimes:
+        print(str(heaptime),
+              len(heap_data[heaptime]))
+        ctr = 0
+        need = range(0, 4096, 256)
+        for key in heap_data[heaptime].keys():
+            print('\t%2i:' % ctr, '%4i' % key, len(heap_data[heaptime][key]))
+            need.pop(need.index(key))
+            ctr += 1
+        print('missing:', need)
+
+        if 10 < len(heap_data[heaptime]) < NUM_XENG:
+            for miss in need:
+                heap_data[heaptime][miss] = heap_data[heaptime][0]
+                for freqctr in range(len(heap_data[heaptime][miss])):
+                    blslist = heap_data[heaptime][miss][freqctr]
+                    for blsctr in range(len(blslist)):
+                        blslist[blsctr] = [0, 0]
+            # print(heap_data[heaptime])
+            # raise RuntimeError
+
         if len(heap_data[heaptime]) == NUM_XENG:
             rv = process_heaptime(
                 heaptime, heap_data[heaptime])
             if rv:
                 rvs[rv[0]] = (rv[1], rv[2])
+        else:
+            logging.error('Needed %i xengs for time %i, but only got %i.' % (
+                NUM_XENG, heaptime, len(heap_data[heaptime])))
     return rvs
 
 
@@ -385,7 +429,7 @@ class CorrReceiver(threading.Thread):
     def __init__(self, port, quit_event, track_list, h5_filename,
                  baselines, channels, acc_scale,
                  log_handler=None, log_level=logging.INFO,
-                 spead_log_level=logging.INFO):
+                 spead_log_level=logging.INFO,):
         """
 
         :param port: the port on which to receive data
@@ -411,11 +455,12 @@ class CorrReceiver(threading.Thread):
         self.logger.setLevel(log_level)
         self.logger = logging.getLogger(__name__)
         spead2._logger.setLevel(spead_log_level)
-        spead2._logger.setLevel(logging.FATAL)
+        # spead2._logger.setLevel(logging.FATAL)
 
         self._target = self.rx_cont
 
         self.port = port
+        # self.mcast_sock = mcast_sock
 
         self.track_list = track_list
         self.baselines = baselines
@@ -460,9 +505,14 @@ class CorrReceiver(threading.Thread):
         # make a SPEAD2 receiver stream
         strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
                            max_heaps=40, ring_heaps=40)
-        strm.add_udp_reader(port=self.port,
-                            max_size=9200,
-                            buffer_size=5120000)
+        for ctr in range(NUM_XENG):
+            strm.add_udp_reader(
+                multicast_group='239.2.2.%i' % (64 + ctr),
+                port=7148,
+                max_size=9200,
+                buffer_size=5120000,
+                interface_address='10.100.101.1'
+            )
 
         # were we given a H5 file to which to write?
         h5_file = None
@@ -485,11 +535,11 @@ class CorrReceiver(threading.Thread):
             logger.debug('PROCESSING HEAP idx(%i) cnt(%i) cnt_diff(%i) '
                          '@ %.4f' % (idx, heap.cnt, cnt_diff, time.time()))
             logger.debug('Contents dict is now %i long' % len(heap_contents))
-            if self.track_list:
-                do_track_items(ig, logger, track_list=self.track_list)
-            if h5_file:
-                do_h5_file(ig, logger, h5_file,
-                           self.h5_datasets, self.h5_dataset_indices)
+            # if self.track_list:
+            #     do_track_items(ig, logger, track_list=self.track_list)
+            # if h5_file:
+            #     do_h5_file(ig, logger, h5_file,
+            #                self.h5_datasets, self.h5_dataset_indices)
             if len(heap.get_items()) == 0:
                 logger.debug('Empty heap - was this descriptors?')
                 continue
@@ -627,89 +677,116 @@ if __name__ == '__main__':
     servlet_port = int(servlet_ip[1])
     servlet_ip = servlet_ip[0]
 
-    # before doing much of anything, need to get metadata from sensors
-    import katcp
-    client = katcp.BlockingClient(servlet_ip, servlet_port)
-    client.setDaemon(True)
-    client.start()
-    is_connected = client.wait_connected(10)
-    if not is_connected:
-        client.stop()
-        raise RuntimeError('Could not connect to corr2_servlet, timed out.')
-    reply, informs = client.blocking_request(
-        katcp.Message.request('sensor-value'), timeout=5)
-    client.stop()
-    if not reply.reply_ok():
-        raise RuntimeError('Could not read sensors from corr2_servlet, '
-                           'request failed.')
-    sensors_required = ['{}-n-chans'.format(product_name),
-                        'n-ants',
-                        '{}-n-accs'.format(product_name),
-                        '{}-destination'.format(product_name),
-                        '{}-n-bls'.format(product_name),
-                        '{}-bls-ordering'.format(product_name),
-                        '{}-n-accs'.format(product_name)]
-    sensors = {}
-    srch = re.compile('|'.join(sensors_required))
-    for inf in informs:
-        if srch.match(inf.arguments[2]):
-            sensors[inf.arguments[2]] = inf.arguments[4]
+    # # before doing much of anything, need to get metadata from sensors
+    # import katcp
+    # client = katcp.BlockingClient(servlet_ip, servlet_port)
+    # client.setDaemon(True)
+    # client.start()
+    # is_connected = client.wait_connected(10)
+    # if not is_connected:
+    #     client.stop()
+    #     raise RuntimeError('Could not connect to corr2_servlet, timed out.')
+    # reply, informs = client.blocking_request(
+    #     katcp.Message.request('sensor-value'), timeout=5)
+    # client.stop()
+    # if not reply.reply_ok():
+    #     raise RuntimeError('Could not read sensors from corr2_servlet, '
+    #                        'request failed.')
+    # sensors_required = ['{}-n-chans'.format(product_name),
+    #                     'n-ants',
+    #                     '{}-n-accs'.format(product_name),
+    #                     '{}-destination'.format(product_name),
+    #                     '{}-n-bls'.format(product_name),
+    #                     '{}-bls-ordering'.format(product_name),
+    #                     '{}-n-accs'.format(product_name)]
+    # sensors = {}
+    # srch = re.compile('|'.join(sensors_required))
+    # for inf in informs:
+    #     if srch.match(inf.arguments[2]):
+    #         sensors[inf.arguments[2]] = inf.arguments[4]
 
-    n_chans = int(sensors['{}-n-chans'.format(product_name)])
-    n_accs = int(sensors['{}-n-accs'.format(product_name)])
-    n_ants = int(sensors['n-ants'])
+    # TODO
+    # n_chans = int(sensors['{}-n-chans'.format(product_name)])
+    # n_accs = int(sensors['{}-n-accs'.format(product_name)])
+    # n_ants = int(sensors['n-ants'])
+    #
+    # output = {
+    #     'product': product_name,
+    #     'address': data_stream.StreamAddress.from_address_string(
+    #         sensors['{}-destination'.format(product_name)])
+    # }
+
+    n_chans = 4096 / 2
+    n_chans = 4096
+    n_accs = 816
+    n_ants = 8
+
     output = {
         'product': product_name,
         'address': data_stream.StreamAddress.from_address_string(
-            sensors['{}-destination'.format(product_name)])
+            '239.2.2.64:7148')
     }
 
-    if output['address'].ip_address.is_multicast():
-        import socket
-        import struct
-        print('Source is multicast: %s' % output['address'])
-
-        # look up multicast group address in name server
-        # and find out IP version
-        addrinfo = socket.getaddrinfo(
-            str(output['address'].ip_address), None)[0]
-        ip_version = addrinfo[0]
-
-        # create a socket
-        mcast_sock = socket.socket(ip_version, socket.SOCK_DGRAM)
-
-        # # Allow multiple copies of this program on one machine
-        # # (not strictly needed)
-        # mcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        #
-        # # bind it to the port
-        # mcast_sock.bind(('', data_port))
-        # print('Receiver bound to port %i.' % data_port
-
-        def join_group(address):
-            group_bin = socket.inet_pton(ip_version, address)
-            if ip_version == socket.AF_INET:  # IPv4
-                mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
-                mcast_sock.setsockopt(socket.IPPROTO_IP,
-                                      socket.IP_ADD_MEMBERSHIP, mreq)
-                print('Subscribing to %s.' % address)
-            else:
-                mreq = group_bin + struct.pack('@I', 0)
-                mcast_sock.setsockopt(socket.IPPROTO_IPV6,
-                                      socket.IPV6_JOIN_GROUP, mreq)
-
-        # join group
-        for addrctr in range(output['address'].ip_range):
-            addr = int(output['address'].ip_address) + addrctr
-            addr = IpAddress(addr)
-            join_group(str(addr))
-    else:
-        mcast_sock = None
-        print('Source is not multicast: %s' % output['src_ip'])
+    # if output['address'].ip_address.is_multicast():
+    #     import socket
+    #     import struct
+    #     print('Source is multicast: %s' % output['address'])
+    #
+    #     # look up multicast group address in name server
+    #     # and find out IP version
+    #     addrinfo = socket.getaddrinfo(
+    #         str(output['address'].ip_address), None)[0]
+    #     ip_version = addrinfo[0]
+    #
+    #     # create a socket
+    #     mcast_sock = socket.socket(ip_version, socket.SOCK_DGRAM)
+    #
+    #     # # Allow multiple copies of this program on one machine
+    #     # # (not strictly needed)
+    #     # mcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #
+    #     # # bind it to the port
+    #     # mcast_sock.bind(('', output['address'].port))
+    #     # print('Receiver bound to port %i.' % output['address'].port)
+    #
+    #     def join_group(address):
+    #         group_bin = socket.inet_pton(ip_version, address)
+    #         if ip_version == socket.AF_INET:  # IPv4
+    #             mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
+    #             mcast_sock.setsockopt(socket.IPPROTO_IP,
+    #                                   socket.IP_ADD_MEMBERSHIP, mreq)
+    #             print('Subscribing to %s.' % address)
+    #         else:
+    #             mreq = group_bin + struct.pack('@I', 0)
+    #             mcast_sock.setsockopt(socket.IPPROTO_IPV6,
+    #                                   socket.IPV6_JOIN_GROUP, mreq)
+    #
+    #     # join group
+    #     for addrctr in range(output['address'].ip_range):
+    #         addr = int(output['address'].ip_address) + addrctr
+    #         addr = IpAddress(addr)
+    #         join_group(str(addr))
+    #
+    #     # # Loop, printing any data we receive
+    #     # while True:
+    #     #     data, sender = mcast_sock.recvfrom(8192)
+    #     #     print(str(sender) + '  ' + repr(data[0:0x48]))
+    #     #
+    #     # mcast_sock.close()
+    #
+    # else:
+    #     mcast_sock = None
+    #     print('Source is not multicast: %s' % output['src_ip'])
 
     NUM_XENG = output['address'].ip_range
-    NUM_BASELINES = int(sensors['{}-n-bls'.format(product_name)])
-    BASELINES = list(sensors['{}-bls-ordering'.format(product_name)])
+    NUM_XENG = 16
+
+    # TODO
+    # NUM_BASELINES = int(sensors['{}-n-bls'.format(product_name)])
+    # BASELINES = list(sensors['{}-bls-ordering'.format(product_name)])
+    NUM_BASELINES = 40
+    BASELINES = ['BLS_%i' % ctr for ctr in range(NUM_BASELINES)]
+
     LEGEND = args.legend
 
     if args.items:
@@ -751,7 +828,7 @@ if __name__ == '__main__':
             if plot_endchan == -1:
                 plot_endchan = n_chans
             channels = (plot_startchan, plot_endchan)
-            print('Given channel range: %s' % channels)
+            print('Given channel range: %s' % str(channels))
         if (not baselines) or (not channels):
             print('Print or plot requested, but no baselines and/or '
                   'channels specified.')
@@ -762,8 +839,9 @@ if __name__ == '__main__':
     if args.plot:
         if not len(baselines):
             raise RuntimeError('plot requested, but no baselines specified.')
-        import matplotlib as mpl
-        mpl.use('TkAgg')
+        # import matplotlib as mpl
+        # # mpl.use('TkAgg')
+        # mpl.use('qt4agg')
         import matplotlib.pyplot as plt
         if args.ion:
             figure = plt.figure()
@@ -788,6 +866,7 @@ if __name__ == '__main__':
     # start the receiver thread
     print('Initialising SPEAD transports for data:')
     print('\tData reception on port %s' % data_port)
+
     corr_rx = CorrReceiver(
         port=data_port,
         log_level=eval('logging.%s' % log_level),
@@ -797,7 +876,8 @@ if __name__ == '__main__':
         baselines=baselines,
         channels=channels,
         acc_scale=args.scale,
-        quit_event=quit_event, )
+        quit_event=quit_event,)
+
     if printsumer:
         corr_rx.set_print_queue(printsumer.data_queue,
                                 printsumer.need_data_flag)

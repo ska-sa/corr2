@@ -68,8 +68,8 @@ class FengineStream(SPEADStream):
         Disable TX for this data stream
         :return:
         """
-        self.fops.logger.warn('{}: Stopping F-engine streams will break the correlator.'.format(
-            self.name))
+        self.fops.logger.warn('{}: Stopping F-engine streams will '
+                              'break the correlator.'.format(self.name))
 
     def _tx_disable(self):
         """
@@ -115,15 +115,16 @@ class FEngineOperations(object):
         devices in the instrument.
         :return:
         """
-        self.data_stream._tx_disable() #this shouldn't be necessary directly after programming; F-engines start-up disabled. However, is needed if re-initialising an already-running correlator.
+        # TODO this shouldn't be necessary directly after programming; F-engines start-up disabled. However, is needed if re-initialising an already-running correlator.
+        self.data_stream._tx_disable()
+        num_x_hosts = len(self.corr.xhosts)
+        x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
+        num_x = num_x_hosts * x_per_fpga
         if 'x_setup' in self.hosts[0].registers.names():
             self.logger.info('Found num_x independent F-engines')
             # set up the x-engine information in the F-engine hosts
-            num_x_hosts = len(self.corr.xhosts)
-            x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
-            num_x = num_x_hosts * x_per_fpga
             f_per_x = self.corr.n_chans / num_x
-            ip_per_x = 1.0 #TODO put this in config file
+            ip_per_x = 1.0  # TODO put this in config file
             THREADED_FPGA_OP(
                 self.hosts, timeout=10,
                 target_function=(
@@ -134,6 +135,18 @@ class FEngineOperations(object):
             time.sleep(1)
         else:
             self.logger.info('Found FIXED num_x F-engines')
+
+        # set up the corner turner
+        try:
+            for f in self.hosts:
+                # f.registers.ct_control0.write(tvg_en=True, tag_insert=False)
+                chans_per_x = (self.corr.n_chans / 8) / num_x
+                f.registers.ct_control1.write(chans_per_x=chans_per_x,
+                                              num_x=num_x,
+                                              num_x_recip=1.0 / num_x)
+        except AttributeError:
+            self.logger.warning('No CT registers found? Odd.')
+            pass
 
         # write the board IDs to the fhosts
         output_port = self.data_stream.destination.port
@@ -147,19 +160,18 @@ class FEngineOperations(object):
         self.data_stream.write_destination()
 
         # set up the fpga comms
-#ROACH2 may need this, but disabled for now, since SKARAB's 40G behaviour is unknown.
-#        THREADED_FPGA_OP(
-#            self.hosts, timeout=10,
-#            target_function=(
-#                lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
+        # TODO ROACH2 may need this, but disabled for now, since SKARAB's 40G behaviour is unknown.
+        # THREADED_FPGA_OP(
+        #     self.hosts, timeout=10,
+        #     target_function=(
+        #         lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
         # set eq and shift
         # TODO - replace this when it's working on SKARAB
         # self.eq_write_all()
         # /TODO
         self.set_fft_shift_all()
 
-        #self.clear_status_all()  #Why would this be needed here?
-
+        # self.clear_status_all()  # Why would this be needed here?
 
     def configure(self):
         """

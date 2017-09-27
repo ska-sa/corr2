@@ -18,8 +18,6 @@ class FpgaBHost(FpgaXHost):
         FpgaXHost.__init__(self, host, index, katcp_port=katcp_port,
                            bitstream=bitstream, connect=connect, config=config)
         self.beng_per_host = int(self.config['x_per_fpga'])
-        LOGGER.info('FpgaBHost %i:%s created' % (
-            self.index, self.host))
 
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port, config_source):

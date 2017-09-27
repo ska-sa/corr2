@@ -795,7 +795,6 @@ class Corr2Server(katcp.DeviceServer):
         sys.stderr.write('This should go to standard error. %s\n' % ts)
         return 'ok',
 
-
     @request(Int())
     @return_reply()
     def request_debug_periodic_metadata(self, sock, new_cadence):
@@ -925,6 +924,8 @@ if __name__ == '__main__':
     # set up the logger
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
+    while len(root_logger.handlers) > 0:
+        root_logger.removeHandler(root_logger.handlers[0])
     if args.lfm or (not sys.stdout.isatty()):
         console_handler = KatcpStreamHandler(stream=sys.stdout)
         console_handler.setLevel(log_level)
@@ -932,9 +933,9 @@ if __name__ == '__main__':
     else:
         console_handler = logging.StreamHandler(stream=sys.stdout)
         console_handler.setLevel(log_level)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - '
-                                      '%(filename)s:%(lineno)s - '
-                                      '%(levelname)s - %(message)s')
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(filename)s:%(lineno)s - '
+            '%(levelname)s - %(message)s')
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
 
