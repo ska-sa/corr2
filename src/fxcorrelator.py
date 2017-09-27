@@ -89,6 +89,7 @@ class FxCorrelator(Instrument):
             if self.synchronisation_epoch == -1:
                 raise RuntimeError('System synch epoch has not been set prior'
                                    ' to initialisation!')
+        
 
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self)
@@ -226,32 +227,35 @@ class FxCorrelator(Instrument):
         self.fops.clear_status_all()
         self.xops.clear_status_all()
 
-        # # Checks not needed anymore; handled by sensor servlet now.
-        # # check to see if the f engines are receiving all their data
-        # if not self.fops.check_rx():
-        #     raise RuntimeError('The F-engines RX have a problem.')
+        if self.synchronisation_epoch == -1:
+            self.est_synch_epoch()
 
-        # check that the timestamps received on the F-engines make sense
-        result, times, times_unix = self.fops.check_rx_timestamps()
-        if not result:
-            raise RuntimeError('The timestamps received by the F-engines '
-                               'are not okay. Check the logs')
-
+#   	 # Checks not needed anymore; handled by sensor servlet now.
+#        # check to see if the f engines are receiving all their data
+#        if not self.fops.check_rx():
+#            raise RuntimeError('The F-engines RX have a problem.')
+#
+#        # check that the timestamps received on the F-engines make sense
+#        result, times, times_unix = self.fops.check_rx_timestamps()
+#        if not result:
+#            raise RuntimeError('The timestamps received by the F-engines '
+#                               'are not okay. Check the logs')
+#
 # TODO: add generic memory check to corr2. Should do HMC test instead of QDR on SKARAB.
 #        # check the F-engine QDR uses for parity errors
 #        if not self.fops.check_qdr_devices():
 #            raise RuntimeError('The F-engine QDRs are reporting errors.')
-
-        # # check that the F-engines are transmitting data correctly
-        # if not self.fops.check_tx():
-        #     LOGGER.info('The F-engines TX have a problem, retrying.')
-        #     if not self.fops.resync_and_check():
-        #         raise RuntimeError('The F-engines TX have a problem.')
-        #
-        # # check that the X-engines are receiving data
-        # if not self.xops.check_rx():
-        #     raise RuntimeError('The x-engines RX have a problem.')
-
+#
+#        # check that the F-engines are transmitting data correctly
+#        if not self.fops.check_tx():
+#            LOGGER.info('The F-engines TX have a problem, retrying.')
+#            if not self.fops.resync_and_check():
+#                raise RuntimeError('The F-engines TX have a problem.')
+#
+#        # check that the X-engines are receiving data
+#        if not self.xops.check_rx():
+#            raise RuntimeError('The x-engines RX have a problem.')
+#
         # arm the vaccs on the x-engines
         self.xops.vacc_sync()
 

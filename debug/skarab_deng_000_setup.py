@@ -25,10 +25,10 @@ f = skarab_fpga.SkarabFpga(os.environ['SKARAB_DSIM'])
 if program_skarab:
     res = f.upload_to_ram_and_program(os.environ['SKARAB_DSIM_FPG'], attempts=5)
     if not res:
-        print('Could not program SKARAB.'
+        print('Could not program SKARAB.')
         import sys
         sys.exit(0)
-    print('Done programming SKARAB.'
+    print('Done programming SKARAB.')
 else:
     f.get_system_information(os.environ['SKARAB_DSIM_FPG'])
 
@@ -49,7 +49,7 @@ if setup_skarab:
         f.registers['gbe_iptx%i' % ctr].write(reg=ip.ip_int)
     f.registers.control.write(gbe_rst='pulse')
     f.registers.gbecontrol.write_int(15)
-    print('Done setting up SKARAB.'
+    print('Done setting up SKARAB.')
 
 f.registers.speadsnap_control.write_int(0)
 f.snapshots.spead_snap0_ss.arm()
@@ -65,11 +65,12 @@ d0.update(d1)
 
 last_eof = -1
 for ctr in range(len(d0['d64'])):
-    print('%4i' % ctr, d0['we'][ctr], d0['eof'][ctr], d0['d64'][ctr],
+    prtstr = '%4i %i %i %i' % (
+        ctr, d0['we'][ctr], d0['eof'][ctr], d0['d64'][ctr])
     if d0['eof'][ctr]:
-        print('EOF(%i)' % (ctr - last_eof),
+        prtstr += 'EOF(%i)' % (ctr - last_eof)
         last_eof = ctr
-    print(''
+    print(prtstr)
 
 
 import IPython

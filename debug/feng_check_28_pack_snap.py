@@ -12,24 +12,29 @@ Created on Fri Jan  3 10:40:53 2014
 import argparse
 
 
-parser = argparse.ArgumentParser(description='Read a post-pack snapshot from an fengine.',
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--hosts', dest='hosts', type=str, action='store', default='',
-                    help='the host from which to read')
-parser.add_argument('--wesel', dest='wesel', action='store', type=int, default=0,
-                    help='write-enable select: 0 for window start, 1 for data_valid to SPEAD')
-parser.add_argument('--offset', dest='offset', action='store', type=int, default=-1,
-                    help='apply a read offset to the snapshot')
-parser.add_argument('--timestep', dest='timestep', action='store_true', default=False,
-                    help='search for a time boundary crossing')
-parser.add_argument('--comms', dest='comms', action='store', default='katcp', type=str,
-                    help='katcp (default) or dcp?')
-parser.add_argument('--loglevel', dest='log_level', action='store', default='',
-                    help='log level to use, default None, options INFO, DEBUG, ERROR')
+parser = argparse.ArgumentParser(
+    description='Read a post-pack snapshot from an fengine.',
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    '--hosts', dest='hosts', type=str, action='store', default='',
+    help='the host from which to read')
+parser.add_argument(
+    '--wesel', dest='wesel', action='store', type=int, default=0,
+    help='write-enable select: 0 for window start, 1 for data_valid to SPEAD')
+parser.add_argument(
+    '--offset', dest='offset', action='store', type=int, default=-1,
+    help='apply a read offset to the snapshot')
+parser.add_argument(
+    '--timestep', dest='timestep', action='store_true', default=False,
+    help='search for a time boundary crossing')
+parser.add_argument(
+    '--loglevel', dest='log_level', action='store', default='',
+    help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
 
 if args.timestep and args.wesel==0:
-    raise RuntimeError('Waiting for a timestep and write-enable on window start does not make sense.')
+    raise RuntimeError('Waiting for a timestep and write-enable '
+                       'on window start does not make sense.')
 
 if args.log_level != '':
     import logging
@@ -38,11 +43,6 @@ if args.log_level != '':
         logging.basicConfig(level=eval('logging.%s' % log_level))
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
-
-if args.comms == 'katcp':
-    HOSTCLASS = CasperFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
 
 # create the devices and connect to them
 fpga = HOSTCLASS(args.host)
