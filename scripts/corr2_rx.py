@@ -2,14 +2,18 @@
 # # -*- coding: utf-8 -*-
 #
 # """
-#  Capture utility for a relatively generic packetised correlator data output stream.
+#  Capture utility for a relatively generic packetised correlator
+#  data output stream.
 #
 #  The script performs two primary roles:
 #
-#  Storage of stream data on disk in hdf5 format. This includes placing meta data into the file as attributes.
+#  Storage of stream data on disk in hdf5 format.
+#  This includes placing meta data into the file as attributes.
 #
-#  Regeneration of a SPEAD stream suitable for us in the online signal displays. At the moment this is basically
-#  just an aggregate of the incoming streams from the multiple x engines scaled with n_accumulations (if set)
+#  Regeneration of a SPEAD stream suitable for us in the online signal
+#  displays. At the moment this is basically just an aggregate of
+#  the incoming streams from the multiple x engines scaled with
+#  n_accumulations (if set)
 #
 # Author: Simon Ratcliffe
 # Revs:
@@ -18,10 +22,9 @@
 from __future__ import print_function
 import matplotlib.pyplot as plt
 import numpy as np
-
+import katcp
 import spead2
 import spead2.recv as s2rx
-import numpy as np
 import time
 import h5py
 import threading
@@ -31,21 +34,7 @@ import logging
 import argparse
 import sys
 
-from casperfpga.network import IpAddress
-
-from corr2 import utils, data_stream
-
-
-# x = np.arange(0, 10, 0.2)
-# y = np.sin(x)
-# fig = plt.figure()
-# ax = fig.add_subplot(111)
-# ax.plot(x, y)
-# plt.show()
-#
-# time.sleep(3)
-#
-# raise RuntimeError
+from corr2 import data_stream
 
 
 class PrintConsumer(object):
@@ -65,20 +54,15 @@ class PrintConsumer(object):
                 break
             if data is None:
                 raise RuntimeError('print_data: got None data - this is wrong')
-
-            print('PROCESSING PRINT DATA')
-
+            logger.debug('PROCESSING PRINT DATA')
             powerdata = data[0]
             phasedata = data[1]
             for blsctr in range(len(powerdata)):
                 bls = powerdata[blsctr][0]
                 pwr = powerdata[blsctr][1]
                 phs = phasedata[blsctr][1]
-                # logger.info('%i-%s:\n\tpwr: %s\n\tphs: %s' % (
-                #     bls, BASELINES[bls], pwr, phs))
-                logger.info('%i-%s:\n\tpwr: %s\n\tphs: %s' % (
+                print('%i-%s:\n\tpwr: %s\n\tphs: %s' % (
                     bls, BASELINES[bls], pwr[0:100], phs[0:100]))
-
         self.need_data_flag.set()
 
 
@@ -86,7 +70,7 @@ class PlotConsumer(object):
 
     def __init__(self, figure=None, animated=True):
         """
-
+        The Plot consumer - plots the contents it finds in the plot queue
         :param figure:
         :param animated:
         :return:
@@ -98,7 +82,6 @@ class PlotConsumer(object):
         self.animated = animated
         self.running = threading.Event()
         self.plot_counter = 0
-
         # callbacks could be useful?
         # self.figure.canvas.mpl_connect('close_event', self.on_close)
         # self.figure.canvas.mpl_connect('key_release_event', self.redraw)
@@ -121,10 +104,10 @@ class PlotConsumer(object):
 
         sbplt = self.figure.axes
         sbplt[0].cla()
-        sbplt[0].set_title('pwr - %i' % self.plot_counter)
+        sbplt[0].set_title('power - %i' % self.plot_counter)
         sbplt[0].grid(True)
         sbplt[1].cla()
-        sbplt[1].set_title('phs - %i' % self.plot_counter)
+        sbplt[1].set_title('phase - %i' % self.plot_counter)
         sbplt[1].grid(True)
         powerdata = plotdata[0]
         phasedata = plotdata[1]
@@ -191,8 +174,8 @@ def do_track_items(ig, logger, track_list):
             continue
         item = ig[name]
         if not item.has_changed():
-            continue
             logger.info('(%s) %s => %s' % (time.ctime(), name, str(item)))
+            continue
 
 
 def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
@@ -201,14 +184,16 @@ def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
     :param ig:
     :param logger:
     :param h5_file:
+    :param datasets
+    :param dataset_indices
     :return:
     """
     if h5_file is None:
         return
     # we need these bits of meta data before being able to assemble and
     # transmit signal display data
-    meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs', 'center_freq',
-                     'bls_ordering', 'n_accs']
+    meta_required = ['n_chans', 'bandwidth', 'n_bls', 'n_xengs',
+                     'center_freq', 'bls_ordering', 'n_accs']
     for name in ig.keys():
         try:
             logger.debug('\tkey name %s' % name)
@@ -289,32 +274,30 @@ def process_xeng_data(heap_data, ig, logger, baselines,
     xeng_raw = ig['xeng_raw'].value
     if xeng_raw is None:
         return None
-
-    print('BASELINES:', baselines)
-    print('CHANNELS: ', channels)
-
+    logger.debug('PROCESSING %i BASELINES, %i CHANNELS' % (
+        len(baselines), len(channels)))
     this_time = ig['timestamp'].value
     this_freq = ig['frequency'].value
-
+    # start a new heap for this timestamp if it's not in our data
+    if this_time not in heap_data:
+        heap_data[this_time] = {}
     if this_time in heap_data:
         if this_freq in heap_data[this_time]:
             # already have this frequency - this seems to be a bug
+            errstr = 'ERROR: time(%i) freq(%i) - repeat freq data ' \
+                     'received: ' % (this_time, this_freq)
             old_data = heap_data[this_time][this_freq]
             if np.shape(old_data) != np.shape(xeng_raw):
-                logger.error('Got repeat freq %i for time %i, with a '
-                             'DIFFERENT SHAPE?!' % (this_freq, this_time))
+                errstr += ' DIFFERENT DATA SHAPE'
             else:
                 if (xeng_raw == old_data).all():
-                    logger.error('Got repeat freq %i with SAME data for time '
-                                 '%i' % (this_freq, this_time))
+                    errstr += ' DATA MATCHES for repeat'
                 else:
-                    logger.error('Got repeat freq %i with DIFFERENT data '
-                                 'for time %i' % (this_freq, this_time))
+                    errstr += ' DATA is DIFFERENT for repeat'
+            logger.error(errstr)
         else:
+            # save the frequency for this timestamp
             heap_data[this_time][this_freq] = xeng_raw
-    else:
-        heap_data[this_time] = {this_freq: xeng_raw}
-
     # housekeeping - are there older heaps in the data?
     if len(heap_data) > 5:
         logger.info('Culling stale timestamps:')
@@ -326,15 +309,13 @@ def process_xeng_data(heap_data, ig, logger, baselines,
 
     def process_heaptime(htime, hdata):
         """
-
+        Process the heap for a given timestamp.
         :param htime:
         :param hdata:
         :return:
         """
         freqs = hdata.keys()
         freqs.sort()
-        print(freqs)
-        print(range(0, n_chans, n_chans / NUM_XENG))
         if freqs != range(0, n_chans, n_chans / NUM_XENG):
             logger.error('Did not get all frequencies from the x-engines for '
                          'time %i: %s' % (htime, str(freqs)))
@@ -391,34 +372,15 @@ def process_xeng_data(heap_data, ig, logger, baselines,
     rvs = {}
     heaptimes = heap_data.keys()
     for heaptime in heaptimes:
-        print(str(heaptime),
-              len(heap_data[heaptime]))
-        ctr = 0
-        need = range(0, 4096, 256)
-        for key in heap_data[heaptime].keys():
-            print('\t%2i:' % ctr, '%4i' % key, len(heap_data[heaptime][key]))
-            need.pop(need.index(key))
-            ctr += 1
-        print('missing:', need)
-
-        if 10 < len(heap_data[heaptime]) < NUM_XENG:
-            for miss in need:
-                heap_data[heaptime][miss] = heap_data[heaptime][0]
-                for freqctr in range(len(heap_data[heaptime][miss])):
-                    blslist = heap_data[heaptime][miss][freqctr]
-                    for blsctr in range(len(blslist)):
-                        blslist[blsctr] = [0, 0]
-            # print(heap_data[heaptime])
-            # raise RuntimeError
-
+        lendata = len(heap_data[heaptime])
+        logger.debug('Processing heaptime %i, already '
+                     'have %i datapoints.' % (heaptime, lendata))
+        # do we have all the data for this heaptime?
         if len(heap_data[heaptime]) == NUM_XENG:
             rv = process_heaptime(
                 heaptime, heap_data[heaptime])
             if rv:
                 rvs[rv[0]] = (rv[1], rv[2])
-        else:
-            logging.error('Needed %i xengs for time %i, but only got %i.' % (
-                NUM_XENG, heaptime, len(heap_data[heaptime])))
     return rvs
 
 
@@ -598,6 +560,40 @@ class CorrReceiver(threading.Thread):
         logger.info('SPEAD2 RX stream socket closed.')
         self.quit_event.clear()
 
+
+def get_sensors(server_ip, server_port):
+    """
+
+    :return:
+    """
+    client = katcp.BlockingClient(server_ip, server_port)
+    client.setDaemon(True)
+    client.start()
+    is_connected = client.wait_connected(10)
+    if not is_connected:
+        client.stop()
+        raise RuntimeError('Could not connect to corr2_servlet, timed out.')
+    reply, informs = client.blocking_request(
+        katcp.Message.request('sensor-value'), timeout=5)
+    client.stop()
+    if not reply.reply_ok():
+        raise RuntimeError('Could not read sensors from corr2_servlet, '
+                           'request failed.')
+    sensors_required = ['{}-n-chans'.format(product_name),
+                        'n-ants',
+                        '{}-n-accs'.format(product_name),
+                        '{}-destination'.format(product_name),
+                        '{}-n-bls'.format(product_name),
+                        '{}-bls-ordering'.format(product_name),
+                        '{}-n-accs'.format(product_name)]
+    sensors = {}
+    srch = re.compile('|'.join(sensors_required))
+    for inf in informs:
+        if srch.match(inf.arguments[2]):
+            sensors[inf.arguments[2]] = inf.arguments[4]
+    return sensors
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
@@ -651,8 +647,8 @@ if __name__ == '__main__':
         help='log level to use, default INFO, options INFO, DEBUG, ERROR')
     parser.add_argument(
         '--speadloglevel', dest='spead_log_level', action='store',
-        default='INFO', help='log level to use in spead receiver, default '
-                             'INFO, options INFO, DEBUG, ERROR')
+        default='ERROR', help='log level to use in spead receiver, default '
+                              'ERROR, options INFO, DEBUG, ERROR')
     args = parser.parse_args()
 
     log_level = None
@@ -676,117 +672,21 @@ if __name__ == '__main__':
     servlet_ip = args.servlet.split(':')
     servlet_port = int(servlet_ip[1])
     servlet_ip = servlet_ip[0]
+    sensors = get_sensors(servlet_ip, servlet_port)
 
-    # # before doing much of anything, need to get metadata from sensors
-    # import katcp
-    # client = katcp.BlockingClient(servlet_ip, servlet_port)
-    # client.setDaemon(True)
-    # client.start()
-    # is_connected = client.wait_connected(10)
-    # if not is_connected:
-    #     client.stop()
-    #     raise RuntimeError('Could not connect to corr2_servlet, timed out.')
-    # reply, informs = client.blocking_request(
-    #     katcp.Message.request('sensor-value'), timeout=5)
-    # client.stop()
-    # if not reply.reply_ok():
-    #     raise RuntimeError('Could not read sensors from corr2_servlet, '
-    #                        'request failed.')
-    # sensors_required = ['{}-n-chans'.format(product_name),
-    #                     'n-ants',
-    #                     '{}-n-accs'.format(product_name),
-    #                     '{}-destination'.format(product_name),
-    #                     '{}-n-bls'.format(product_name),
-    #                     '{}-bls-ordering'.format(product_name),
-    #                     '{}-n-accs'.format(product_name)]
-    # sensors = {}
-    # srch = re.compile('|'.join(sensors_required))
-    # for inf in informs:
-    #     if srch.match(inf.arguments[2]):
-    #         sensors[inf.arguments[2]] = inf.arguments[4]
-
-    # TODO
-    # n_chans = int(sensors['{}-n-chans'.format(product_name)])
-    # n_accs = int(sensors['{}-n-accs'.format(product_name)])
-    # n_ants = int(sensors['n-ants'])
-    #
-    # output = {
-    #     'product': product_name,
-    #     'address': data_stream.StreamAddress.from_address_string(
-    #         sensors['{}-destination'.format(product_name)])
-    # }
-
-    n_chans = 4096 / 2
-    n_chans = 4096
-    n_accs = 816
-    n_ants = 8
+    n_chans = int(sensors['{}-n-chans'.format(product_name)])
+    n_accs = int(sensors['{}-n-accs'.format(product_name)])
+    n_ants = int(sensors['n-ants'])
 
     output = {
         'product': product_name,
         'address': data_stream.StreamAddress.from_address_string(
-            '239.2.2.64:7148')
+            sensors['{}-destination'.format(product_name)])
     }
 
-    # if output['address'].ip_address.is_multicast():
-    #     import socket
-    #     import struct
-    #     print('Source is multicast: %s' % output['address'])
-    #
-    #     # look up multicast group address in name server
-    #     # and find out IP version
-    #     addrinfo = socket.getaddrinfo(
-    #         str(output['address'].ip_address), None)[0]
-    #     ip_version = addrinfo[0]
-    #
-    #     # create a socket
-    #     mcast_sock = socket.socket(ip_version, socket.SOCK_DGRAM)
-    #
-    #     # # Allow multiple copies of this program on one machine
-    #     # # (not strictly needed)
-    #     # mcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    #
-    #     # # bind it to the port
-    #     # mcast_sock.bind(('', output['address'].port))
-    #     # print('Receiver bound to port %i.' % output['address'].port)
-    #
-    #     def join_group(address):
-    #         group_bin = socket.inet_pton(ip_version, address)
-    #         if ip_version == socket.AF_INET:  # IPv4
-    #             mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
-    #             mcast_sock.setsockopt(socket.IPPROTO_IP,
-    #                                   socket.IP_ADD_MEMBERSHIP, mreq)
-    #             print('Subscribing to %s.' % address)
-    #         else:
-    #             mreq = group_bin + struct.pack('@I', 0)
-    #             mcast_sock.setsockopt(socket.IPPROTO_IPV6,
-    #                                   socket.IPV6_JOIN_GROUP, mreq)
-    #
-    #     # join group
-    #     for addrctr in range(output['address'].ip_range):
-    #         addr = int(output['address'].ip_address) + addrctr
-    #         addr = IpAddress(addr)
-    #         join_group(str(addr))
-    #
-    #     # # Loop, printing any data we receive
-    #     # while True:
-    #     #     data, sender = mcast_sock.recvfrom(8192)
-    #     #     print(str(sender) + '  ' + repr(data[0:0x48]))
-    #     #
-    #     # mcast_sock.close()
-    #
-    # else:
-    #     mcast_sock = None
-    #     print('Source is not multicast: %s' % output['src_ip'])
-
     NUM_XENG = output['address'].ip_range
-    NUM_XENG = 16
-
-    # TODO
-    # NUM_BASELINES = int(sensors['{}-n-bls'.format(product_name)])
-    # BASELINES = list(sensors['{}-bls-ordering'.format(product_name)])
-    NUM_BASELINES = 40
-    BASELINES = ['BLS_%i' % ctr for ctr in range(NUM_BASELINES)]
-
+    NUM_BASELINES = int(sensors['{}-n-bls'.format(product_name)])
+    BASELINES = list(sensors['{}-bls-ordering'.format(product_name)])
     LEGEND = args.legend
 
     if args.items:
@@ -866,7 +766,6 @@ if __name__ == '__main__':
     # start the receiver thread
     print('Initialising SPEAD transports for data:')
     print('\tData reception on port %s' % data_port)
-
     corr_rx = CorrReceiver(
         port=data_port,
         log_level=eval('logging.%s' % log_level),
