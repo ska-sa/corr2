@@ -413,6 +413,7 @@ class CorrReceiver(threading.Thread):
         #     log_handler = log_handlers.DebugLogHandler(100)
         # self.log_handler = log_handler
         self.logger = logging.getLogger('corr2_rx.py')
+        self.logger = logging.getLogger()
         # self.logger.addHandler(self.log_handler)
         self.logger.setLevel(log_level)
         self.logger = logging.getLogger(__name__)
@@ -662,10 +663,6 @@ if __name__ == '__main__':
     spead_log_level = None
     if args.spead_log_level:
         spead_log_level = args.spead_log_level.strip()
-        try:
-            logging.basicConfig(level=getattr(logging, spead_log_level))
-        except AttributeError:
-            raise RuntimeError('No such log level: %s' % spead_log_level)
 
     product_name = args.prodname
 

@@ -10,20 +10,19 @@ View status and error registers for x-engine reorder.
 import sys
 import time
 import argparse
-import os
 import signal
 
 from casperfpga import utils as fpgautils
 import casperfpga.scroll as scroll
 from corr2 import utils
-from corr2.xhost_fpga import FpgaXHost
+
 
 parser = argparse.ArgumentParser(
     description='View status and error registers for x-engine reorder.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
-    '--hosts', dest='hosts', type=str, action='store', default='',
-    help='comma-delimited list of F-engine hosts')
+    '--config', dest='config', type=str, action='store', default='',
+    help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument(
     '-p', '--polltime', dest='polltime', action='store',
     default=1, type=int,
@@ -103,7 +102,7 @@ try:
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
             scroller.add_string(
-                'Polling %i fengine%s every %s - %is elapsed.' % (
+                'Polling %i xengine%s every %s - %is elapsed.' % (
                     len(fpgas), '' if len(fpgas) == 1 else 's',
                     'second' if polltime == 1 else ('%i seconds' % polltime),
                     time.time() - STARTTIME), 0, 0, fixed=True)
@@ -117,9 +116,9 @@ try:
                 scroller.add_string(fpga.host, cr=True)
                 for data in fpga_data:
                     printline = ''
-                    for key in sorted(data.iterkeys()):
+                    for key in sorted(data):
                         value = data[key]
-                        printline += '    %s' % key
+                        printline += '    %s(%s)' % (key, str(value))
                     scroller.add_string(printline, cr=True)
             scroller.draw_screen()
             last_refresh = time.time()

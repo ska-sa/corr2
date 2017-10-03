@@ -875,6 +875,63 @@ class Corr2Server(katcp.DeviceServer):
         IOLoop.current().call_later(self.descriptor_cadence,
                                     self.periodic_issue_descriptors)
 
+    @request(Str())
+    @return_reply(Str())
+    def request_debug_getattr(self, sock, attr):
+        """
+        Get any attribute from the running instrument.
+        :param sock:
+        :param attr: atrtibute to get
+        :return:
+        """
+        try:
+            return 'ok', str(getattr(self.instrument, attr))
+        except Exception as exc:
+            return 'fail', exc.message
+
+    @request()
+    @return_reply(Str())
+    def request_get_config(self, sock):
+        """
+        Get the contents of the config dictionary from the instrument.
+        :param sock:
+        :return:
+        """
+        try:
+            return 'ok', str(getattr(self.instrument, 'configd'))
+        except Exception as exc:
+            return 'fail', exc.message
+
+    @request()
+    @return_reply(Str())
+    def request_get_running_config(self, sock):
+        """
+        Get the calculated/running config dictionary from the instrument.
+        :param sock:
+        :return:
+        """
+        try:
+            return 'ok', str(getattr(self.instrument, 'running_config'))
+        except Exception as exc:
+            return 'fail', exc.message
+
+    # @request(Str())
+    # @return_reply(Str())
+    # def request_debug_setattr(self, sock, attr, setvalue):
+    #     """
+    #     Get any attribute from the running instrument.
+    #     :param sock:
+    #     :param attr: atrtibute to set
+    #     :param setvalue: set the attribute to this (eval'd) value
+    #     :return:
+    #     """
+    #     try:
+    #         setattr(self.instrument, attr, eval(setvalue))
+    #         return 'ok', str(getattr(self.instrument, attr))
+    #     except Exception as exc:
+    #         return 'fail', exc.message
+
+
 # @gen.coroutine
 # def send_test_informs(server):
 #     supdate_inform = katcp.Message.inform('test-mass-inform',

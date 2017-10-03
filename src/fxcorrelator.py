@@ -8,6 +8,7 @@ Created on Feb 28, 2013
 
 import logging
 import time
+import katcp
 
 from casperfpga import utils as fpgautils
 
@@ -29,6 +30,30 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 LOGGER = logging.getLogger(__name__)
 
 MAX_QDR_ATTEMPTS = 5
+
+
+def _disable_write(*args, **kwargs):
+    """
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+    raise RuntimeError('WRITE ACCESS TO CORRELATOR DISABLED')
+
+
+class ReadOnlyDict(dict):
+    def __readonly__(self, *args, **kwargs):
+        raise RuntimeError('Cannot modify ReadOnlyDict: '
+                           '%s, %s' % (args, kwargs))
+    __setitem__ = __readonly__
+    __delitem__ = __readonly__
+    pop = __readonly__
+    popitem = __readonly__
+    clear = __readonly__
+    update = __readonly__
+    setdefault = __readonly__
+    del __readonly__
 
 
 class FxCorrelator(Instrument):
@@ -73,15 +98,17 @@ class FxCorrelator(Instrument):
         self.xeng_accumulation_len = None
         self.baselines = None
 
-        # parent constructor
+        # parent constructor - this invokes reading the config file already
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
 
-    def initialise(self, program=True, qdr_cal=True, require_epoch=False):
+    def initialise(self, program=True, qdr_cal=True, require_epoch=False,
+                   enable_write_access=False):
         """
         Set up the correlator using the information in the config file.
         :param program: program the FPGA boards if True
         :param qdr_cal: perform QDR cal if True
         :param require_epoch: the synch epoch MUST be set before init if True
+        :param enable_write_access: enable write access to the correlator - be careful!
         :return:
         """
         # check that the instrument's synch epoch has been set
@@ -89,7 +116,6 @@ class FxCorrelator(Instrument):
             if self.synchronisation_epoch == -1:
                 raise RuntimeError('System synch epoch has not been set prior'
                                    ' to initialisation!')
-        
 
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self)
@@ -108,6 +134,7 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
                            target_function='connect')
 
+        # set the IGMP version to be used, on all boards
         igmp_version = self.configd['FxCorrelator'].get('igmp_version')
         if igmp_version is not None:
             self.logger.info('Setting FPGA hosts IGMP version '
@@ -127,28 +154,28 @@ class FxCorrelator(Instrument):
             xbof = self.xhosts[0].bitstream
             fbof = self.fhosts[0].bitstream
             THREADED_FPGA_FUNC(
-                self.fhosts, timeout=10,
+                self.fhosts, timeout=5,
                 target_function=('get_system_information', [fbof], {}))
             THREADED_FPGA_FUNC(
-                self.xhosts, timeout=10,
+                self.xhosts, timeout=5,
                 target_function=('get_system_information', [xbof], {}))
-        program = True
 
         # remove test hardware from designs
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
 
+        # disable write access to the correlator
+        if not (enable_write_access or program):
+            for host in self.xhosts + self.fhosts:
+                host.blindwrite = _disable_write
+
         # run configuration on the parts of the instrument
+        # this is independant of programming!
         self.configure()
 
         # run post-programming initialisation
-        self.post_program_initialise(program, qdr_cal)
-        import sys
-        sys.stdout.flush()
-
-        # reset all counters on fhosts and xhosts
-        self.fops.clear_status_all()
-        self.xops.clear_status_all()
+        if program:
+            self._post_program_initialise(qdr_cal)
 
         # set an initialised flag
         self._initialised = True
@@ -169,25 +196,20 @@ class FxCorrelator(Instrument):
                 target_function=('setup_host_gbes',
                                  (self.logger, info_dict), {}))
 
-    def post_program_initialise(self, programming_done, qdr_cal):
+    def _post_program_initialise(self, qdr_cal):
         """
         Run this if boards in the system have been programmed. Basic setup
         of devices.
-        :param programming_done: True if the boards were newly programmed
         :param qdr_cal: should we attempt to calibrate the QDRs on the boards?
         :return:
         """
-        if not programming_done:
-            # only run the contents of this function after programming.
-            return
-
         # cal the qdr on all boards
         # logging.getLogger('casperfpga.qdr').setLevel(logging.INFO + 7)
-        if qdr_cal:
-            self.qdr_calibrate()
-        else:
-            self.logger.info(
-                'Skipping QDR cal - are you sure you want to do this?')
+        # if qdr_cal:
+        #     self.qdr_calibrate()
+        # else:
+        #     self.logger.info(
+        #         'Skipping QDR cal - are you sure you want to do this?')
 
         # init the engines
         self.fops.initialise_pre_gbe()
@@ -213,11 +235,6 @@ class FxCorrelator(Instrument):
         self.logger.info('Starting F-engine datastream')
         self.fops.tx_enable()
 
-        # # jason's hack to force a reset on the F-engines
-        # for ctr in range(2):
-        #     time.sleep(1)
-        #     self.fops.sys_reset()
-
         # wait for switches to learn, um, stuff
         self.logger.info('post mess-with-the-switch delay of %is' %
                          self.post_switch_delay)
@@ -230,32 +247,6 @@ class FxCorrelator(Instrument):
         if self.synchronisation_epoch == -1:
             self.est_synch_epoch()
 
-#   	 # Checks not needed anymore; handled by sensor servlet now.
-#        # check to see if the f engines are receiving all their data
-#        if not self.fops.check_rx():
-#            raise RuntimeError('The F-engines RX have a problem.')
-#
-#        # check that the timestamps received on the F-engines make sense
-#        result, times, times_unix = self.fops.check_rx_timestamps()
-#        if not result:
-#            raise RuntimeError('The timestamps received by the F-engines '
-#                               'are not okay. Check the logs')
-#
-# TODO: add generic memory check to corr2. Should do HMC test instead of QDR on SKARAB.
-#        # check the F-engine QDR uses for parity errors
-#        if not self.fops.check_qdr_devices():
-#            raise RuntimeError('The F-engine QDRs are reporting errors.')
-#
-#        # check that the F-engines are transmitting data correctly
-#        if not self.fops.check_tx():
-#            LOGGER.info('The F-engines TX have a problem, retrying.')
-#            if not self.fops.resync_and_check():
-#                raise RuntimeError('The F-engines TX have a problem.')
-#
-#        # check that the X-engines are receiving data
-#        if not self.xops.check_rx():
-#            raise RuntimeError('The x-engines RX have a problem.')
-#
         # arm the vaccs on the x-engines
         self.xops.vacc_sync()
 
@@ -511,7 +502,23 @@ class FxCorrelator(Instrument):
         Read the instrument configuration from self.config_source.
         :return:
         """
-        Instrument._read_config(self)
+        if self.config_source is None:
+            raise RuntimeError('Running _read_config with no config source. '
+                               'Explosions.')
+        self.configd = None
+        errmsg = ''
+        try:
+            self._read_config_file()
+        except (IOError, ValueError) as excep:
+            errmsg += excep.message + '\n'
+        try:
+            self._read_config_server()
+        except katcp.KatcpClientError as excep:
+            errmsg += excep.message + '\n'
+        if self.configd is None:
+            self.logger.error(errmsg)
+            raise RuntimeError('Supplied config_source %s is '
+                               'invalid.' % self.config_source)
         _d = self.configd
 
         # do the bitstreams exist?
@@ -611,16 +618,37 @@ class FxCorrelator(Instrument):
     def _read_config_file(self):
         """
         Read the instrument configuration from self.config_source.
-        :return: True if we read the file successfully, False if not
         """
-        self.configd = utils.parse_ini_file(self.config_source)
+        tempdict = utils.parse_ini_file(self.config_source)
+        tempdict2 = ReadOnlyDict(tempdict)
+        self.configd = tempdict2
 
     def _read_config_server(self):
         """
-        Get instance-specific setup information from a given server. Via KATCP?
+        Get instance-specific setup information from a given katcp server.
         :return:
         """
-        raise NotImplementedError('_read_config_server not implemented')
+        import katcp
+        server = eval(self.config_source)[0]
+        port = eval(self.config_source)[1]
+        client = katcp.CallbackClient(server, port, auto_reconnect=True)
+        client.setDaemon(True)
+        client.start()
+        res = client.wait_connected(1)
+        if not res:
+            raise katcp.KatcpClientError('Can\'t connect to '
+                                         '%s' % str(self.config_source))
+        msg = katcp.Message(katcp.Message.REQUEST, 'get-config')
+        res, resp = client.blocking_request(msg)
+        client.stop()
+        if res.arguments[0] != 'ok':
+            raise RuntimeError('Could not read config from corr2_servlet.')
+        if res.arguments[1] == '':
+            raise RuntimeError('corr2_servlet returned no config data.')
+        tempdict = eval(res.arguments[1])
+        tempdict2 = ReadOnlyDict(tempdict)
+        self.configd = tempdict2
+        self.logger.info('Read config from %s okay' % self.config_source)
 
     def stream_set_destination(self, stream_name, address):
         """

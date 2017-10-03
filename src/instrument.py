@@ -65,23 +65,7 @@ class Instrument(object):
         :return: True if the instrument read a config successfully,
         raise an error if not?
         """
-        if self.config_source is None:
-            raise RuntimeError('Running _read_config with no config source. '
-                               'Explosions.')
-        try:
-            # file?
-            self._read_config_file()
-            return
-        except (IOError, ValueError) as excep:
-            self.logger.error(excep.message)
-            # try:
-            #     # server?
-            #     self._read_config_server()
-            #     return
-            # except:
-            #     raise
-        raise RuntimeError('Supplied config_source %s is '
-                           'invalid' % self.config_source)
+        raise NotImplementedError
 
     def _read_config_file(self):
         """

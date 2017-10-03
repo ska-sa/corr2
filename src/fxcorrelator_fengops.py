@@ -105,9 +105,7 @@ class FEngineOperations(object):
         Perform post-gbe setup initialisation steps.
         :return:
         """
-        # release from reset; not needed on SKARAB?
-#        THREADED_FPGA_OP(self.hosts, timeout=10, target_function=(
-#            lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
+        return
 
     def initialise_pre_gbe(self):
         """
@@ -165,10 +163,9 @@ class FEngineOperations(object):
         #     self.hosts, timeout=10,
         #     target_function=(
         #         lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
+
         # set eq and shift
-        # TODO - replace this when it's working on SKARAB
-        # self.eq_write_all()
-        # /TODO
+        self.eq_write_all()
         self.set_fft_shift_all()
 
         # self.clear_status_all()  # Why would this be needed here?
