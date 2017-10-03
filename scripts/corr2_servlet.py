@@ -150,7 +150,7 @@ class Corr2Server(katcp.DeviceServer):
         if self._initialised:
             return 'fail', 'Cannot run ?initialise twice.'
         try:
-            self.instrument.initialise(program=program, qdr_cal=qdr_cal,
+            self.instrument.initialise(program=program,
                                        require_epoch=require_epoch)
             # update the servlet's version list with version information
             # from the running firmware

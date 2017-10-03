@@ -101,14 +101,13 @@ class FxCorrelator(Instrument):
         # parent constructor - this invokes reading the config file already
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
 
-    def initialise(self, program=True, qdr_cal=True, require_epoch=False,
-                   enable_write_access=False):
+    def initialise(self, program=True, configure=True,
+                   require_epoch=False,):
         """
         Set up the correlator using the information in the config file.
-        :param program: program the FPGA boards if True
-        :param qdr_cal: perform QDR cal if True
-        :param require_epoch: the synch epoch MUST be set before init if True
-        :param enable_write_access: enable write access to the correlator - be careful!
+        :param program: program the FPGA boards, implies configure
+        :param configure: configure the system
+        :param require_epoch: the synch epoch MUST be set before init
         :return:
         """
         # check that the instrument's synch epoch has been set
@@ -164,18 +163,18 @@ class FxCorrelator(Instrument):
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
 
-        # disable write access to the correlator
-        if not (enable_write_access or program):
-            for host in self.xhosts + self.fhosts:
-                host.blindwrite = _disable_write
+        # # disable write access to the correlator
+        # if not (enable_write_access or program):
+        #     for host in self.xhosts + self.fhosts:
+        #         host.blindwrite = _disable_write
 
         # run configuration on the parts of the instrument
         # this is independant of programming!
         self.configure()
 
         # run post-programming initialisation
-        if program:
-            self._post_program_initialise(qdr_cal)
+        if program or configure:
+            self._post_program_initialise()
 
         # set an initialised flag
         self._initialised = True
@@ -196,21 +195,12 @@ class FxCorrelator(Instrument):
                 target_function=('setup_host_gbes',
                                  (self.logger, info_dict), {}))
 
-    def _post_program_initialise(self, qdr_cal):
+    def _post_program_initialise(self):
         """
         Run this if boards in the system have been programmed. Basic setup
         of devices.
-        :param qdr_cal: should we attempt to calibrate the QDRs on the boards?
         :return:
         """
-        # cal the qdr on all boards
-        # logging.getLogger('casperfpga.qdr').setLevel(logging.INFO + 7)
-        # if qdr_cal:
-        #     self.qdr_calibrate()
-        # else:
-        #     self.logger.info(
-        #         'Skipping QDR cal - are you sure you want to do this?')
-
         # init the engines
         self.fops.initialise_pre_gbe()
         self.xops.initialise_pre_gbe()
@@ -511,10 +501,10 @@ class FxCorrelator(Instrument):
             self._read_config_file()
         except (IOError, ValueError) as excep:
             errmsg += excep.message + '\n'
-        try:
-            self._read_config_server()
-        except katcp.KatcpClientError as excep:
-            errmsg += excep.message + '\n'
+            try:
+                self._read_config_server()
+            except katcp.KatcpClientError as excep:
+                errmsg += excep.message + '\n'
         if self.configd is None:
             self.logger.error(errmsg)
             raise RuntimeError('Supplied config_source %s is '
