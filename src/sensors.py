@@ -676,7 +676,7 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in selected beam passband.',
                 Sensor.UNKNOWN)
-            sensor.set_value(beam.active_channels())
+            sensor.set_value(self.instrument.n_chans)
 
     def sensors_beng_streams(self):
         """
