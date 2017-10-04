@@ -7,7 +7,6 @@ import argparse
 import os
 import katcp
 import signal
-import tornado
 import time
 
 from tornado.ioloop import IOLoop
@@ -54,7 +53,7 @@ class Corr2SensorServer(katcp.DeviceServer):
 
         """
         self.instrument = instrument
-        self.instrument.initialise(program=False, qdr_cal=False,
+        self.instrument.initialise(program=False, configure=False,
                                    require_epoch=False)
         sensor_manager = sensors.SensorManager(self, self.instrument)
         self.instrument.sensor_manager = sensor_manager
@@ -124,8 +123,9 @@ if __name__ == '__main__':
     ioloop.add_callback(sensor_server.start)
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
-    instrument = fxcorrelator.FxCorrelator('dummy corr for sensors',
-                                           config_source=args.config)
+    instrument = fxcorrelator.FxCorrelator(
+        'dummy fx correlator for sensors', config_source=args.config)
     ioloop.add_callback(sensor_server.initialise, instrument)
     ioloop.start()
+
 # end
