@@ -10,6 +10,8 @@ import logging
 import time
 import katcp
 
+# from memory_profiler import profile
+
 from casperfpga import utils as fpgautils
 
 import utils
@@ -63,6 +65,8 @@ class FxCorrelator(Instrument):
     of the channels and accumulate the result.
     SPEAD data streams are produced.
     """
+
+    # @profile
     def __init__(self, descriptor, identifier=-1, config_source=None,
                  logger=LOGGER):
         """
@@ -101,6 +105,7 @@ class FxCorrelator(Instrument):
         # parent constructor - this invokes reading the config file already
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
 
+    # @profile
     def initialise(self, program=True, configure=True,
                    require_epoch=False,):
         """
@@ -145,9 +150,10 @@ class FxCorrelator(Instrument):
         # if we need to program the FPGAs, do so
         if program:
             self.logger.info('Programming FPGA hosts')
-            fpgautils.program_fpgas(
-                [(h, h.bitstream) for h in (self.fhosts + self.xhosts)],
-                progfile=None, timeout=180)
+            THREADED_FPGA_FUNC(
+                self.fhosts + self.xhosts, timeout=60,
+                target_function=('upload_to_ram_and_program', [],
+                                 {'skip_verification': True}))
         else:
             self.logger.info('Loading design information')
             xbof = self.xhosts[0].bitstream
