@@ -171,8 +171,11 @@ class DigitiserStreamReceiver(FpgaHost):
             time.sleep(0.01)
         lsw = _lsw.read()['data']['timestamp_lsw']
         msw = _msw.read()['data']['timestamp_msw']
-        assert msw == first_msw + 1  # if this fails the network is waaaaay slow
-        return (msw << 32) | lsw
+        if msw != first_msw + 1:
+            raise RuntimeError('%s get_local_time() - network is too slow'
+                               'to allow accurate time read' % self.host)
+        rv = (msw << 32) | lsw
+        return rv
 
     def clear_status(self):
         """
@@ -184,3 +187,5 @@ class DigitiserStreamReceiver(FpgaHost):
         #                              cnt_rst='pulse')
         self.registers.control.write(gbe_cnt_rst='pulse')
         LOGGER.debug('{}: status cleared.'.format(self.host))
+
+# end
