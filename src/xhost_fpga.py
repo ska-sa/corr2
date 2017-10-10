@@ -89,6 +89,10 @@ class FpgaXHost(FpgaHost):
         return data
 
     def get_rx_reorder_status(self):
+        """
+
+        :return:
+        """
         regs = self.registers
         # older versions had other register names
         old_regs_found = 'reorderr_timeout0' in regs.names()

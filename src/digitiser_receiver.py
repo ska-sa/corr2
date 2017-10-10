@@ -41,15 +41,22 @@ class DigitiserStreamReceiver(FpgaHost):
         test_data = []
         for _ctr in range(0, required_repetitions):
             reorder_ctrs = self.registers.reorder_status.read()['data']
-            reorder_ctrs['dv_per_sec'] = self.registers.reorder_status1.read()['data']
+            try:
+                dv_sec = self.registers.reorder_status1.read()['data']
+                reorder_ctrs['dv_per_sec'] = dv_sec['dv_cnt']
+            except AttributeError:
+                pass
             test_data.append(reorder_ctrs)
             time.sleep(sleeptime)
+        if 'dv_cnt' not in test_data[0]:
+            LOGGER.debug('FHost %s: No dv_cnt available to test.' % self.host)
+            return False
         getting_data = False
         for ctr in range(1, required_repetitions):
             if test_data[ctr]['dv_cnt'] != test_data[0]['dv_cnt']:
                 getting_data = True
         if not getting_data:
-            LOGGER.error('FHost %s: dv_cnt is NOT changing: %i' % (
+            LOGGER.debug('FHost %s: dv_cnt is NOT changing: %i' % (
                 self.host, test_data[0]['dv_cnt']))
             return False
         got_errors = False
@@ -59,13 +66,13 @@ class DigitiserStreamReceiver(FpgaHost):
                 v0 = test_data[0][key]
                 v1 = test_data[ctr][key]
                 if v1 != v0:
-                    LOGGER.error('FHost %s: %s is changing. %i -> %i' % (
+                    LOGGER.debug('FHost %s: %s is changing. %i -> %i' % (
                         self.host, key, v1, v0))
                     got_errors = True
         if got_errors:
-            LOGGER.error('One or more errors detected, check logs.')
+            LOGGER.debug('One or more errors detected, check logs.')
             return False
-        LOGGER.info('%s: is reordering data okay.' % self.host)
+        LOGGER.debug('%s: is reordering data okay.' % self.host)
         return True
 
     def _get_rxreg_data(self):
@@ -173,7 +180,7 @@ class DigitiserStreamReceiver(FpgaHost):
         msw = _msw.read()['data']['timestamp_msw']
         if msw != first_msw + 1:
             raise RuntimeError('%s get_local_time() - network is too slow'
-                               'to allow accurate time read' % self.host)
+                               ' to allow accurate time read' % self.host)
         rv = (msw << 32) | lsw
         return rv
 

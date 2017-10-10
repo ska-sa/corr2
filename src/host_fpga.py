@@ -34,30 +34,54 @@ class FpgaHost(CasperFpga):
         """
         # check the reorder, if it fails, go lower
         if not self.check_rx_reorder():
-            LOGGER.error('{}: reorder RX check failed.'.format(self.host))
+            LOGGER.debug('{}: reorder RX check failed.'.format(self.host))
         else:
-            LOGGER.info('{}: reorder RX passed '.format(self.host))
+            LOGGER.debug('{}: reorder RX passed '.format(self.host))
             return True
         # SPEAD okay?
         if not self.check_rx_spead(max_waittime=max_waittime):
-            LOGGER.error('{}: SPEAD RX check failed. Ignoring '
+            LOGGER.debug('{}: SPEAD RX check failed. Ignoring '
                          'for now'.format(self.host))
         else:
-            LOGGER.info('{}: SPEAD RX passed.'.format(self.host))
+            LOGGER.debug('{}: SPEAD RX passed.'.format(self.host))
         # raw?
         if not self.check_rx_raw(0.2, 5):
-            LOGGER.error('{}: Raw RX failed.'.format(self.host))
+            LOGGER.debug('{}: Raw RX failed.'.format(self.host))
         else:
-            LOGGER.info('{}: Raw RX passed '.format(self.host))
-        LOGGER.info('{}: check_rx() - FALSE.'.format(self.host))
+            LOGGER.debug('{}: Raw RX passed '.format(self.host))
+        LOGGER.debug('{}: check_rx() - FALSE.'.format(self.host))
         return False
 
-    def _check_rx_spead_skarab(self):
+    def _check_rx_spead_skarab(self, checks=5):
         """
 
         :return: 
         """
-        # TODO - this must actually work
+        results = []
+        for ctr in range(checks):
+            results.append(self.registers.spead_status.read()['data'])
+            if ctr == checks - 1:
+                break
+            time.sleep(0.1)
+        pkts_rx = False
+        for ctr in range(1, checks):
+            if results[ctr]['pkt_cnt'] != results[0]['pkt_cnt']:
+                pkts_rx = True
+                break
+        if not pkts_rx:
+            LOGGER.debug('%s: SPEAD packet count not incrementing' % self.host)
+            return False
+        for key in ['magic_err_cnt', 'header_err_cnt',
+                    'pad_err_cnt', 'pkt_len_err_cnt']:
+            got_error = False
+            for ctr in range(1, checks):
+                if results[ctr][key] != results[0][key]:
+                    got_error = True
+                    break
+            if got_error:
+                LOGGER.debug('%s: SPEAD error %s incrementing' % (
+                    self.host, key))
+                return False
         return True
 
     def check_rx_spead(self, max_waittime=5):
@@ -66,7 +90,7 @@ class FpgaHost(CasperFpga):
         :param max_waittime: the maximum time to wait
         :return:
         """
-        if 'status_spead0' in self.registers.names():
+        if 'spead_status' in self.registers.names():
             return self._check_rx_spead_skarab()
         start_time = time.time()
         ctrs0 = self.read_spead_counters()

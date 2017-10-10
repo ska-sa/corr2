@@ -999,6 +999,9 @@ if __name__ == '__main__':
     server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
     print('Server listening on port %d ' % args.port, end='')
 
+    # def boop():
+    #     raise KeyboardInterrupt
+
     if not args.no_tornado:
         ioloop = IOLoop.current()
         signal.signal(
@@ -1007,6 +1010,7 @@ if __name__ == '__main__':
                 on_shutdown, ioloop, server))
         server.set_ioloop(ioloop)
         ioloop.add_callback(server.start)
+        # ioloop.call_later(120, boop)
         # ioloop.add_callback(send_test_informs, server)
         print('started with ioloop. Running somewhere in the ether... '
               'exit however you see fit.')

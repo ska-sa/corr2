@@ -480,9 +480,9 @@ class FpgaFHost(DigitiserStreamReceiver):
         if ((not self.check_rx()) or
                 (not self.ct_okay()) or
                 (not self.cd_okay())):
-            LOGGER.error('%s: host_okay() - FALSE.' % self.host)
+            LOGGER.debug('%s: host_okay() - FALSE.' % self.host)
             return False
-        LOGGER.info('%s: host_okay() - TRUE.' % self.host)
+        LOGGER.debug('%s: host_okay() - TRUE.' % self.host)
         return True
 
     def add_fengine(self, fengine):
@@ -783,6 +783,14 @@ class FpgaFHost(DigitiserStreamReceiver):
         return (self.check_ct_parity(threshold) and
                 self.check_cd_parity(threshold))
 
+    def check_rx_spead(self, max_waittime=5):
+        """
+        Check that this host is receiving SPEAD data.
+        :param max_waittime: the maximum time to wait
+        :return:
+        """
+        return self._check_rx_spead_skarab()
+
     def check_ct_parity(self, threshold):
         """
         Check the QDR corner turner parity error counters
@@ -852,16 +860,16 @@ class FpgaFHost(DigitiserStreamReceiver):
         :param wait_time - time in seconds to wait between reg reads
         :return: True/False
         """
-        ctrs0 = self.registers.pfb_ctrs.read()['data']
+        ctrs0 = self.registers.pfb_status.read()['data']
         time.sleep(wait_time)
-        ctrs1 = self.registers.pfb_ctrs.read()['data']
+        ctrs1 = self.registers.pfb_status.read()['data']
         for cnt in range(0, 1):
-            overflow0 = ctrs0['pfb_of%d_cnt' % cnt]
-            overflow1 = ctrs1['pfb_of%d_cnt' % cnt]
-            if overflow0 == overflow1:
-                LOGGER.info('%s: pfb_of%d_cnt okay.' % (self.host, cnt))
-            else:
-                LOGGER.error('%s: pfb_of%d_cnt incrementing.' % (
+            overflow0 = ctrs0['pol%i_or_err_cnt' % cnt]
+            overflow1 = ctrs1['pol%i_or_err_cnt' % cnt]
+            if overflow0 != overflow1:
+            #     LOGGER.info('%s: pol%i_or_err_cnt okay.' % (self.host, cnt))
+            # else:
+                LOGGER.debug('%s: pol%i_or_err_cnt incrementing.' % (
                     self.host, cnt))
                 return False
         LOGGER.info('%s: PFB okay.' % self.host)

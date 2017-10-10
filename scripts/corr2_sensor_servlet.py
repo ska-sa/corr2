@@ -45,13 +45,15 @@ class Corr2SensorServer(katcp.DeviceServer):
         """
         pass
 
-    def initialise(self, instrument):
+    def initialise(self, config):
         """
         Setup and start sensors
-        :param instrument: a corr2 Instrument object
+        :param config: the config to use when making the instrument
         :return:
 
         """
+        instrument = fxcorrelator.FxCorrelator(
+            'dummy fx correlator for sensors', config_source=config)
         self.instrument = instrument
         self.instrument.initialise(program=False, configure=False,
                                    require_epoch=False)
@@ -92,6 +94,9 @@ if __name__ == '__main__':
     except:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 
+    # def boop():
+    #     raise KeyboardInterrupt
+
     # set up the logger
     corr2_sensors_logger = logging.getLogger('corr2.sensors')
     corr2_sensors_logger.setLevel(log_level)
@@ -123,9 +128,8 @@ if __name__ == '__main__':
     ioloop.add_callback(sensor_server.start)
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
-    instrument = fxcorrelator.FxCorrelator(
-        'dummy fx correlator for sensors', config_source=args.config)
-    ioloop.add_callback(sensor_server.initialise, instrument)
+    ioloop.add_callback(sensor_server.initialise, args.config)
+    # ioloop.call_later(10, boop)
     ioloop.start()
 
 # end

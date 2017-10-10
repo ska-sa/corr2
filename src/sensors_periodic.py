@@ -1,6 +1,6 @@
 import logging
 import time
-import tornado.gen
+import tornado.gen as gen
 
 from tornado.ioloop import IOLoop
 from concurrent import futures
@@ -74,7 +74,7 @@ def read_all_counters(fpga_host):
     return rvdict
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_cb_feng_rxtime(sensor_ok, sensor_values):
     """
     Sensor call back to check received F-engine times
@@ -110,8 +110,7 @@ def _sensor_cb_feng_rxtime(sensor_ok, sensor_values):
     IOLoop.current().call_later(10, _sensor_cb_feng_rxtime,
                                 sensor_ok, sensor_values)
 
-
-# @tornado.gen.coroutine
+# @gen.coroutine
 # def _sensor_cb_fdelays(sensor, f_host):
 #     """
 #     Sensor call back function for F-engine delay functionality
@@ -127,13 +126,13 @@ def _sensor_cb_feng_rxtime(sensor_ok, sensor_values):
 #         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
 #     except Exception as e:
 #         LOGGER.error('Error updating delay functionality sensor '
-#                      'for {} - {}'.format(f_host, e.message))
+#                      'for {} - {}'.format(f_host.host, e.message))
 #         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-#     LOGGER.debug('_sensor_cb_fdelays ran on {}'.format(f_host))
+#     LOGGER.debug('_sensor_cb_fdelays ran on {}'.format(f_host.host))
 #     IOLoop.current().call_later(10, _sensor_cb_fdelays, sensor, f_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_cb_flru(sensor, f_host):
     """
     Sensor call back function for F-engine LRU
@@ -149,13 +148,13 @@ def _sensor_cb_flru(sensor, f_host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating flru sensor for {} - '
-                     '{}'.format(f_host, e.message))
+                     '{}'.format(f_host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_sensor_cb_flru ran on {}'.format(f_host))
+    LOGGER.debug('_sensor_cb_flru ran on {}'.format(f_host.host))
     IOLoop.current().call_later(10, _sensor_cb_flru, sensor, f_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_cb_xlru(sensor, x_host):
     """
     Sensor call back function for x-engine LRU
@@ -171,15 +170,13 @@ def _sensor_cb_xlru(sensor, x_host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating xlru sensor for {} - '
-                     '{}'.format(x_host, e.message))
+                     '{}'.format(x_host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_sensor_cb_xlru ran on {}'.format(x_host))
+    LOGGER.debug('_sensor_cb_xlru ran on {}'.format(x_host.host))
     IOLoop.current().call_later(10, _sensor_cb_xlru, sensor, x_host)
 
 
-
-
-@tornado.gen.coroutine
+@gen.coroutine
 def _feng_pfb_okay(sensor, f_host):
     """
     F-engine PFB check
@@ -195,13 +192,13 @@ def _feng_pfb_okay(sensor, f_host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating feng pfb sensor for {} - '
-                     '{}'.format(f_host, e.message))
+                     '{}'.format(f_host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_feng_pfb_okay ran on {}'.format(f_host))
+    LOGGER.debug('_feng_pfb_okay ran on {}'.format(f_host.host))
     IOLoop.current().call_later(10, _feng_pfb_okay, sensor, f_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _fhost_check_network_rx(sensor, f_host):
     """
     Check that the f-hosts are receiving data correctly
@@ -217,13 +214,13 @@ def _fhost_check_network_rx(sensor, f_host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating {} for {} - '
-                     '{}'.format(sensor.name, f_host, e.message))
+                     '{}'.format(sensor.name, f_host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     LOGGER.debug('_fhost_check_network_rx ran')
     IOLoop.current().call_later(10, _fhost_check_network_rx, sensor, f_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _fhost_check_network_tx(sensor, f_host):
     """
     Check that the f-hosts are sending data correctly
@@ -240,13 +237,13 @@ def _fhost_check_network_tx(sensor, f_host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating {} for {} - '
-                     '{}'.format(sensor.name, f_host, e.message))
+                     '{}'.format(sensor.name, f_host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     LOGGER.debug('_fhost_check_network_tx ran')
     IOLoop.current().call_later(10, _fhost_check_network_tx, sensor, f_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _xhost_check_network_rx(sensor, x_host):
     """
     Check that the x-hosts are receiving data correctly
@@ -263,13 +260,13 @@ def _xhost_check_network_rx(sensor, x_host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating {} for {} - '
-                     '{}'.format(sensor.name, x_host, e.message))
+                     '{}'.format(sensor.name, x_host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     LOGGER.debug('_xhost_check_network_rx ran')
     IOLoop.current().call_later(10, _xhost_check_network_rx, sensor, x_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _xhost_report_network_tx(sensor_manager, x_host):
     """
     Check that the x-hosts are sending data correctly
@@ -296,7 +293,7 @@ def _xhost_report_network_tx(sensor_manager, x_host):
             new_vals = None
         except Exception as e:
             LOGGER.error('Error updating {} for {} - '
-                         '{}'.format(sensor.name, x_host, e.message))
+                         '{}'.format(sensor.name, x_host.host, e.message))
             sensor.set(time.time(), Corr2Sensor.UNKNOWN, 0)
             new_vals = None
     sensor_ok = sensor = sensor_manager.sensor_get(
@@ -307,7 +304,7 @@ def _xhost_report_network_tx(sensor_manager, x_host):
                                 sensor_manager, x_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_feng_rx_reorder(sensor, f_host):
     """
     F-engine RX counters
@@ -323,13 +320,13 @@ def _sensor_feng_rx_reorder(sensor, f_host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating feng_rx sensor for {} - '
-                     '{}'.format(f_host, e.message))
+                     '{}'.format(f_host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_sensor_feng_rx ran on {}'.format(f_host))
+    LOGGER.debug('_sensor_feng_rx ran on {}'.format(f_host.host))
     IOLoop.current().call_later(10, _sensor_feng_rx_reorder, sensor, f_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_xeng_rx_reorder(sensor, x_host):
     """
     X-engine RX counters
@@ -345,13 +342,13 @@ def _sensor_xeng_rx_reorder(sensor, x_host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating xeng_rx sensor for {} - '
-                     '{}'.format(x_host, e.message))
+                     '{}'.format(x_host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_sensor_xeng_rx ran on {}'.format(x_host))
+    LOGGER.debug('_sensor_xeng_rx ran on {}'.format(x_host.host))
     IOLoop.current().call_later(10, _sensor_xeng_rx_reorder, sensor, x_host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_xeng_vacc_ctrs(host, host_executor, manager):
     """
     Populate VACC counter sensors: arm, accumulation, errors, load
@@ -385,12 +382,12 @@ def _sensor_xeng_vacc_ctrs(host, host_executor, manager):
 
         sensor = manager.sensor_get('{}-vacc-load-ctr'.format(sens_pref))
         sensor.set(time.time(), Corr2Sensor.NOMINAL, results[xctr]['loadcount'])
-    LOGGER.debug('_sensor_xeng_vacc_ctrs ran on {}'.format(host))
+    LOGGER.debug('_sensor_xeng_vacc_ctrs ran on {}'.format(host.host))
     IOLoop.current().call_later(10, _sensor_xeng_vacc_ctrs, host,
                                 host_executor, manager)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_xeng_vacc_accs_ps(host, host_executor, manager):
     """
 
@@ -417,7 +414,7 @@ def _sensor_xeng_vacc_accs_ps(host, host_executor, manager):
                                 host_executor, manager)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_xeng_vacc_sync_time(sensor, host):
     """
 
@@ -434,13 +431,13 @@ def _sensor_xeng_vacc_sync_time(sensor, host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
     except Exception as e:
         LOGGER.error('Error updating VACC sync time sensor for {} - '
-                     '{}'.format(host, e.message))
+                     '{}'.format(host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, False)
-    LOGGER.debug('_sensor_xeng_rx ran on {}'.format(host))
+    LOGGER.debug('_sensor_xeng_rx ran on {}'.format(host.host))
     IOLoop.current().call_later(10, _sensor_xeng_vacc_sync_time, sensor, host)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_cb_system_counters(host, host_executor, manager):
     """
     Read all specified counters on this host.
@@ -463,7 +460,7 @@ def _sensor_cb_system_counters(host, host_executor, manager):
                 sensor.previous_value = 0
     except Exception as e:
         LOGGER.error('Error updating counter sensors for {} - '
-                     '{}'.format(host, e.message))
+                     '{}'.format(host.host, e.message))
         for sensor in manager.sensors.values():
             if ((sensor.name.endswith('-change')) and
                     (sensor.name.startswith(host_lookup[host.host]))):
@@ -473,7 +470,7 @@ def _sensor_cb_system_counters(host, host_executor, manager):
                                 host, host_executor, manager)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_cb_pps(host, host_executor, manager):
     """
     Host PPS counters
@@ -553,7 +550,7 @@ def _sensor_cb_pps(host, host_executor, manager):
                                 host, host_executor, manager)
 
 
-@tornado.gen.coroutine
+@gen.coroutine
 def _sensor_cb_reorder_status(sensor, host):
     sens_man = sensor.manager
     executor = sensor.executor
@@ -566,9 +563,9 @@ def _sensor_cb_reorder_status(sensor, host):
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, '')
     except Exception as e:
         LOGGER.error('Error updating reorder status sensor for {} - '
-                     '{}'.format(host, e.message))
+                     '{}'.format(host.host, e.message))
         sensor.set(time.time(), Corr2Sensor.UNKNOWN, '')
-    LOGGER.debug('_sensor_cb_reorder_status ran on {}'.format(host))
+    LOGGER.debug('_sensor_cb_reorder_status ran on {}'.format(host.host))
     IOLoop.current().call_later(10, _sensor_cb_reorder_status, sensor, host)
 
 
@@ -719,9 +716,9 @@ def _setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop):
         executor = host_executors[_f.host]
         fhost = host_lookup[_f.host]
 
-        #TODO: add check for sync cnt. If SKARAB requires resync, must set delay to zero, resync and then continue delay operations.
+        # TODO: add check for sync cnt. If SKARAB requires resync, must set delay to zero, resync and then continue delay operations.
 
-        # Raw RX - gbe counters must increment
+        # raw RX - gbe counters must increment
         sensor = sens_man.do_sensor(
             Corr2Sensor.boolean, '{}-network-rx-ok'.format(fhost),
             'F-engine network RX okay', Corr2Sensor.UNKNOWN, '', executor)
@@ -761,7 +758,6 @@ def _setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop):
             Corr2Sensor.boolean, '{}-lru-ok'.format(fhost),
             'F-engine %s LRU okay' % _f.host, Corr2Sensor.UNKNOWN, '', executor)
         ioloop.add_callback(_sensor_cb_flru, sensor, _f)
-
 
 
 def setup_sensors(sensor_manager, enable_counters=False):
