@@ -21,4 +21,5 @@ Requires: iniparse
 Requires: numpy
 Requires: spead
 Requires: curses
+Requires: tornado
 Provides: corr2

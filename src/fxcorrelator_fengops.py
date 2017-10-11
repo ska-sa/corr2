@@ -224,18 +224,17 @@ class FEngineOperations(object):
         _feng_ctr = 0
         self.fengines = []
         for fhost in self.hosts:
-            self.logger.info('\t%s:' % fhost.host)
             for fengnum in range(0, self.corr.f_per_fpga):
                 _feng = _feng_temp[_feng_ctr]
                 _feng.host = fhost
                 self.fengines.append(_feng)
                 fhost.add_fengine(_feng)
-                self.logger.info('\t\t%s' % _feng)
+                self.logger.info('\t%i: %s' % (_feng_ctr, _feng))
                 _feng_ctr += 1
         if _feng_ctr != len(self.hosts) * self.corr.f_per_fpga:
-            raise RuntimeError('We have different numbers of inputs (%d) and '
-                               'F-engines (%d). Problem.', _feng_ctr,
-                               len(self.hosts) * self.corr.f_per_fpga)
+            raise RuntimeError(
+                'We have different numbers of inputs (%d) and F-engines (%d). '
+                'Problem.', _feng_ctr, len(self.hosts) * self.corr.f_per_fpga)
         self.logger.info('done.')
 
         output_name, output_address = utils.parse_output_products(_fengd)

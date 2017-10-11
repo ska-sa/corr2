@@ -10,14 +10,14 @@ import signal
 from tornado.ioloop import IOLoop
 import tornado.gen
 
-from corr2 import sensors, sensors_periodic, fxcorrelator
+from corr2 import sensors, sensors_hardware, fxcorrelator
 from corr2.utils import KatcpStreamHandler
 
 
-class Corr2SensorServer(katcp.DeviceServer):
+class Corr2HardwareSensorServer(katcp.DeviceServer):
 
     def __init__(self, *args, **kwargs):
-        super(Corr2SensorServer, self).__init__(*args, **kwargs)
+        super(Corr2HardwareSensorServer, self).__init__(*args, **kwargs)
         self.set_concurrency_options(thread_safe=False, handler_thread=False)
         self.instrument = None
 
@@ -36,13 +36,13 @@ class Corr2SensorServer(katcp.DeviceServer):
 
         """
         instrument = fxcorrelator.FxCorrelator(
-            'dummy fx correlator for sensors', config_source=config)
+            'dummy fx correlator for hardware sensors', config_source=config)
         self.instrument = instrument
         self.instrument.initialise(program=False, configure=False,
                                    require_epoch=False)
         sensor_manager = sensors.SensorManager(self, self.instrument)
         self.instrument.sensor_manager = sensor_manager
-        sensors_periodic.setup_sensors(sensor_manager)
+        sensors_hardware.setup_sensors(sensor_manager)
 
 
 @tornado.gen.coroutine
@@ -59,7 +59,7 @@ def on_shutdown(ioloop, server):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Start a corr2 sensor server.',
+        description='Start a corr2 hardware sensor server.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-p', '--port', dest='port', action='store',
                         default=1235, type=int,
@@ -76,9 +76,6 @@ if __name__ == '__main__':
         log_level = getattr(logging, args.loglevel)
     except:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
-
-    # def boop():
-    #     raise KeyboardInterrupt
 
     # set up the logger
     corr2_sensors_logger = logging.getLogger('corr2.sensors')
@@ -102,7 +99,7 @@ if __name__ == '__main__':
         raise RuntimeError('No config file.')
 
     ioloop = IOLoop.current()
-    sensor_server = Corr2SensorServer('127.0.0.1', args.port)
+    sensor_server = Corr2HardwareSensorServer('127.0.0.1', args.port)
     signal.signal(signal.SIGINT,
                   lambda sig, frame: ioloop.add_callback_from_signal(
                       on_shutdown, ioloop, sensor_server))
@@ -112,7 +109,6 @@ if __name__ == '__main__':
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
     ioloop.add_callback(sensor_server.initialise, args.config)
-    # ioloop.call_later(10, boop)
     ioloop.start()
 
 # end

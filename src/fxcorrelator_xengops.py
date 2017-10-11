@@ -457,31 +457,29 @@ class XEngineOperations(object):
         :return:
         """
         source_address = self.corr.fops.data_stream.destination
-        if source_address.is_multicast():
-            self.logger.info('F > X is multicast from base %s' % source_address)
-            source_range = source_address.ip_range
-            source_address = str(source_address.ip_address)
-            source_bits = source_address.split('.')
-            source_base = int(source_bits[3])
-            source_prefix = '%s.%s.%s.' % (source_bits[0],
-                                           source_bits[1],
-                                           source_bits[2])
-            source_ctr = 0
-            num_x_hosts = len(self.hosts)
-            num_gbes_per_x = len(self.hosts[0].gbes)
-            num_ips_total = source_range + 1
-            addresses_per_gbe = num_ips_total / (num_x_hosts * num_gbes_per_x)
-            for host_ctr, host in enumerate(self.hosts):
-                for gbe in host.gbes:
-                    rxaddress = '%s%d' % (source_prefix,
-                                          source_base + source_ctr)
-                    gbe.multicast_receive(rxaddress, addresses_per_gbe)
-                    source_ctr += addresses_per_gbe
-                    self.logger.info('\txhost %s %s subscribing to address '
-                                     '%s+%i' % (host.host, gbe.name, rxaddress,
-                                                addresses_per_gbe - 1))
-        else:
+        if not source_address.is_multicast():
             self.logger.info('F > X is unicast from base %s' % source_address)
+            return
+        self.logger.info('F > X is multicast from base %s' % source_address)
+        source_range = source_address.ip_range
+        source_address = str(source_address.ip_address)
+        source_bits = source_address.split('.')
+        source_base = int(source_bits[3])
+        source_prefix = '%s.%s.%s.' % (
+            source_bits[0], source_bits[1], source_bits[2])
+        source_ctr = 0
+        num_x_hosts = len(self.hosts)
+        num_gbes_per_x = len(self.hosts[0].gbes)
+        num_ips_total = source_range + 1
+        addresses_per_gbe = num_ips_total / (num_x_hosts * num_gbes_per_x)
+        for host_ctr, host in enumerate(self.hosts):
+            for gbe in host.gbes:
+                rxaddress = '%s%d' % (source_prefix,
+                                      source_base + source_ctr)
+                gbe.multicast_receive(rxaddress, addresses_per_gbe)
+                source_ctr += addresses_per_gbe
+                self.logger.info('\t%s: %s(%s+%i)' % (
+                    host.host, gbe.name, rxaddress, addresses_per_gbe - 1))
 
     def check_rx(self, max_waittime=10):
         """

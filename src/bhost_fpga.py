@@ -100,10 +100,11 @@ class FpgaBHost(FpgaXHost):
                 self.registers.bf_control.write(
                     stream=beam.index, beng=beng_ctr, antenna=source_index)
                 self.registers.bf_value_ctrl.write(bw='pulse')
-                LOGGER.info(
+                LOGGER.debug(
                     '%s:%i: Beam %i:%s set beng(%i) antenna(%i) weight(%.5f)'
                     '' % (self.host, self.index, beam.index, beam.name,
                           beng_ctr, source_index, source_weight))
+        LOGGER.info('%s: set beamweights for beam %i' % (self.host, beam.index))
 
     def beam_weights_get(self, beam, source_labels=None):
         """
