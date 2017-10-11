@@ -607,9 +607,17 @@ class Corr2SensorManager(SensorManager):
             sensor = Corr2Sensor.integer(
                 name='{}-n-samples-between-spectra'.format(strmnm),
                 description='Number of samples between spectra.',
+                unit='samples',
                 initial_status=Sensor.UNKNOWN, manager=self)
             self.sensor_create(sensor)
             sensor.set_value(self.instrument.n_chans * 2)
+
+            sensor = Corr2Sensor.integer(
+                name='{}-pfb-group-delay'.format(strmnm),
+                description='Group delay for PFB.', unit='samples',
+                initial_status=Sensor.UNKNOWN, manager=self)
+            self.sensor_create(sensor)
+            sensor.set_value(self.instrument.pfb_group_delay)
 
         self.sensors_feng_fft_shift()
         self.sensors_feng_eq()

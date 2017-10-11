@@ -550,6 +550,10 @@ class FxCorrelator(Instrument):
         self.quant_format = _feng_d['quant_format']
         self.adc_bitwidth = int(_feng_d['sample_bits'])
         self.fft_shift = int(_feng_d['fft_shift'])
+        try:
+            self.pfb_group_delay = int(_feng_d['pfb_group_delay'])
+        except KeyError:
+            self.pfb_group_delay = -1
 
         try:
             self.qdr_ct_error_threshold = int(_feng_d['qdr_ct_error_threshold'])
