@@ -168,8 +168,8 @@ class Corr2Server(katcp.DeviceServer):
             self._initialised = True
             return 'ok',
         except Exception as ex:
-            return self._log_excep(ex, 'Failed to initialise '
-                                       '{}'.format(self.instrument.descriptor))
+            return self._log_excep(ex, 'Failed to initialise {}'.format(
+                self.instrument.descriptor))
 
     @request(Str(multiple=True))
     @return_reply()

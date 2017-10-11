@@ -196,30 +196,30 @@ class SensorManager(object):
                         str(sensor.value()))
             return
         assert self.kcs_sensors
-        supdate_inform = Message.inform('sensor-status', time.time(), 1,
-                                        sensor.name,
-                                        sensor.STATUSES[sensor.status()],
-                                        sensor.value())
+        supdate_inform = Message.inform(
+            'sensor-status', time.time(), 1, sensor.name,
+            sensor.STATUSES[sensor.status()], sensor.value())
         self.katcp_server.mass_inform(supdate_inform)
 
     def _kcs_sensor_create(self, sensor):
         """
-        Create a sensor the katcp server with a sensor-list inform:
+        Create a sensor on the katcp server with a sensor-list inform.
 
         #sensor-list sensor-name description units type
 
         :param sensor: A katcp.Sensor object
         :return:
         """
-        descr = sensor.description.replace(' ', '\_')
+        # descr = sensor.description.replace(' ', '\_')
+        descr = sensor.description
         if self._debug_mode:
             LOGGER.info('SENSOR_DEBUG: sensor-list ' + sensor.name + ' ' +
                         descr + ' ' + sensor.units + ' ' + str(sensor.type))
             return
         assert self.kcs_sensors
-        screate_inform = Message.inform('sensor-list',
-                                        sensor.name, descr,
-                                        sensor.units, sensor.type)
+        screate_inform = Message.inform(
+            'sensor-list', sensor.name, descr,
+            sensor.units, sensor.type)
         self.katcp_server.mass_inform(screate_inform)
         self._kcs_sensor_set(sensor)
 
@@ -749,7 +749,6 @@ class Corr2SensorManager(SensorManager):
         if not self.instrument.initialised():
             raise RuntimeError('Cannot set up sensors until instrument is '
                                'initialised.')
-
         if self.katcp_sensors:
             ioloop = getattr(self.instrument, 'ioloop', None)
             if not ioloop:
@@ -757,15 +756,10 @@ class Corr2SensorManager(SensorManager):
             if not ioloop:
                 raise RuntimeError('IOLoop-containing katcp version required. '
                                    'Can go no further.')
-
         self.sensors_clear()
-
         # sensors from list @ https://docs.google.com/spreadsheets/d/12AWtHXPXmkT5e_VT-H__zHjV8_Cba0Y7iMkRnj2qfS8/edit#gid=0
-
         self.sensors_stream_destinations()
-
         self.sensors_gbe_interfacing()
-
         self.sensors_host_mapping()
 
         sensor = Corr2Sensor.integer(
