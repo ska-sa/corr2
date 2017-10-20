@@ -11,7 +11,6 @@ class FpgaHost(CasperFpga):
     """
     A Host that is a CASPER FPGA, ROACH2 or SKARAB.
     """
-
     def check_rx_reorder(self):
         """
         Is the host receiving and reordering data?
@@ -135,7 +134,7 @@ class FpgaHost(CasperFpga):
             if gbe.block_info['tag'] == 'xps:forty_gbe':
                 # this is not applicable for SKARAB forty gbe ports
                 gbe.set_port(30000)
-                gbe.enable()
+                gbe.fabric_enable()
                 continue
             if gbe.block_info['flavour'] == 'sfp+':
                 mac_ctr = int(gbe.block_info['slot']) * 4 + int(
