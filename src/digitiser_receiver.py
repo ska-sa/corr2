@@ -157,18 +157,18 @@ class DigitiserStreamReceiver(FpgaHost):
         LOGGER.info('%s: is reordering data okay.' % self.host)
         return True
 
-    def read_spead_counters(self):
-        """
-        Read the SPEAD rx and error counters for this F host
-        :return:
-        """
-        rv = []
-        spead_ctrs = self.registers.spead_ctrs.read()['data']
-        for core_ctr in range(0, len(self.gbes)):
-            counter = spead_ctrs['rx_cnt%i' % core_ctr]
-            error = spead_ctrs['err_cnt%i' % core_ctr]
-            rv.append((counter, error))
-        return rv
+#    def read_spead_counters(self):
+#        """
+#        Read the SPEAD rx and error counters for this F host
+#        :return:
+#        """
+#        rv = []
+#        spead_ctrs = self.registers.spead_ctrs.read()['data']
+#        for core_ctr in range(0, len(self.gbes)):
+#            counter = spead_ctrs['rx_cnt%i' % core_ctr]
+#            error = spead_ctrs['err_cnt%i' % core_ctr]
+#            rv.append((counter, error))
+#        return rv
 
     def get_local_time(self):
         """

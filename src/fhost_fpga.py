@@ -783,14 +783,6 @@ class FpgaFHost(DigitiserStreamReceiver):
         return (self.check_ct_parity(threshold) and
                 self.check_cd_parity(threshold))
 
-    def check_rx_spead(self, max_waittime=5):
-        """
-        Check that this host is receiving SPEAD data.
-        :param max_waittime: the maximum time to wait
-        :return:
-        """
-        return self._check_rx_spead_skarab()
-
     def check_ct_parity(self, threshold):
         """
         Check the QDR corner turner parity error counters
