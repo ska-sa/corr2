@@ -1,5 +1,6 @@
 import time
 import numpy
+import utils
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
@@ -308,7 +309,7 @@ class XEngineOperations(object):
         # the x-engine output data stream setup
         xeng_d = self.corr.configd['xengine']
         num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
-        output_name, output_address = parse_output_products(xeng_d)
+        output_name, output_address = utils.parse_output_products(xeng_d)
         assert len(output_name) == 1, 'Currently only single xeng products ' \
                                       'supported.'
         output_name = output_name[0]
