@@ -20,9 +20,6 @@ from casperfpga import snap
 from casperfpga import spead as casperspead
 from casperfpga import snap as caspersnap
 
-n_xeng=16
-n_freqs=4096
-
 parser = argparse.ArgumentParser(description='Display the contents of an FPGA''s Gbe buffers.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
@@ -59,7 +56,7 @@ if configfile == '':
 # create the fpgas
 c=corr2.fxcorrelator.FxCorrelator('bob',config_source=configfile)
 c.initialise(configure=False,program=False,require_epoch=False)
-fpga = c.xhosts[int(args.host)]
+fpga = c.fhosts[int(args.host)]
 configd = c.configd
 n_chans=int(configd['fengine']['n_chans'])
 n_xeng=int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).split(','))
@@ -133,19 +130,20 @@ last_index=-1
 for eof_n,eof in enumerate(unpacked_data['eof']):
     if eof:
         pkts.append(unpacked_data['data'][last_index+1:eof_n])
-        print '%i-%i=Pkt len: %i'%(eof_n/4,last_index,eof_n/4-last_index)
-        last_index=eof_n/4
+        print '%i-%i=Pkt len: %i'%(eof_n,last_index,eof_n-last_index)
+        last_index=eof_n
 
 
 spead_processor = spead.SpeadProcessor(None, None, None, None)
 gbe_packets = snap.Snap.packetise_snapdata(unpacked_data)
 gbe_data=[]
 for pkt in gbe_packets:
-#    print pkt
     gbe_data.append(pkt['data'])
 #    print gbe_data[-1]
-#print gbe_data
-#print pkts[0:2]
+
+#for i in range(len(gbe_packets)):
+#    print i,len(gbe_packets[i]['data']),gbe_packets[i]['data'][0], gbe_data[i][0]
+
 spead_processor.process_data(gbe_data)
 # data now in    spead_processor.packets
 
@@ -158,24 +156,17 @@ print ""
 print "Unpacked SPEAD data:"
 print ""
 for pkt_cnt,pkt in enumerate(spead_processor.packets):
-    exp_xeng=pkt.headers[0x4103]/(n_chans/n_xeng)
-    chan_on_this_xeng=pkt.headers[0x3]/pkt.headers[0x4]
-    if exp_xeng==0:
-        print '%4i'%pkt_cnt,
-        print '[mcnt %16i]'%pkt.headers[0x1600],
-    #    print '[flags %012X]'%pkt.headers[0x4102],
-        print '[heap_id 0x%012X]'%pkt.headers[0x1],
-        print '[heap_size %i]'%pkt.headers[0x2],
-        print '[heap_offset %6i]'%pkt.headers[0x3],
-        print '[length %i]'%pkt.headers[0x4],
-        print '[ant %2i]'%pkt.headers[0x4101],
-        print '[dest_ip %16s]'%network.IpAddress(gbe_packets[pkt_cnt]['src_ip'][-1]),
-        print '[base_freq %5i]'%pkt.headers[0x4103],
-        print "Calc'd:",
-        print "[Freq %5i]"%(pkt.headers[0x4103]+(pkt.headers[0x3]/pkt.headers[0x4])),
-        print '[expected Xeng %3i]'%(exp_xeng),
-        print '[chan on that xeng %4i]'%(chan_on_this_xeng),
-        print ''
+    print '%4i'%pkt_cnt,
+    print '[mcnt %16x]'%pkt.headers[0x1600],
+#    print '[flags %012X]'%pkt.headers[0x4102],
+    print '[heap_id 0x%012X]'%pkt.headers[0x1],
+    print '[heap_size %i]'%pkt.headers[0x2],
+    print '[heap_offset %6i]'%pkt.headers[0x3],
+    print '[length %i]'%pkt.headers[0x4],
+    print '[dig %2i]'%pkt.headers[0x3101],
+    print '[dest_ip %16s]'%network.IpAddress(gbe_packets[pkt_cnt]['src_ip'][-1]),
+    print '[stat %4x]'%pkt.headers[0x3102],
+    print ''
 
 
 
