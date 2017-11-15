@@ -193,10 +193,9 @@ class DigitiserStreamReceiver(FpgaHost):
         Clear the status registers and counters on this host
         :return:
         """
-        # TODO - redo cnt_rst pulse
-        # self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
-        #                              cnt_rst='pulse')
-        self.registers.control.write(gbe_cnt_rst='pulse')
+        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
+                                     cnt_rst='pulse')
+        #self.registers.control.write(gbe_cnt_rst='pulse')
         LOGGER.debug('{}: status cleared.'.format(self.host))
 
 # end

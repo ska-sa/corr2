@@ -52,10 +52,11 @@ class FpgaXHost(FpgaHost):
             raise RuntimeError('Running this on an unprogrammed FPGA'
                                'is not going to work.')
         ctr = 0
-        while ('status%i' % ctr) in regs:
+        while ('vacc_status%i' % ctr) in regs:
             ctr += 1
             if ctr == 64:
                 break
+        LOGGER.info('%s: Found %i X-engines.' % (self.host,ctr))
         return ctr
 
     def clear_status(self):
@@ -209,31 +210,12 @@ class FpgaXHost(FpgaHost):
         stats = []
         regs = self.registers
         for xnum in range(0, self.x_per_fpga):
-            # is this an older bitstream with old registers?
-            if 'vaccerr0' in regs.names():
-                xengdata = {
-                    'errors': regs['vaccerr%d' % xnum].read()['data']['reg'],
-                    'count': regs['vacccnt%d' % xnum].read()['data']['reg']}
-            elif "vacc_cnt0" in regs.names():
-                temp = regs['vacc_cnt%d' % xnum].read()['data']
-                xengdata = {
-                    'errors': temp['err'],
-                    'count': temp['cnt']}
-            elif "vacc_status0" in regs.names():
-                temp = regs['vacc_status%d' % xnum].read()['data']
-                xengdata = {
-                    'errors': temp['err_cnt'],
-                    'count': temp['acc_cnt']}
-                xengdata['armcount'] = temp['arm_cnt']
-                xengdata['loadcount'] = temp['ld_cnt']
-            if 'vacc_ld_status0' in regs.names():
-                temp = regs['vacc_ld_status%i' % xnum].read()['data']
-                if 'reg' in temp.keys():
-                    xengdata['armcount'] = temp['reg'] >> 16
-                    xengdata['loadcount'] = temp['reg'] & 0xffff
-                elif 'armcnt' in temp.keys():
-                    xengdata['armcount'] = temp['armcnt']
-                    xengdata['loadcount'] = temp['ldcnt']
+            temp = regs['vacc_status%d' % xnum].read()['data']
+            xengdata = {
+                'errors': temp['err_cnt'],
+                'count': temp['acc_cnt'],
+                'armcount': temp['arm_cnt'],
+                'loadcount': temp['ld_cnt']}
             stats.append(xengdata)
         return stats
 
