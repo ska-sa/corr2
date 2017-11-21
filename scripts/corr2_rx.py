@@ -33,6 +33,8 @@ import re
 import logging
 import argparse
 import sys
+import corr2
+import casperfpga
 
 from corr2 import data_stream
 
@@ -388,13 +390,14 @@ class CorrReceiver(threading.Thread):
     """
     Receive thread to process heaps received by a SPEAD2 stream.
     """
-    def __init__(self, port, quit_event, track_list, h5_filename,
+    def __init__(self, port, base_ip, quit_event, track_list, h5_filename,
                  baselines, channels, acc_scale,
                  log_handler=None, log_level=logging.INFO,
                  spead_log_level=logging.INFO,):
         """
 
         :param port: the port on which to receive data
+        :param base_ip: the base IP address to subscribe to
         :param quit_event: quit if this thread_safe event is set
         :param track_list: a list of items to track
         :param h5_filename: the H5 filename to use
@@ -423,6 +426,7 @@ class CorrReceiver(threading.Thread):
         self._target = self.rx_cont
 
         self.port = port
+        self.base_ip = base_ip
         # self.mcast_sock = mcast_sock
 
         self.track_list = track_list
@@ -463,14 +467,15 @@ class CorrReceiver(threading.Thread):
         :return:
         """
         logger = self.logger
-        logger.info('RXing data on port %i.' % self.port)
+        logger.info('RXing data on %s+%i, port %i.' % (self.base_ip,NUM_XENG, self.port))
 
         # make a SPEAD2 receiver stream
         strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
                            max_heaps=40, ring_heaps=40)
         for ctr in range(NUM_XENG):
+            addr=casperfpga.network.IpAddress(self.base_ip.ip_int+ctr).ip_str
             strm.add_udp_reader(
-                multicast_group='239.2.2.%i' % (64 + ctr),
+                multicast_group=addr,
                 port=7148,
                 max_size=9200,
                 buffer_size=5120000,
@@ -601,6 +606,9 @@ if __name__ == '__main__':
         description='Receive data from a corr2 correlator.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
+        '--config', dest='config', action='store', default='',
+        help='Specify a config file (instead of a servlet).')
+    parser.add_argument(
         '--servlet', dest='servlet', action='store', default='127.0.0.1:7601',
         help='ip and port of running corr2_servlet')
     parser.add_argument(
@@ -666,25 +674,48 @@ if __name__ == '__main__':
 
     product_name = args.prodname
 
-    servlet_ip = args.servlet.split(':')
-    servlet_port = int(servlet_ip[1])
-    servlet_ip = servlet_ip[0]
-    sensors = get_sensors(servlet_ip, servlet_port)
+    if args.config:
+        configfile = args.config
+        c=corr2.fxcorrelator.FxCorrelator('bob',config_source=configfile)
+        c.initialise(configure=False,program=False,require_epoch=False)
+        configd = c.configd
+        n_chans=int(configd['fengine']['n_chans'])
+        n_xeng=int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).split(','))
+        n_accs = c.xeng_accumulation_len * c.accumulation_len
+        n_ants = c.n_antennas
+        NUM_XENG = n_xeng
+        NUM_BASELINES = len(c.baselines)
+        BASELINES = c.baselines
+        LEGEND = args.legend
+        output={}
+#        destination=c.get_data_stream('baseline-correlation-products').destination
+        output = {
+            'product': product_name,
+            'address': c.get_data_stream('baseline-correlation-products').destination
+            #'address': corr2.data_stream.StreamAddress.from_address_string(
+            #    destination)
+        }
 
-    n_chans = int(sensors['{}-n-chans'.format(product_name)])
-    n_accs = int(sensors['{}-n-accs'.format(product_name)])
-    n_ants = int(sensors['n-ants'])
+    else:
+        servlet_ip = args.servlet.split(':')
+        servlet_port = int(servlet_ip[1])
+        servlet_ip = servlet_ip[0]
+        sensors = get_sensors(servlet_ip, servlet_port)
 
-    output = {
-        'product': product_name,
-        'address': data_stream.StreamAddress.from_address_string(
-            sensors['{}-destination'.format(product_name)])
-    }
+        n_chans = int(sensors['{}-n-chans'.format(product_name)])
+        n_accs = int(sensors['{}-n-accs'.format(product_name)])
+        n_ants = int(sensors['n-ants'])
 
-    NUM_XENG = output['address'].ip_range
-    NUM_BASELINES = int(sensors['{}-n-bls'.format(product_name)])
-    BASELINES = list(sensors['{}-bls-ordering'.format(product_name)])
-    LEGEND = args.legend
+        output = {
+            'product': product_name,
+            'address': data_stream.StreamAddress.from_address_string(
+                sensors['{}-destination'.format(product_name)])
+        }
+
+        NUM_XENG = output['address'].ip_range
+        NUM_BASELINES = int(sensors['{}-n-bls'.format(product_name)])
+        BASELINES = list(sensors['{}-bls-ordering'.format(product_name)])
+        LEGEND = args.legend
 
     if args.items:
         track_list = args.items.split(',')
@@ -759,12 +790,14 @@ if __name__ == '__main__':
     quit_event = threading.Event()
 
     data_port = output['address'].port
+    data_ip = output['address'].ip_address
 
     # start the receiver thread
     print('Initialising SPEAD transports for data:')
     print('\tData reception on port %s' % data_port)
     corr_rx = CorrReceiver(
         port=data_port,
+        base_ip=data_ip,
         log_level=eval('logging.%s' % log_level),
         spead_log_level=eval('logging.%s' % spead_log_level),
         track_list=track_list,
