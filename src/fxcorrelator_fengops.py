@@ -16,7 +16,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 class FengineStream(SPEADStream):
     """
-    An x-engine SPEAD stream
+    An f-engine SPEAD stream
     """
     def __init__(self, name, destination, fops):
         """
@@ -138,10 +138,17 @@ class FEngineOperations(object):
         try:
             for f in self.hosts:
                 # f.registers.ct_control0.write(tvg_en=True, tag_insert=False)
-                chans_per_x = (self.corr.n_chans / 8) / num_x
-                f.registers.ct_control1.write(chans_per_x=chans_per_x,
-                                              num_x=num_x,
-                                              num_x_recip=1.0 / num_x)
+                chans_per_x = self.corr.n_chans * 1.0 / num_x
+                chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
+                f.registers.ct_control1.write(
+                    num_x=num_x, num_x_recip=1.0 / num_x,
+                    x_per_board=x_per_fpga, x_per_board_recip=1.0 / x_per_fpga)
+                f.registers.ct_control2.write(
+                    chans_per_x=chans_per_x,
+                    chans_per_board=chans_per_board)
+                f.registers.ct_control3.write(
+                    num_x_boards=num_x_hosts,
+                    num_x_boards_recip=1.0 / num_x_hosts)
         except AttributeError:
             self.logger.warning('No CT registers found? Odd.')
             pass
@@ -150,8 +157,7 @@ class FEngineOperations(object):
         output_port = self.data_stream.destination.port
         board_id = 0
         for f in self.hosts:
-            f.registers.tx_metadata.write(board_id=board_id,
-                                          porttx=output_port)
+            f.registers.tx_metadata.write(board_id=board_id, porttx=output_port)
             board_id += 1
 
         # where does the F-engine data go?
