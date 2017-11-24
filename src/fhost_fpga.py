@@ -986,6 +986,8 @@ class FpgaFHost(DigitiserStreamReceiver):
         snapshot read operation?
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
+        if 'd0' in self.snapshots.snap_adc0_ss.field_names():
+            return self._get_adc_snapshots_compat_wierd_skarab_version()
         if 'p1_d3' not in self.snapshots.snap_adc0_ss.field_names():
             return self._get_adc_snapshots_compat()
         if 'adc_snap_trig_select' in self.registers.control.field_names():
@@ -1048,6 +1050,35 @@ class FpgaFHost(DigitiserStreamReceiver):
             p0 = self.snapshots.snap_adc0_ss.read()['data']
             p1 = self.snapshots.snap_adc1_ss.read()['data']
         # pack the data into simple lists
+        rvp0 = []
+        rvp1 = []
+        for ctr in range(0, len(p0['d0'])):
+            for ctr2 in range(8):
+                rvp0.append(p0['d%i' % ctr2][ctr])
+                rvp1.append(p1['d%i' % ctr2][ctr])
+        return {'p0': AdcData(-1, rvp0),
+                'p1': AdcData(-1, rvp1)}
+
+    def _get_adc_snapshots_compat_wierd_skarab_version(self):
+        """
+        Compatibility implementation of reading the ADC snapshots, for an odd
+        version of the snapshot found in a skarab fengine. Why? Who knows?!
+        :return {'p0': AdcData(), 'p1': AdcData()}
+        """
+        self.registers.control.write(adc_snap_arm=0)
+        self.snapshots.snap_adc0_ss.arm()
+        self.snapshots.snap_adc1_ss.arm()
+        self.registers.control.write(adc_snap_arm=1)
+        d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
+        d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
+        self.registers.control.write(adc_snap_arm=0)
+        p0 = {'d%i' % ctr: d['d%i' % ctr] for ctr in range(8)}
+        p1 = {'d%i' % ctr: d['p1_d%i' % ctr]
+              for ctr in [0, 1, 2, 3, 5, 6, 7]}
+        p1['d4'] = []
+        for ctr in range(len(d['p1_d4_u8'])):
+            _tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
+            p1['d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
         rvp0 = []
         rvp1 = []
         for ctr in range(0, len(p0['d0'])):
