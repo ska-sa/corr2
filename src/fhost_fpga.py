@@ -804,6 +804,77 @@ class FpgaFHost(DigitiserStreamReceiver):
             reg_field_name='ct_parerr_cnt'
         )
 
+    def get_cd_status(self):
+        """
+        Retrieves all the Coarse Delay status registers.
+        """
+        return self.registers.cd_status.read()['data']
+
+    def check_cd(self):
+        """
+        Check the Coarse Delay, including any host memory errors.
+        """
+        d0=self.get_cd_status()
+        if d0['pol0_parity_err_cnt']>0:
+            LOGGER.error('%s: Parity errors on CD0.',self.host)    
+            return False
+        if d0['pol1_parity_err_cnt']>0:
+            LOGGER.error('%s: Parity errors on CD1.',self.host)    
+            return False
+        d1=self.get_cd_status()
+        if d1['hmc_err_cnt'] != d0['hmc_err_cnt']:
+            LOGGER.error('%s: HMC err cnt changing.',self.host)    
+            return False
+        return True
+
+    def get_ct_status(self):
+        """
+        Retrieve all the Corner-Turner registers.
+        """ 
+        if 'ct_status0' in self.registers.names():
+            rv = self.registers.ct_status0.read()['data']
+        else:
+            rv = self.registers.ct_status.read()['data']
+        try:
+            rv.update(self.registers.ct_status1.read()['data'])
+            rv.update(self.registers.ct_status2.read()['data'])
+        except AttributeError or KeyError:
+            pass
+        try:
+            rv['ct_dv_rate'] = self.registers.ct_dv_rate.read()['data']['reg']
+        except AttributeError or KeyError:
+            pass
+        return rv
+
+    def check_ct(self):
+        """
+        Check the Coarse Delay, including any host memory errors.
+        """
+        d0 = self.get_ct_status()
+        if not d0['init']:
+            LOGGER.error('%s: CT HMC did not init.',self.host)    
+            return False
+        if not d0['post']:
+            LOGGER.error('%s: CT HMC did not POST.',self.host)    
+            return False
+        d1 = self.get_ct_status()
+        if d0['err_bank'] != d1['err_bank']:
+            LOGGER.error('%s: CT bank_err is changing.',self.host)    
+            return False
+        if d0['wr_ctr'] == d1['wr_ctr']:
+            LOGGER.error('%s: Write counter is NOT changing.',self.host)    
+            return False
+        if d0['err_en_sync'] != d1['err_en_sync']:
+            LOGGER.error('%s: CT err_en_sync is changing.',self.host)    
+            return False
+        if d0['err_rdrdy'] != d1['err_rdrdy']:
+            LOGGER.error('%s: CT HMC read not ready is spinning.',self.host)
+            return False
+        if d0['err_wrrdy'] != d1['err_wrrdy']:
+            LOGGER.error('%s: CT HMC write not ready is spinning.',self.host)
+            return False
+        return True 
+
     def check_cd_parity(self, threshold):
         """
         Check the QDR coarse delay parity error counters

@@ -69,7 +69,7 @@ class FengineStream(SPEADStream):
         :return:
         """
         self.fops.logger.warn('{}: Stopping F-engine streams will '
-                              'break the correlator.'.format(self.name))
+                              'break the correlator. Ignoring.'.format(self.name))
 
     def _tx_disable(self):
         """
@@ -285,7 +285,7 @@ class FEngineOperations(object):
         self.logger.info('Checking F hosts are receiving data...')
         results = THREADED_FPGA_FUNC(
             self.hosts, timeout=max_waittime+1,
-            target_function=('check_rx', (max_waittime,),))
+            target_function=('check_rx'))
         all_okay = True
         for _v in results.values():
             all_okay = all_okay and _v
@@ -294,7 +294,7 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return all_okay
 
-    def check_rx_timestamps(self):
+    def get_rx_timestamps(self):
         """
         Are the timestamps being received by the F-engines okay?
         :return: (a boolean, the F-engine times as 48-bit counts,
@@ -791,19 +791,6 @@ class FEngineOperations(object):
                     'Could not find input %s anywhere. Available inputs: %s' % (
                         input_name, self.corr.get_input_labels()))
             return {input_name: rv}
-
-    def check_qdr_devices(self):
-        """
-        Are the QDR devices behaving?
-        :return:
-        """
-        res = THREADED_FPGA_FUNC(
-            self.hosts, 5,
-            ('check_qdr_devices', [self.corr.qdr_ct_error_threshold], {}))
-        for host, result in res.items():
-            if not result:
-                return False
-        return True
 
     def get_version_info(self):
         """

@@ -4,7 +4,7 @@ import argparse
 import sys
 import signal
 
-from casperfpga import katcp_fpga, tengbe
+from casperfpga import casperfpga, tengbe
 
 
 class DengTvg(CasperFpga):

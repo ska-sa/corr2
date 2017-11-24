@@ -15,8 +15,8 @@ import subprocess
 import threading
 import time
 
-from casperfpga import network as caspernetwork
-from corr2 import data_stream
+from casperfpga import tengbe
+from corr2 import utils, data_stream
 from inspect import currentframe
 from inspect import getframeinfo
 
@@ -140,14 +140,13 @@ class CorrRx(threading.Thread):
         self.multicast_subs()
         threading.Thread.__init__(self)
 
-    def confirm_multicast_subs(self, mul_ip='239.100.0.10' ,interface='eth2'):
+    def confirm_multicast_subs(self, mul_ip='239.100.0.10'):
         """
         Confirm whether the multicast subscription was a success or fail.
         :param str: multicast ip
-        :param str: network interface
         :retur str: successful or failed
         """
-        list_inets = subprocess.check_output(['ip','maddr','show', interface])
+        list_inets = subprocess.check_output(['ip','maddr','show'])
         return 'Successful' if str(mul_ip) in list_inets else 'Failed'
 
     def multicast_subs(self):
@@ -186,7 +185,10 @@ class CorrRx(threading.Thread):
                 if srch.match(inf.arguments[2]):
                     sensors[inf.arguments[2]] = inf.arguments[4]
             self.n_chans = int(sensors['{}-n-chans'.format(product_name)])
-            self.n_accs = int(sensors['{}-n-accs'.format(product_name)])
+            try:
+                self.n_accs = int(sensors['{}-n-accs'.format(product_name)])
+            except Exception:
+                self.n_accs = int(float(sensors['{}-n-accs'.format(product_name)]))
             self.n_ants = int(sensors['n-ants'])
             self.sync_time = float(sensors['sync-time'])
             self.scale_factor_timestamp = float(sensors['scale-factor-timestamp'])
@@ -196,10 +198,10 @@ class CorrRx(threading.Thread):
             raise RuntimeError(msg)
         else:
             output = {
-                'product': product_name,
-                'address': data_stream.StreamAddress.from_address_string(
-                    sensors['{}-destination'.format(product_name)])
-            }
+                        'product': product_name,
+                        'address': data_stream.StreamAddress.from_address_string(
+                            sensors['{}-destination'.format(product_name)])
+                     }
             self.NUM_XENG = output['address'].ip_range
 
             if output['address'].ip_address.is_multicast():
@@ -223,7 +225,7 @@ class CorrRx(threading.Thread):
                 #
                 # # bind it to the port
                 # mcast_sock.bind(('', data_port))
-                # print('Receiver bound to port %i.' % data_port
+                # print 'Receiver bound to port %i.' % data_port
 
                 def join_group(address):
                     group_bin = socket.inet_pton(ip_version, address)
@@ -240,7 +242,7 @@ class CorrRx(threading.Thread):
                 # join group
                 for addrctr in range(output['address'].ip_range):
                     self._addr = int(output['address'].ip_address) + addrctr
-                    self._addr = caspernetwork.IpAddress(self._addr)
+                    self._addr = tengbe.IpAddress(self._addr)
                     join_group(str(self._addr))
                 return self.confirm_multicast_subs(mul_ip=str(self._addr))
             else:
@@ -271,7 +273,7 @@ class CorrRx(threading.Thread):
         logger.info('Data reception on port %i.' % self.data_port)
 
         self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
-                           max_heaps=40, ring_heaps=40)
+                           max_heaps=self.NUM_XENG, ring_heaps=40)
         strm.add_udp_reader(port=self.data_port, max_size=9200,
                             buffer_size=51200000)
         self.running_event.set()
@@ -329,6 +331,11 @@ class CorrRx(threading.Thread):
             LOGGER.info('Discarding #%s dump(s):'%i)
             try:
                 _dump = self.data_queue.get(timeout=dump_timeout)
+                assert _dump is not None
+            except AssertionError:
+                _errmsg = ('Dump data type cannot be nonetype, '
+                           'confirm you are subscribed to multicast group.')
+                self.logger.exception(_errmsg)
             except Queue.Empty:
                 _stat = self.confirm_multicast_subs(self._addr)
                 _errmsg = ('Data queue empty, Multicast subscription %s.'%_stat)
@@ -338,12 +345,14 @@ class CorrRx(threading.Thread):
         try:
             LOGGER.info('Waiting for a clean dump:')
             _dump = self.data_queue.get(timeout=dump_timeout)
-            assert _dump['xeng_raw'].shape[0] == self.n_chans
-        except AssertionError:
-            errmsg = ('No of channels in the spead data is inconsistent with the no of'
+            _errmsg = ('No of channels in the spead data is inconsistent with the no of'
                       ' channels (%s) expected' %self.n_chans)
-            self.logger.error(errmsg)
-            raise RuntimeError(errmsg)
+            assert _dump['xeng_raw'].shape[0] == self.n_chans, _errmsg
+            _errmsg = ('Dump data type cannot be nonetype, confirm you are subscribed to multicast group.')
+            assert _dump is not None, _errmsg
+        except AssertionError:
+            self.logger.error(_errmsg)
+            raise RuntimeError(_errmsg)
         except Queue.Empty:
             _stat = self.confirm_multicast_subs(self._addr)
             _errmsg = ('Data queue empty, Multicast subscription %s.'%_stat)

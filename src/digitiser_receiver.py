@@ -40,12 +40,7 @@ class DigitiserStreamReceiver(FpgaHost):
                                'one FortyGbe?' % self.host)
         test_data = []
         for _ctr in range(0, required_repetitions):
-            reorder_ctrs = self.registers.reorder_status.read()['data']
-            try:
-                dv_sec = self.registers.reorder_status1.read()['data']
-                reorder_ctrs['dv_per_sec'] = dv_sec['dv_cnt']
-            except AttributeError:
-                pass
+            reorder_ctrs = self.get_rx_reorder_status()
             test_data.append(reorder_ctrs)
             time.sleep(sleeptime)
         if 'dv_cnt' not in test_data[0]:
@@ -75,17 +70,26 @@ class DigitiserStreamReceiver(FpgaHost):
         LOGGER.debug('%s: is reordering data okay.' % self.host)
         return True
 
-    def _get_rxreg_data(self):
+
+    def get_rx_reorder_status(self):
         """
-        Get the rx register data for this host
+        Read the reorder block counters
         :return:
         """
-        data = {}
-        if 'reorder_ctrs1' in self.registers.names():
+        if 'reorder_ctrs' in self.registers.names():
             reorder_ctrs = self.registers.reorder_ctrs.read()['data']
-            reorder_ctrs.update(self.registers.reorder_ctrs1.read()['data'])
         else:
-            reorder_ctrs = self.registers.reorder_ctrs.read()['data']
+            reorder_ctrs = self.registers.reorder_status.read()['data']
+        try:
+            reorder_ctrs.update(self.registers.reorder_status1.read()['data'])
+        except AttributeError or KeyError:
+            pass
+        return reorder_ctrs
+
+    def _get_rxreg_data_roach2(self):
+        reorder_ctrs = self.registers.reorder_ctrs.read()['data']
+        if 'reorder_ctrs1' in self.registers.names():
+            reorder_ctrs.update(self.registers.reorder_ctrs1.read()['data'])
         data['mcnt_relock'] = reorder_ctrs['mcnt_relock']
         data['timerror'] = reorder_ctrs['timestep_error']
         data['discard'] = reorder_ctrs['discard']
@@ -112,7 +116,7 @@ class DigitiserStreamReceiver(FpgaHost):
             raise RuntimeError('FHost with no 10gbe cores %s?' % self.host)
         test_data = []
         for _ctr in range(0, required_repetitions):
-            test_data.append(self._get_rxreg_data())
+            test_data.append(self._get_rxreg_data_roach2())
             time.sleep(sleeptime)
         got_errors = False
         for _ctr in range(1, required_repetitions):
@@ -153,18 +157,18 @@ class DigitiserStreamReceiver(FpgaHost):
         LOGGER.info('%s: is reordering data okay.' % self.host)
         return True
 
-    def read_spead_counters(self):
-        """
-        Read the SPEAD rx and error counters for this F host
-        :return:
-        """
-        rv = []
-        spead_ctrs = self.registers.spead_ctrs.read()['data']
-        for core_ctr in range(0, len(self.gbes)):
-            counter = spead_ctrs['rx_cnt%i' % core_ctr]
-            error = spead_ctrs['err_cnt%i' % core_ctr]
-            rv.append((counter, error))
-        return rv
+#    def read_spead_counters(self):
+#        """
+#        Read the SPEAD rx and error counters for this F host
+#        :return:
+#        """
+#        rv = []
+#        spead_ctrs = self.registers.spead_ctrs.read()['data']
+#        for core_ctr in range(0, len(self.gbes)):
+#            counter = spead_ctrs['rx_cnt%i' % core_ctr]
+#            error = spead_ctrs['err_cnt%i' % core_ctr]
+#            rv.append((counter, error))
+#        return rv
 
     def get_local_time(self):
         """
@@ -189,10 +193,9 @@ class DigitiserStreamReceiver(FpgaHost):
         Clear the status registers and counters on this host
         :return:
         """
-        # TODO - redo cnt_rst pulse
-        # self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
-        #                              cnt_rst='pulse')
-        self.registers.control.write(gbe_cnt_rst='pulse')
+        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
+                                     cnt_rst='pulse')
+        #self.registers.control.write(gbe_cnt_rst='pulse')
         LOGGER.debug('{}: status cleared.'.format(self.host))
 
 # end

@@ -547,15 +547,6 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
 
-            sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-feng-pkt-len'.format(strmnm),
-                'Payload size of packet exchange between F and X '
-                'engines in bytes. F-engine correlator internals.',
-                Sensor.UNKNOWN)
-            pkt_len_words = self.instrument.configd['fengine']['10gbe_pkt_len']
-            pkt_len = int(pkt_len_words) * 8
-            sensor.set_value(pkt_len)
-
             # TODO - per engine, not just hardcoded
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-feng-out-bits-per-sample'

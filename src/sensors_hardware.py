@@ -27,7 +27,7 @@ def _sensor_cb_feng_rxtime(sensor_ok, sensor_values):
     instrument = sensor_ok.manager.instrument
     try:
         result, counts, times = yield executor.submit(
-            instrument.fops.check_rx_timestamps)
+            instrument.fops.get_rx_timestamps)
         sensor_ok.set(time.time(),
                       Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                       result)

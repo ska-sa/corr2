@@ -12,7 +12,7 @@ import time
 
 from casperfpga import utils as fpgautils, tengbe
 from casperfpga import spead as casperspead, snap as caspersnap
-from casperfpga import skarab_fpga
+from casperfpga import casperfpga
 from corr2 import utils
 
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 program_skarab = True
 setup_skarab = True
 
-f = skarab_fpga.SkarabFpga(os.environ['SKARAB_DSIM'])
+f = casperfpga.CasperFpga(os.environ['SKARAB_DSIM'])
 
 if program_skarab:
     res = f.upload_to_ram_and_program(os.environ['SKARAB_DSIM_FPG'], attempts=5)
@@ -71,7 +71,6 @@ for ctr in range(len(d0['d64'])):
         prtstr += 'EOF(%i)' % (ctr - last_eof)
         last_eof = ctr
     print(prtstr)
-
 
 import IPython
 IPython.embed()

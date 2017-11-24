@@ -52,10 +52,11 @@ class FpgaXHost(FpgaHost):
             raise RuntimeError('Running this on an unprogrammed FPGA'
                                'is not going to work.')
         ctr = 0
-        while ('status%i' % ctr) in regs:
+        while ('vacc_status%i' % ctr) in regs:
             ctr += 1
             if ctr == 64:
                 break
+        LOGGER.info('%s: Found %i X-engines.' % (self.host,ctr))
         return ctr
 
     def clear_status(self):
@@ -71,7 +72,7 @@ class FpgaXHost(FpgaHost):
         Is this host/LRU okay?
         :return:
         """
-        if not (self.check_rx() and self.vacc_okay()):
+        if not (self.check_rx_reorder() and self.vacc_okay()):
             LOGGER.error('%s: host_okay() - FALSE.' % self.host)
             return False
         LOGGER.info('%s: host_okay() - TRUE.' % self.host)
@@ -90,67 +91,21 @@ class FpgaXHost(FpgaHost):
 
     def get_rx_reorder_status(self):
         """
-
+        Retrieve the RX reorder status from this FPGA's xengines.
         :return:
         """
-        regs = self.registers
-        # older versions had other register names
-        old_regs_found = 'reorderr_timeout0' in regs.names()
-        roach2_regs_found = 'reorderr_timedisc0' in regs.names()
-        skarab_regs_found = 'reord_status0' in regs.names()
-
-        def get_reg(reg):
-            return reg.read()['data']['reg']
-
-        def get_gbe_data_old():
-            return [
-                {'miss%i' % ctr: get_reg(regs['reord_missant%i' % ctr]),
-                 'rcvcnt%i' % ctr: get_reg(regs['reordcnt_recv%i' % ctr]),
-                 'ercv%i' % ctr: get_reg(regs['reorderr_recv%i' % ctr]),
-                 'etim%i' % ctr: get_reg(regs['reorderr_timeout%i' % ctr]),
-                 'edisc%i' % ctr: get_reg(regs['reorderr_disc%i' % ctr]),
-                 } for ctr in range(0, self.x_per_fpga)
-            ]
-
-        def get_gbe_data_r2():
-            data = []
-            for ctr in range(0, self.x_per_fpga):
-                tmp = regs['reorderr_timedisc%i' % ctr].read()['data']
-                regdata = {
-                    'miss%i' % ctr: regs['reordcnt_spec%i' % ctr].read()[
-                        'data']['missed_ant'],
-                    'rcvcnt%i' % ctr: regs['reordcnt_recv%i' % ctr].read()[
-                        'data']['reg'],
-                    'ercv%i' % ctr: regs['reorderr_recv%i' % ctr].read()[
-                        'data']['reg'],
-                    'etim%i' % ctr: tmp['timeout'],
-                    'edisc%i' % ctr: tmp['disc'],
-                }
-                data.append(regdata)
-            return data
-
-        def get_gbe_data_skarab():
-            data = []
-            for ctr in range(0, self.x_per_fpga):
-                tmp = regs['reord_status%i' % ctr].read()['data']
-                regdata = {
-                    'miss%i' % ctr: tmp['last_missed_ant'],
-                    'rcvcnt%i' % ctr: tmp['sync_cnt'],
-                    'ercv%i' % ctr: tmp['missed_err_cnt'],
-                    'etim%i' % ctr: tmp['timeout_err_cnt'],
-                    'edisc%i' % ctr: tmp['discard_err_cnt'],
-                }
-                data.append(regdata)
-            return data
-
-        if old_regs_found:
-            return get_gbe_data_old()
-        elif roach2_regs_found:
-            return get_gbe_data_r2()
-        elif skarab_regs_found:
-            return get_gbe_data_skarab()
-        else:
-            raise RuntimeError("Unable to find reord status registers.")
+        data = []
+        for ctr in range(0, self.x_per_fpga):
+            tmp = self.registers['reord_status%i' % ctr].read()['data']
+            regdata = {
+                'last_missed_ant%i' % ctr: tmp['last_missed_ant'],
+                'sync_cnt%i' % ctr: tmp['sync_cnt'],
+                'ercv%i' % ctr: tmp['missed_err_cnt'],
+                'etim%i' % ctr: tmp['timeout_err_cnt'],
+                'edisc%i' % ctr: tmp['discard_err_cnt'],
+            }
+            data.append(regdata)
+        return data
 
     def check_rx_reorder(self, sleeptime=1):
         """
@@ -161,57 +116,28 @@ class FpgaXHost(FpgaHost):
         rxregs = self.get_rx_reorder_status()
         time.sleep(sleeptime)
         rxregs_new = self.get_rx_reorder_status()
+        rv=True
         # compare old and new - rx counts must change and may wrap, error
         # counts must remain the same
         for ctr in range(0, self.x_per_fpga):
             _new = rxregs_new[ctr]
             _old = rxregs[ctr]
-            if _new['rcvcnt%i' % ctr] == _old['rcvcnt%i' % ctr]:
+            if _new['sync_cnt%i' % ctr] == _old['sync_cnt%i' % ctr]:
                 LOGGER.error('%s: not receiving reordered data.' % self.host)
-                return False
+                rv=False
             if ((_new['ercv%i' % ctr] != _old['ercv%i' % ctr]) or
                     (_new['etim%i' % ctr] != _old['etim%i' % ctr])):  # or
                     # (_new['edisc%i' % ctr] != _old['edisc%i' % ctr])):
                 LOGGER.error(
-                    '%s: reports reorder errors: ercv(%i) etime(%i) edisc(%i)' %
-                    (self.host,
+                    '%s: reports reorder errors on engine %i: ercv(%i) etime(%i) edisc(%i)' %
+                    (self.host, ctr,
                      _new['ercv%i' % ctr] - _old['ercv%i' % ctr],
                      _new['etim%i' % ctr] - _old['etim%i' % ctr],
                      _new['edisc%i' % ctr] - _old['edisc%i' % ctr]))
-                return False
-        LOGGER.info('%s: reordering data okay.' % self.host)
-        return True
-
-    def read_spead_counters(self):
-        """
-        Read the SPEAD rx and error counters for this X host
-        :return:
-        """
-        rv = []
-        regs = self.registers
-        # TODO
-        # the first skarab build has rx_cnt, not rx_cnt0. So this is a hack
-        # until that is fixed
-        if 'rx_cnt' in regs.names():
-            counter = regs['rx_cnt'].read()['data']['reg']
-            error = regs['rx_err_cnt'].read()['data']['reg']
-            return [(counter, error)]
-        # normal operation
-        for core_ctr in range(0, len(self.gbes)):
-            counter = regs['rx_cnt%i' % core_ctr].read()['data']['reg']
-            error = regs['rx_err_cnt%i' % core_ctr].read()['data']['reg']
-            rv.append((counter, error))
+                rv=False
+            else:
+                LOGGER.info('%s: reordering data okay on engine %i.' % (self.host,ctr))
         return rv
-
-    def vacc_counters_get(self, xnums=None):
-        """
-        Read the VACC counters for one or more X-engines on this host.
-        :param xnums: a list of x-engine indices to read, all if None
-        :return: a list of the VACC counters
-        """
-        regs = self.registers
-        if xnums is None:
-            xnums = range(0, self.x_per_fpga)
 
         def read_reg(_xengnum):
             if 'vacccnt0' in regs.names():
@@ -284,31 +210,12 @@ class FpgaXHost(FpgaHost):
         stats = []
         regs = self.registers
         for xnum in range(0, self.x_per_fpga):
-            # is this an older bitstream with old registers?
-            if 'vaccerr0' in regs.names():
-                xengdata = {
-                    'errors': regs['vaccerr%d' % xnum].read()['data']['reg'],
-                    'count': regs['vacccnt%d' % xnum].read()['data']['reg']}
-            elif "vacc_cnt0" in regs.names():
-                temp = regs['vacc_cnt%d' % xnum].read()['data']
-                xengdata = {
-                    'errors': temp['err'],
-                    'count': temp['cnt']}
-            elif "vacc_status0" in regs.names():
-                temp = regs['vacc_status%d' % xnum].read()['data']
-                xengdata = {
-                    'errors': temp['err_cnt'],
-                    'count': temp['acc_cnt']}
-                xengdata['armcount'] = temp['arm_cnt']
-                xengdata['loadcount'] = temp['ld_cnt']
-            if 'vacc_ld_status0' in regs.names():
-                temp = regs['vacc_ld_status%i' % xnum].read()['data']
-                if 'reg' in temp.keys():
-                    xengdata['armcount'] = temp['reg'] >> 16
-                    xengdata['loadcount'] = temp['reg'] & 0xffff
-                elif 'armcnt' in temp.keys():
-                    xengdata['armcount'] = temp['armcnt']
-                    xengdata['loadcount'] = temp['ldcnt']
+            temp = regs['vacc_status%d' % xnum].read()['data']
+            xengdata = {
+                'errors': temp['err_cnt'],
+                'count': temp['acc_cnt'],
+                'armcount': temp['arm_cnt'],
+                'loadcount': temp['ld_cnt']}
             stats.append(xengdata)
         return stats
 

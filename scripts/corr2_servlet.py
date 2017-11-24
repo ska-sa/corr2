@@ -131,7 +131,7 @@ class Corr2Server(katcp.DeviceServer):
             sensor_manager.sensors_clear()
             sensor_manager.setup_mainloop_sensors()
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
-            IOLoop.current().add_callback(self.periodic_issue_metadata)
+            # IOLoop.current().add_callback(self.periodic_issue_metadata)
             if monitor_vacc:
                 self.instrument.xops.vacc_check_timer_start()
             self._initialised = True
@@ -404,8 +404,10 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(None, 'No source name given.')
         try:
             if loadtime > -1:
-                from corr2 import delay as delayops
-                delay = delayops.process_list([delay_string])[0]
+                import corr2.delay as delayops
+                sample_rate_hz = self.instrument.get_scale_factor()
+                delay = delayops.process_list([delay_string], sample_rate_hz)
+                delay = delay[0]
                 actual = self.instrument.fops.delays_set(
                     input_name, loadtime, delay[0][0], delay[0][1],
                     delay[1][0], delay[1][1])
@@ -764,45 +766,45 @@ class Corr2Server(katcp.DeviceServer):
         sys.stderr.write('This should go to standard error. %s\n' % ts)
         return 'ok',
 
-    @request(Int())
-    @return_reply()
-    def request_debug_periodic_metadata(self, sock, new_cadence):
-        """
-        Change the cadence of sending the periodic metadata.
-        :param sock:
-        :param new_cadence: cadence, in seconds. 0 will disable the function
-        :return:
-        """
-        _logger = self.instrument.logger
-        prev = self.metadata_cadence
-        self.metadata_cadence = new_cadence
-        if new_cadence == 0:
-            _logger.info('Disabled periodic metadata.')
-        else:
-            _logger.info('Enabled periodic metadata @ %i '
-                         'seconds.' % new_cadence)
-            if prev == 0:
-                IOLoop.current().call_later(self.metadata_cadence,
-                                            self.periodic_issue_metadata)
-        return 'ok',
-
-    @gen.coroutine
-    def periodic_issue_metadata(self):
-        """
-        Periodically send all instrument metadata.
-
-        :return:
-        """
-        if self.metadata_cadence == 0:
-            return
-        _logger = self.instrument.logger
-        try:
-            yield self.executor.submit(self.instrument.stream_issue_metadata)
-        except Exception as ex:
-            _logger.exception('Error sending metadata - {}'.format(ex.message))
-        _logger.debug('self.periodic_issue_metadata ran')
-        IOLoop.current().call_later(self.metadata_cadence,
-                                    self.periodic_issue_metadata)
+    # @request(Int())
+    # @return_reply()
+    # def request_debug_periodic_metadata(self, sock, new_cadence):
+    #     """
+    #     Change the cadence of sending the periodic metadata.
+    #     :param sock:
+    #     :param new_cadence: cadence, in seconds. 0 will disable the function
+    #     :return:
+    #     """
+    #     _logger = self.instrument.logger
+    #     prev = self.metadata_cadence
+    #     self.metadata_cadence = new_cadence
+    #     if new_cadence == 0:
+    #         _logger.info('Disabled periodic metadata.')
+    #     else:
+    #         _logger.info('Enabled periodic metadata @ %i '
+    #                      'seconds.' % new_cadence)
+    #         if prev == 0:
+    #             IOLoop.current().call_later(self.metadata_cadence,
+    #                                         self.periodic_issue_metadata)
+    #     return 'ok',
+    #
+    # @gen.coroutine
+    # def periodic_issue_metadata(self):
+    #     """
+    #     Periodically send all instrument metadata.
+    #
+    #     :return:
+    #     """
+    #     if self.metadata_cadence == 0:
+    #         return
+    #     _logger = self.instrument.logger
+    #     try:
+    #         yield self.executor.submit(self.instrument.stream_issue_metadata)
+    #     except Exception as ex:
+    #         _logger.exception('Error sending metadata - {}'.format(ex.message))
+    #     _logger.debug('self.periodic_issue_metadata ran')
+    #     IOLoop.current().call_later(self.metadata_cadence,
+    #                                 self.periodic_issue_metadata)
 
     @request(Int())
     @return_reply()
@@ -829,7 +831,7 @@ class Corr2Server(katcp.DeviceServer):
     @gen.coroutine
     def periodic_issue_descriptors(self):
         """
-        Periodically send all instrument metadata.
+        Periodically send all instrument descriptors.
 
         :return:
         """

@@ -1,5 +1,6 @@
 import time
 import numpy
+import utils
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
@@ -308,7 +309,7 @@ class XEngineOperations(object):
         # the x-engine output data stream setup
         xeng_d = self.corr.configd['xengine']
         num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
-        output_name, output_address = parse_output_products(xeng_d)
+        output_name, output_address = utils.parse_output_products(xeng_d)
         assert len(output_name) == 1, 'Currently only single xeng products ' \
                                       'supported.'
         output_name = output_name[0]
@@ -340,22 +341,10 @@ class XEngineOperations(object):
             Get the relevant data from the X-engine FPGAs
             """
             # older versions had other register names
-            _OLD = 'reorderr_timeout0' in self.hosts[0].registers.names()
 
-            def _get_reorder_data(fpga):
-                rv = {}
-                for _ctr in range(0, fpga.x_per_fpga):
-                    if _OLD:
-                        _reg = fpga.registers['reorderr_timeout%i' % _ctr]
-                        rv['etim%i' % _ctr] = _reg.read()['data']['reg']
-                    else:
-                        _reg = fpga.registers['reorderr_timedisc%i' % _ctr]
-                        rv['etim%i' % _ctr] = _reg.read()['data']['timeout']
-                return rv
-            reo_data = THREADED_FPGA_OP(self.hosts, timeout=5,
-                                        target_function=_get_reorder_data)
             vacc_data = self.vacc_status()
-            return {'reorder': reo_data, 'vacc': vacc_data}
+            reord_data = self.reorder_status()
+            return {'reorder': reord_data, 'vacc': vacc_data}
     
         def _vacc_data_check(d0, d1):
             # check errors are not incrementing
@@ -481,27 +470,33 @@ class XEngineOperations(object):
                 self.logger.info('\t%s: %s(%s+%i)' % (
                     host.host, gbe.name, rxaddress, addresses_per_gbe - 1))
 
-    def check_rx(self, max_waittime=10):
+    def check_rx(self, max_waittime=30):
         """
-        Check that the x hosts are receiving data correctly
+        Check that the X-engines are receiving data correctly
         :param max_waittime:
         :return:
         """
         self.logger.info('Checking X hosts are receiving data...')
         results = THREADED_FPGA_FUNC(
             self.hosts, timeout=max_waittime+1,
-            target_function=('check_rx_reorder', (), {}))
+            target_function=('check_rx'))
         all_okay = True
         for _v in results.values():
             all_okay = all_okay and _v
         if not all_okay:
-            self.logger.error('\tERROR in X-engine rx data. '
-                              'Checking higher up.')
-            results = THREADED_FPGA_FUNC(
-                self.hosts, timeout=max_waittime + 1,
-                target_function=('check_rx', (max_waittime,),))
-        self.logger.info('\tdone.')
+            self.logger.error('\tX-engine RX data error.')
+        else:
+            self.logger.info('\tAll X hosts are receiving data ok.')
         return all_okay
+
+    def reorder_status(self):
+        """
+        Get a dictionary of the reorder status registers for all
+        x-engines.
+        :return: {}
+        """
+        return THREADED_FPGA_FUNC(self.hosts, timeout=10,
+                                  target_function='get_rx_reorder_status')
 
     def vacc_status(self):
         """

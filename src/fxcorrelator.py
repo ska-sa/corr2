@@ -165,6 +165,13 @@ class FxCorrelator(Instrument):
                 self.xhosts, timeout=5,
                 target_function=('get_system_information', [xbof], {}))
 
+        # TODO!!
+        print(200 * '%^')
+        for f in self.fhosts:
+            f.registers.ct_control0.write(tvg_en=1)
+        print(200 * '%^')
+        # /TODO!!
+
         # remove test hardware from designs
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
@@ -669,6 +676,8 @@ class FxCorrelator(Instrument):
         :param stream_name: if none is given, do all streams
         :return:
         """
+        raise DeprecationWarning('I do not think this is used'
+                                 'any longer?')
         if stream_name is None:
             streams = self.data_streams
         else:

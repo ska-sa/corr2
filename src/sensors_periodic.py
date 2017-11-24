@@ -12,34 +12,29 @@ from sensors import Corr2Sensor
 
 LOGGER = logging.getLogger(__name__)
 
-FHOST_REGS = ['spead_ctrs', 'reorder_ctrs', 'sync_ctrs', 'pfb_ctrs', 'ct_ctrs',
-              'cd_ctrs']
-FHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(4)])
-FHOST_REGS.extend(['gbe%i_txerrctr' % ctr for ctr in range(4)])
-FHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(4)])
-FHOST_REGS.extend(['gbe%i_rxerrctr' % ctr for ctr in range(4)])
+FHOST_REGS = ['spead_status', 'reorder_status', 'sync_ctrs', 'pfb_status', 
+                'cd_status','quant_status']
+FHOST_REGS.extend(['ct_status%i' % ctr for ctr in range(2)])
+FHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(1)])
+FHOST_REGS.extend(['gbe%i_txofctr' % ctr for ctr in range(1)])
+FHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(1)])
+FHOST_REGS.extend(['gbe%i_rxofctr' % ctr for ctr in range(1)])
+FHOST_REGS.extend(['gbe%i_rxbadctr' % ctr for ctr in range(1)])
 
-XHOST_REGS = ['rx_cnt%i' % ctr for ctr in range(4)]
-XHOST_REGS.extend(['rx_err_cnt%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['dest_err_cnt%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['reordcnt_spec%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['reord_missant%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['reordcnt_recv%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['reorderr_recv%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['reorderr_timeout%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['reorderr_disc%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['bf%i_out_count' % ctr for ctr in range(2)])
-XHOST_REGS.extend(['bf%i_of_count' % ctr for ctr in range(2)])
-XHOST_REGS.extend(['vacccnt%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['vaccout%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['vaccerr%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['vacc_ld_status%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['vacc_errors%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['packcnt_out%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['packerr_%i' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(4)])
-XHOST_REGS.extend(['gbe%i_rxerrctr' % ctr for ctr in range(4)])
+XHOST_REGS = ['status']
+XHOST_REGS.extend(['status%i' % ctr for ctr in range(4)])
+XHOST_REGS.extend(['spead_status%i' % ctr for ctr in range(4)])
+XHOST_REGS.extend(['reord_status%i' % ctr for ctr in range(4)])
+XHOST_REGS.extend(['bf0_status%i' % ctr for ctr in range(4)])
+XHOST_REGS.extend(['bf1_status%i' % ctr for ctr in range(4)])
+XHOST_REGS.extend(['vacc_status%i' % ctr for ctr in range(4)])
+XHOST_REGS.extend(['pack_status%i' % ctr for ctr in range(4)])
+XHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(1)])
+XHOST_REGS.extend(['gbe%i_txofctr' % ctr for ctr in range(1)])
+XHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(1)])
+XHOST_REGS.extend(['gbe%i_rxofctr' % ctr for ctr in range(1)])
+XHOST_REGS.extend(['gbe%i_rxbadctr' % ctr for ctr in range(1)])
+
 
 TX_PPS_SUFFIX = '-tx-pkt-per-s'
 RX_PPS_SUFFIX = '-rx-pkt-per-s'
@@ -86,7 +81,7 @@ def _sensor_cb_feng_rxtime(sensor_ok, sensor_values):
     instrument = sensor_ok.manager.instrument
     try:
         result, counts, times = yield executor.submit(
-            instrument.fops.check_rx_timestamps)
+            instrument.fops.get_rx_timestamps)
         sensor_ok.set(time.time(),
                       Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR,
                       result)
