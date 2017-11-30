@@ -68,8 +68,9 @@ class FengineStream(SPEADStream):
         Disable TX for this data stream
         :return:
         """
-        self.fops.logger.warn('{}: Stopping F-engine streams will '
-                              'break the correlator. Ignoring.'.format(self.name))
+        self.fops.logger.warn(
+            '{}: stopping F-engine streams will break the correlator. '
+            'Ignoring.'.format(self.name))
 
     def _tx_disable(self):
         """
@@ -141,14 +142,17 @@ class FEngineOperations(object):
                 chans_per_x = self.corr.n_chans * 1.0 / num_x
                 chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
                 f.registers.ct_control1.write(
-                    num_x=num_x, num_x_recip=1.0 / num_x,
-                    x_per_board=x_per_fpga, x_per_board_recip=1.0 / x_per_fpga)
+                    num_x=num_x,
+                    num_x_recip=1.0 / num_x,
+                    x_per_board=x_per_fpga,
+                    x_per_board_recip=1.0 / x_per_fpga,)
                 f.registers.ct_control2.write(
                     chans_per_x=chans_per_x,
-                    chans_per_board=chans_per_board)
+                    chans_per_board=chans_per_board,)
                 f.registers.ct_control3.write(
                     num_x_boards=num_x_hosts,
-                    num_x_boards_recip=1.0 / num_x_hosts)
+                    num_x_boards_recip=1.0 / num_x_hosts,
+                    chans_per_x_recip=1.0 / chans_per_x, )
         except AttributeError:
             self.logger.warning('No CT registers found? Odd.')
             pass
