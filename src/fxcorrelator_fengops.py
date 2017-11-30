@@ -128,19 +128,19 @@ class FEngineOperations(object):
                 self.hosts, timeout=10,
                 target_function=(
                     lambda fpga_:
-                    fpga_.registers.x_setup.write(f_per_x=f_per_x,
-                                                  ip_per_x=ip_per_x,
-                                                  num_x=num_x,),))
+                    fpga_.registers.x_setup.write(
+                        f_per_x=f_per_x, ip_per_x=ip_per_x, num_x=num_x,),))
             time.sleep(1)
         else:
             self.logger.info('Found FIXED num_x F-engines')
 
         # set up the corner turner
-        try:
-            for f in self.hosts:
-                # f.registers.ct_control0.write(tvg_en=True, tag_insert=False)
-                chans_per_x = self.corr.n_chans * 1.0 / num_x
-                chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
+        reg_error = False
+        for f in self.hosts:
+            # f.registers.ct_control0.write(tvg_en=True, tag_insert=False)
+            chans_per_x = self.corr.n_chans * 1.0 / num_x
+            chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
+            try:
                 f.registers.ct_control1.write(
                     num_x=num_x,
                     num_x_recip=1.0 / num_x,
@@ -153,9 +153,17 @@ class FEngineOperations(object):
                     num_x_boards=num_x_hosts,
                     num_x_boards_recip=1.0 / num_x_hosts,
                     chans_per_x_recip=1.0 / chans_per_x, )
-        except AttributeError:
-            self.logger.warning('No CT registers found? Odd.')
-            pass
+            except AttributeError:
+                reg_error = True
+        if reg_error:
+            cts = '['
+            for reg in self.hosts[0].registers:
+                if reg.name.startswith('ct_control'):
+                    cts += '%s, ' % reg.name
+                ctr = cts[:-2] + ']'
+            self.logger.warning(
+                'No corner turner control registers found, or they are '
+                'incorrect/old. Expect ct_control[0,1,2,3], found: %s.' % cts)
 
         # write the board IDs to the fhosts
         output_port = self.data_stream.destination.port
