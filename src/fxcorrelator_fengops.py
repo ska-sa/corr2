@@ -138,6 +138,7 @@ class FEngineOperations(object):
         reg_error = False
         for f in self.hosts:
             # f.registers.ct_control0.write(tvg_en=True, tag_insert=False)
+            f.registers.ct_control0.write(obuf_read_gap=self.corr.ct_readgap)
             chans_per_x = self.corr.n_chans * 1.0 / num_x
             chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
             try:

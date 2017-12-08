@@ -169,6 +169,7 @@ class FxCorrelator(Instrument):
         # print(200 * '%^')
         # for f in self.fhosts:
         #     f.registers.ct_control0.write(tvg_en=1)
+        #     # f.registers.control.write(cd_bypass=1)
         # print(200 * '%^')
         # # /TODO!!
 
@@ -546,6 +547,11 @@ class FxCorrelator(Instrument):
             data_stream.SPEAD_PKT_TTL = int(_fxcorr_d['spead_metapacket_ttl'])
 
         _feng_d = self.configd['fengine']
+
+        try:
+            self.ct_readgap = int(_feng_d['ct_readgap'])
+        except KeyError:
+            self.ct_readgap = 45
         self.adc_demux_factor = int(_feng_d['adc_demux_factor'])
         self.n_chans = int(_feng_d['n_chans'])
         self.n_antennas = int(_feng_d['n_antennas'])
