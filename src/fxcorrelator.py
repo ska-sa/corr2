@@ -151,9 +151,10 @@ class FxCorrelator(Instrument):
         if program:
             self.logger.info('Programming FPGA hosts')
             THREADED_FPGA_FUNC(
-                self.fhosts + self.xhosts, timeout=60,
+                self.fhosts + self.xhosts, timeout=200,
                 target_function=('upload_to_ram_and_program', [],
-                                 {'skip_verification': True}))
+                                 {'timeout':140,
+                                  'skip_bitstream_verification': True}))
         else:
             self.logger.info('Loading design information')
             xbof = self.xhosts[0].bitstream
