@@ -81,8 +81,8 @@ if args.log_level != '':
 if 'CORR2INI' in os.environ.keys() and \
         (args.config == '' or args.config is None):
     args.config = os.environ['CORR2INI']
-host_list, bitstream = utils.host_and_bitstream_from_config(
-    config_file=args.config, section='dsimengine')
+section, host_list, bitstream = utils.hosts_and_bitstreams_from_config(
+    config_file=args.config, section='dsimengine')[0]
 config = utils.parse_ini_file(args.config)
 dfpga = FpgaDsimHost(host_list[0], config=config['dsimengine'])
 print('Connected to %s.' % dfpga.host)
