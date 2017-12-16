@@ -136,6 +136,7 @@ class FEngineOperations(object):
 
         # set up the corner turner
         reg_error = False
+        host_ctr = 0
         for f in self.hosts:
             # f.registers.ct_control0.write(tvg_en=True, tag_insert=False)
             f.registers.ct_control0.write(obuf_read_gap=self.corr.ct_readgap)
@@ -154,8 +155,18 @@ class FEngineOperations(object):
                     num_x_boards=num_x_hosts,
                     num_x_boards_recip=1.0 / num_x_hosts,
                     chans_per_x_recip=1.0 / chans_per_x, )
+                xeng_start = host_ctr
+                ct_num_accs = 256
+                f.registers.ct_control4.write(
+                    ct_board_offset=(xeng_start * ct_num_accs))
+                # the 8 and the 32 below are hardware limits.
+                # 8 packets in a row to one x-engine, and 32 256-bit
+                # words in an outgoing packet
+                f.registers.ct_control5.write(
+                    ct_freq_gen_offset=(xeng_start * (8 * 32)))
             except AttributeError:
                 reg_error = True
+            host_ctr += 1
         if reg_error:
             cts = '['
             for reg in self.hosts[0].registers:

@@ -105,6 +105,15 @@ class FxCorrelator(Instrument):
         # parent constructor - this invokes reading the config file already
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
 
+        # create the host objects
+        self._create_hosts()
+
+        # update the list of baselines on this system
+        self.baselines = utils.baselines_from_config(config=self.configd)
+
+        # what digitiser data streams have we been allocated?
+        self._create_digitiser_streams()
+
     # @profile
     def initialise(self, program=True, configure=True,
                    require_epoch=False,):
@@ -600,15 +609,6 @@ class FxCorrelator(Instrument):
                 self.beng_outbits = int(self.configd['bengine']['beng_outbits'])
             except KeyError:
                 self.beng_outbits = 8
-
-        # create the host objects
-        self._create_hosts()
-
-        # update the list of baselines on this system
-        self.baselines = utils.baselines_from_config(config=self.configd)
-
-        # what digitiser data streams have we been allocated?
-        self._create_digitiser_streams()
 
     def _create_digitiser_streams(self):
         """

@@ -48,8 +48,6 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-
-
 configfile = args.config
 if 'CORR2INI' in os.environ.keys() and configfile == '':
     configfile = os.environ['CORR2INI']
@@ -57,12 +55,12 @@ if configfile == '':
     raise RuntimeError('No good carrying on without a config file')
 
 # create the fpgas
-c=corr2.fxcorrelator.FxCorrelator('bob',config_source=configfile)
-c.initialise(configure=False,program=False,require_epoch=False)
+c = corr2.fxcorrelator.FxCorrelator('bob', config_source=configfile)
+c.initialise(configure=False, program=False, require_epoch=False)
 fpga = c.xhosts[int(args.host)]
 configd = c.configd
-n_chans=int(configd['fengine']['n_chans'])
-n_xeng=int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).split(','))
+n_chans = int(configd['fengine']['n_chans'])
+n_xeng = int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).split(','))
 
 #def get_fpga_data(fpga):
 #    # if 'gbe_in_msb_ss' not in fpga.snapshots.names():
@@ -80,14 +78,17 @@ n_xeng=int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).s
 #    control_reg.write(arm=0)
 #    return d
 
+
 def get_fpga_data(fpga):
     print 'fetching data...'
-    return fpga.gbes['gbe0'].read_rxsnap()
+    gbe = fpga.gbes.keys()[0]
+    return fpga.gbes[gbe].read_rxsnap()
+
 
 def print_snap_data(dd):
     packet_counter = 0
     data_len = len(dd[dd.keys()[0]])
-    rv={'data':[],'eof':[],'src_ip':[]}
+    rv = {'data':[], 'eof':[],'src_ip':[]}
     print "IDX, PKT_IDX        64b MSB              64b                    64b                 64b LSB"
     for ctr in range(data_len):
         if dd['eof_in'][ctr-1]:
@@ -127,19 +128,19 @@ def print_snap_data(dd):
 
 # read and print the data
 data = get_fpga_data(fpga)
-unpacked_data=print_snap_data(data)
-pkts=[]
+unpacked_data = print_snap_data(data)
+pkts = []
 last_index=-1
 for eof_n,eof in enumerate(unpacked_data['eof']):
     if eof:
         pkts.append(unpacked_data['data'][last_index+1:eof_n])
         print '%i-%i=Pkt len: %i'%(eof_n/4,last_index,eof_n/4-last_index)
-        last_index=eof_n/4
+        last_index = eof_n/4
 
 
 spead_processor = spead.SpeadProcessor(None, None, None, None)
 gbe_packets = snap.Snap.packetise_snapdata(unpacked_data)
-gbe_data=[]
+gbe_data = []
 for pkt in gbe_packets:
 #    print pkt
     gbe_data.append(pkt['data'])

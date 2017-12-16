@@ -23,7 +23,10 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',
-    help='comma-delimited list of hosts, or a corr2 config file')
+    help='comma-delimited list of hosts')
+parser.add_argument(
+    '--config', dest='config', type=str, action='store', default='',
+    help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument(
     '-p', '--polltime', dest='polltime', action='store', default=1, type=int,
     help='time at which to poll F-engine data, in seconds')
