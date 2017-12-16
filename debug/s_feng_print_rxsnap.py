@@ -87,36 +87,34 @@ def print_snap_data(dd):
     rv={'data':[],'eof':[],'src_ip':[]}
     print "IDX, PKT_IDX        64b MSB              64b                    64b                 64b LSB"
     for ctr in range(data_len):
-        if dd['eof_in'][ctr-1]:
+        if dd['eof'][ctr-1]:
             packet_counter = 0
         print'%5i,%5i' % (ctr, packet_counter),
-        d64_0 = (dd['data'][ctr] >> 192) & (2 ** 64 - 1)
-        d64_1 = (dd['data'][ctr] >> 128) & (2 ** 64 - 1)
-        d64_2 = (dd['data'][ctr] >> 64 ) & (2 ** 64 - 1)
-        d64_3 = dd['data'][ctr] & (2 ** 64 - 1)
-        rv['data'].append(d64_0)
-        rv['data'].append(d64_1)
-        rv['data'].append(d64_2)
-        rv['data'].append(d64_3)
-        print "0x%016X  0x%016X  0x%016X  0x%016X"%(d64_0,d64_1,d64_2,d64_3),
-        print "[%16s]"%str(network.IpAddress(dd['ip_in'][ctr])),
+#        d64_0 = (dd['data'][ctr] >> 192) & (2 ** 64 - 1)
+#        d64_1 = (dd['data'][ctr] >> 128) & (2 ** 64 - 1)
+#        d64_2 = (dd['data'][ctr] >> 64 ) & (2 ** 64 - 1)
+#        d64_3 = dd['data'][ctr] & (2 ** 64 - 1)
+#        rv['data'].append(d64_0)
+#        rv['data'].append(d64_1)
+#        rv['data'].append(d64_2)
+#        rv['data'].append(d64_3)
+        rv['data'].append(dd['data'][ctr])
+#        print "0x%016X  0x%016X  0x%016X  0x%016X"%(d64_0,d64_1,d64_2,d64_3),
+        print "0x%016X"%(dd['data'][ctr]),
+        print "[%16s]"%str(network.IpAddress(dd['ip'][ctr])),
         #print "[%16s:%i]"%(str(network.IpAddress(dd['ip_in'][ctr])),dd['dest_port'][ctr]),
         if dd['bad_frame'][ctr] == 1: print 'BAD' ,
         if not dd['led_up'][ctr]: print "[LINK_DN]",
         if dd['led_rx'][ctr]: print "[RX]",
 #        if dd['led_tx']: print "[TX]",
-        if dd['valid_in'][ctr]>0: print "[valid]",
+        if dd['valid'][ctr]>0: print "[valid]",
         if dd['overrun'][ctr]: print "[RX OVERFLOW]",
-        if dd['eof_in'][ctr] == 1:
+        if dd['eof'][ctr] == 1:
             print 'EOF ',
-            for wrd in range(3):
-                rv['eof'].append(False)
             rv['eof'].append(True)
         else:
-            for wrd in range(4):
-                rv['eof'].append(False)
-        for wrd in range(4):
-            rv['src_ip'].append(dd['ip_in'][ctr])
+            rv['eof'].append(False)
+        rv['src_ip'].append(dd['ip'][ctr])
         print('')
         packet_counter += 1
     return rv

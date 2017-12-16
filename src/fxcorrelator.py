@@ -13,7 +13,7 @@ import katcp
 # from memory_profiler import profile
 
 from casperfpga import utils as fpgautils
-
+import casperfpga
 import utils
 import xhost_fpga
 import fhost_fpga
@@ -157,16 +157,38 @@ class FxCorrelator(Instrument):
                 target_function=('set_igmp_version', (igmp_version, ), {}))
 
         # if we need to program the FPGAs, do so
+        xbof = self.xhosts[0].bitstream
+        fbof = self.fhosts[0].bitstream
         if program:
+            #optimise the programming if we're on SKARABs:
+            fisskarab=True
+            xisskarab=True
+            for f in self.fhosts:
+                if not isinstance(f.transport,casperfpga.transport_skarab.SkarabTransport):
+                    fisskarab=False
+            for f in self.xhosts:
+                if not isinstance(f.transport,casperfpga.transport_skarab.SkarabTransport):
+                    xisskarab=False
+            if fisskarab:
+                fimage_chunks,flocal_checksum=self.fhosts[0].transport.gen_image_chunks(self.fhosts[0].bitstream)
+                for f in self.fhosts:
+                    f.transport.image_chunks=fimage_chunks
+                    f.transport.local_checksum=flocal_checksum
+                
+            if xisskarab:
+                ximage_chunks,xlocal_checksum=self.xhosts[0].transport.gen_image_chunks(self.xhosts[0].bitstream)
+                for x in self.xhosts:
+                    x.transport.image_chunks=ximage_chunks
+                    x.transport.local_checksum=xlocal_checksum
+
             self.logger.info('Programming FPGA hosts')
             THREADED_FPGA_FUNC(
-                self.fhosts + self.xhosts, timeout=60,
+                self.fhosts + self.xhosts, timeout=200,
                 target_function=('upload_to_ram_and_program', [],
-                                 {'skip_verification': True}))
-        else:
+                                 {'timeout':140,
+                                  'skip_bitstream_verification': True}))
+        if (not program) or fisskarab or xisskarab:
             self.logger.info('Loading design information')
-            xbof = self.xhosts[0].bitstream
-            fbof = self.fhosts[0].bitstream
             THREADED_FPGA_FUNC(
                 self.fhosts, timeout=5,
                 target_function=('get_system_information', [fbof], {}))
