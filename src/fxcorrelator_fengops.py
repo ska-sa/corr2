@@ -155,7 +155,7 @@ class FEngineOperations(object):
                     num_x_boards=num_x_hosts,
                     num_x_boards_recip=1.0 / num_x_hosts,
                     chans_per_x_recip=1.0 / chans_per_x, )
-                xeng_start = host_ctr
+                xeng_start = host_ctr*(num_x_hosts+1)+host_ctr/4
                 ct_num_accs = 256
                 f.registers.ct_control4.write(
                     ct_board_offset=(xeng_start * ct_num_accs))
