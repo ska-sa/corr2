@@ -105,13 +105,13 @@ class Corr2Server(katcp.DeviceServer):
     @request(Bool(default=True), Bool(default=True), Bool(default=True),
              Bool(default=True))
     @return_reply()
-    def request_initialise(self, sock, program, qdr_cal, require_epoch,
+    def request_initialise(self, sock, program, configure, require_epoch,
                            monitor_vacc):
         """
         Initialise self.instrument
         :param sock:
         :param program: program the FPGA boards if True
-        :param qdr_cal: perform QDR cal if True
+        :param configure: setup the FPGA registers if True
         :param require_epoch: the synch epoch MUST be set before init if True
         :param monitor_vacc: start the VACC monitoring ioloop
         :return:
@@ -119,7 +119,7 @@ class Corr2Server(katcp.DeviceServer):
         if self._initialised:
             return 'fail', 'Cannot run ?initialise twice.'
         try:
-            self.instrument.initialise(program=program,
+            self.instrument.initialise(program=program,configure=configure,
                                        require_epoch=require_epoch)
             # update the servlet's version list with version information
             # from the running firmware
@@ -249,7 +249,8 @@ class Corr2Server(katcp.DeviceServer):
                       ' {1}'.format(stream_name, self.instrument.data_streams)
             return self._log_excep(None, failmsg)
         try:
-            self.instrument.stream_issue_metadata(stream_name)
+            # Issue metadata deprecated (MM 18-12-17)
+            # self.instrument.stream_issue_metadata(stream_name)
             self.instrument.stream_tx_enable(stream_name)
             return 'ok', stream_name
         except RuntimeError as excep:
