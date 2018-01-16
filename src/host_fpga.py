@@ -38,7 +38,6 @@ class FpgaHost(CasperFpga):
         LOGGER.error('{}: check_rx() - FALSE.'.format(self.host))
         return False
 
-
     def get_spead_status(self):
         """
         Returns the SPEAD counters on this FPGA.
@@ -49,7 +48,6 @@ class FpgaHost(CasperFpga):
             LOGGER.error("Can't check SPEAD RX: register not found")
             raise RuntimeError("Can't check SPEAD RX: register not found")
             return
-
 
     def _check_rx_spead_skarab(self, checks=5):
         """

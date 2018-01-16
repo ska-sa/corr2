@@ -730,7 +730,7 @@ class XEngineOperations(object):
         """
         t_now = time.time()
         time_from_mcnt = self.corr.time_from_mcnt(load_mcount)
-        wait_time = time_from_mcnt - t_now + 0.2
+        wait_time = time_from_mcnt - t_now + 1.2
         if wait_time <= 0:
             self.logger.error('\tThis is wonky - why is the wait_time '
                               'less than zero? %.3f' % wait_time)
@@ -854,7 +854,7 @@ class XEngineOperations(object):
             return True
         return False
 
-    def vacc_sync(self,sync_time=None):
+    def vacc_sync(self, sync_time=None):
         """
         Sync the vector accumulators on all the x-engines.
         Assumes that the x-engines are all receiving data.
@@ -901,7 +901,6 @@ class XEngineOperations(object):
                     self.hosts, timeout=10,
                     target_function=('vacc_set_loadtime', (load_mcount,),))
 
-
                 # check the current counts
                 (arm_count0,
                  load_count0) = self._vacc_sync_check_counts_initial()
@@ -923,10 +922,11 @@ class XEngineOperations(object):
 
                 # check the status to see that the load count increased
                 if not self._vacc_sync_check_load_count(load_count0):
-                    feng_mcnt=self.corr.fhosts[0].get_local_time()
-                    feng_time=self.corr.time_from_mcnt(feng_mcnt)
-                    self.logger.info('Current Feng0 mcnt: %i (%i; %s)'%
-                        (feng_mcnt,feng_time,time.ctime(feng_time)))
+                    feng_mcnt = self.corr.fhosts[0].get_local_time()
+                    feng_time = self.corr.time_from_mcnt(feng_mcnt)
+                    self.logger.info('Current Feng0 mcnt: %i (%i; %s)' %
+                                     (feng_mcnt, feng_time,
+                                      time.ctime(feng_time)))
  
                     continue
 

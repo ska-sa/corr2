@@ -160,33 +160,14 @@ class FxCorrelator(Instrument):
         xbof = self.xhosts[0].bitstream
         fbof = self.fhosts[0].bitstream
         if program:
-            #optimise the programming if we're on SKARABs:
-            fisskarab=True
-            xisskarab=True
-            for f in self.fhosts:
-                if not isinstance(f.transport,casperfpga.transport_skarab.SkarabTransport):
-                    fisskarab=False
-            for f in self.xhosts:
-                if not isinstance(f.transport,casperfpga.transport_skarab.SkarabTransport):
-                    xisskarab=False
-            if fisskarab:
-                fimage_chunks,flocal_checksum=self.fhosts[0].transport.gen_image_chunks(self.fhosts[0].bitstream)
-                for f in self.fhosts:
-                    f.transport.image_chunks=fimage_chunks
-                    f.transport.local_checksum=flocal_checksum
-                
-            if xisskarab:
-                ximage_chunks,xlocal_checksum=self.xhosts[0].transport.gen_image_chunks(self.xhosts[0].bitstream)
-                for x in self.xhosts:
-                    x.transport.image_chunks=ximage_chunks
-                    x.transport.local_checksum=xlocal_checksum
-
-            self.logger.info('Programming FPGA hosts')
-            THREADED_FPGA_FUNC(
-                self.fhosts + self.xhosts, timeout=200,
-                target_function=('upload_to_ram_and_program', [],
-                                 {'timeout':140,
-                                  'skip_bitstream_verification': True}))
+            skfops = casperfpga.skarab_fileops
+            # force the new programming method
+            skfops.upload_to_ram_progska(fbof, self.fhosts)
+            skfops.upload_to_ram_progska(xbof, self.xhosts)
+            skfops.reboot_skarabs_from_sdram(self.fhosts + self.xhosts)
+            skfops.wait_after_reboot(self.fhosts + self.xhosts, timeout=200)
+            fisskarab = True
+            xisskarab = True
         if (not program) or fisskarab or xisskarab:
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(
