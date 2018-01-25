@@ -51,17 +51,29 @@ class FengineStream(SPEADStream):
             self.fops.logger.error(errmsg)
             raise RuntimeError(errmsg)
 
-    def tx_enable(self):
+    def tx_enable(self,n_retries=5):
         """
         Enable TX for this data stream
         :return:
         """
         self.descriptors_issue()
-        THREADED_FPGA_OP(
-            self.fops.hosts, 5,
-            (lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
-        self.tx_enabled = True
-        self.fops.logger.info('F-engine output enabled')
+        done=False
+        while n_retries>0:
+            try:
+                THREADED_FPGA_OP(
+                    self.fops.hosts, 5,
+                    (lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+                n_retries=-1
+            except RuntimeError:
+                if n_retries==0: 
+                    raise
+                else:
+                    n_retries-=1
+                    self.fops.logger.warning('Failed to start F-engine output; %i retries remaining.'%n_retries)
+                    time.sleep(2)
+        if (n_retries==-1): 
+            self.tx_enabled = True
+            self.fops.logger.info('F-engine output enabled')
 
     def tx_disable(self):
         """

@@ -927,30 +927,7 @@ class XEngineOperations(object):
                     self.logger.info('Current Feng0 mcnt: %i (%i; %s)' %
                                      (feng_mcnt, feng_time,
                                       time.ctime(feng_time)))
- 
                     continue
-
-                # allow vacc to flush and correctly populate parity bits:
-                self.logger.info('\tWaiting %2.2fs for an accumulation to '
-                                 'flush, to correctly populate parity bits.' %
-                                 self.get_acc_time())
-                time.sleep(self.get_acc_time() + 0.2)
-
-                self.logger.info('\tClearing status and reseting counters.')
-                THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                                   target_function='clear_status')
-
-#                # wait for a good accumulation to finish.
-#                self.logger.info('\tWaiting %2.2fs for an accumulation to '
-#                                 'flush before checking counters.' %
-#                                 self.get_acc_time())
-#                time.sleep(self.get_acc_time() + 0.2)
-#
-#                # check the vacc status, errors and accumulations
-#                if not self._vacc_sync_final_check():
-#                    continue
-#
-                # done
 
                 synch_time = self.corr.time_from_mcnt(load_mcount)
                 self.vacc_synch_running.clear()
