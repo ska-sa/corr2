@@ -163,8 +163,9 @@ class FxCorrelator(Instrument):
             skfops = casperfpga.skarab_fileops
             # force the new programming method
             skfops.upload_to_ram_progska(fbof, self.fhosts)
+            skfops.reboot_skarabs_from_sdram(self.fhosts)
             skfops.upload_to_ram_progska(xbof, self.xhosts)
-            skfops.reboot_skarabs_from_sdram(self.fhosts + self.xhosts)
+            skfops.reboot_skarabs_from_sdram(self.xhosts)
             skfops.wait_after_reboot(self.fhosts + self.xhosts, timeout=200)
             fisskarab = True
             xisskarab = True

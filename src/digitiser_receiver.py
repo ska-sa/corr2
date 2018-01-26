@@ -2,6 +2,7 @@ import logging
 import time
 
 import casperfpga
+from casperfpga.transport_skarab import SkarabTransport
 
 from host_fpga import FpgaHost
 
@@ -16,7 +17,7 @@ class DigitiserStreamReceiver(FpgaHost):
     def __init__(self, host, katcp_port=7147, bitstream=None, connect=True):
         super(DigitiserStreamReceiver, self).__init__(
             host=host, katcp_port=katcp_port, bitstream=bitstream,
-            connect=connect)
+            connect=connect,transport=SkarabTransport)
 
     def _skarab_print_reorder_regs(self):
         """
