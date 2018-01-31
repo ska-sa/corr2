@@ -42,7 +42,7 @@ class Corr2SensorServer(katcp.DeviceServer):
                                    require_epoch=False)
         sensor_manager = sensors.SensorManager(self, self.instrument)
         self.instrument.sensor_manager = sensor_manager
-        #sensors_periodic.setup_sensors(sensor_manager)
+        sensors_periodic.setup_sensors(sensor_manager)
 
 
 @tornado.gen.coroutine
@@ -56,6 +56,7 @@ def on_shutdown(ioloop, server):
     print('Sensor server shutting down')
     yield server.stop()
     ioloop.stop()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -74,7 +75,7 @@ if __name__ == '__main__':
 
     try:
         log_level = getattr(logging, args.loglevel)
-    except:
+    except AttributeError:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
 
     # def boop():

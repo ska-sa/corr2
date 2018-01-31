@@ -9,7 +9,6 @@ from casperfpga import utils as fpgautils
 
 import data_stream
 import fxcorrelator_speadops as speadops
-from utils import parse_output_products
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -189,6 +188,8 @@ class XEngineOperations(object):
 
         # write the data stream destination to the registers
         self.data_stream.write_destination()
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_stream_destinations()
 
         # clear gbe status
         THREADED_FPGA_OP(
@@ -547,38 +548,31 @@ class XEngineOperations(object):
         Returns a valid load time for the vacc synch.
         Checks minimum load time.
         Generates a suitable loadtime if none is provided.
-        :param min_loadtime:
+        :param load_time:
         :return: the vacc load time, in seconds since the UNIX epoch
         """
-        #TODO scale this based on accumulation length?
-        min_loadtime=2
+        min_loadtime = self.get_acc_time() * 2.0
+        # min_loadtime = 2
         t_now = time.time()
-        if load_time==None:
+        if load_time is None:
             # how long should we wait for the vacc load
             self.logger.info('\tVacc sync time not specified. Syncing in '
                              '%2.2f seconds\' time.' % (min_loadtime*2))
             vacc_load_time = t_now + (min_loadtime*2)
         else:
             vacc_load_time = load_time
-
+        askstr = 'You asked for %s.%i, and it is now %s.%i.' % (
+            time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
+            (vacc_load_time-int(vacc_load_time))*100,
+            time.strftime('%H:%M:%S', time.gmtime(t_now)),
+            (t_now-int(t_now))*100)
         if vacc_load_time < (t_now + min_loadtime):
             raise RuntimeError(
-                'Cannot load at a time in the past. '
-                'Need at least %2.2f seconds lead time. You asked for '
-                '%s.%i, and it is now %s.%i.' % (
-                    min_loadtime,
-                    time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
-                    (vacc_load_time-int(vacc_load_time))*100,
-                    time.strftime('%H:%M:%S', time.gmtime(t_now)),
-                    (t_now-int(t_now))*100))
+                'Cannot load at a time in the past. Need at least %2.2f '
+                'seconds lead time. %s' % (min_loadtime, askstr))
         elif vacc_load_time > (t_now + 10):
-            self.logger.warn('\tRequested loadtime is more than 10 seconds away.'
-                'You asked for %s.%i, and it is now %s.%i.' % (
-                    time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
-                    (vacc_load_time-int(vacc_load_time))*100,
-                    time.strftime('%H:%M:%S', time.gmtime(t_now)),
-                    (t_now-int(t_now))*100))
-
+            self.logger.warn('\tRequested loadtime is more than '
+                             '10 seconds away. %s' % askstr)
         self.logger.info('\txeng vaccs will sync at %s (in %2.2fs)'
                          % (time.ctime(t_now), vacc_load_time-t_now))
         return vacc_load_time
@@ -594,14 +588,9 @@ class XEngineOperations(object):
         ldmcnt = int(self.corr.mcnt_from_time(vacc_loadtime))
         self.logger.debug('$$$$$$$$$$$ - ldmcnt = %i' % ldmcnt)
         _ldmcnt_orig = ldmcnt
-        _cfgd = self.corr.configd
-        n_chans = int(_cfgd['fengine']['n_chans'])
-        xeng_acc_len = int(_cfgd['xengine']['xeng_accumulation_len'])
-
         quantisation_bits = int(
-            numpy.log2(n_chans) + 1 +
-            numpy.log2(xeng_acc_len))
-
+            numpy.log2(self.corr.n_chans) + 1 +
+            numpy.log2(self.corr.xeng_accumulation_len))
         self.logger.debug('$$$$$$$$$$$ - quant bits = %i' % quantisation_bits)
         ldmcnt = ((ldmcnt >> quantisation_bits) + 1) << quantisation_bits
         self.logger.debug('$$$$$$$$$$$ - ldmcnt quantised = %i' % ldmcnt)
@@ -962,6 +951,25 @@ class XEngineOperations(object):
             self.logger.error(e.message)
             raise e
 
+    def acc_len_from_time(self, acc_time_s):
+        """
+        Given an acc time in seconds, get the number of cycles
+        :param acc_time_s: the time for which to accumulate, in seconds
+        :return:
+        """
+        new_acc_len = (self.corr.sample_rate_hz * acc_time_s) / (
+                self.corr.xeng_accumulation_len * self.corr.n_chans * 2.0)
+        return round(new_acc_len)
+
+    def acc_time_from_len(self, acc_len_cycles):
+        """
+        Given an acc time in seconds, get the number of cycles
+        :param acc_len_cycles: number of clock cycles for which to accumulate
+        :return:
+        """
+        return (acc_len_cycles * self.corr.xeng_accumulation_len *
+                self.corr.n_chans * 2.0 / self.corr.sample_rate_hz)
+
     def set_acc_time(self, acc_time_s, vacc_resync=True):
         """
         Set the vacc accumulation length based on a required dump time,
@@ -972,15 +980,10 @@ class XEngineOperations(object):
         """
         if use_xeng_sim:
             raise RuntimeError('That\'s not an option anymore.')
-        new_acc_len = (
-            (self.corr.sample_rate_hz * acc_time_s) /
-            (self.corr.xeng_accumulation_len * self.corr.n_chans * 2.0))
-        new_acc_len = round(new_acc_len)
+        new_acc_len = self.acc_len_from_time(acc_time_s)
         self.corr.logger.info('set_acc_time: %.3fs -> new_acc_len(%i)' %
                               (acc_time_s, new_acc_len))
         self.set_acc_len(new_acc_len, vacc_resync)
-        if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_xeng_acc_time()
 
     def get_acc_time(self):
         """
@@ -992,20 +995,19 @@ class XEngineOperations(object):
         I.e., the number of accumulations are _not_ read from the FPGAs.
         :return:
         """
-        return (self.corr.xeng_accumulation_len * self.corr.accumulation_len *
-                self.corr.n_chans * 2.0) / self.corr.sample_rate_hz
+        return self.acc_time_from_len(self.corr.accumulation_len)
 
     def get_acc_len(self):
         """
         Read the acc len currently programmed into the FPGA.
         :return:
         """
-        return self.hosts[0].registers.acc_len.read_uint()
+        return self.hosts[0].vacc_get_acc_len()
 
     def set_acc_len(self, acc_len=None, vacc_resync=True):
         """
         Set the QDR vector accumulation length.
-        :param acc_len:
+        :param acc_len: the accumulation length, in clock cycles
         :param vacc_resync: force a vacc resynchronisation
         :return:
         """
@@ -1023,7 +1025,7 @@ class XEngineOperations(object):
             self.hosts, timeout=10,
             target_function=(
                 lambda fpga_:
-                fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
+                fpga_.vacc_set_acc_len(self.corr.accumulation_len),))
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_xeng_acc_time()
         self.logger.info('Set vacc accumulation length %d system-wide '

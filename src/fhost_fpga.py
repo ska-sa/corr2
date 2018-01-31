@@ -780,16 +780,9 @@ class FpgaFHost(DigitiserStreamReceiver):
         :param threshold: how many errors are permisible?
         :return:
         """
+        LOGGER.warn('ROACH2 support being deprecatedin our branch.')
         return (self.check_ct_parity(threshold) and
                 self.check_cd_parity(threshold))
-
-    def check_rx_spead(self, max_waittime=5):
-        """
-        Check that this host is receiving SPEAD data.
-        :param max_waittime: the maximum time to wait
-        :return:
-        """
-        return self._check_rx_spead_skarab()
 
     def check_ct_parity(self, threshold):
         """
@@ -797,6 +790,7 @@ class FpgaFHost(DigitiserStreamReceiver):
         :param threshold: how many errors are permisible?
         :return:
         """
+        LOGGER.warn('ROACH2 support being deprecatedin our branch.')
         return self._check_qdr_parity(
             qdr_id='CT',
             threshold=threshold,
@@ -814,16 +808,8 @@ class FpgaFHost(DigitiserStreamReceiver):
         """
         Check the Coarse Delay, including any host memory errors.
         """
-        d0=self.get_cd_status()
-        if d0['pol0_parity_err_cnt']>0:
-            LOGGER.error('%s: Parity errors on CD0.',self.host)    
-            return False
-        if d0['pol1_parity_err_cnt']>0:
-            LOGGER.error('%s: Parity errors on CD1.',self.host)    
-            return False
-        d1=self.get_cd_status()
-        if d1['hmc_err_cnt'] != d0['hmc_err_cnt']:
-            LOGGER.error('%s: HMC err cnt changing.',self.host)    
+        d = self.get_cd_status()
+        if d['err_cnt'] > 0:
             return False
         return True
 
@@ -835,92 +821,52 @@ class FpgaFHost(DigitiserStreamReceiver):
             rv = self.registers.ct_status0.read()['data']
         else:
             rv = self.registers.ct_status.read()['data']
+        for ctr in range(1, 7):
+            try:
+                rv.update(self.registers['ct_status%i' % ctr].read()['data'])
+            except (AttributeError, KeyError):
+                pass
         try:
-            rv.update(self.registers.ct_status1.read()['data'])
-            rv.update(self.registers.ct_status2.read()['data'])
-        except AttributeError or KeyError:
+            reg = self.registers.ct_out_dv_rate
+            rv['out_dv_rate'] = reg.read()['data']['reg']
+            reg = self.registers.ct_in_dv_rate
+            rv['in_dv_rate'] = reg.read()['data']['reg']
+        except (AttributeError, KeyError):
             pass
         try:
-            rv['ct_dv_rate'] = self.registers.ct_dv_rate.read()['data']['reg']
-        except AttributeError or KeyError:
+
+            rv.update(self.registers.ct_dv_err.read()['data'])
+        except (AttributeError, KeyError):
             pass
         return rv
 
     def check_ct(self):
         """
-        Check the Coarse Delay, including any host memory errors.
+        Check the corner turner for errors
         """
         d0 = self.get_ct_status()
         if not d0['init']:
-            LOGGER.error('%s: CT HMC did not init.',self.host)    
+            LOGGER.error('%s: CT HMC did not init.', self.host)
             return False
         if not d0['post']:
-            LOGGER.error('%s: CT HMC did not POST.',self.host)    
+            LOGGER.error('%s: CT HMC did not POST.', self.host)
             return False
+        time.sleep(0.1)
         d1 = self.get_ct_status()
-        if d0['err_bank'] != d1['err_bank']:
-            LOGGER.error('%s: CT bank_err is changing.',self.host)    
-            return False
-        if d0['wr_ctr'] == d1['wr_ctr']:
-            LOGGER.error('%s: Write counter is NOT changing.',self.host)    
-            return False
-        if d0['err_en_sync'] != d1['err_en_sync']:
-            LOGGER.error('%s: CT err_en_sync is changing.',self.host)    
-            return False
-        if d0['err_rdrdy'] != d1['err_rdrdy']:
-            LOGGER.error('%s: CT HMC read not ready is spinning.',self.host)
-            return False
-        if d0['err_wrrdy'] != d1['err_wrrdy']:
-            LOGGER.error('%s: CT HMC write not ready is spinning.',self.host)
-            return False
-        return True 
-
-    def check_cd_parity(self, threshold):
-        """
-        Check the QDR coarse delay parity error counters
-        :param threshold: how many errors are permisible?
-        :return:
-        """
-        if 'cd_ctrs' not in self.registers.names():
-            LOGGER.info('check_qdr_parity: CD - no QDR-based coarse '
-                        'delay found')
-            return True
-        return self._check_qdr_parity(
-            qdr_id='CD',
-            threshold=threshold,
-            reg_name='cd_ctrs',
-            reg_field_name='cd_parerr_cnt'
-        )
-
-    def _check_qdr_parity(self, qdr_id, threshold, reg_name, reg_field_name,):
-        """
-        Check QDR parity error counters
-        :return:
-        """
-        LOGGER.info('%s: checking %s parity errors (QDR test)' % (
-            self.host, qdr_id))
-        if threshold == 0:
-            _required_bits = 1
-        else:
-            _required_bits = int(numpy.ceil(numpy.log2(threshold)))
-        # does the loaded bitstream have wide-enough counters?
-        _register = self.registers[reg_name]
-        bitwidth = _register.field_get_by_name(reg_field_name + '0').width_bits
-        if bitwidth < _required_bits:
-            LOGGER.warn(
-                '\t{qdrid} parity error counter is too narrow: {bw} < {rbw}. '
-                'NOT running test.'.format(
-                    qdrid=qdr_id, bw=bitwidth, rbw=_required_bits))
-            return True
-        ctrs = self.registers[reg_name].read()['data']
-        for pol in [0, 1]:
-            fname = reg_field_name + str(pol)
-            if (ctrs[fname] > 0) and (ctrs[fname] < threshold):
-                LOGGER.warn('\t{h}: {thrsh} > {nm} > 0. Que pasa?'.format(
-                    h=self.host, nm=fname, thrsh=threshold))
-            elif (ctrs[fname] > 0) and (ctrs[fname] >= threshold):
-                LOGGER.error('\t{h}: {nm} > {thrsh}. Problems.'.format(
-                    h=self.host, nm=fname, thrsh=threshold))
+        for not_change in [
+            'err_bank0', 'err_bank1', 'err_rdrdy0', 'err_rdrdy1',
+                'err_wrrdy0', 'err_wrrdy1', 'addr_err0_cnt',
+                'post_err0', 'post_err1', 'init_err0', 'init_err1',
+                'pktlen_err_cnt', 'dvblock_err_cnt']:
+            if not_change in d0:
+                if d0[not_change] != d1[not_change]:
+                    LOGGER.error('%s: CT %s is changing.' % (
+                        self.host, not_change))
+                    return False
+        for change in ['wr_ctr0', 'wr_ctr1']:
+            if d0[not_change] == d1[not_change]:
+                LOGGER.error('%s: CT %s is NOT changing.' % (
+                    self.host, change))
                 return False
         return True
 

@@ -6,6 +6,8 @@ Author: Jason Manley, Andrew Martens, Ruby van Rooyen, Monika Obrocka
 """
 
 import logging
+import time
+
 from xhost_fpga import FpgaXHost
 
 LOGGER = logging.getLogger(__name__)
@@ -17,13 +19,14 @@ class FpgaBHost(FpgaXHost):
         # parent constructor
         FpgaXHost.__init__(self, host, index, katcp_port=katcp_port,
                            bitstream=bitstream, connect=connect, config=config)
-        self.beng_per_host = int(self.config['x_per_fpga'])
+        self.beng_per_host = self.x_per_fpga
 
-    @classmethod
-    def from_config_source(cls, hostname, index, katcp_port, config_source):
-        bitstream = config_source['bitstream']
-        return cls(hostname, index, katcp_port=katcp_port, bitstream=bitstream,
-                   connect=True, config=config_source)
+    # @classmethod
+    # def from_config_source(cls, hostname, index, katcp_port,
+    #                        config_source, corr):
+    #     bitstream = config_source['bitstream']
+    #     return cls(hostname, index, katcp_port=katcp_port,
+    #                bitstream=bitstream, connect=True, config=config_source)
 
     def beam_destination_set(self, beam):
         """
@@ -182,6 +185,38 @@ class FpgaBHost(FpgaXHost):
                     LOGGER.error(errmsg)
                     raise ValueError(errmsg)
             return drv[0]
+
+    def check_beng(self, x_indices=None):
+        """
+
+        :param x_indices: a list of the beng indices to check
+        :return:
+        """
+        if x_indices is None:
+            x_indices = range(self.x_per_fpga)
+        stat0 = self.beng_get_status(x_indices)
+        time.sleep(self._get_checktime())
+        stat1 = self.beng_get_status(x_indices)
+        rv = []
+        for xeng in x_indices:
+            rvb = []
+            for beng in range(2):
+                st0 = stat0[xeng][beng]
+                st1 = stat1[xeng][beng]
+                if st0['of_err_cnt'] != st1['of_err_cnt']:
+                    msg = '{host}: beng{b},{x} errors incrementing'.format(
+                        host=self.host, x=xeng, b=beng)
+                    LOGGER.error(msg)
+                    rvb.append(1)
+                elif st0['pkt_cnt'] == st1['pkt_cnt']:
+                    msg = '{host}: beng{b},{x} not sending packets'.format(
+                        host=self.host, x=xeng, b=beng)
+                    LOGGER.warn(msg)
+                    rvb.append(2)
+                else:
+                    rvb.append(0)
+            rv.append(rvb)
+        return rv
 
 #    def beam_partitions_read(self, beam):
 #        """

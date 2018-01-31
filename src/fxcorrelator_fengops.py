@@ -186,6 +186,8 @@ class FEngineOperations(object):
 
         # where does the F-engine data go?
         self.data_stream.write_destination()
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_stream_destinations()
 
         # set up the fpga comms
         # TODO ROACH2 may need this, but disabled for now, since SKARAB's 40G behaviour is unknown.

@@ -499,7 +499,7 @@ class FxCorrelator(Instrument):
         for hostindex, host in enumerate(hostlist):
             host = host.strip()
             fpgahost = _target_class.from_config_source(
-                host, hostindex, self.katcp_port, config_source=_xeng_d)
+                host, hostindex, self.katcp_port, self.configd)
             self.xhosts.append(fpgahost)
         # check that no hosts overlap
         for _fh in self.fhosts:

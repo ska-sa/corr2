@@ -2,6 +2,7 @@ import logging
 import time
 
 import casperfpga
+from casperfpga.transport_skarab import SkarabReorderError, SkarabReorderWarning
 
 from host_fpga import FpgaHost
 
@@ -44,17 +45,19 @@ class DigitiserStreamReceiver(FpgaHost):
             test_data.append(reorder_ctrs)
             time.sleep(sleeptime)
         if 'dv_cnt' not in test_data[0]:
-            LOGGER.debug('FHost %s: No dv_cnt available to test.' % self.host)
-            return False
+            errstr = 'FHost %s: No dv_cnt available to test.' % self.host
+            LOGGER.debug(errstr)
+            raise SkarabReorderError(errstr)
         getting_data = False
         for ctr in range(1, required_repetitions):
             if test_data[ctr]['dv_cnt'] != test_data[0]['dv_cnt']:
                 getting_data = True
+                break
         if not getting_data:
-            LOGGER.debug('FHost %s: dv_cnt is NOT changing: %i' % (
-                self.host, test_data[0]['dv_cnt']))
-            return False
-        got_errors = False
+            errstr = 'FHost %s: dv_cnt is NOT changing: %i' % (
+                self.host, test_data[0]['dv_cnt'])
+            LOGGER.debug(errstr)
+            raise SkarabReorderWarning(errstr)
         for ctr in range(1, required_repetitions):
             for key in ['discard_cnt', 'overflow_err_cnt', 'receive_err_cnt',
                         'relock_err_cnt', 'timestep_err_cnt']:
@@ -63,13 +66,12 @@ class DigitiserStreamReceiver(FpgaHost):
                 if v1 != v0:
                     LOGGER.debug('FHost %s: %s is changing. %i -> %i' % (
                         self.host, key, v1, v0))
-                    got_errors = True
-        if got_errors:
-            LOGGER.debug('One or more errors detected, check logs.')
-            return False
+                    errstr = 'One or more reorder errors detected, ' \
+                             'check logs.'
+                    LOGGER.debug(errstr)
+                    raise SkarabReorderError(errstr)
         LOGGER.debug('%s: is reordering data okay.' % self.host)
         return True
-
 
     def get_rx_reorder_status(self):
         """
@@ -82,7 +84,7 @@ class DigitiserStreamReceiver(FpgaHost):
             reorder_ctrs = self.registers.reorder_status.read()['data']
         try:
             reorder_ctrs.update(self.registers.reorder_status1.read()['data'])
-        except AttributeError or KeyError:
+        except (AttributeError, KeyError):
             pass
         return reorder_ctrs
 
