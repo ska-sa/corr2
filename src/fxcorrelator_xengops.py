@@ -15,9 +15,6 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 use_xeng_sim = False
 
-MAX_VACC_SYNCH_ATTEMPTS = 1
-
-
 class XengineStream(data_stream.SPEADStream):
     """
     An x-engine SPEAD stream
@@ -541,7 +538,7 @@ class XEngineOperations(object):
                     errmsg = 'xeng_vacc_sync: resetting vaccs on ' \
                              '%s failed.' % xhost
                     self.logger.error(errmsg)
-                    raise RuntimeError(errmsg)
+                    #raise RuntimeError(errmsg)
 
     def _vacc_sync_create_loadtime(self, load_time=None):
         """
@@ -652,7 +649,7 @@ class XEngineOperations(object):
                     errmsg = 'xeng_vacc_sync: resetting vaccs on ' \
                              '%s failed.' % xhost
                     self.logger.error(errmsg)
-                    raise RuntimeError(errmsg)
+                    #raise RuntimeError(errmsg)
 
         arm_count0 = vacc_status[self.hosts[0].host][0]['armcount']
         load_count0 = vacc_status[self.hosts[0].host][0]['loadcount']
@@ -855,101 +852,51 @@ class XEngineOperations(object):
             return
         self.vacc_synch_running.set()
 
-        attempts = 0
-        try:
-            while True:
-                attempts += 1
 
-                if attempts > MAX_VACC_SYNCH_ATTEMPTS:
-                    raise VaccSynchAttemptsMaxedOut(
-                        'Reached maximum vacc synch attempts, aborting')
+        # reset all the vaccs
+        self.vacc_reset_all()
 
-#                # check if the vaccs need resetting
-#                self._vacc_sync_check_reset()
+        # work out the load time
+        vacc_load_time = self._vacc_sync_create_loadtime(load_time=sync_time)
 
-                # reset all the vaccs
-                self.vacc_reset_all()
+        # set the vacc load time on the xengines
+        # should automatically estimate sync time, if needed.
+        load_mcount = self._vacc_sync_calc_load_mcount(vacc_load_time)
 
-                #debugging:
-#                feng_mcnt=self.corr.fhosts[0].get_local_time()
-#                feng_time=self.corr.time_from_mcnt(feng_mcnt)
-#                self.logger.info('Current Feng0 mcnt: %i (%i; %s)'%
-#                    (feng_mcnt,feng_time,time.ctime(feng_time)))
-#                self._vacc_sync_calc_load_mcount(time.time())
+        # set the load mcount on the x-engines
+        self.logger.info('\tApplying load time: %i.' % load_mcount)
+        THREADED_FPGA_FUNC(
+            self.hosts, timeout=10,
+            target_function=('vacc_set_loadtime', (load_mcount,),))
 
-                # work out the load time
-                vacc_load_time = self._vacc_sync_create_loadtime(load_time=sync_time)
+        # check the current counts
+        (arm_count0,
+         load_count0) = self._vacc_sync_check_counts_initial()
 
-                # set the vacc load time on the xengines
-                # should automatically estimate sync time, if needed.
-                load_mcount = self._vacc_sync_calc_load_mcount(vacc_load_time)
+        # arm the xhosts
+        THREADED_FPGA_FUNC(
+            self.hosts, timeout=10, target_function='vacc_arm')
 
-                # set the load mcount on the x-engines
-                self.logger.info('\tApplying load time: %i.' % load_mcount)
-                THREADED_FPGA_FUNC(
-                    self.hosts, timeout=10,
-                    target_function=('vacc_set_loadtime', (load_mcount,),))
+        # did the arm count increase?
+        self._vacc_sync_check_arm_count(arm_count0)
 
-                # check the current counts
-                (arm_count0,
-                 load_count0) = self._vacc_sync_check_counts_initial()
+        # check the the load time was stored correctly
+        self._vacc_sync_check_loadtimes()
 
-                # arm the xhosts
-                THREADED_FPGA_FUNC(
-                    self.hosts, timeout=10, target_function='vacc_arm')
+        # wait for the vaccs to trigger
+        self._vacc_sync_wait_for_arm(load_mcount)
 
-                # did the arm count increase?
-                if not self._vacc_sync_check_arm_count(arm_count0):
-                    continue
+        # check the status to see that the load count increased
+        if not self._vacc_sync_check_load_count(load_count0):
+            feng_mcnt = self.corr.fhosts[0].get_local_time()
+            feng_time = self.corr.time_from_mcnt(feng_mcnt)
+            self.logger.info('Current Feng0 mcnt: %i (%i; %s)' %
+                             (feng_mcnt, feng_time,
+                              time.ctime(feng_time)))
 
-                # check the the load time was stored correctly
-                if not self._vacc_sync_check_loadtimes():
-                    continue
-
-                # wait for the vaccs to trigger
-                self._vacc_sync_wait_for_arm(load_mcount)
-
-                # check the status to see that the load count increased
-                if not self._vacc_sync_check_load_count(load_count0):
-                    feng_mcnt = self.corr.fhosts[0].get_local_time()
-                    feng_time = self.corr.time_from_mcnt(feng_mcnt)
-                    self.logger.info('Current Feng0 mcnt: %i (%i; %s)' %
-                                     (feng_mcnt, feng_time,
-                                      time.ctime(feng_time)))
- 
-                    continue
-
-                # allow vacc to flush and correctly populate parity bits:
-                self.logger.info('\tWaiting %2.2fs for an accumulation to '
-                                 'flush, to correctly populate parity bits.' %
-                                 self.get_acc_time())
-                time.sleep(self.get_acc_time() + 0.2)
-
-                self.logger.info('\tClearing status and reseting counters.')
-                THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                                   target_function='clear_status')
-
-#                # wait for a good accumulation to finish.
-#                self.logger.info('\tWaiting %2.2fs for an accumulation to '
-#                                 'flush before checking counters.' %
-#                                 self.get_acc_time())
-#                time.sleep(self.get_acc_time() + 0.2)
-#
-#                # check the vacc status, errors and accumulations
-#                if not self._vacc_sync_final_check():
-#                    continue
-#
-                # done
-
-                synch_time = self.corr.time_from_mcnt(load_mcount)
-                self.vacc_synch_running.clear()
-                return synch_time
-        except KeyboardInterrupt:
-            self.vacc_synch_running.clear()
-        except VaccSynchAttemptsMaxedOut as e:
-            self.vacc_synch_running.clear()
-            self.logger.error(e.message)
-            raise e
+        synch_time = self.corr.time_from_mcnt(load_mcount)
+        self.vacc_synch_running.clear()
+        return synch_time
 
     def acc_len_from_time(self, acc_time_s):
         """

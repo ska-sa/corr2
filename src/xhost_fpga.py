@@ -1,7 +1,10 @@
 import logging
 import time
+import casperfpga
 
 from host_fpga import FpgaHost
+from host_fpga import FpgaHost
+from casperfpga.transport_skarab import SkarabTransport
 
 LOGGER = logging.getLogger(__name__)
 
@@ -13,7 +16,7 @@ class FpgaXHost(FpgaHost):
     def __init__(self, host, index, katcp_port=7147, bitstream=None,
                  connect=True, config=None):
         FpgaHost.__init__(self, host=host, katcp_port=katcp_port,
-                          bitstream=bitstream, connect=connect)
+                          bitstream=bitstream, connect=connect, transport=SkarabTransport)
         self.config = config
         self.index = index
         self.acc_len = None
