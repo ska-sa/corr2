@@ -6,8 +6,6 @@ from tornado.ioloop import IOLoop
 
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
-from casperfpga.transport_skarab import \
-    SkarabSpeadError, SkarabSpeadWarning
 
 from sensors import Corr2Sensor, boolean_sensor_do
 
@@ -59,21 +57,23 @@ def _cb_xhost_check_network(sensors, x_host):
     tx_okay = sensors['tx'].status() == Corr2Sensor.NOMINAL
     sensors['combined'].sensor_set_on_condition(rx_okay and tx_okay)
     # SPEAD RX
-    sensor = sensors['spead']
-    executor = sensor.executor
+    sensor_spead = sensors['spead']
+    executor = sensor_spead.executor
+    result = (1, 1)
     try:
         result = yield executor.submit(x_host.check_rx_spead)
-        sensor.set(status=Corr2Sensor.NOMINAL, value=True)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(value=False)
-    except SkarabSpeadWarning:
-        sensor.set(status=Corr2Sensor.WARN, value=False)
-    except SkarabSpeadError:
-        sensor.set(status=Corr2Sensor.ERROR, value=False)
+        sensor_spead.set(value=False)
     except Exception as e:
         LOGGER.error('Error updating {} for {} - '
-                     '{}'.format(sensor.name, x_host.host, e.message))
-        sensor.set(value=False)
+                     '{}'.format(sensor_spead.name, x_host.host, e.message))
+        sensor_spead.set(value=False)
+    if result[0] == 0:
+        sensor_spead.set(status=Corr2Sensor.NOMINAL, value=True)
+    elif result[0] == 1:
+        sensor_spead.set(status=Corr2Sensor.WARN, value=False)
+    else:
+        sensor_spead.set(status=Corr2Sensor.ERROR, value=False)
     LOGGER.debug('_cb_xhost_check_network ran')
     IOLoop.current().call_later(10, _cb_xhost_check_network, sensors, x_host)
 

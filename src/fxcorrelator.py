@@ -167,8 +167,8 @@ class FxCorrelator(Instrument):
             skfops.upload_to_ram_progska(xbof, self.xhosts)
             skfops.reboot_skarabs_from_sdram(self.xhosts)
             skfops.wait_after_reboot(self.fhosts + self.xhosts, timeout=200)
-            fisskarab = True
-            xisskarab = True
+        fisskarab = True
+        xisskarab = True
         if (not program) or fisskarab or xisskarab:
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(

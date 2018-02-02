@@ -3,7 +3,6 @@ import time
 
 from casperfpga.casperfpga import CasperFpga
 from casperfpga.network import Mac
-from casperfpga.transport_skarab import SkarabSpeadError, SkarabSpeadWarning
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,11 +41,18 @@ class FpgaHost(CasperFpga):
         """
         Returns the SPEAD counters on this FPGA.
         """
+        rv = None
         if 'spead_status' in self.registers.names():
-            return self.registers.spead_status.read()['data']
-        else:
-            LOGGER.error('Can\'t check SPEAD RX: register not found')
-            raise RuntimeError('Can\'t check SPEAD RX: register not found')
+            rv = self.registers.spead_status.read()['data']
+        elif 'unpack_status' in self.registers.names():
+            rv = self.registers.unpack_status.read()['data']
+            if 'unpack_status1' in self.registers.names():
+                rv.update(self.registers.unpack_status1.read()['data'])
+        if rv is None:
+            msg = '%s: can\'t check SPEAD RX: register not found' % self.host
+            LOGGER.error(msg)
+            raise RuntimeError(msg)
+        return rv
 
     def _check_rx_spead_skarab(self, checks=5):
         """
@@ -58,32 +64,33 @@ class FpgaHost(CasperFpga):
             results.append(self.get_spead_status())
             time.sleep(0.1)
         pkts_rx = False
+        deng_time_ok = 0
         for ctr in range(1, checks):
             if results[ctr]['pkt_cnt'] != results[0]['pkt_cnt']:
                 pkts_rx = True
-                break
+            if 'time_err_cnt' in results[ctr]:
+                if results[ctr]['time_err_cnt'] != results[0]['time_err_cnt']:
+                    deng_time_ok = 2
+            else:
+                deng_time_ok = 1
         if not pkts_rx:
-            errstr = '%s: SPEAD packet count not incrementing' % self.host
-            LOGGER.error(errstr)
-            raise SkarabSpeadWarning(errstr)
+            LOGGER.error('%s: SPEAD packet count not incrementing' % self.host)
+            return 1, deng_time_ok
         for key in ['magic_err_cnt', 'header_err_cnt',
                     'pad_err_cnt', 'pkt_len_err_cnt']:
             for ctr in range(1, checks):
                 if results[ctr][key] != results[0][key]:
-                    errstr = '%s: SPEAD error %s incrementing' % (
-                        self.host, key)
-                    LOGGER.error(errstr)
-                    raise SkarabSpeadError(errstr)
+                    LOGGER.error('%s: SPEAD error %s incrementing' % (
+                        self.host, key))
+                    return 2, deng_time_ok
+        return 0, deng_time_ok
 
     def check_rx_spead(self):
         """
         Check that this host is receiving SPEAD data.
         :return:
         """
-        if 'spead_status' in self.registers.names():
-            return self._check_rx_spead_skarab()
-        LOGGER.error('Can\'t check SPEAD RX: register not found')
-        return False
+        return self._check_rx_spead_skarab()
 
     def check_rx_reorder(self):
         raise NotImplemented

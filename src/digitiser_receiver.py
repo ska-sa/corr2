@@ -2,7 +2,8 @@ import logging
 import time
 
 import casperfpga
-from casperfpga.transport_skarab import SkarabTransport, SkarabReorderError, SkarabReorderWarning
+from casperfpga.transport_skarab import SkarabTransport, \
+    SkarabReorderError, SkarabReorderWarning
 
 from host_fpga import FpgaHost
 
@@ -17,7 +18,7 @@ class DigitiserStreamReceiver(FpgaHost):
     def __init__(self, host, katcp_port=7147, bitstream=None, connect=True):
         super(DigitiserStreamReceiver, self).__init__(
             host=host, katcp_port=katcp_port, bitstream=bitstream,
-            connect=connect,transport=SkarabTransport)
+            connect=connect, transport=SkarabTransport)
 
     def _skarab_print_reorder_regs(self):
         """
@@ -197,7 +198,7 @@ class DigitiserStreamReceiver(FpgaHost):
         """
         self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
                                      cnt_rst='pulse')
-        #self.registers.control.write(gbe_cnt_rst='pulse')
+        # self.registers.control.write(gbe_cnt_rst='pulse')
         LOGGER.debug('{}: status cleared.'.format(self.host))
 
 # end

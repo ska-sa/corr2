@@ -6,8 +6,7 @@ from tornado.ioloop import IOLoop
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
 from casperfpga.transport_skarab import \
-    SkarabReorderError, SkarabReorderWarning, \
-    SkarabSpeadError, SkarabSpeadWarning
+    SkarabReorderError, SkarabReorderWarning
 
 from sensors import Corr2Sensor, boolean_sensor_do
 
@@ -124,21 +123,32 @@ def _cb_fhost_check_network(sensors, f_host):
     tx_okay = sensors['tx'].status() == Corr2Sensor.NOMINAL
     sensors['combined'].sensor_set_on_condition(rx_okay and tx_okay)
     # SPEAD RX
-    sensor = sensors['spead']
-    executor = sensor.executor
+    sensor_spead = sensors['spead']
+    sensor_deng = sensors['deng_time']
+    executor = sensor_spead.executor
+    result = (1, 1)
     try:
         result = yield executor.submit(f_host.check_rx_spead)
-        sensor.set(status=Corr2Sensor.NOMINAL, value=True)
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(value=False)
-    except SkarabSpeadWarning:
-        sensor.set(status=Corr2Sensor.WARN, value=False)
-    except SkarabSpeadError:
-        sensor.set(status=Corr2Sensor.ERROR, value=False)
+        sensor_spead.set(value=False)
     except Exception as e:
-        LOGGER.error('Error updating {} for {} - '
-                     '{}'.format(sensor.name, f_host.host, e.message))
-        sensor.set(value=False)
+        LOGGER.error(
+            'Error updating {} and {} for {} - {}'.format(
+                sensor_spead.name, sensor_deng.name, f_host.host, e.message))
+        sensor_spead.set(value=False)
+        sensor_deng.set(value=False)
+    if result[0] == 0:
+        sensor_spead.set(status=Corr2Sensor.NOMINAL, value=True)
+    elif result[0] == 1:
+        sensor_spead.set(status=Corr2Sensor.WARN, value=False)
+    else:
+        sensor_spead.set(status=Corr2Sensor.ERROR, value=False)
+    if result[1] == 0:
+        sensor_deng.set(status=Corr2Sensor.NOMINAL, value=True)
+    elif result[1] == 1:
+        sensor_deng.set(status=Corr2Sensor.WARN, value=False)
+    else:
+        sensor_deng.set(status=Corr2Sensor.ERROR, value=False)
     LOGGER.debug('_cb_fhost_check_network ran')
     IOLoop.current().call_later(10, _cb_fhost_check_network, sensors, f_host)
 
@@ -210,6 +220,9 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
 
         # raw network comms - gbe counters must increment
         network_sensors = {
+            'deng_time': sens_man.do_sensor(
+                Corr2Sensor.boolean, '{}-deng-time-ok'.format(fhost),
+                'D-engine timestamps ok', executor=executor),
             'rx': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}-network-rx-ok'.format(fhost),
                 'F-engine network RX ok', executor=executor),
