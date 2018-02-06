@@ -268,6 +268,7 @@ class FEngineOperations(object):
         _feng_ctr = 0
         self.fengines = []
         for fhost in self.hosts:
+            fhost.fengines=[]
             for fengnum in range(0, self.corr.f_per_fpga):
                 _feng = _feng_temp[_feng_ctr]
                 _feng.host = fhost

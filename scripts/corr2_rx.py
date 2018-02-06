@@ -328,8 +328,8 @@ def process_xeng_data(heap_data, ig, logger, baselines,
             vals.append((htime, freq, xdata))
         vals = sorted(vals, key=lambda val: val[1])
         xeng_raw = np.concatenate([val[2] for val in vals], axis=0)
-        time_s = ig['timestamp'].value / (n_chans * 2 * n_accs)
-        logger.info('Processing xeng_raw heap with time %i (%i) and '
+        time_s = ig['timestamp'].value / (n_chans * 2. * n_accs)
+        logger.info('Processing xeng_raw heap with time 0x%012x (%.2fs since epoch) and '
                     'shape: %s' % (ig['timestamp'].value, time_s,
                                    str(np.shape(xeng_raw))))
         heap_data.pop(htime)
@@ -373,9 +373,16 @@ def process_xeng_data(heap_data, ig, logger, baselines,
     # loop through the times we know about and process the complete ones
     rvs = {}
     heaptimes = heap_data.keys()
+
+#    heaptimes.sort()
+#    prev=heaptimes[0]
+#    for n,heaptime in enumerate(heaptimes):
+#        print(n, heaptime, heaptime-prev)
+#        prev=heaptime
+
     for heaptime in heaptimes:
         lendata = len(heap_data[heaptime])
-        logger.debug('Processing heaptime %i, already '
+        logger.debug('Processing heaptime 0x%012x, already '
                      'have %i datapoints.' % (heaptime, lendata))
         # do we have all the data for this heaptime?
         if len(heap_data[heaptime]) == NUM_XENG:
@@ -479,7 +486,7 @@ class CorrReceiver(threading.Thread):
                 port=7148,
                 max_size=9200,
                 buffer_size=5120000,
-                interface_address='10.100.101.1'
+                interface_address='10.100.22.13'
             )
 
         # were we given a H5 file to which to write?

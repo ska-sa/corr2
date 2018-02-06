@@ -47,7 +47,7 @@ class FpgaXHost(FpgaHost):
         :return: <nothing> the information is populated in the class
         """
         super(FpgaXHost, self).get_system_information(filename, fpg_info)
-        self.x_per_fpga = self._determine_x_per_fpga()
+        #self.x_per_fpga = self._determine_x_per_fpga()
         self._vaccs_per_sec_last_values = [0] * self.x_per_fpga
 
     @classmethod

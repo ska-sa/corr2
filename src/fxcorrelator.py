@@ -111,8 +111,6 @@ class FxCorrelator(Instrument):
         # update the list of baselines on this system
         self.baselines = utils.baselines_from_config(config=self.configd)
 
-        # what digitiser data streams have we been allocated?
-        self._create_digitiser_streams()
 
     # @profile
     def initialise(self, program=True, configure=True,
@@ -129,6 +127,11 @@ class FxCorrelator(Instrument):
             if self.synchronisation_epoch == -1:
                 raise RuntimeError('System synch epoch has not been set prior'
                                    ' to initialisation!')
+
+        #clear the data streams. These will be re-added during configuration.
+        self.data_streams=[]
+        # what digitiser data streams have we been allocated?
+        self._create_digitiser_streams()
 
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self)

@@ -612,8 +612,8 @@ class XEngineOperations(object):
         :return:
         """
         self.logger.info('vacc statii:')
-        for _host in self.hosts:
-            self.logger.info('\t%s:' % _host.host)
+        for n,_host in enumerate(self.hosts):
+            self.logger.info('\t%i, %s:' %(n,_host.host))
             for _ctr, _status in enumerate(vstatus[_host.host]):
                 self.logger.info('\t\t%i: %s' % (_ctr, _status))
 
