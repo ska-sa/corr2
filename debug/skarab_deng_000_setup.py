@@ -10,10 +10,7 @@ import os
 import logging
 import time
 
-from casperfpga import utils as fpgautils, tengbe
-from casperfpga import spead as casperspead, snap as caspersnap
-from casperfpga import casperfpga
-from corr2 import utils
+from casperfpga import casperfpga, network
 
 logging.basicConfig(level=logging.INFO)
 
@@ -23,7 +20,7 @@ setup_skarab = True
 f = casperfpga.CasperFpga(os.environ['SKARAB_DSIM'])
 
 if program_skarab:
-    res = f.upload_to_ram_and_program(os.environ['SKARAB_DSIM_FPG'], attempts=5)
+    res = f.upload_to_ram_and_program(os.environ['SKARAB_DSIM_FPG'])
     if not res:
         print('Could not program SKARAB.')
         import sys
@@ -33,22 +30,38 @@ else:
     f.get_system_information(os.environ['SKARAB_DSIM_FPG'])
 
 if setup_skarab:
+    f.registers.gbecontrol.write_int(0)
     f.registers.receptor_id.write(pol0_id=0, pol1_id=1)
 
     # ramp 80 or ramp 64?
-    f.registers.test_control.write(sel_ramp80=True, rst_ramp80='pulse')
+    f.registers.test_control.write(sel_ramp80=1, rst_ramp80='pulse',
+                                   sel_munge=1)
 
     f.registers.control.write(mrst='pulse')
     f.registers.control.write(msync='pulse')
-    if f.gbes[0].get_port() != 30000:
-        f.gbes[0].set_port(30000)
-    f.registers.gbe_porttx.write(reg=30000)
-    ip = tengbe.IpAddress('10.99.1.1')
-    ip = tengbe.IpAddress(os.environ['CORR2UUT'])
-    for ctr in range(4):
-        f.registers['gbe_iptx%i' % ctr].write(reg=ip.ip_int)
+
+    gbe = f.gbes.keys()[0]
+    gbe = f.gbes[gbe]
+    # if gbe.get_port() != 30000:
+    #     gbe.set_port(30000)
+    # f.registers.gbe_porttx.write(reg=30000)
+    # ip = network.IpAddress('10.99.1.1')
+    # ip = network.IpAddress(os.environ['CORR2UUT'])
+    # ip = network.IpAddress('10.100.101.111')
+    # for ctr in range(4):
+    #     f.registers['gbe_iptx%i' % ctr].write(reg=ip.ip_int)
+
+    if gbe.get_port() != 7148:
+        gbe.set_port(7148)
+    f.registers.gbe_porttx.write(reg=7148)
+    f.registers['gbe_iptx0'].write(reg=int(network.IpAddress('239.2.0.64')))
+    f.registers['gbe_iptx1'].write(reg=int(network.IpAddress('239.2.0.65')))
+    f.registers['gbe_iptx2'].write(reg=int(network.IpAddress('239.2.0.66')))
+    f.registers['gbe_iptx3'].write(reg=int(network.IpAddress('239.2.0.67')))
+
     f.registers.control.write(gbe_rst='pulse')
     f.registers.gbecontrol.write_int(15)
+    # f.registers.gbecontrol.write_int(1)
     print('Done setting up SKARAB.')
 
 f.registers.speadsnap_control.write_int(0)
@@ -64,15 +77,24 @@ d1 = f.snapshots.spead_detail_ss.read(arm=False)['data']
 d0.update(d1)
 
 last_eof = -1
+pktlen_errors = 0
 for ctr in range(len(d0['d64'])):
-    prtstr = '%4i %i %i %i' % (
+    prtstr = '%6i %20i %20i %20x' % (
         ctr, d0['we'][ctr], d0['eof'][ctr], d0['d64'][ctr])
     if d0['eof'][ctr]:
-        prtstr += 'EOF(%i)' % (ctr - last_eof)
+        pktlen = (ctr - last_eof)
+        prtstr += ' EOF(%i)' % pktlen
+        if pktlen != 649:
+            prtstr += ' ERROR'
+            pktlen_errors += 1
         last_eof = ctr
     print(prtstr)
+    if d0['eof'][ctr]:
+        print('-' * 100)
 
-import IPython
-IPython.embed()
+print 'PKTLEN_ERRORS:', pktlen_errors
+
+# import IPython
+# IPython.embed()
 
 # end

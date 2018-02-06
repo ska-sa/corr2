@@ -30,14 +30,19 @@ finally:
     sock.close()
 
 for ctr, pkt in enumerate(pkts):
-    print(ctr, len(pkt[0])
+    print(ctr, len(pkt[0]))
 
 pkt_len = len(pkts[0][0])
 
 # format the packets into gbe_packets
 gbe_packets = []
 for pkt in pkts:
-    pkt64 = struct.unpack('>%iQ' % (pkt_len/8), pkt[0])
+    pkt64_wrong = struct.unpack('>%iQ' % (pkt_len/8), pkt[0])
+    pkt64 = []
+    for ctr in range(0, len(pkt64_wrong), 4):
+        tmp = [pkt64_wrong[ctr+3], pkt64_wrong[ctr+2],
+               pkt64_wrong[ctr+1], pkt64_wrong[ctr+0]]
+        pkt64.extend(tmp)
     gbe_packets.append(pkt64)
 
 # process SPEAD
@@ -55,13 +60,18 @@ for ctr, packet in enumerate(spead_processor.packets[1:]):
 # check the packets for the ramp
 last_hdr_time = 0
 for ctr, packet in enumerate(sorted_packets):
-    print('%5i' % ctr, '%16i' % packet.headers[0x1600], '%10i' % (packet.headers[0x1600] - last_hdr_time), packet.headers[0x3101],
+    prtstr = '%5i' % ctr
+    prtstr += ' %16i' % packet.headers[0x1600]
+    prtstr += ' %10i' % (packet.headers[0x1600] - last_hdr_time)
+    prtstr += ' pol%1i' % packet.headers[0x3101]
     last_hdr_time = packet.headers[0x1600]
     if packet.headers[0x1600] != packet.headers[0x1]:
-        print('ID_ERROR',
+        prtstr += ' ID_ERROR'
     if packet.data != range(640):
-        print('DATA_ERROR',
-    print(''
+        prtstr += ' DATA_ERROR'
+    print(prtstr)
+    import IPython
+    IPython.embed()
 
 import IPython
 IPython.embed()
