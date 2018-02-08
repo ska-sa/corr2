@@ -185,8 +185,8 @@ def hosts_and_bitstreams_from_config(config_file=None, config=None,
                 rv.append(val)
         if not rv:
             raise RuntimeError('Could not find section \'%s\'.' % section)
-        return rv
-    return hosts_by_section
+        return config, rv
+    return config, hosts_by_section
 
 
 def _script_get_hosts(cmdline_args, host_type=None):
@@ -194,7 +194,7 @@ def _script_get_hosts(cmdline_args, host_type=None):
     Given command line arguments, find hosts
     :param cmdline_args: the parsed args object from the script
     :param host_type: 'fengine', 'xengine', etc
-    :return: a list: [(host_type, hosts, bitstreams), ...]
+    :return: the config dict and a list: [(host_type, hosts, bitstreams), ...]
     """
     # looks for a hosts keyword in the cmdline args
     if hasattr(cmdline_args, 'hosts'):
@@ -206,15 +206,16 @@ def _script_get_hosts(cmdline_args, host_type=None):
             host_list = [host.strip() for host in cmdline_args.hosts.split(',')]
             return [(None, host_list, bitstream_def)]
     config_def = None
-    if hasattr(cmdline_args, 'config'):
+    if hasattr(cmdline_args, 'config') and (cmdline_args.config is not None):
         config_def = cmdline_args.config.strip()
     elif 'CORR2INI' in os.environ.keys():
         config_def = os.environ['CORR2INI']
     else:
         raise RuntimeError('Could not get host information '
                            'from provided arguments.')
-    return hosts_and_bitstreams_from_config(
+    config, host_detail = hosts_and_bitstreams_from_config(
         config_file=config_def, section=host_type)
+    return config, host_detail
 
 
 def feng_script_get_fpgas(cmdline_args):
@@ -247,7 +248,7 @@ def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga):
     :param fpga_class: a specific CasperFpga (sub)class, if required
     :return: a list of CasperFpga objects
     """
-    host_details = _script_get_hosts(cmdline_args, host_type)
+    config, host_details = _script_get_hosts(cmdline_args, host_type)
     fpgas = []
     for val in host_details:
         fhosts = fpgautils.threaded_create_fpgas_from_hosts(val[1], fpga_class)
@@ -285,7 +286,7 @@ def script_get_fpga(cmdline_args, host_name=None, host_index=-1,
             host_index, host_name = -1, cmdline_args.host.strip()
     else:
         raise RuntimeError('No host index or name given.')
-    host_details = _script_get_hosts(cmdline_args, host_type)
+    config, host_details = _script_get_hosts(cmdline_args, host_type)
     host_ctr = 0
     host_fpga = None
     bitstream = None
@@ -337,8 +338,9 @@ def host_to_sources(hosts, config_file=None, config=None):
     """
     config = config or parse_ini_file(config_file)
     f_per_fpga = int(config['fengine']['f_per_fpga'])
-    fhosts = \
-        hosts_and_bitstreams_from_config(config=config, section='fengine')[0][1]
+    cfg, host_detail = hosts_and_bitstreams_from_config(
+        config=config, section='fengine')
+    fhosts = host_detail[0][1]
     sources = sources_from_config(config=config)
     if len(sources) != len(fhosts) * f_per_fpga:
         raise RuntimeError('%i hosts, %i per fpga_host, expected %i '
@@ -360,8 +362,9 @@ def source_to_host(sources, config_file=None, config=None):
     :return:
     """
     config = config or parse_ini_file(config_file)
-    fhosts = \
-        hosts_and_bitstreams_from_config(config=config, section='fengine')[0][1]
+    cfg, host_detail = hosts_and_bitstreams_from_config(
+        config=config, section='fengine')
+    fhosts = host_detail[0][1]
     source_host_dict = host_to_sources(fhosts, config=config)
     ctr = 0
     rv = {}
@@ -418,8 +421,9 @@ def baselines_from_config(config_file=None, config=None):
     """
     config = config or parse_ini_file(config_file)
     sources = sources_from_config(config=config)
-    fhosts = \
-        hosts_and_bitstreams_from_config(config=config, section='fengine')[0][1]
+    cfg, host_detail = hosts_and_bitstreams_from_config(
+        config=config, section='fengine')
+    fhosts = host_detail[0][1]
     n_antennas = len(fhosts)
     if len(sources) / 2 != n_antennas:
         raise ValueError('Found {} sources, but {} antennas?'.format(

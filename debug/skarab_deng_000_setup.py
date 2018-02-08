@@ -30,15 +30,22 @@ else:
     f.get_system_information(os.environ['SKARAB_DSIM_FPG'])
 
 if setup_skarab:
-    f.registers.gbecontrol.write_int(0)
+
+    f.registers.gbe_control.write_int(0)
     f.registers.receptor_id.write(pol0_id=0, pol1_id=1)
 
+    f.registers.control.write(tvg_select0=1, tvg_select1=1)
+
     # ramp 80 or ramp 64?
-    f.registers.test_control.write(sel_ramp80=1, rst_ramp80='pulse',
-                                   sel_munge=1)
+    f.registers.ramp_control.write(sel_ramp80=0, rst_ramp80='pulse',
+                                   sel_munge=0, sel_insert_time=0)
+
+    f.registers.pol_tx_always_on.write(pol0_tx_always_on=1, pol1_tx_always_on=1)
+    f.registers.src_sel_cntrl.write(src_sel_0=1, src_sel_1=1)
 
     f.registers.control.write(mrst='pulse')
     f.registers.control.write(msync='pulse')
+    f.registers.control.write(gbe_rst=0, gbe_txen=1)
 
     gbe = f.gbes.keys()[0]
     gbe = f.gbes[gbe]
@@ -59,9 +66,9 @@ if setup_skarab:
     f.registers['gbe_iptx2'].write(reg=int(network.IpAddress('239.2.0.66')))
     f.registers['gbe_iptx3'].write(reg=int(network.IpAddress('239.2.0.67')))
 
-    f.registers.control.write(gbe_rst='pulse')
-    f.registers.gbecontrol.write_int(15)
-    # f.registers.gbecontrol.write_int(1)
+    # f.registers.control.write(gbe_rst='pulse')
+    f.registers.gbe_control.write_int(15)
+    # f.registers.gbe_control.write_int(1)
     print('Done setting up SKARAB.')
 
 f.registers.speadsnap_control.write_int(0)

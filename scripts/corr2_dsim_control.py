@@ -11,8 +11,8 @@ from corr2.dsimhost_fpga import FpgaDsimHost
 parser = argparse.ArgumentParser(
     description='Control the dsim-engine (fake digitiser.)',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--config', type=str, action='store', help=
-                    'corr2 config file. (default: Use CORR2INI env var)')
+parser.add_argument('--config', dest='config', type=str, action='store',
+                    help='corr2 config file. (default: Use CORR2INI env var)')
 parser.add_argument('--program', dest='program', action='store_true',
                     default=False, help='(re)program the fake digitiser')
 parser.add_argument('--deprogram', dest='deprogram', action='store_true',
@@ -77,14 +77,16 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 # make the fpga
-# dfpga = utils.script_get_fpga(args, 'dsimengine', FpgaDsimHost)
+# dfpga = utils.script_get_fpga(args, host_index=0, host_type='dsimengine',
+#                               fpga_class=FpgaDsimHost)
 if 'CORR2INI' in os.environ.keys() and \
         (args.config == '' or args.config is None):
     args.config = os.environ['CORR2INI']
-section, host_list, bitstream = utils.hosts_and_bitstreams_from_config(
-    config_file=args.config, section='dsimengine')[0]
-config = utils.parse_ini_file(args.config)
-dfpga = FpgaDsimHost(host_list[0], config=config['dsimengine'])
+config, host_detail = utils.hosts_and_bitstreams_from_config(
+    config_file=args.config, section='dsimengine')
+section, host_list, bitstream = host_detail[0]
+dfpga = FpgaDsimHost(host_list[0], bitstream=bitstream,
+                     config=config['dsimengine'])
 print('Connected to %s.' % dfpga.host)
 
 if args.start and args.stop:
@@ -95,11 +97,13 @@ if args.program:
     dfpga.initialise()
     something_happened = True
 else:
-    dfpga.get_system_information()
+    dfpga.get_system_information(bitstream)
 
-# TODO HACK
-if 'gbecontrol' in dfpga.registers.names():
-    dfpga.registers.gbecontrol.write_int(15)
+# # TODO HACK
+# if 'gbecontrol' in dfpga.registers.names():
+#     dfpga.registers.gbecontrol.write_int(15)
+# if 'gbecontrol' in dfpga.registers.names():
+#     dfpga.registers.gbecontrol.write_int(15)
 
 # TODO HACK
 if 'cwg0_en' in dfpga.registers.names():
@@ -303,6 +307,11 @@ if args.repeat_sine:
             print(("Source repeat not implemented for source '{sine_name}'."
                    .format(**locals())))
             sys.exit(1)
+
+# f = dfpga
+# f.registers.control.write(tvg_select0=1, tvg_select1=1)
+# f.registers.pol_tx_always_on.write(pol0_tx_always_on=1, pol1_tx_always_on=1)
+# f.registers.src_sel_cntrl.write(src_sel_0=0, src_sel_1=0)
 
 if args.ipython:
     # Embedding ipython for debugging

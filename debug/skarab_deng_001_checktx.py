@@ -18,12 +18,14 @@ from corr2.utils import AdcData
 
 logging.basicConfig(level=logging.INFO)
 
+DENG = False
 
-f = casperfpga.CasperFpga(os.environ['SKARAB_DSIM'])
-f.get_system_information(os.environ['SKARAB_DSIM_FPG'])
-
-f = casperfpga.CasperFpga('skarab020306-01')
-f.get_system_information('/srv/bofs/feng/s_c856m4k_2018-02-01_1538.fpg')
+if DENG:
+    f = casperfpga.CasperFpga(os.environ['SKARAB_DSIM'])
+    f.get_system_information(os.environ['SKARAB_DSIM_FPG'])
+else:
+    f = casperfpga.CasperFpga('skarab020306-01')
+    f.get_system_information('/srv/bofs/feng/s_c856m4k_2018-02-01_1538.fpg')
 
 gbe_name = f.gbes.keys()[0]
 gbe = f.gbes[gbe_name]
@@ -33,8 +35,10 @@ data_key = 'data'
 
 
 def get_spead_packets():
-    # coredata = gbe.read_txsnap()
-    coredata = gbe.read_rxsnap()
+    if DENG:
+        coredata = gbe.read_txsnap()
+    else:
+        coredata = gbe.read_rxsnap()
     spead_processor = casperspead.SpeadProcessor(None, None, None, None)
     gbe_packets = caspersnap.Snap.packetise_snapdata(coredata, eof_key)
     gbe_data = []

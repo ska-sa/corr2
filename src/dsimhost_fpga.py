@@ -5,12 +5,15 @@ import re
 import math
 import struct
 import os.path
-
 import numpy as np
 import matplotlib.pyplot as plt
+
 from casperfpga.attribute_container import AttributeContainer
 from casperfpga.network import Mac, IpAddress
-from corr2.host_fpga import FpgaHost
+from casperfpga.transport_skarab import SkarabTransport
+
+from host_fpga import FpgaHost
+from utils import parse_ini_file
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +31,7 @@ def get_prefixed_name(prefix, string):
 
 
 def remove_nones(write_vars):
-    return {k:v for k, v in write_vars.items() if v is not None}
+    return {k: v for k, v in write_vars.items() if v is not None}
 
 
 class Source(object):
@@ -237,7 +240,7 @@ class PulsarSource(Source):
         :return:
         """
         self._initialise_delay_bins()
-        self.raw_data = np.zeros(self.n_samp, dtype=np.complex64)
+        self.raw_data = np.zeros(self.n_samples, dtype=np.complex64)
 
     def write_pulse_to_bin(self, duty_cycle=0.05, t=0):
         """
@@ -414,7 +417,7 @@ class FpgaDsimHost(FpgaHost):
     An FpgaHost that acts as a Digitiser unit.
     """
     def __init__(self, host, katcp_port=7147, bitstream=None,
-                 connect=True, config=None):
+                 connect=True, config=None, config_file=None):
         """
 
         :param host:
@@ -423,13 +426,10 @@ class FpgaDsimHost(FpgaHost):
         :param connect:
         :param config:
         """
-        if config:
-            if bitstream:
-                raise ValueError('Cannot specify "bitstream" parameter if '
-                                 'config is used')
-            bitstream = config['bitstream']
-        self.config = config
         FpgaHost.__init__(self, host=host, katcp_port=katcp_port)
+        if config is not None and config_file is not None:
+            LOGGER.warn('config file and config supplied, defaulting to config')
+        self.config = config or parse_ini_file(config_file)['dsimengine']
         self.bitstream = bitstream
         self.sine_sources = AttributeContainer()
         self.noise_sources = AttributeContainer()
@@ -491,7 +491,7 @@ class FpgaDsimHost(FpgaHost):
 
     def initialise(self):
         """
-        Program (if self.bitstream is specified) and init Dsim roach
+        Program (if self.bitstream is specified) and init Dsim host
         :return:
         """
         if not self.is_connected():
@@ -504,7 +504,7 @@ class FpgaDsimHost(FpgaHost):
         if not self.is_running():
             raise RuntimeError('D-engine {host} not '
                                'running'.format(**self.__dict__))
-        self.get_system_information()
+        self.get_system_information(self.bitstream)
         self.setup_gbes()
         # Set digitizer polarisation IDs, 0 - h, 1 - v
         self.registers.receptor_id.write(pol0_id=0, pol1_id=1)
@@ -524,12 +524,18 @@ class FpgaDsimHost(FpgaHost):
         self.registers.control.write(msync='pulse')
 
     def enable_data_output(self, enabled=True):
-        """(dis)Enable 10GbE data output"""
+        """
+        En/disable 10GbE data output
+        """
         enabled = bool(enabled)
         pol_tx_reg = self.registers.pol_tx_always_on
         reg_vals = {n: enabled for n in pol_tx_reg.field_names()
                     if n.endswith('_tx_always_on')}
         pol_tx_reg.write(**reg_vals)
+        if 'gbe_control' in self.registers.names():
+            self.registers.gbe_control.write_int(15 if enabled else 0)
+        elif 'gbecontrol' in self.registers.names():
+            self.registers.gbecontrol.write_int(15 if enabled else 0)
         if enabled:
             self.registers.control_output.write(load_en_time='pulse')
 
@@ -560,17 +566,41 @@ class FpgaDsimHost(FpgaHost):
         # Ensure data is not sent before the gbes are configured
         self.enable_data_output(False)
 
+    def setup_gbes_skarab(self):
+        """
+        Set up the 40gbe core on a SKARAB DSIM
+        :return:
+        """
+        port = int(self.config['10gbe_port'])
+        gbe = self.gbes[self.gbes.names()[0]]
+        if gbe.get_port() != port:
+            gbe.set_port(port)
+        self.write_int('gbe_porttx', port)
+        for pol in [0, 1]:
+            pol_start = self.config['pol%1i_destination_start_ip' % pol]
+            pol_bits = pol_start.split('.')
+            pol_base = int(pol_bits[3])
+            pol_prefix = '.'.join(pol_bits[0:3])
+            for polstream in [0, 1]:
+                txip = pol_base + polstream
+                txid = (pol * 2) + polstream
+                self.write_int('gbe_iptx%1i' % txid,
+                               IpAddress.str2ip('%s.%d' % (pol_prefix, txip)))
+        self.registers.control.write(gbe_rst=False)
+
     def setup_gbes(self):
         """
         Set up 10GbE MACs, IPs and destination address/port
         """
+
+        if isinstance(self.transport, SkarabTransport):
+            return self.setup_gbes_skarab()
         port = int(self.config['10gbe_port'])
         num_gbes = len(self.gbes)
         if num_gbes < 1:
             raise RuntimeError('D-engine with no 10gbe cores %s' % self.host)
         gbes_per_pol = 2        # Hardcoded assumption
         num_pols = num_gbes // gbes_per_pol
-
         mac_ctr = 1
         for ctr in range(num_gbes):
             this_mac = Mac.from_roach_hostname(self.host, mac_ctr)
@@ -579,7 +609,6 @@ class FpgaDsimHost(FpgaHost):
             mac_ctr += 1
         for gbe in self.gbes:
             gbe.dhcp_start()
-
         # set the destination IP and port for the tx
         gbe_ctr = 0             # pol-global counter for gbes
         for pol in range(0, num_pols):
@@ -604,6 +633,5 @@ class FpgaDsimHost(FpgaHost):
                     addr_offset += 1
 
                 gbe_ctr += 1
-
         self.write_int('gbe_porttx', port)
         self.registers.control.write(gbe_rst=False)
