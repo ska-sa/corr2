@@ -364,13 +364,13 @@ class FpgaXHost(FpgaHost):
                 break
         return reset_okay
 
-    def vacc_reset(self):
-        """
-        Reset the vector accumulator
-        :return:
-        """
-        self.registers.vacc_time_msw.write(immediate='pulse')
-        self.registers.control.write(vacc_rst='pulse')
+#    def vacc_reset(self):
+#        """
+#        Reset the vector accumulator
+#        :return:
+#        """
+#        self.registers.vacc_time_msw.write(immediate='pulse')
+#        self.registers.control.write(vacc_rst='pulse')
 
     def vacc_arm(self):
         """

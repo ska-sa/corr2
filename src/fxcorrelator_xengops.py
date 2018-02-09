@@ -852,10 +852,6 @@ class XEngineOperations(object):
             return
         self.vacc_synch_running.set()
 
-
-        # reset all the vaccs
-        self.vacc_reset_all()
-
         # work out the load time
         vacc_load_time = self._vacc_sync_create_loadtime(load_time=sync_time)
 
@@ -880,8 +876,8 @@ class XEngineOperations(object):
         # did the arm count increase?
         self._vacc_sync_check_arm_count(arm_count0)
 
-        # check the the load time was stored correctly
-        self._vacc_sync_check_loadtimes()
+        ## check the the load time was stored correctly
+        #self._vacc_sync_check_loadtimes()
 
         # wait for the vaccs to trigger
         self._vacc_sync_wait_for_arm(load_mcount)
