@@ -114,7 +114,6 @@ class SineSource(Source):
             if self.repeat_en_register is None:
                 raise NotImplementedError(
                     'Required repeat enable register not found')
-
             repeat_n = int(repeat_n)
             self.repeat_len_register.write(**{
                 self.repeat_len_field_name: repeat_n})
@@ -182,6 +181,12 @@ class PulsarSource(Source):
         return self.scale_register.read()['data']['scale']
 
     def set(self, scale=None, frequency=None):
+        """
+
+        :param scale:
+        :param frequency:
+        :return:
+        """
         if scale is not None:
             self.scale_register.write(scale=scale)
         if frequency is not None:
@@ -443,8 +448,8 @@ class FpgaDsimHost(FpgaHost):
         :param fpg_info:
         :return:
         """
-        FpgaHost.get_system_information(self, filename=filename,
-                                        fpg_info=fpg_info)
+        FpgaHost.get_system_information(
+            self, filename=filename, fpg_info=fpg_info)
         self.sine_sources.clear()
         self.noise_sources.clear()
         self.pulsar_sources.clear()
@@ -540,7 +545,8 @@ class FpgaDsimHost(FpgaHost):
             self.registers.control_output.write(load_en_time='pulse')
 
     def pulse_data_output(self, no_packets):
-        """Produce a data output pulse of no_packets per polarisation
+        """
+        Produce a data output pulse of no_packets per polarisation
 
         Does nothing if data is already being transmitted
         """
@@ -631,7 +637,8 @@ class FpgaDsimHost(FpgaHost):
                     IpAddress.str2ip('%s.%d' % (txaddr_prefix, txip)))
                 if not single_destination:
                     addr_offset += 1
-
                 gbe_ctr += 1
         self.write_int('gbe_porttx', port)
         self.registers.control.write(gbe_rst=False)
+
+# end

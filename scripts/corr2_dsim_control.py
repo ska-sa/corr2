@@ -159,34 +159,36 @@ if args.sine_source:
             sine_source = getattr(dfpga.sine_sources,
                                   'sin_{}'.format(sine_name))
         except AttributeError:
-            print("You can only select between sine sources: {}".format(
+            print('You can only select between sine sources: {}'.format(
                 [ss.name for ss in dfpga.sine_sources]))
             sys.exit(1)
         try:
             sine_source.set(scale=xscale, frequency=yfreq)
         except ValueError:
-            print("\nError, verify your inputs for sin_%s" % sine_source.name)
-            print("Max Frequency should be {}MHz".format(
+            print('\nError, verify your inputs for sin_%s' % sine_source.name)
+            print('Max Frequency should be {}MHz'.format(
                 sine_source.max_freq/1e6))
-            print("Scale should be between 0 and 1")
+            print('Scale should be between 0 and 1')
             sys.exit(1)
-        print("")
-        print("sine source: %s" % sine_source.name)
-        print("scale: %s" % sine_source.scale)
-        print("frequency: %s" % sine_source.frequency)
+        print('')
+        print('sine source: %s' % sine_source.name)
+        print('scale: %s' % sine_source.scale)
+        print('frequency: %s' % sine_source.frequency)
     something_happened = True
 
 if args.zeros_sine:
-    """Set all sine sources to zeros"""
+    """
+    Set all sine sources to zeros
+    """
     sources_names = dfpga.sine_sources.names()
     for source in sources_names:
         try:
             sine_source = getattr(dfpga.sine_sources, '{}'.format(source))
             sine_source.set(0, 0)
-            print("sine source {}, set to {}.".format(sine_source.name,
+            print('sine source {}, set to {}.'.format(sine_source.name,
                                                       sine_source.scale))
-        except:
-            print("An error occured.")
+        except Exception as exc:
+            print('An error occured: %s' % exc.message)
             sys.exit(1)
     something_happened = True
 
@@ -197,30 +199,32 @@ if args.noise_source:
             source_from = getattr(dfpga.noise_sources, 'noise_{}'.format(
                 noise_sources))
         except AttributeError:
-            print("You can only select between noise sources:"
-                  " %s" % dfpga.noise_sources.names())
+            print('You can only select between noise sources:'
+                  ' %s' % dfpga.noise_sources.names())
             sys.exit(1)
         try:
             source_from.set(scale=noise_scale)
         except ValueError:
-            print("Valid scale input is between 0 - 1.")
+            print('Valid scale input is between 0 - 1.')
             sys.exit(1)
-        print("")
-        print("noise source: %s" % source_from.name)
-        print("noise scale: %s" % source_from.scale)
+        print('')
+        print('noise source: %s' % source_from.name)
+        print('noise scale: %s' % source_from.scale)
     something_happened = True
 
 if args.zeros_noise:
-    """Set all sine sources to zeros"""
+    """
+    Set all sine sources to zeros
+    """
     sources_names = dfpga.noise_sources.names()
     for source in sources_names:
         try:
             noise_source = getattr(dfpga.noise_sources, '{}'.format(source))
             noise_source.set(0)
-            print("noise source {}, set to {}.".format(noise_source.name,
+            print('noise source {}, set to {}.'.format(noise_source.name,
                                                        noise_source.scale))
         except:
-            print("An error occured.")
+            print('An error occured.')
             sys.exit(1)
     something_happened = True
 
@@ -232,22 +236,22 @@ if args.pulsar_source:
             pulsar_sources = getattr(dfpga.pulsar_sources, 'pulsar_{}'.format(
                 pulsar_source))
         except AttributeError:
-            print("You can only select between pulsar sources: {}".format([
+            print('You can only select between pulsar sources: {}'.format([
                 ss.name for ss in dfpga.pulsar_sources]))
             sys.exit(1)
         try:
             pulsar_sources.set(scale=xscale, frequency=yfreq)
         except ValueError:
-            print("\nError, verify your inputs for pulsar_{}".format(
+            print('\nError, verify your inputs for pulsar_{}'.format(
                 str(pulsar_sources.name)))
-            print("Max Frequency should be {}MHz".format(
+            print('Max Frequency should be {}MHz'.format(
                 pulsar_sources.max_freq/1e6))
-            print("Scale should be between 0 and 1")
+            print('Scale should be between 0 and 1')
             sys.exit(1)
-        print("")
-        print("pulsar source: %s" % pulsar_sources.name)
-        print("scale: %s" % pulsar_sources.scale)
-        print("frequency: %s" % pulsar_sources.frequency)
+        print('')
+        print('pulsar source: %s' % pulsar_sources.name)
+        print('scale: %s' % pulsar_sources.scale)
+        print('frequency: %s' % pulsar_sources.frequency)
         # print('Initialising data '
         # pulsar_sources.initialise_data()
         # print('Add pulsar (this takes time)'
@@ -261,16 +265,16 @@ if args.output_type:
         try:
             type_from = getattr(dfpga.outputs, 'out_{}'.format(output_type))
         except AttributeError:
-            print("You can only select between, Output_0 or Output_1.")
+            print('You can only select between, Output_0 or Output_1.')
             sys.exit(1)
         try:
             type_from.select_output(output_type_s)
         except ValueError:
-            print("Valid output_type values: 'test_vectors' and 'signal'")
+            print('Valid output_type values: \'test_vectors\' and \'signal\'')
             sys.exit(1)
-        print("")
-        print("output selected: %s" % type_from.name)
-        print("output type: %s" % type_from.output_type)
+        print('')
+        print('output selected: %s' % type_from.name)
+        print('output type: %s' % type_from.output_type)
     something_happened = True
 # ---------------------------------------------
 if args.output_scale:
@@ -279,17 +283,19 @@ if args.output_scale:
         try:
             scale_from = getattr(dfpga.outputs, 'out_{}'.format(output_scale))
         except AttributeError:
-            print("You can only select between, %s" % dfpga.outputs.names())
+            print('You can only select between, %s' % dfpga.outputs.names())
             sys.exit(1)
         try:
             scale_from.scale_output(scale_value)
         except ValueError:
-            print("Valid scale input is between 0 - 1.")
+            print('Valid scale input is between 0 - 1.')
             sys.exit(1)
-        """Check if it can read what was written to it!"""
-        print("")
-        print("output selected: %s" % scale_from.name)
-        print("output scale: %s" % scale_from.scale_register.read()['data']['scale'])
+        """
+        Check if it can read what was written to it!
+        """
+        print('')
+        print('output selected: %s' % scale_from.name)
+        print('output scale: %s' % scale_from.scale_register.read()['data']['scale'])
     something_happened = True
 
 if args.repeat_sine:
@@ -298,7 +304,7 @@ if args.repeat_sine:
         try:
             sine = getattr(dfpga.sine_sources, 'sin_{}'.format(sine_name))
         except AttributeError:
-            print("You can only select between sine sources: {}".format([
+            print('You can only select between sine sources: {}'.format([
                 ss.name for ss in dfpga.sine_sources]))
             sys.exit(1)
         try:

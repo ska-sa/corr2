@@ -14,6 +14,9 @@ import matplotlib
 matplotlib.use('TkAgg')
 
 from matplotlib import pyplot
+
+import numpy as np
+
 from casperfpga import casperfpga
 
 logging.basicConfig(level=logging.INFO)
@@ -35,11 +38,15 @@ def get_output_samples():
 
 samples = get_output_samples()
 
-print sum(samples)
+power = [sample**2 for sample in samples]
+
+print sum(power)
+
+fft = np.abs(np.fft.fft(samples, 1024))
 
 fig = pyplot.figure()
 sub_plot = fig.add_subplot(1, 1, 1)
-sub_plot.plot(samples)
+sub_plot.plot(fft)
 pyplot.show()
 
 
