@@ -48,14 +48,32 @@ def _cb_xhost_check_network(sensors, x_host):
     :param x_host:
     :return:
     """
-    # RX
-    boolean_sensor_do(x_host, sensors['rx'], [x_host.check_rx_raw, 0.2, 5])
-    # TX
-    boolean_sensor_do(x_host, sensors['tx'], [x_host.check_tx_raw, 0.2, 5])
-    # both
-    rx_okay = sensors['rx'].status() == Corr2Sensor.NOMINAL
-    tx_okay = sensors['tx'].status() == Corr2Sensor.NOMINAL
-    sensors['combined'].sensor_set_on_condition(rx_okay and tx_okay)
+    #GBE CORE
+    # TODO add check for bad RX packets and TX overflows
+    executor = sensors['tx_pps'].executor
+    try:
+        result = yield executor.submit(x_host.gbes.gbe0.get_stats)
+        sensors['tx_pps'].set(status=Corr2Sensor.NOMINAL, value=result['tx_pps'])
+        sensors['tx_gbps'].set(status=Corr2Sensor.NOMINAL, value=result['tx_gbps'])
+
+        if result['rx_pps']>3000000:
+            sensors['rx_pps'].set(status=Corr2Sensor.NOMINAL, value=result['rx_pps'])
+        else:
+            sensors['rx_pps'].set(status=Corr2Sensor.WARN, value=result['rx_pps'])
+
+        if result['rx_gbps']>30:
+            sensors['rx_gbps'].set(status=Corr2Sensor.NOMINAL, value=result['rx_gbps'])
+        else:
+            sensors['rx_gbps'].set(status=Corr2Sensor.WARN, value=result['rx_gbps'])
+    except Exception as e:
+        LOGGER.error(
+            'Error updating gbe_stats for {} - {}'.format(
+                x_host.host, e.message))
+        sensors['tx_pps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['rx_pps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['tx_gbps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['rx_gbps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+
     # SPEAD RX
     sensor_spead = sensors['spead']
     executor = sensor_spead.executor
@@ -229,15 +247,14 @@ def _cb_xeng_vacc_ctrs(host, host_executor, manager):
             sensor.set(value=-1)
             sensor = manager.sensor_get('{}-vacc-load-ctr'.format(sens_pref))
             sensor.set(value=-1)
+            sensor = manager.sensor_get('{}-vacc-timestamp'.format(sens_pref))
+            sensor.set(value=-1)
 
     xhost = host_offset_lookup[host.host]
-    results = [{'armcount': -1, 'count': -1, 'errors': -1, 'loadcount': -1}
-               for ctr in range(host.x_per_fpga)]
+    results = [{'armcount': -1, 'count': -1, 'errors': -1, 'loadcount': -1, 
+                'timestamp':-1} for ctr in range(host.x_per_fpga)]
     try:
         results = yield host_executor.submit(host.vacc_get_status)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        LOGGER.error('Katcp error updating vacc counter sensors '
-                     'for {}'.format(host.host))
     except Exception as e:
         LOGGER.error('Error updating vacc counter sensors for {} - '
                      '{}'.format(host.host, e.message))
@@ -258,6 +275,9 @@ def _cb_xeng_vacc_ctrs(host, host_executor, manager):
             sensor = manager.sensor_get('{}-vacc-load-ctr'.format(sens_pref))
             sensor.set(update_time, Corr2Sensor.NOMINAL,
                        results[xctr]['loadcount'])
+            sensor = manager.sensor_get('{}-vacc-timestamp'.format(sens_pref))
+            sensor.set(update_time, Corr2Sensor.NOMINAL,
+                       results[xctr]['timestamp'])
     LOGGER.debug('_cb_xeng_vacc_ctrs ran on {}'.format(host.host))
     IOLoop.current().call_later(10, _cb_xeng_vacc_ctrs, host,
                                 host_executor, manager)
@@ -362,15 +382,18 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
         network_sensors = {
-            'rx': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-rx-ok'.format(xhost),
-                'X-engine raw network RX ok', executor=executor),
-            'tx': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-tx-ok'.format(xhost),
-                'X-engine raw network TX ok', executor=executor),
-            'combined': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-ok'.format(xhost),
-                'X-engine network raw RX/TX ok', executor=executor),
+            'tx_pps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-tx-pps'.format(xhost),
+                'X-engine network raw TX packets per second', executor=executor),
+            'rx_pps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-rx-pps'.format(xhost),
+                'X-engine network raw RX packets per second', executor=executor),
+            'tx_gbps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-tx-gbps'.format(xhost),
+                'X-engine network raw TX rate (gigabits per second)', executor=executor),
+            'rx_gbps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-rx-gbps'.format(xhost),
+                'X-engine network raw RX rate (gibabits per second)', executor=executor),
             'spead': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}-spead-rx-ok'.format(xhost),
                 'X-engine SPEAD RX ok', executor=executor),
@@ -414,16 +437,20 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{pref}-vacc-load-ctr'.format(pref=pref),
                 'Number of times this VACC has been loaded.',
                 executor=executor)
+            sens_man.do_sensor(
+                Corr2Sensor.integer, '{pref}-vacc-timestamp'.format(pref=pref),
+                'Current VACC timestamp.',
+                executor=executor)
         ioloop.add_callback(_cb_xeng_vacc_ctrs, _x, executor, sens_man)
 
-        # VACC accumulations per second
-        for xctr in range(_x.x_per_fpga):
-            pref = '{xhost}-xeng{xctr}-'.format(xhost=xhost, xctr=xctr)
-            sensor = sens_man.do_sensor(
-                Corr2Sensor.float, '{pref}accs-per-sec'.format(pref=pref),
-                'Number of accumulations per second for this X-engine on '
-                'this host.', executor=executor)
-        ioloop.add_callback(_cb_xeng_vacc_accs_ps, _x, executor, sens_man)
+#        # VACC accumulations per second
+#        for xctr in range(_x.x_per_fpga):
+#            pref = '{xhost}-xeng{xctr}-'.format(xhost=xhost, xctr=xctr)
+#            sensor = sens_man.do_sensor(
+#                Corr2Sensor.float, '{pref}accs-per-sec'.format(pref=pref),
+#                'Number of accumulations per second for this X-engine on '
+#                'this host.', executor=executor)
+#        ioloop.add_callback(_cb_xeng_vacc_accs_ps, _x, executor, sens_man)
 
         # VACC synch time
         sensor = sens_man.do_sensor(

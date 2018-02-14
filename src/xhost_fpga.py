@@ -107,10 +107,12 @@ class FpgaXHost(FpgaHost):
         Read the status registers on this xhost FPGA
         :return:
         """
-        data = []
-        for ctr in range(self.x_per_fpga):
-            _xdata = self.registers['status%i' % ctr].read()['data']
-            data.append(_xdata)
+        data = {}
+        for reg in self.registers:
+            if (reg.name.count('status')>0):
+                d=reg.read()['data']
+                for key,val in d.iteritems():
+                    data[reg.name+'_'+key]=val
         return data
 
     def get_rx_reorder_status(self):
@@ -197,11 +199,13 @@ class FpgaXHost(FpgaHost):
         regs = self.registers
         for xnum in x_indices:
             temp = regs['vacc_status%d' % xnum].read()['data']
+            timestamp = regs['vacc_timestamp%d' % xnum].read()['data']['vacc_timestamp']
             xengdata = {
                 'errors': temp['err_cnt'],
                 'count': temp['acc_cnt'],
                 'armcount': temp['arm_cnt'],
-                'loadcount': temp['ld_cnt']
+                'loadcount': temp['ld_cnt'],
+                'timestamp': timestamp
             }
             stats.append(xengdata)
         return stats

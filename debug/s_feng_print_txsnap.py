@@ -16,6 +16,7 @@ import logging
 from casperfpga import network,snap,spead
 from corr2 import utils
 import corr2
+import numpy
 
 parser = argparse.ArgumentParser(
     description='Print the x-engine RX snapshot.',
@@ -102,37 +103,35 @@ def print_snap_data(dd):
     packet_counter = 0 
     data_len = len(dd[dd.keys()[0]])
     rv={'data':[],'eof':[],'dest_ip':[]}
+    print dd.keys()
     print "IDX, PKT_IDX        64b MSB              64b                    64b                 64b LSB"
     for ctr in range(data_len):
         if dd['eof'][ctr-1]:
             packet_counter = 0 
         print'%5i,%5i' % (ctr, packet_counter),
-        d64_0 = (dd['data'][ctr] >> 192) & (2 ** 64 - 1)
-        d64_1 = (dd['data'][ctr] >> 128) & (2 ** 64 - 1)
-        d64_2 = (dd['data'][ctr] >> 64 ) & (2 ** 64 - 1)
-        d64_3 = dd['data'][ctr] & (2 ** 64 - 1)
-        rv['data'].append(d64_0)
-        rv['data'].append(d64_1)
-        rv['data'].append(d64_2)
-        rv['data'].append(d64_3)
-        print "0x%016X  0x%016X  0x%016X  0x%016X"%(d64_0,d64_1,d64_2,d64_3),
-        print "[%16s]->"%str(network.IpAddress(dd['ip'][ctr])),
+#        d64_0 = (dd['data'][ctr] >> 192) & (2 ** 64 - 1)
+#        d64_1 = (dd['data'][ctr] >> 128) & (2 ** 64 - 1)
+#        d64_2 = (dd['data'][ctr] >> 64 ) & (2 ** 64 - 1)
+#        d64_3 = dd['data'][ctr] & (2 ** 64 - 1)
+#        rv['data'].append(d64_0)
+#        rv['data'].append(d64_1)
+#        rv['data'].append(d64_2)
+#        rv['data'].append(d64_3)
+        rv['data'].append(dd['data'][ctr])
+        #print "0x%016X  0x%016X  0x%016X  0x%016X"%(d64_0,d64_1,d64_2,d64_3),
+        print '0x%016X'%dd['data'][ctr],
 #        print "[%16s:%i]"%(str(network.IpAddress(dd['dest_ip'][ctr])),dd['dest_port'][ctr]),
+
+#['led_tx', 'eof', 'ip', 'valid', 'tx_full', 'data', 'tx_over', 'link_up']
+        print "[%16s]"%str(network.IpAddress(dd['ip'][ctr])),
         if not dd['link_up'][ctr]: print "[LINK_DN]",
         if dd['led_tx']: print "[TX]",
         if dd['valid'][ctr]: print "[valid]",
         if dd['tx_over'][ctr]: print "[OVERFLOW]",
         if dd['tx_full'][ctr]: print "[AFULL]",
-        if dd['eof'][ctr] == 1:  
-            print 'EOF ',
-            for wrd in range(3):
-                rv['eof'].append(False)
-            rv['eof'].append(True)
-        else:
-            for wrd in range(4):
-                rv['eof'].append(False)
-        for wrd in range(4):
-            rv['dest_ip'].append(dd['ip'][ctr])
+        if dd['eof'][ctr]: print '[EOF]',
+        rv['eof'].append(dd['eof'][ctr])
+        rv['dest_ip'].append(dd['ip'][ctr])
         print('')
         packet_counter += 1
     return rv
@@ -170,6 +169,11 @@ print ""
 print "Unpacked SPEAD data:"
 print ""
 for pkt_cnt,pkt in enumerate(spead_processor.packets):
+    powerx=0
+    powery=0
+    for d in pkt.data:
+        powerx+=(numpy.abs((d&0xff00000000000000)>>56)+numpy.abs((d&0x00ff000000000000)>>48)+numpy.abs((d&0x0000000000ff0000)>>16)+numpy.abs((d&0x00000000ff000000)>>24))
+        powery+=(numpy.abs((d&0x0000ff0000000000)>>40)+numpy.abs((d&0x000000ff00000000)>>32)+numpy.abs((d&0x000000000000ff00)>>8)+ numpy.abs((d&0x00000000000000ff)))
     print '%4i'%pkt_cnt,
     print '[mcnt %16i]'%pkt.headers[0x1600],
 #    print '[flags %012X]'%pkt.headers[0x4102],
@@ -184,7 +188,8 @@ for pkt_cnt,pkt in enumerate(spead_processor.packets):
     print "[Freq %5i]"%(pkt.headers[0x4103]+(pkt.headers[0x3]/pkt.headers[0x4])),
     print '[expected Xeng %3i]'%(pkt.headers[0x4103]/(n_chans/n_xeng)),
     print '[chan on that xeng %4i]'%(pkt.headers[0x3]/pkt.headers[0x4]),
-    print ''
+    print 'Power X: %8i; Power Y: %8i'%(powerx,powery)
+    #print ''
 
 
 exit_gracefully(None, None)

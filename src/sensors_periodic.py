@@ -14,10 +14,6 @@ import sensors_periodic_xhost as sensors_xhost
 
 LOGGER = logging.getLogger(__name__)
 
-TX_PPS_SUFFIX = '-tx-pkt-per-s'
-RX_PPS_SUFFIX = '-rx-pkt-per-s'
-LINK_STATUS_SUFFIX = '-link-status'
-
 host_offset_lookup = {}
 
 
@@ -81,107 +77,6 @@ def _sensor_cb_system_counters(host, host_executor, manager):
                                 host, host_executor, manager)
 
 
-@gen.coroutine
-def _sensor_cb_pps(host, host_executor, manager):
-    """
-    Host PPS counters
-    :return:
-    """
-    def read_gbe_tx_rx(fpga):
-        rv = {}
-        for gbe in fpga.gbes:
-            ctrs = gbe.read_counters()
-            link_info = gbe.get_gbe_core_details()['xaui_status']
-            rv[gbe.name] = (ctrs['%s_txctr' % gbe.name],
-                            ctrs['%s_rxctr' % gbe.name],
-                            str(link_info))
-        return rv
-    try:
-        new_values = yield host_executor.submit(read_gbe_tx_rx, host)
-        for gbe in host.gbes:
-            hpref = '{host}-{gbe}'.format(
-                host=host_offset_lookup[host.host], gbe=gbe.name)
-            # TX
-            sensor_name = '{pref}{suf}'.format(pref=hpref, suf=TX_PPS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            previous_value = sensor.previous_value
-            pps = (new_values[gbe.name][0] - previous_value) / 10.0
-            sensor.previous_value = new_values[gbe.name][0]
-            sensor.set_value(pps)
-            # RX
-            sensor_name = '{pref}{suf}'.format(pref=hpref, suf=RX_PPS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            previous_value = sensor.previous_value
-            pps = (new_values[gbe.name][1] - previous_value) / 10.0
-            sensor.previous_value = new_values[gbe.name][1]
-            if pps < 20.0:
-                sensor.set(status=Corr2Sensor.WARN, value=pps)
-            else:
-                sensor.set_value(pps)
-            # link-status
-            sensor_name = '{pref}{suf}'.format(
-                pref=hpref, suf=LINK_STATUS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            sensor.set_value(new_values[gbe.name][2])
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        for gbe in host.gbes:
-            hpref = '{host}-{gbe}'.format(
-                host=host_offset_lookup[host.host], gbe=gbe.name)
-            # TX
-            sensor_name = '{pref}{suf}'.format(pref=hpref, suf=TX_PPS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Corr2Sensor.UNKNOWN, -1)
-            # RX
-            sensor_name = '{pref}{suf}'.format(pref=hpref, suf=RX_PPS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Corr2Sensor.UNKNOWN, -1)
-            # link-status
-            sensor_name = '{pref}{suf}'.format(
-                pref=hpref, suf=LINK_STATUS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Corr2Sensor.UNKNOWN, '')
-    except Exception as e:
-        LOGGER.error('Error updating PPS sensors for {} - '
-                     '{}'.format(host.host, e.message))
-        for gbe in host.gbes:
-            hpref = '{host}-{gbe}'.format(
-                host=host_offset_lookup[host.host], gbe=gbe.name)
-            # TX
-            sensor_name = '{pref}{suf}'.format(pref=hpref, suf=TX_PPS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Corr2Sensor.UNKNOWN, -1)
-            # RX
-            sensor_name = '{pref}{suf}'.format(pref=hpref, suf=RX_PPS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Corr2Sensor.UNKNOWN, -1)
-            # link-status
-            sensor_name = '{pref}{suf}'.format(
-                pref=hpref, suf=LINK_STATUS_SUFFIX)
-            sensor = manager.sensor_get(sensor_name)
-            sensor.set(time.time(), Corr2Sensor.UNKNOWN, '')
-    LOGGER.debug('_sensor_cb_pps ran on {}'.format(host.host))
-    IOLoop.current().call_later(10, _sensor_cb_pps,
-                                host, host_executor, manager)
-
-
-@gen.coroutine
-def _sensor_cb_reorder_status(sensor, host):
-    sens_man = sensor.manager
-    executor = sensor.executor
-    try:
-        result = yield executor.submit(host.get_rx_reorder_status)
-        result = str(result)
-        sensor.set(time.time(),
-                   Corr2Sensor.NOMINAL if result else Corr2Sensor.ERROR, result)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, '')
-    except Exception as e:
-        LOGGER.error('Error updating reorder status sensor for {} - '
-                     '{}'.format(host.host, e.message))
-        sensor.set(time.time(), Corr2Sensor.UNKNOWN, '')
-    LOGGER.debug('_sensor_cb_reorder_status ran on {}'.format(host.host))
-    IOLoop.current().call_later(10, _sensor_cb_reorder_status, sensor, host)
-
 
 def setup_sensors(sensor_manager, enable_counters=False):
     """
@@ -235,31 +130,6 @@ def setup_sensors(sensor_manager, enable_counters=False):
                 'On which hostname is which functional host?',
                 Corr2Sensor.NOMINAL, '', None)
     sensor.set_value(str(host_offset_lookup))
-
-    # gbe packet-per-second counters
-    for _h in all_hosts:
-        executor = host_executors[_h.host]
-        for gbe in _h.gbes:
-            hpref = '{host}-{gbe}'.format(host=host_offset_lookup[_h.host],
-                                          gbe=gbe.name)
-            sensor = sens_man.do_sensor(
-                Corr2Sensor.float,
-                '{pref}{suf}'.format(pref=hpref, suf=TX_PPS_SUFFIX),
-                '%s %s TX packet-per-second counter' % (_h.host, gbe.name),
-                Corr2Sensor.UNKNOWN, '', executor)
-            sensor.previous_value = 0
-            sensor = sens_man.do_sensor(
-                Corr2Sensor.float,
-                '{pref}{suf}'.format(pref=hpref, suf=RX_PPS_SUFFIX),
-                '%s %s RX packet-per-second counter' % (_h.host, gbe.name),
-                Corr2Sensor.UNKNOWN, '', executor)
-            sensor.previous_value = 0
-            sensor = sens_man.do_sensor(
-                Corr2Sensor.string,
-                '{pref}{suf}'.format(pref=hpref, suf=LINK_STATUS_SUFFIX),
-                '%s %s link status' % (_h.host, gbe.name),
-                Corr2Sensor.UNKNOWN, '', executor)
-        ioloop.add_callback(_sensor_cb_pps, _h, executor, sens_man)
 
     # read all relevant counters
     if enable_counters:
