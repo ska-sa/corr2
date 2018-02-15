@@ -12,14 +12,14 @@ from sensors import Corr2Sensor, boolean_sensor_do
 
 LOGGER = logging.getLogger(__name__)
 
-#FHOST_REGS = ['spead_status', 'reorder_status', 'sync_ctrs', 'pfb_status', 
-#              'cd_status', 'quant_status']
+FHOST_REGS = ['spead_status', 'reorder_status', 'sync_ctrs', 'pfb_status', 
+              'cd_status', 'quant_status']
 #FHOST_REGS.extend(['ct_status%i' % ctr for ctr in range(2)])
 #FHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(1)])
-#FHOST_REGS.extend(['gbe%i_txofctr' % ctr for ctr in range(1)])
+FHOST_REGS.extend(['gbe%i_txofctr' % ctr for ctr in range(1)])
 #FHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(1)])
 #FHOST_REGS.extend(['gbe%i_rxofctr' % ctr for ctr in range(1)])
-#FHOST_REGS.extend(['gbe%i_rxbadctr' % ctr for ctr in range(1)])
+FHOST_REGS.extend(['gbe%i_rxbadctr' % ctr for ctr in range(1)])
 
 
 @gen.coroutine

@@ -352,6 +352,17 @@ class FEngineOperations(object):
         feng_times_unix = {}
         for host in self.hosts:
             feng_mcnt = results[host.host]
+            feng_times[host.host] = feng_mcnt
+            if synch_epoch != -1:
+                # is the time in the future?
+                feng_time_s = feng_mcnt / self.corr.sample_rate_hz
+                feng_time = synch_epoch + feng_time_s
+                feng_times_unix[host.host] = feng_time
+            else:
+                feng_times_unix[host.host] = -1
+
+        for host in self.hosts:
+            feng_mcnt = results[host.host]
             # are the count bits okay?
             if feng_mcnt & 0xfff != 0:
                 errmsg = '%s: bottom 12 bits of timestamp from F-engine are ' \
@@ -377,10 +388,6 @@ class FEngineOperations(object):
                                              read_time - feng_time)
                     self.logger.error(errmsg)
                     return False, feng_times, feng_times_unix
-                feng_times_unix[host.host] = feng_time
-            else:
-                feng_times_unix[host.host] = -1
-            feng_times[host.host] = feng_mcnt
         # are they all within 500ms of one another?
         diff = max(feng_times.values()) - min(feng_times.values())
         diff_ms = diff / self.corr.sample_rate_hz * 1000.0
