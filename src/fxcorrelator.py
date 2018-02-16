@@ -111,7 +111,6 @@ class FxCorrelator(Instrument):
         # update the list of baselines on this system
         self.baselines = utils.baselines_from_config(config=self.configd)
 
-
     # @profile
     def initialise(self, program=True, configure=True,
                    require_epoch=False,):
@@ -129,7 +128,7 @@ class FxCorrelator(Instrument):
                                    ' to initialisation!')
 
         #clear the data streams. These will be re-added during configuration.
-        self.data_streams=[]
+        self.data_streams = []
         # what digitiser data streams have we been allocated?
         self._create_digitiser_streams()
 
@@ -489,8 +488,13 @@ class FxCorrelator(Instrument):
         self.fhosts = []
         for host in _feng_d['hosts'].split(','):
             host = host.strip()
-            fpgahost = _target_class.from_config_source(
-                host, self.katcp_port, config_source=_feng_d)
+            try:
+                fpgahost = _target_class.from_config_source(
+                    host, self.katcp_port, config_source=_feng_d)
+            except Exception as exc:
+                errmsg = 'Could not create fhost %s: %s' % (host, exc.message)
+                self.logger.error(errmsg)
+                raise RuntimeError(errmsg)
             self.fhosts.append(fpgahost)
         # choose class (b-engine inherits x-engine functionality)
         if self.found_beamformer:
@@ -502,8 +506,13 @@ class FxCorrelator(Instrument):
         hostlist = _xeng_d['hosts'].split(',')
         for hostindex, host in enumerate(hostlist):
             host = host.strip()
-            fpgahost = _target_class.from_config_source(
-                host, hostindex, self.katcp_port, self.configd)
+            try:
+                fpgahost = _target_class.from_config_source(
+                    host, hostindex, self.katcp_port, self.configd)
+            except Exception as exc:
+                errmsg = 'Could not create xhost %s: %s' % (host, exc.message)
+                self.logger.error(errmsg)
+                raise RuntimeError(errmsg)
             self.xhosts.append(fpgahost)
         # check that no hosts overlap
         for _fh in self.fhosts:
