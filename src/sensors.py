@@ -71,6 +71,20 @@ class Corr2Sensor(Sensor):
                  Sensor.NOMINAL if condition else Sensor.ERROR,
                  condition)
 
+    def set_error_if_changed(self, timestamp=None, value=None):
+        """
+        Set the value of a sensor. Make the status Nominal if unchanged,
+        but set status to error if changed. (used for error counters).
+        :param timestamp: when was the reading taken? default to time.time()
+        :param value: defaults to None
+        :return:
+        """
+        (old_timestamp, old_status, old_value) = self.read()
+        if value != old_value:
+            self.set(timestamp, Corr2Sensor.ERROR, value)
+        else:
+            self.set(timestamp, Corr2Sensor.NOMINAL, value)
+
     def set(self, timestamp=None, status=None, value=None):
         """
         Set the value of a sensor.

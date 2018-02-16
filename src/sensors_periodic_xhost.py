@@ -48,14 +48,32 @@ def _cb_xhost_check_network(sensors, x_host):
     :param x_host:
     :return:
     """
-    # RX
-    boolean_sensor_do(x_host, sensors['rx'], [x_host.check_rx_raw, 0.2, 5])
-    # TX
-    boolean_sensor_do(x_host, sensors['tx'], [x_host.check_tx_raw, 0.2, 5])
-    # both
-    rx_okay = sensors['rx'].status() == Corr2Sensor.NOMINAL
-    tx_okay = sensors['tx'].status() == Corr2Sensor.NOMINAL
-    sensors['combined'].sensor_set_on_condition(rx_okay and tx_okay)
+    #GBE CORE
+    # TODO add check for bad RX packets and TX overflows
+    executor = sensors['tx_pps'].executor
+    try:
+        result = yield executor.submit(x_host.gbes.gbe0.get_stats)
+        sensors['tx_pps'].set(status=Corr2Sensor.NOMINAL, value=result['tx_pps'])
+        sensors['tx_gbps'].set(status=Corr2Sensor.NOMINAL, value=result['tx_gbps'])
+
+        if result['rx_pps']>3000000:
+            sensors['rx_pps'].set(status=Corr2Sensor.NOMINAL, value=result['rx_pps'])
+        else:
+            sensors['rx_pps'].set(status=Corr2Sensor.WARN, value=result['rx_pps'])
+
+        if result['rx_gbps']>30:
+            sensors['rx_gbps'].set(status=Corr2Sensor.NOMINAL, value=result['rx_gbps'])
+        else:
+            sensors['rx_gbps'].set(status=Corr2Sensor.WARN, value=result['rx_gbps'])
+    except Exception as e:
+        LOGGER.error(
+            'Error updating gbe_stats for {} - {}'.format(
+                x_host.host, e.message))
+        sensors['tx_pps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['rx_pps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['tx_gbps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['rx_gbps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+
     # SPEAD RX
     sensor_spead = sensors['spead']
     executor = sensor_spead.executor
@@ -176,42 +194,81 @@ def _cb_beng(sensors, x_host):
     IOLoop.current().call_later(10, _cb_beng, sensors, x_host)
 
 
-@gen.coroutine
-def _cb_xeng_vacc(sensors, x_host):
-    """
 
-    :param sensors: a list of sensors, one for each vacc
-    :param x_host: the host on which this is run
+
+@gen.coroutine
+def _cb_xeng_vacc(sensors_value):
+    """
+    Sensor call back to check xeng vaccs.
+    :param sensors_value: a dictionary of lists of all vaccs.
     :return:
     """
-    executor = sensors[0].executor
-    results = None
+    def set_unknown():
+        sensors_value['synchronised'].set(status=Corr2Sensor.UNKNOWN, value=False)
+        for _x in sensors_value:
+            for xctr in sensors_value[_x]:
+                [xctr]['armcount'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+                [xctr]['count'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+                [xctr]['errors'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+                [xctr]['loadcount'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+                [xctr]['timestamp'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+    executor = sensors_value['synchronised'].executor
+    instrument = sensors_value['synchronised'].manager.instrument
     try:
-        results = yield executor.submit(x_host.check_vacc)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        pass
-    except Exception as exc:
-        LOGGER.error('Error updating vacc sensors for {} - '
-                     '{}'.format(x_host.host, exc.message))
-    if results is not None:
-        for xctr, res in enumerate(results):
-            if res == 0:
-                sensors[xctr].set(status=Corr2Sensor.NOMINAL, value=True)
-            elif res == 1:
-                sensors[xctr].set(status=Corr2Sensor.ERROR, value=False)
-            elif res == 2:
-                sensors[xctr].set(status=Corr2Sensor.WARN, value=False)
-    else:
-        for xctr in range(x_host.x_per_fpga):
-            sensors[xctr].set(value=False)
-    LOGGER.debug('_cb_xeng_vacc ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(10, _cb_xeng_vacc, sensors, x_host)
+        rv = yield executor.submit(instrument.xops.vacc_status)
+        for _x in rv:
+            if _x == 'synchronised':
+                sensors_value['synchronised'].set(value=rv['synchronised'])
+            else:
+                for xctr,sensr in enumerate(sensors_value[_x]):
+                    sensr['timestamp'].set(status=Corr2Sensor.NOMINAL,value=rv[_x][xctr]['timestamp'])
+                    sensr['count'].set(status=Corr2Sensor.NOMINAL,value=rv[_x][xctr]['count'])
+                    sensr['errors'].set(status=Corr2Sensor.NOMINAL,value=rv[_x][xctr]['errors'])
+                    sensr['armcount'].set_error_if_changed(value=rv[_x][xctr]['armcount'])
+                    sensr['loadcount'].set_error_if_changed(value=rv[_x][xctr]['loadcount'])
+    except Exception as e:
+        LOGGER.error('Error updating VACC sensors '
+                     '- {}'.format(e.message))
+        set_unknown()
+    LOGGER.debug('_cb_xeng_vacc ran')
+    IOLoop.current().call_later(10,_cb_xeng_vacc, sensors_value) 
+
+#@gen.coroutine
+#def _cb_xeng_vacc(sensors, x_host):
+#    """
+#
+#    :param sensors: a list of sensors, one for each vacc
+#    :param x_host: the host on which this is run
+#    :return:
+#    """
+#    executor = sensors[0].executor
+#    results = None
+#    try:
+#        results = yield executor.submit(x_host.check_vacc)
+#    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
+#        pass
+#    except Exception as exc:
+#        LOGGER.error('Error updating vacc sensors for {} - '
+#                     '{}'.format(x_host.host, exc.message))
+#    if results is not None:
+#        for xctr, res in enumerate(results):
+#            if res == 0:
+#                sensors[xctr].set(status=Corr2Sensor.NOMINAL, value=True)
+#            elif res == 1:
+#                sensors[xctr].set(status=Corr2Sensor.ERROR, value=False)
+#            elif res == 2:
+#                sensors[xctr].set(status=Corr2Sensor.WARN, value=False)
+#    else:
+#        for xctr in range(x_host.x_per_fpga):
+#            sensors[xctr].set(value=False)
+#    LOGGER.debug('_cb_xeng_vacc ran on {}'.format(x_host.host))
+#    IOLoop.current().call_later(10, _cb_xeng_vacc, sensors, x_host)
 
 
 @gen.coroutine
 def _cb_xeng_vacc_ctrs(host, host_executor, manager):
     """
-    Populate VACC counter sensors: arm, accumulation, errors, load
+    Populate VACC counter sensors.
     :param host:
     :param host_executor:
     :param manager:
@@ -222,42 +279,42 @@ def _cb_xeng_vacc_ctrs(host, host_executor, manager):
             sens_pref = '{xhost}-xeng{xctr}'.format(xhost=xhost, xctr=xctr)
             update_time = time.time()
             sensor = manager.sensor_get('{}-vacc-arm-cnt'.format(sens_pref))
-            sensor.set(value=-1)
+            sensor.set(status=Corr2Sensor.UNKNOWN, value=-1)
             sensor = manager.sensor_get('{}-vacc-ctr'.format(sens_pref))
-            sensor.set(value=-1)
+            sensor.set(status=Corr2Sensor.UNKNOWN, value=-1)
             sensor = manager.sensor_get('{}-vacc-error-ctr'.format(sens_pref))
-            sensor.set(value=-1)
+            sensor.set(status=Corr2Sensor.UNKNOWN, value=-1)
             sensor = manager.sensor_get('{}-vacc-load-ctr'.format(sens_pref))
-            sensor.set(value=-1)
+            sensor.set(status=Corr2Sensor.UNKNOWN, value=-1)
+            sensor = manager.sensor_get('{}-vacc-timestamp'.format(sens_pref))
+            sensor.set(status=Corr2Sensor.UNKNOWN, value=-1)
 
     xhost = host_offset_lookup[host.host]
-    results = [{'armcount': -1, 'count': -1, 'errors': -1, 'loadcount': -1}
-               for ctr in range(host.x_per_fpga)]
+    results = [{'armcount': -1, 'count': -1, 'errors': -1, 'loadcount': -1, 
+                'timestamp':-1} for ctr in range(host.x_per_fpga)]
     try:
         results = yield host_executor.submit(host.vacc_get_status)
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        LOGGER.error('Katcp error updating vacc counter sensors '
-                     'for {}'.format(host.host))
     except Exception as e:
         LOGGER.error('Error updating vacc counter sensors for {} - '
                      '{}'.format(host.host, e.message))
+        sensors_unknown()
     if results is None:
         sensors_unknown()
     else:
         for xctr in range(host.x_per_fpga):
             sens_pref = '{xhost}-xeng{xctr}'.format(xhost=xhost, xctr=xctr)
             update_time = time.time()
-            sensor = manager.sensor_get('{}-vacc-arm-cnt'.format(sens_pref))
+            sensor = manager.sensor_get('{}-vacc-timestamp'.format(sens_pref))
             sensor.set(update_time, Corr2Sensor.NOMINAL,
-                       results[xctr]['armcount'])
+                       results[xctr]['timestamp'])
             sensor = manager.sensor_get('{}-vacc-ctr'.format(sens_pref))
             sensor.set(update_time, Corr2Sensor.NOMINAL, results[xctr]['count'])
+            sensor = manager.sensor_get('{}-vacc-arm-cnt'.format(sens_pref))
+            sensor.set_error_if_changed(update_time,results[xctr]['armcount'])
             sensor = manager.sensor_get('{}-vacc-error-ctr'.format(sens_pref))
-            sensor.set(update_time, Corr2Sensor.NOMINAL,
-                       results[xctr]['errors'])
+            sensor.set_error_if_changed(update_time,results[xctr]['errors'])
             sensor = manager.sensor_get('{}-vacc-load-ctr'.format(sens_pref))
-            sensor.set(update_time, Corr2Sensor.NOMINAL,
-                       results[xctr]['loadcount'])
+            sensor.set_error_if_changed(update_time,results[xctr]['loadcount'])
     LOGGER.debug('_cb_xeng_vacc_ctrs ran on {}'.format(host.host))
     IOLoop.current().call_later(10, _cb_xeng_vacc_ctrs, host,
                                 host_executor, manager)
@@ -357,20 +414,54 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
     if len(host_offset_lookup) == 0:
         host_offset_lookup = host_offset_dict.copy()
 
+    sensors_value = {}
+    sensors_value['synchronised'] = sens_man.do_sensor(
+        Corr2Sensor.boolean, 'xeng-vaccs-synchronised',
+        'Are the output timestamps of the Xengine VACCs synchronised?',
+        executor=general_executor)
+
+    for _x in sens_man.instrument.xhosts:
+        xhost = host_offset_lookup[_x.host]
+        sensors_value[_x.host] =[]
+        for xctr in range(_x.x_per_fpga):
+            pref = '{xhost}-xeng{xctr}'.format(xhost=xhost, xctr=xctr)
+            sensordict={}
+            sensordict['armcount']=sens_man.do_sensor(
+                Corr2Sensor.integer, '{pref}-vacc-arm-cnt'.format(pref=pref),
+                'Number of times this VACC has armed.')
+            sensordict['count']=sens_man.do_sensor(
+                Corr2Sensor.integer, '{pref}-vacc-ctr'.format(pref=pref),
+                'Number of accumulations this VACC has performed.')
+            sensordict['errors']=sens_man.do_sensor(
+                Corr2Sensor.integer, '{pref}-vacc-error-ctr'.format(pref=pref),
+                'Number of VACC errors.')
+            sensordict['loadcount']=sens_man.do_sensor(
+                Corr2Sensor.integer, '{pref}-vacc-load-ctr'.format(pref=pref),
+                'Number of times this VACC has been loaded.')
+            sensordict['timestamp']=sens_man.do_sensor(
+                Corr2Sensor.integer, '{pref}-vacc-timestamp'.format(pref=pref),
+                'Current VACC timestamp.')
+            sensors_value[_x.host].append(sensordict)
+    ioloop.add_callback(_cb_xeng_vacc, sensors_value)
+
+
     # X-engine host sensors
     for _x in sens_man.instrument.xhosts:
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
         network_sensors = {
-            'rx': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-rx-ok'.format(xhost),
-                'X-engine raw network RX ok', executor=executor),
-            'tx': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-tx-ok'.format(xhost),
-                'X-engine raw network TX ok', executor=executor),
-            'combined': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-ok'.format(xhost),
-                'X-engine network raw RX/TX ok', executor=executor),
+            'tx_pps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-tx-pps'.format(xhost),
+                'X-engine network raw TX packets per second', executor=executor),
+            'rx_pps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-rx-pps'.format(xhost),
+                'X-engine network raw RX packets per second', executor=executor),
+            'tx_gbps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-tx-gbps'.format(xhost),
+                'X-engine network raw TX rate (gigabits per second)', executor=executor),
+            'rx_gbps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-rx-gbps'.format(xhost),
+                'X-engine network raw RX rate (gibabits per second)', executor=executor),
             'spead': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}-spead-rx-ok'.format(xhost),
                 'X-engine SPEAD RX ok', executor=executor),
@@ -389,41 +480,48 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         ioloop.add_callback(_cb_xhost_rx_reorder, sensors, _x)
 
         # VACC
-        sensors = []
-        for xctr in range(_x.x_per_fpga):
-            sensor = sens_man.do_sensor(
-                Corr2Sensor.boolean, '{host}-vacc{xeng}-ok'.format(
-                    host=xhost, xeng=xctr),
-                '{host} x-engine{xeng} vacc ok - vaccs operating '
-                'correctly'.format(host=xhost, xeng=xctr), executor=executor)
-            sensors.append(sensor)
-        ioloop.add_callback(_cb_xeng_vacc, sensors, _x)
-        for xctr in range(_x.x_per_fpga):
-            pref = '{xhost}-xeng{xctr}'.format(xhost=xhost, xctr=xctr)
-            sens_man.do_sensor(
-                Corr2Sensor.integer, '{pref}-vacc-arm-cnt'.format(pref=pref),
-                'Number of times this VACC has armed.', executor=executor)
-            sens_man.do_sensor(
-                Corr2Sensor.integer, '{pref}-vacc-ctr'.format(pref=pref),
-                'Number of accumulations this VACC has performed.',
-                executor=executor)
-            sens_man.do_sensor(
-                Corr2Sensor.integer, '{pref}-vacc-error-ctr'.format(pref=pref),
-                'Number of VACC errors.', executor=executor)
-            sens_man.do_sensor(
-                Corr2Sensor.integer, '{pref}-vacc-load-ctr'.format(pref=pref),
-                'Number of times this VACC has been loaded.',
-                executor=executor)
-        ioloop.add_callback(_cb_xeng_vacc_ctrs, _x, executor, sens_man)
 
-        # VACC accumulations per second
-        for xctr in range(_x.x_per_fpga):
-            pref = '{xhost}-xeng{xctr}-'.format(xhost=xhost, xctr=xctr)
-            sensor = sens_man.do_sensor(
-                Corr2Sensor.float, '{pref}accs-per-sec'.format(pref=pref),
-                'Number of accumulations per second for this X-engine on '
-                'this host.', executor=executor)
-        ioloop.add_callback(_cb_xeng_vacc_accs_ps, _x, executor, sens_man)
+
+#        sensors = []
+#        for xctr in range(_x.x_per_fpga):
+#            sensor = sens_man.do_sensor(
+#                Corr2Sensor.boolean, '{host}-vacc{xeng}-ok'.format(
+#                    host=xhost, xeng=xctr),
+#                '{host} x-engine{xeng} vacc ok - vaccs operating '
+#                'correctly'.format(host=xhost, xeng=xctr), executor=executor)
+#            sensors.append(sensor)
+#        ioloop.add_callback(_cb_xeng_vacc, sensors, _x)
+#
+#        for xctr in range(_x.x_per_fpga):
+#            pref = '{xhost}-xeng{xctr}'.format(xhost=xhost, xctr=xctr)
+#            sens_man.do_sensor(
+#                Corr2Sensor.integer, '{pref}-vacc-arm-cnt'.format(pref=pref),
+#                'Number of times this VACC has armed.', executor=executor)
+#            sens_man.do_sensor(
+#                Corr2Sensor.integer, '{pref}-vacc-ctr'.format(pref=pref),
+#                'Number of accumulations this VACC has performed.',
+#                executor=executor)
+#            sens_man.do_sensor(
+#                Corr2Sensor.integer, '{pref}-vacc-error-ctr'.format(pref=pref),
+#                'Number of VACC errors.', executor=executor)
+#            sens_man.do_sensor(
+#                Corr2Sensor.integer, '{pref}-vacc-load-ctr'.format(pref=pref),
+#                'Number of times this VACC has been loaded.',
+#                executor=executor)
+#            sens_man.do_sensor(
+#                Corr2Sensor.integer, '{pref}-vacc-timestamp'.format(pref=pref),
+#                'Current VACC timestamp.',
+#                executor=executor)
+#        ioloop.add_callback(_cb_xeng_vacc_ctrs, _x, executor, sens_man)
+
+#        # VACC accumulations per second
+#        for xctr in range(_x.x_per_fpga):
+#            pref = '{xhost}-xeng{xctr}-'.format(xhost=xhost, xctr=xctr)
+#            sensor = sens_man.do_sensor(
+#                Corr2Sensor.float, '{pref}accs-per-sec'.format(pref=pref),
+#                'Number of accumulations per second for this X-engine on '
+#                'this host.', executor=executor)
+#        ioloop.add_callback(_cb_xeng_vacc_accs_ps, _x, executor, sens_man)
 
         # VACC synch time
         sensor = sens_man.do_sensor(

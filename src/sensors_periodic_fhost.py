@@ -14,11 +14,11 @@ LOGGER = logging.getLogger(__name__)
 
 FHOST_REGS = ['spead_status', 'reorder_status', 'sync_ctrs', 'pfb_status', 
               'cd_status', 'quant_status']
-FHOST_REGS.extend(['ct_status%i' % ctr for ctr in range(2)])
-FHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(1)])
+#FHOST_REGS.extend(['ct_status%i' % ctr for ctr in range(2)])
+#FHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(1)])
 FHOST_REGS.extend(['gbe%i_txofctr' % ctr for ctr in range(1)])
-FHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(1)])
-FHOST_REGS.extend(['gbe%i_rxofctr' % ctr for ctr in range(1)])
+#FHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(1)])
+#FHOST_REGS.extend(['gbe%i_rxofctr' % ctr for ctr in range(1)])
 FHOST_REGS.extend(['gbe%i_rxbadctr' % ctr for ctr in range(1)])
 
 
@@ -114,14 +114,31 @@ def _cb_fhost_check_network(sensors, f_host):
     :param sensors: a dict of the network sensors to update
     :return:
     """
-    # RX
-    boolean_sensor_do(f_host, sensors['rx'], [f_host.check_rx_raw, 0.2, 5])
-    # TX
-    boolean_sensor_do(f_host, sensors['tx'], [f_host.check_tx_raw, 0.2, 5])
-    # both
-    rx_okay = sensors['rx'].status() == Corr2Sensor.NOMINAL
-    tx_okay = sensors['tx'].status() == Corr2Sensor.NOMINAL
-    sensors['combined'].sensor_set_on_condition(rx_okay and tx_okay)
+    #GBE CORE
+    executor = sensors['tx_pps'].executor
+    try:
+        result = yield executor.submit(f_host.gbes.gbe0.get_stats)
+        sensors['tx_pps'].set(status=Corr2Sensor.NOMINAL, value=result['tx_pps'])
+        sensors['tx_gbps'].set(status=Corr2Sensor.NOMINAL, value=result['tx_gbps'])
+
+        if result['rx_pps']>900000:
+            sensors['rx_pps'].set(status=Corr2Sensor.NOMINAL, value=result['rx_pps'])
+        else:
+            sensors['rx_pps'].set(status=Corr2Sensor.WARN, value=result['rx_pps'])
+
+        if result['rx_gbps']>37:
+            sensors['rx_gbps'].set(status=Corr2Sensor.NOMINAL, value=result['rx_gbps'])
+        else:
+            sensors['rx_gbps'].set(status=Corr2Sensor.WARN, value=result['rx_gbps'])
+    except Exception as e:
+        LOGGER.error(
+            'Error updating gbe_stats for {} - {}'.format(
+                f_host.host, e.message))
+        sensors['tx_pps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['rx_pps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['tx_gbps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+        sensors['rx_gbps'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+    
     # SPEAD RX
     sensor_spead = sensors['spead']
     sensor_deng = sensors['deng_time']
@@ -149,6 +166,7 @@ def _cb_fhost_check_network(sensors, f_host):
         sensor_deng.set(status=Corr2Sensor.WARN, value=False)
     else:
         sensor_deng.set(status=Corr2Sensor.ERROR, value=False)
+
     LOGGER.debug('_cb_fhost_check_network ran')
     IOLoop.current().call_later(10, _cb_fhost_check_network, sensors, f_host)
 
@@ -220,18 +238,21 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
 
         # raw network comms - gbe counters must increment
         network_sensors = {
+            'tx_pps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-tx-pps'.format(fhost),
+                'F-engine network raw TX packets per second', executor=executor),
+            'rx_pps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-rx-pps'.format(fhost),
+                'F-engine network raw RX packets per second', executor=executor),
+            'tx_gbps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-tx-gbps'.format(fhost),
+                'F-engine network raw TX rate (gigabits per second)', executor=executor),
+            'rx_gbps': sens_man.do_sensor(
+                Corr2Sensor.float, '{}-network-rx-gbps'.format(fhost),
+                'F-engine network raw RX rate (gibabits per second)', executor=executor),
             'deng_time': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}-deng-time-ok'.format(fhost),
                 'D-engine timestamps ok', executor=executor),
-            'rx': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-rx-ok'.format(fhost),
-                'F-engine network RX ok', executor=executor),
-            'tx': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-tx-ok'.format(fhost),
-                'F-engine network TX ok', executor=executor),
-            'combined': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}-network-ok'.format(fhost),
-                'F-engine network raw RX/TX ok', executor=executor),
             'spead': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}-spead-rx-ok'.format(fhost),
                 'F-engine SPEAD RX ok', executor=executor),
@@ -240,7 +261,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
 
         # Rx reorder counters
         sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-reorder-ok'.format(fhost),
+            Corr2Sensor.boolean, '{}-network-rx-pkt-reorder'.format(fhost),
             'F-engine RX ok - reorder counters incrementing correctly',
             executor=executor)
         ioloop.add_callback(_cb_feng_rx_reorder, sensor, _f)
@@ -269,5 +290,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             Corr2Sensor.boolean, '{}-lru-ok'.format(fhost),
             'F-engine %s LRU ok' % _f.host, executor=executor)
         ioloop.add_callback(_cb_fhost_lru, sensor, _f)
+
 
 # end

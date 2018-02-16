@@ -619,10 +619,10 @@ class FxCorrelator(Instrument):
         # TODO - get this from the config file
         # check if beamformer exists with x-engines
         self.found_beamformer = False
-        if 'bengine' in self.configd.keys():
+        if 'beam0' in self.configd.keys():
             self.found_beamformer = True
             try:
-                self.beng_outbits = int(self.configd['bengine']['beng_outbits'])
+                self.beng_outbits = int(self.configd['beam0']['beng_outbits'])
             except KeyError:
                 self.beng_outbits = 8
 

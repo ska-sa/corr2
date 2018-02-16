@@ -502,8 +502,17 @@ class XEngineOperations(object):
         x-engines.
         :return: {}
         """
-        return THREADED_FPGA_FUNC(self.hosts, timeout=10,
+        rv=THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                   target_function='vacc_get_status')
+
+        sync=True
+        timestamp=rv[rv.keys()[0]][0]['timestamp']
+        for hostname in rv:
+            for vacc in rv[hostname]:
+                if vacc['timestamp'] != timestamp:
+                    sync=False
+        rv['synchronised']=sync
+        return rv
 
     def vacc_reset_all(self):
         """
