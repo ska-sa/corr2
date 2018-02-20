@@ -189,8 +189,9 @@ class DigitiserStreamReceiver(FpgaHost):
         lsw = _lsw.read()['data']['timestamp_lsw']
         msw = _msw.read()['data']['timestamp_msw']
         if msw != first_msw + 1:
-            raise RuntimeError('%s get_local_time() - network is too slow'
-                               ' to allow accurate time read' % self.host)
+            raise RuntimeError(
+                '%s get_local_time() - network is too slow to allow accurate '
+                'time read (%i -> %i)' % (self.host, first_msw, msw))
         rv = (msw << 32) | lsw
         return rv
 

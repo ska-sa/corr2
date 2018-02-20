@@ -645,28 +645,6 @@ def thread_funcs(timeout, *funcs):
     return returnval
 
 
-def hosts_from_dhcp_leases(host_pref='roach',
-                           leases_file='/var/lib/misc/dnsmasq.leases'):
-    """
-    Get a list of hosts from a leases file.
-    :param host_pref: the prefix of the hosts in which we're interested
-    :param leases_file: the file to read
-    :return:
-    """
-    hosts = []
-    if not isinstance(host_pref, list):
-        host_pref = [host_pref]
-    with open(leases_file) as masqfile:
-        masqlines = masqfile.readlines()
-    for line in masqlines:
-        (leasetime, mac, ip, host, mac2) = line.replace('\n', '').split(' ')
-        for host_prefix in host_pref:
-            if host.startswith(host_prefix):
-                hosts.append(host if host != '*' else ip)
-                break
-    return hosts, leases_file
-
-
 def parse_output_products(dictionary):
     """
     Parse a config dictionary section for output products and addresses.
