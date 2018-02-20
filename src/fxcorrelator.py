@@ -260,15 +260,15 @@ class FxCorrelator(Instrument):
                          self.post_switch_delay)
         time.sleep(self.post_switch_delay)
 
-        # # reset all counters on fhosts and xhosts
-        # self.fops.clear_status_all()
-        # self.xops.clear_status_all()
-
         if self.synchronisation_epoch == -1:
             self.est_synch_epoch()
 
         # arm the vaccs on the x-engines
-        self.xops.vacc_sync()
+        if self.xops.vacc_sync()>0:
+            # reset all counters on fhosts and xhosts
+            self.fops.clear_status_all()
+            self.xops.clear_status_all()
+
 
     def configure(self):
         """

@@ -81,10 +81,13 @@ class DigitiserStreamReceiver(FpgaHost):
         """
         if 'reorder_ctrs' in self.registers.names():
             reorder_ctrs = self.registers.reorder_ctrs.read()['data']
+            LOGGER.debug('found reorder_ctrs')
         else:
             reorder_ctrs = self.registers.reorder_status.read()['data']
+            LOGGER.debug('found reorder_status'.format(reorder_ctrs))
         try:
             reorder_ctrs.update(self.registers.reorder_status1.read()['data'])
+            LOGGER.debug('found reorder_status1'.format(reorder_ctrs))
         except (AttributeError, KeyError):
             pass
         return reorder_ctrs

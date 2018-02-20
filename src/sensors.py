@@ -61,36 +61,14 @@ class Corr2Sensor(Sensor):
                                           units, params, default,
                                           initial_status)
 
-    def sensor_set_on_condition(self, condition):
-        """
-        Set the sensor to nominal given a condition
-        :param condition: a boolean condition
-        :return:
-        """
-        self.set(time.time(),
-                 Sensor.NOMINAL if condition else Sensor.ERROR,
-                 condition)
-
-    def set_error_if_changed(self, timestamp=None, value=None):
-        """
-        Set the value of a sensor. Make the status Nominal if unchanged,
-        but set status to error if changed. (used for error counters).
-        :param timestamp: when was the reading taken? default to time.time()
-        :param value: defaults to None
-        :return:
-        """
-        (old_timestamp, old_status, old_value) = self.read()
-        if value != old_value:
-            self.set(timestamp, Corr2Sensor.ERROR, value)
-        else:
-            self.set(timestamp, Corr2Sensor.NOMINAL, value)
-
-    def set(self, timestamp=None, status=None, value=None):
+    def set(self, timestamp=None, status=None, value=None, errif=None, warnif=None):
         """
         Set the value of a sensor.
         :param timestamp: when was the reading taken? default to time.time()
-        :param status: defaults to Sensor.UNKNOWN if None given
+        :param status: defaults to Sensor.NOMINAL.
         :param value: defaults to None
+        :param errif: set status to ERROR if value 'changed' or 'notchanged'.
+        :param warnif: set status to WARNING if value 'changed' or 'notchanged'.
         :return:
         """
         if value is None:
@@ -98,11 +76,25 @@ class Corr2Sensor(Sensor):
         if timestamp is None:
             timestamp = time.time()
         if status is None:
-            status = Sensor.UNKNOWN
+            status = Sensor.NOMINAL
         (old_timestamp, old_status, old_value) = self.read()
         if (old_status == status) and (old_value == value):
             LOGGER.debug('Sensor values unchanged, ignoring')
             return
+        if old_value != value:
+            if errif == 'changed':
+                LOGGER.error('Sensor error: {} changed {} -> {}'.format(self.name,old_value,value))
+                status = Sensor.ERROR
+            elif warnif == 'changed':
+                LOGGER.warn('Sensor warning: {} changed {} -> {}'.format(self.name,old_value,value))
+                status = Sensor.WARN
+        else:
+            if errif == 'notchanged':
+                status = Sensor.ERROR
+                LOGGER.error('Sensor error: {} not changing {} -> {}'.format(self.name,old_value,value))
+            elif warnif == 'notchanged':
+                status = Sensor.WARN
+                LOGGER.warn('Sensor warning: {} not changing {} -> {}'.format(self.name,old_value,value))
         super(Corr2Sensor, self).set(timestamp, status, value)
         if self.manager:
             self.manager.sensor_set_cb(self)

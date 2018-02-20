@@ -206,12 +206,15 @@ def _cb_xeng_vacc(sensors_value):
     def set_unknown():
         sensors_value['synchronised'].set(status=Corr2Sensor.UNKNOWN, value=False)
         for _x in sensors_value:
-            for xctr in sensors_value[_x]:
-                [xctr]['armcount'].set(status=Corr2Sensor.UNKNOWN, value=-1)
-                [xctr]['count'].set(status=Corr2Sensor.UNKNOWN, value=-1)
-                [xctr]['errors'].set(status=Corr2Sensor.UNKNOWN, value=-1)
-                [xctr]['loadcount'].set(status=Corr2Sensor.UNKNOWN, value=-1)
-                [xctr]['timestamp'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+            if _x == 'synchronised':
+                sensors_value['synchronised'].set(value=rv['synchronised'])
+            else:
+                for xctr,sensr in enumerate(sensors_value[_x]):
+                    [xctr]['armcount'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+                    [xctr]['count'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+                    [xctr]['errors'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+                    [xctr]['loadcount'].set(status=Corr2Sensor.UNKNOWN, value=-1)
+                    [xctr]['timestamp'].set(status=Corr2Sensor.UNKNOWN, value=-1)
     executor = sensors_value['synchronised'].executor
     instrument = sensors_value['synchronised'].manager.instrument
     try:
@@ -224,8 +227,8 @@ def _cb_xeng_vacc(sensors_value):
                     sensr['timestamp'].set(status=Corr2Sensor.NOMINAL,value=rv[_x][xctr]['timestamp'])
                     sensr['count'].set(status=Corr2Sensor.NOMINAL,value=rv[_x][xctr]['count'])
                     sensr['errors'].set(status=Corr2Sensor.NOMINAL,value=rv[_x][xctr]['errors'])
-                    sensr['armcount'].set_error_if_changed(value=rv[_x][xctr]['armcount'])
-                    sensr['loadcount'].set_error_if_changed(value=rv[_x][xctr]['loadcount'])
+                    sensr['armcount'].set(value=rv[_x][xctr]['armcount'],errif='changed')
+                    sensr['loadcount'].set(value=rv[_x][xctr]['loadcount'],errif='changed')
     except Exception as e:
         LOGGER.error('Error updating VACC sensors '
                      '- {}'.format(e.message))

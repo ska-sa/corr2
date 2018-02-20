@@ -898,6 +898,7 @@ class XEngineOperations(object):
             self.logger.info('Current Feng0 mcnt: %i (%i; %s)' %
                              (feng_mcnt, feng_time,
                               time.ctime(feng_time)))
+            return -1
 
         synch_time = self.corr.time_from_mcnt(load_mcount)
         self.vacc_synch_running.clear()
