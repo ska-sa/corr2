@@ -4,24 +4,28 @@
 """
  Capture utility for a relatively generic packetised correlator data output stream.
 """
+import array
 import copy
+import fcntl
 import logging
 import numpy as np
 import Queue
 import re
+import socket
 import spead2
 import spead2.recv as s2rx
-import subprocess
+import struct
 import threading
 import time
 
+from subprocess import check_output
+from casperfpga import network
 from casperfpga import tengbe
-from corr2 import utils, data_stream
-from inspect import currentframe
-from inspect import getframeinfo
+from corr2 import data_stream
+from corr2 import utils
 
 LOGGER = logging.getLogger(__name__)
-
+interface_prefix = "10.100"
 
 def process_xeng_data(self, heap_data, ig):
     """
@@ -48,19 +52,14 @@ def process_xeng_data(self, heap_data, ig):
             old_data = heap_data[this_time][this_freq]
             if np.shape(old_data) != np.shape(xeng_raw):
                 self.logger.error('Got repeat freq %i for time %i, with a '
-                             'DIFFERENT SHAPE?!\n\tFile:%s Line:%s' % (this_freq, this_time,
-                                getframeinfo(currentframe()).filename.split('/')[-1],
-                                getframeinfo(currentframe()).lineno))
+                             'DIFFERENT SHAPE?!\n' % (this_freq, this_time))
             else:
                 if (xeng_raw == old_data).all():
                     self.logger.error('Got repeat freq %i with SAME data for time %i' % (
-                        this_freq, this_time))
+                                      this_freq, this_time))
                 else:
                     self.logger.error('Got repeat freq %i with DIFFERENT data '
-                                 'for time %i\n\tFile:%s Line:%s' % (
-                                    this_freq, this_time,
-                                    getframeinfo(currentframe()).filename.split('/')[-1],
-                                    getframeinfo(currentframe()).lineno))
+                                      'for time %i\n\tFile:%s Line:%s' % (this_freq, this_time))
         else:
             heap_data[this_time][this_freq] = xeng_raw
     else:
@@ -85,8 +84,8 @@ def process_xeng_data(self, heap_data, ig):
         freqs = hdata.keys()
         freqs.sort()
         if freqs != range(0, self.n_chans, self.n_chans / self.NUM_XENG):
-            self.logger.error('Did not get all frequencies from the x-engines for '
-                         'time %i: %s' % (htime, str(freqs)))
+            self.logger.error('Did not get all frequencies from the x-engines for time %i: %s' % (
+                htime, str(freqs)))
             heap_data.pop(htime)
             return None
         vals = []
@@ -95,9 +94,8 @@ def process_xeng_data(self, heap_data, ig):
         vals = sorted(vals, key=lambda val: val[1])
         xeng_raw = np.concatenate([val[2] for val in vals], axis=0)
         time_s = ig['timestamp'].value / (self.n_chans * 2 * self.n_accs)
-        self.logger.info('Processing xeng_raw heap with time %i (%i) and '
-                    'shape: %s' % (ig['timestamp'].value, time_s,
-                                   str(np.shape(xeng_raw))))
+        self.logger.info('Processing xeng_raw heap with time %i (%i) and shape: %s' % (
+                        ig['timestamp'].value, time_s, str(np.shape(xeng_raw))))
         heap_data.pop(htime)
         return (htime, xeng_raw)
         # return {'timestamp': htime,
@@ -120,6 +118,23 @@ def process_xeng_data(self, heap_data, ig):
                 rvs['xeng_raw'] = rv[1]
     return rvs
 
+def network_interfaces():
+    """
+    Get system interfaces and IP list
+    """
+    def format_ip(addr):
+        return "%s.%s.%s.%s" %(ord(addr[0]), ord(addr[1]), ord(addr[2]), ord(addr[3]))
+
+    max_possible = 128  # arbitrary. raise if needed.
+    bytes = max_possible * 32
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    names = array.array('B', '\0' * bytes)
+    outbytes = struct.unpack('iL', fcntl.ioctl(s.fileno(), 0x8912,  # SIOCGIFCONF
+               struct.pack('iL', bytes, names.buffer_info()[0])))[0]
+    namestr = names.tostring()
+    lst = [format_ip(namestr[i + 20:i + 24]) for i in range(0, outbytes, 40)]
+    return lst
+
 
 class CorrRx(threading.Thread):
     """Run a spead receiver in a thread; provide a Queue.Queue interface
@@ -137,7 +152,7 @@ class CorrRx(threading.Thread):
         self.product_name = product_name
         self.servlet_ip = servlet_ip
         self.servlet_port = int(servlet_port)
-        self.multicast_subs()
+        self.get_sensors()
         threading.Thread.__init__(self)
 
     def confirm_multicast_subs(self, mul_ip='239.100.0.10'):
@@ -146,11 +161,13 @@ class CorrRx(threading.Thread):
         :param str: multicast ip
         :retur str: successful or failed
         """
-        list_inets = subprocess.check_output(['ip','maddr','show'])
+        list_inets = check_output(['ip','maddr','show'])
         return 'Successful' if str(mul_ip) in list_inets else 'Failed'
 
-    def multicast_subs(self):
-        # before doing much of anything, need to get metadata from sensors
+    def get_sensors(self):
+        """
+        Before doing much of anything, We need to get information from sensors
+        """
         product_name = self.product_name
         try:
             import katcp
@@ -168,8 +185,7 @@ class CorrRx(threading.Thread):
             if not reply.reply_ok():
                 raise RuntimeError('Could not read sensors from corr2_servlet, '
                                    'request failed.')
-            sensors_required = [
-                                'n-ants',
+            sensors_required = ['n-ants',
                                 'scale-factor-timestamp',
                                 'sync-time',
                                 '{}-bls-ordering'.format(product_name),
@@ -189,9 +205,9 @@ class CorrRx(threading.Thread):
                 self.n_accs = int(sensors['{}-n-accs'.format(product_name)])
             except Exception:
                 self.n_accs = int(float(sensors['{}-n-accs'.format(product_name)]))
-            self.n_ants = int(sensors['n-ants'])
-            self.sync_time = float(sensors['sync-time'])
-            self.scale_factor_timestamp = float(sensors['scale-factor-timestamp'])
+            self.n_ants = int(sensors.get('n-ants', 0))
+            self.sync_time = float(sensors.get('sync-time', 0))
+            self.scale_factor_timestamp = float(sensors.get('scale-factor-timestamp', 0))
         except Exception:
             msg = 'Failed to connect to corr2_servlet and retrieve sensors values'
             self.logger.exception(msg)
@@ -203,52 +219,7 @@ class CorrRx(threading.Thread):
                             sensors['{}-destination'.format(product_name)])
                      }
             self.NUM_XENG = output['address'].ip_range
-
-            if output['address'].ip_address.is_multicast():
-                import socket
-                import struct
-                self.logger.info('Source is multicast: %s' % output['address'])
-
-                # look up multicast group address in name server
-                # and find out IP version
-                addrinfo = socket.getaddrinfo(
-                    str(output['address'].ip_address), None)[0]
-                ip_version = addrinfo[0]
-
-                # create a socket
-                mcast_sock = socket.socket(ip_version, socket.SOCK_DGRAM)
-                mcast_sock.setblocking(False)
-                # mcast_sock.bind(('', 8888))
-                # # Allow multiple copies of this program on one machine
-                # # (not strictly needed)
-                # mcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                #
-                # # bind it to the port
-                # mcast_sock.bind(('', data_port))
-                # print 'Receiver bound to port %i.' % data_port
-
-                def join_group(address):
-                    group_bin = socket.inet_pton(ip_version, address)
-                    if ip_version == socket.AF_INET:  # IPv4
-                        mreq = group_bin + struct.pack('=I', socket.INADDR_ANY)
-                        mcast_sock.setsockopt(socket.IPPROTO_IP,
-                                              socket.IP_ADD_MEMBERSHIP, mreq)
-                        self.logger.info('Subscribing to %s.' % address)
-                    else:
-                        mreq = group_bin + struct.pack('@I', 0)
-                        mcast_sock.setsockopt(socket.IPPROTO_IPV6,
-                                              socket.IPV6_JOIN_GROUP, mreq)
-
-                # join group
-                for addrctr in range(output['address'].ip_range):
-                    self._addr = int(output['address'].ip_address) + addrctr
-                    self._addr = tengbe.IpAddress(self._addr)
-                    join_group(str(self._addr))
-                return self.confirm_multicast_subs(mul_ip=str(self._addr))
-            else:
-                mcast_sock = None
-                self.logger.info('Source is not multicast: %s' % output['src_ip'])
-                return False
+            self.data_ip = output['address'].ip_address
 
     def stop(self):
         self.quit_event.set()
@@ -269,16 +240,24 @@ class CorrRx(threading.Thread):
         self.logger.info("SPEAD receiver started")
 
     def run(self):
-        logger = self.logger
-        logger.info('Data reception on port %i.' % self.data_port)
+        self.logger.info('RXing data on %s+%i, port %i.' % (self.data_ip, self.NUM_XENG, self.data_port))
+        self.interface_address = ''.join([ethx for ethx in network_interfaces()
+                                         if ethx.startswith(interface_prefix)])
 
-        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
-                           max_heaps=self.NUM_XENG, ring_heaps=40)
-        strm.add_udp_reader(port=self.data_port, max_size=9200,
-                            buffer_size=51200000)
-        self.running_event.set()
+        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, max_heaps=self.NUM_XENG,
+                            ring_heaps=40)
+        for ctr in range(self.NUM_XENG):
+            self._addr = network.IpAddress(self.data_ip.ip_int + ctr).ip_str
+            strm.add_udp_reader(
+                multicast_group=self._addr,
+                port=self.data_port,
+                max_size=9200,
+                buffer_size=5120000,
+                interface_address=self.interface_address
+                )
 
         try:
+            self.running_event.set()
             ig = spead2.ItemGroup()
             idx = -1
             # we need these bits of meta data before being able to assemble and transmit
@@ -290,29 +269,28 @@ class CorrRx(threading.Thread):
                 updated = ig.update(heap)
                 cnt_diff = heap.cnt - last_cnt
                 last_cnt = heap.cnt
-                logger.debug('PROCESSING HEAP idx(%i) cnt(%i) cnt_diff(%i) '
-                             '@ %.4f' % (idx, heap.cnt, cnt_diff, time.time()))
-                logger.debug('Contents dict is now %i long' % len(heap_contents))
+                self.logger.debug('PROCESSING HEAP idx(%i) cnt(%i) cnt_diff(%i) @ %.4f' % (
+                    idx, heap.cnt, cnt_diff, time.time()))
+                self.logger.debug('Contents dict is now %i long' % len(heap_contents))
                 # output item values specified
-
                 data = process_xeng_data(self, heap_contents, ig)
                 ig_copy = copy.deepcopy(data)
                 if ig_copy:
                     try:
                         self.data_queue.put(ig_copy)
                     except Queue.Full:
-                        logger.info('Data Queue full, disposing of heap %s.'%idx)
+                        self.logger.info('Data Queue full, disposing of heap %s.'%idx)
 
                 # should we quit?
                 if self.quit_event.is_set():
-                    logger.info('Got a signal from main(), exiting rx loop...')
+                    self.logger.info('Got a signal from main(), exiting rx loop...')
                     break
         finally:
             try:
                 strm.stop()
-                logger.info("SPEAD receiver stopped")
+                self.logger.info("SPEAD receiver stopped")
             except Exception:
-                logger.exception('Exception trying to stop self.rx')
+                self.logger.exception('Exception trying to stop self.rx')
             self.quit_event.clear()
             self.running_event.clear()
 
@@ -328,7 +306,7 @@ class CorrRx(threading.Thread):
 
         # discard next dump too, in case
         for i in xrange(int(discard)):
-            LOGGER.info('Discarding #%s dump(s):'%i)
+            self.logger.info('Discarding #%s dump(s):'%i)
             try:
                 _dump = self.data_queue.get(timeout=dump_timeout)
                 assert _dump is not None
@@ -343,7 +321,7 @@ class CorrRx(threading.Thread):
             except Exception:
                 self.logger.exception()
         try:
-            LOGGER.info('Waiting for a clean dump:')
+            self.logger.info('Waiting for a clean dump:')
             _dump = self.data_queue.get(timeout=dump_timeout)
             _errmsg = ('No of channels in the spead data is inconsistent with the no of'
                       ' channels (%s) expected' %self.n_chans)
