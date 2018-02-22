@@ -1,6 +1,7 @@
 import logging
 import time
 import casperfpga
+import struct
 
 from host_fpga import FpgaHost
 from host_fpga import FpgaHost
@@ -20,6 +21,7 @@ class FpgaXHost(FpgaHost):
         self.config = config
         self.index = index
         self.acc_len = None
+        self.n_ants = None
         self.x_per_fpga = None
         self.xeng_accumulation_len = None
         self.n_chans = None
@@ -32,6 +34,7 @@ class FpgaXHost(FpgaHost):
             self.acc_len = int(xcfg['accumulation_len'])
             self.xeng_accumulation_len = int(xcfg['xeng_accumulation_len'])
             self.n_chans = int(fcfg['n_chans'])
+            self.n_ants = int(fcfg['n_antennas'])
             self.sample_rate_hz = int(ccfg['sample_rate_hz'])
         self._vaccs_per_sec_last_readtime = None
         self._vaccs_per_sec_last_values = None
@@ -91,17 +94,6 @@ class FpgaXHost(FpgaHost):
         self.registers.control.write(status_clr='pulse', cnt_rst='pulse',
                                      gbe_debug_rst='pulse')
 
-    def host_okay(self):
-        """
-        Is this host/LRU okay?
-        :return:
-        """
-        if not (self.check_rx_reorder() and self.vacc_okay()):
-            LOGGER.error('%s: host_okay() - FALSE.' % self.host)
-            return False
-        LOGGER.info('%s: host_okay() - TRUE.' % self.host)
-        return True
-
     def get_status_registers(self):
         """
         Read the status registers on this xhost FPGA
@@ -115,6 +107,23 @@ class FpgaXHost(FpgaHost):
                     data[reg.name+'_'+key]=val
         return data
 
+    def get_unpack_status(self):
+        """
+        Returns the SPEAD counters on this FPGA.
+        """
+        rv = self.registers.spead_status0.read()['data']
+        rv.update(self.registers.spead_status1.read()['data'])
+        return rv
+
+    def get_hmc_reorder_status(self):
+        """
+        Retrieve the HMC packet RX reorder status on this board.
+        """
+        rv={}
+        for i in range(3):
+            rv.update(self.registers['hmc_pkt_reord_status%i'%i].read()['data'])
+        return rv
+
     def get_rx_reorder_status(self):
         """
         Retrieve the RX reorder status from this FPGA's xengines.
@@ -122,71 +131,25 @@ class FpgaXHost(FpgaHost):
         """
         data = []
         for ctr in range(0, self.x_per_fpga):
-            tmp = self.registers['reord_status%i' % ctr].read()['data']
-            regdata = {
-                'last_missed_ant%i' % ctr: tmp['last_missed_ant'],
-                'sync_cnt%i' % ctr: tmp['sync_cnt'],
-                'ercv%i' % ctr: tmp['missed_err_cnt'],
-                'etim%i' % ctr: tmp['timeout_err_cnt'],
-                'edisc%i' % ctr: tmp['discard_err_cnt'],
-            }
-            data.append(regdata)
+            tmp = self.registers['sys%i_pkt_reord_status' % ctr].read()['data']
+            data.append(tmp)
         return data
 
-    def check_rx_reorder(self, sleeptime=1):
-        """
-        Is this X host reordering received data correctly?
-        :param sleeptime - time, in seconds, to wait between register reads
-        :return: a list of results for the xengines on this host: 0 no error,
-        1 error, 2 warning
-        """
-        rxregs0 = self.get_rx_reorder_status()
-        time.sleep(sleeptime)
-        rxregs1 = self.get_rx_reorder_status()
-        # compare old and new - rx counts must change and may wrap, error
-        # counts must remain the same
-        rv = []
-        for ctr in range(self.x_per_fpga):
-            status1 = rxregs0[ctr]
-            status0 = rxregs1[ctr]
-            if ((status1['ercv%i' % ctr] != status0['ercv%i' % ctr]) or
-                    (status1['etim%i' % ctr] != status0['etim%i' % ctr])):  # or
-                # (status1['edisc%i' % ctr] != status0['edisc%i' % ctr])):
-                errmsg = '%s: reports reorder errors on engine %i: ercv(%i) ' \
-                         'etime(%i) edisc(%i)' % (
-                             self.host, ctr,
-                             status1['ercv%i' % ctr] - status0['ercv%i' % ctr],
-                             status1['etim%i' % ctr] - status0['etim%i' % ctr],
-                             status1['edisc%i' % ctr] - status0[
-                                 'edisc%i' % ctr])
-                LOGGER.error(errmsg)
-                rv.append(1)
-            elif status1['sync_cnt%i' % ctr] == status0['sync_cnt%i' % ctr]:
-                errmsg = '%s: not receiving reordered data.' % self.host
-                LOGGER.error(errmsg)
-                rv.append(2)
-            else:
-                LOGGER.info('%s: reordering data okay on engine %i.' % (
-                    self.host, ctr))
-                rv.append(0)
-        return rv
-
-    def pack_get_status(self, x_indices=None):
+    def get_pack_status(self, x_indices=None):
         """
         Read the pack block status registers: error count and pkt count
         :param x_indices: a list of x-engine indices to query
-        :return: dict with {error count, pkt count}
+        :return: list of dicts
         """
         if x_indices is None:
             x_indices = range(self.x_per_fpga)
         stats = []
-        regs = self.registers
         for xnum in x_indices:
-            temp = regs['pack_status%d' % xnum].read()['data']
+            temp = self.registers['sys%i_xeng_pack_out_status' % xnum].read()['data']
             stats.append(temp)
         return stats
 
-    def vacc_get_status(self, x_indices=None):
+    def get_vacc_status(self, x_indices=None):
         """
         Read the vacc status registers, error count, accumulation count and
         load status
@@ -198,32 +161,10 @@ class FpgaXHost(FpgaHost):
         stats = []
         regs = self.registers
         for xnum in x_indices:
-            temp = regs['vacc_status%d' % xnum].read()['data']
-            timestamp = regs['vacc_timestamp%d' % xnum].read()['data']['vacc_timestamp']
-            xengdata = {
-                'errors': temp['err_cnt'],
-                'count': temp['acc_cnt'],
-                'armcount': temp['arm_cnt'],
-                'loadcount': temp['ld_cnt'],
-                'timestamp': timestamp
-            }
-            stats.append(xengdata)
+            temp = regs['sys%i_vacc_status' % xnum].read()['data']
+            temp.update(timestamp = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp'])
+            stats.append(temp)
         return stats
-
-    def vacc_get_acc_counters(self, x_indices=None):
-        """
-        Read the vacc counter registers on this host.
-        :param x_indices: a list of x-engine indices to query
-        :return:
-        """
-        return [res['count'] for res in self.vacc_get_status(x_indices)]
-
-    def vacc_get_error_detail(self, x_indices=None):
-        """
-        Read the vacc error counter registers
-        :return: dictionary with error counters
-        """
-        return [res['errors'] for res in self.vacc_get_status(x_indices)]
 
     def vacc_accumulations_per_second(self, x_indices=None):
         """
@@ -234,7 +175,7 @@ class FpgaXHost(FpgaHost):
         """
         if x_indices is None:
             x_indices = range(0, self.x_per_fpga)
-        counts = self.vacc_get_acc_counters(x_indices)
+        counts = self.get_vacc_status(x_indices)
         time1 = time.time()
         vals = [0] * len(counts)
         time2 = time.time()
@@ -255,104 +196,15 @@ class FpgaXHost(FpgaHost):
         return self.acc_len * self.xeng_accumulation_len * \
             self.n_chans * 2.0 / self.sample_rate_hz * 1.1
 
-    def check_pack(self, x_indices=None):
-        """
-        ERROR if the errors are incrementing
-        WARNING if pkt_cnt is not incrementing
-        :param x_indices: a list of the xeng indices to check
-        :return:
-        """
-        if x_indices is None:
-            x_indices = range(self.x_per_fpga)
-        stat0 = self.pack_get_status(x_indices)
-        time.sleep(self._get_checktime())
-        stat1 = self.pack_get_status(x_indices)
-        rv = []
-        for xeng in x_indices:
-            if stat0[xeng]['err_cnt'] != stat1[xeng]['err_cnt']:
-                msg = '{host}: xeng{index} pack errors incrementing'.format(
-                    host=self.host, index=xeng)
-                LOGGER.error(msg)
-                rv.append(1)
-            elif stat0[xeng]['pkt_cnt'] == stat1[xeng]['pkt_cnt']:
-                msg = '{host}: xeng{index} not sending packets'.format(
-                    host=self.host, index=xeng)
-                LOGGER.error(msg)
-                rv.append(2)
-            else:
-                rv.append(0)
-        return rv
-
-    def check_vacc(self, x_indices=None):
-        """
-        ERROR if the errors are incrementing
-        WARNING if acc_cnt is not incrementing or arm_cnt != load_cnt
-        :param x_indices: a list of the xeng indices to check
-        :return:
-        """
-        if x_indices is None:
-            x_indices = range(self.x_per_fpga)
-        checktime = self._get_checktime()
-        if checktime <= 0:
-            raise RuntimeError('Checktime calculated as < 0?')
-        stat0 = self.vacc_get_status(x_indices)
-        time.sleep(checktime)
-        stat1 = self.vacc_get_status(x_indices)
-        rv = []
-        for xeng in x_indices:
-            if stat0[xeng]['errors'] != stat1[xeng]['errors']:
-                msg = '{host}: xeng{index} acc errors incrementing'.format(
-                    host=self.host, index=xeng)
-                LOGGER.error(msg)
-                rv.append(1)
-            elif stat0[xeng]['count'] == stat1[xeng]['count']:
-                msg = '{host}: xeng{index} not accumulating'.format(
-                    host=self.host, index=xeng)
-                LOGGER.error(msg)
-                rv.append(2)
-            elif stat0[xeng]['armcount'] != stat1[xeng]['loadcount']:
-                msg = '{host}: xeng{index} acc arm != load'.format(
-                    host=self.host, index=xeng)
-                LOGGER.error(msg)
-                rv.append(2)
-            else:
-                rv.append(0)
-        return rv
-
-    def vacc_okay(self, x_index=None):
-        """
-        Are the vaccs, or one vacc, okay?
-        :param x_index: a specific xengine's vacc
-        :return: True or False
-        """
-        regs = self.registers
-        if x_index is not None:
-            x_indices = [x_index]
-        else:
-            x_indices = range(self.x_per_fpga)
-        # is this an older bitstream with old registers?
-        if 'vaccerr0' in regs.names():
-            for xnum in x_indices:
-                if regs['vaccerr%d' % xnum].read()['data']['reg'] > 0:
-                    return False
-        elif 'vacc_cnt0' in regs.names():
-            for xnum in x_indices:
-                if regs['vacc_cnt%d' % xnum].read()['data']['err'] > 0:
-                    return False
-        else:
-            for xnum in x_indices:
-                if regs['vacc_status%d' % xnum].read()['data']['err_cnt'] > 0:
-                    return False
-        return True
 
     def vacc_check_arm_load_counts(self):
         status = self.vacc_get_status()
         reset_required = False
         for xengctr, xengdata in enumerate(status):
-            if xengdata['armcount'] != xengdata['loadcount']:
+            if xengdata['arm_cnt'] != xengdata['ld_cnt']:
                 # self.logger.warning('vacc on xengine %i needs resetting, '
-                #                     'armcount(%i) loadcount(%i).' % (
-                #     xengctr, xengdata['armcount'], xengdata['loadcount']))
+                #                     'arm_cnt(%i) ld_cnt(%i).' % (
+                #     xengctr, xengdata['arm_cnt'], xengdata['ld_cnt']))
                 reset_required = True
                 break
         return reset_required
@@ -361,7 +213,7 @@ class FpgaXHost(FpgaHost):
         status = self.vacc_get_status()
         reset_okay = True
         for xengctr, xengdata in enumerate(status):
-            if (xengdata['armcount'] != 0) or (xengdata['loadcount'] != 0):
+            if (xengdata['arm_cnt'] != 0) or (xengdata['ld_cnt'] != 0):
                 # self.logger.warning('vacc on xengine %i failed to '
                 #                     'reset.' % xengctr)
                 reset_okay = False
@@ -394,7 +246,7 @@ class FpgaXHost(FpgaHost):
         self.registers.vacc_time_lsw.write(lsw=ldtime_lsw)
         self.registers.vacc_time_msw.write(msw=ldtime_msw)
 
-    def vacc_get_loadtime(self):
+    def get_vacc_loadtime(self):
         """
         Get the last VACC loadtime that was set
         :return: a sample clock time
@@ -420,44 +272,28 @@ class FpgaXHost(FpgaHost):
         return self.acc_len
         # return self.registers.acc_len.read_uint()
 
-    def beng_get_status(self, x_indices=None):
+#    def get_beng_status(self, x_indices=None):
+#        """
+#        Read the beng block status registers: error count and pkt count
+#        :param x_indices: a list of x-engine indices to query
+#        :return: dict with {error count, pkt count}
+#        """
+#        if x_indices is None:
+#            x_indices = range(self.x_per_fpga)
+#        stats = []
+#        regs = self.registers
+#        for xnum in x_indices:
+#            temp0 = regs['bf0_status%d' % xnum].read()['data']
+#            temp1 = regs['bf1_status%d' % xnum].read()['data']
+#            stats.append((temp0, temp1))
+#        return stats
+#
+    def get_missing_ant_counts(self):
         """
-        Read the beng block status registers: error count and pkt count
-        :param x_indices: a list of x-engine indices to query
-        :return: dict with {error count, pkt count}
+        Get the number of missing packets per input antenna on
+        this xhost.
         """
-        if x_indices is None:
-            x_indices = range(self.x_per_fpga)
-        stats = []
-        regs = self.registers
-        for xnum in x_indices:
-            temp0 = regs['bf0_status%d' % xnum].read()['data']
-            temp1 = regs['bf1_status%d' % xnum].read()['data']
-            stats.append((temp0, temp1))
-        return stats
-
-    # def set_accumulation_length(self, accumulation_length, issue_meta=True):
-    #     """ Set the accumulation time for the vector accumulator
-    #     @param accumulation_length: the accumulation time in spectra.
-    #     @param issue_meta: issue SPEAD meta data indicating the change in time
-    #     @returns: the actual accumulation time in seconds
-    #     """
-    #     vacc_len = self.config['vacc_len']
-    #     acc_len = self.config['acc_len']
-    #     # figure out how many pre-accumulated spectra this is (rounding up)
-    #     vacc_len = numpy.ceil(float(vacc_len)/float(acc_len))
-    #     self.xeng_acc_len.write(reg=vacc_len)
-    #
-    #     return vacc_len*acc_len
-    #
-    # def get_accumulation_length(self):
-    #     """ Get the current accumulation time of the vector accumulator
-    #     @returns: the accumulation time in spectra
-    #     """
-    #     acc_len = self.config['acc_len']
-    #     vacc_len = self.xeng_acc_len.read()['data']['reg']
-    #     return vacc_len * acc_len
-
+        return struct.unpack('>%iI'%self.n_ants,self.read('missing_ant_cnts',4*self.n_ants,0))
 
 class FpgaXHostVaccDebug(FpgaXHost):
     """

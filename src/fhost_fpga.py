@@ -774,44 +774,11 @@ class FpgaFHost(DigitiserStreamReceiver):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
-    def check_qdr_devices(self, threshold=0):
-        """
-        Are the QDR devices behaving?
-        :param threshold: how many errors are permisible?
-        :return:
-        """
-        LOGGER.warn('ROACH2 support being deprecatedin our branch.')
-        return (self.check_ct_parity(threshold) and
-                self.check_cd_parity(threshold))
-
-    def check_ct_parity(self, threshold):
-        """
-        Check the QDR corner turner parity error counters
-        :param threshold: how many errors are permisible?
-        :return:
-        """
-        LOGGER.warn('ROACH2 support being deprecatedin our branch.')
-        return self._check_qdr_parity(
-            qdr_id='CT',
-            threshold=threshold,
-            reg_name='ct_ctrs',
-            reg_field_name='ct_parerr_cnt'
-        )
-
     def get_cd_status(self):
         """
         Retrieves all the Coarse Delay status registers.
         """
         return self.registers.cd_status.read()['data']
-
-    def check_cd(self):
-        """
-        Check the Coarse Delay, including any host memory errors.
-        """
-        d = self.get_cd_status()
-        if d['err_cnt'] > 0:
-            return False
-        return True
 
     def get_ct_status(self):
         """
@@ -843,36 +810,6 @@ class FpgaFHost(DigitiserStreamReceiver):
         #    pass
         #return rv
 
-    def check_ct(self):
-        """
-        Check the corner turner for errors
-        """
-        d0 = self.get_ct_status()
-        if not d0['init']:
-            LOGGER.error('%s: CT HMC did not init.', self.host)
-            return False
-        if not d0['post']:
-            LOGGER.error('%s: CT HMC did not POST.', self.host)
-            return False
-        time.sleep(0.1)
-        d1 = self.get_ct_status()
-        for not_change in [
-            'err_bank0', 'err_bank1', 'err_rdrdy0', 'err_rdrdy1',
-                'err_wrrdy0', 'err_wrrdy1', 'addr_err0_cnt',
-                'post_err0', 'post_err1', 'init_err0', 'init_err1',
-                'pktlen_err_cnt', 'dvblock_err_cnt']:
-            if not_change in d0:
-                if d0[not_change] != d1[not_change]:
-                    LOGGER.error('%s: CT %s is changing.' % (
-                        self.host, not_change))
-                    return False
-        for change in ['wr_ctr0', 'wr_ctr1']:
-            if d0[not_change] == d1[not_change]:
-                LOGGER.error('%s: CT %s is NOT changing.' % (
-                    self.host, change))
-                return False
-        return True
-
     def get_pfb_status(self):
         """
         Returns the pfb counters on f-eng
@@ -880,28 +817,6 @@ class FpgaFHost(DigitiserStreamReceiver):
         """
         return self.registers.pfb_status.read()['data']
 
-
-    def check_fft_overflow(self, wait_time=2e-3):
-        """
-        Checks if pfb counters on f-eng are not incrementing i.e. fft
-        is not overflowing
-        :param wait_time - time in seconds to wait between reg reads
-        :return: True/False
-        """
-        ctrs0 = self.registers.pfb_status.read()['data']
-        time.sleep(wait_time)
-        ctrs1 = self.registers.pfb_status.read()['data']
-        for cnt in range(0, 1):
-            overflow0 = ctrs0['pol%i_or_err_cnt' % cnt]
-            overflow1 = ctrs1['pol%i_or_err_cnt' % cnt]
-            if overflow0 != overflow1:
-            #     LOGGER.info('%s: pol%i_or_err_cnt okay.' % (self.host, cnt))
-            # else:
-                LOGGER.debug('%s: pol%i_or_err_cnt incrementing.' % (
-                    self.host, cnt))
-                return False
-        LOGGER.info('%s: PFB okay.' % self.host)
-        return True
 
     def get_adc_snapshot_for_input(self, input_name, unix_time=-1):
         """
@@ -1121,6 +1036,15 @@ class FpgaFHost(DigitiserStreamReceiver):
         Read the pack (output) status registers.
         """
         return self.registers.pack_dv_err.read()['data']
+
+    def get_unpack_status(self):
+        """
+        Returns the SPEAD counters on this FPGA.
+        """
+        rv = None
+        rv = self.registers.unpack_status.read()['data']
+        rv.update(self.registers.unpack_status1.read()['data'])
+        return rv
 
     def get_rx_reorder_status(self):
         """

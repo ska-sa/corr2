@@ -16,10 +16,10 @@ FHOST_REGS = ['spead_status', 'reorder_status', 'sync_ctrs', 'pfb_status',
               'cd_status', 'quant_status']
 #FHOST_REGS.extend(['ct_status%i' % ctr for ctr in range(2)])
 #FHOST_REGS.extend(['gbe%i_txctr' % ctr for ctr in range(1)])
-FHOST_REGS.extend(['gbe%i_txofctr' % ctr for ctr in range(1)])
+#FHOST_REGS.extend(['gbe%i_txofctr' % ctr for ctr in range(1)])
 #FHOST_REGS.extend(['gbe%i_rxctr' % ctr for ctr in range(1)])
 #FHOST_REGS.extend(['gbe%i_rxofctr' % ctr for ctr in range(1)])
-FHOST_REGS.extend(['gbe%i_rxbadctr' % ctr for ctr in range(1)])
+#FHOST_REGS.extend(['gbe%i_rxbadctr' % ctr for ctr in range(1)])
 
 
 @gen.coroutine
@@ -47,6 +47,7 @@ def _cb_feng_rxtime(sensor_ok, sensors_value):
             else:
                 sensor_u.set(value=times[host],status=Corr2Sensor.FAILURE)
     except Exception as e:
+        raise
         sensor_ok.set(value=False,status=Corr2Sensor.FAILURE)
         for sensor, sensor_u in sensors_value.values():
             sensor.set(value=0,status=Corr2Sensor.FAILURE)
@@ -122,6 +123,7 @@ def _cb_feng_ct(sensors, f_host):
     LOGGER.debug('_cb_feng_ct ran on {}'.format(f_host.host))
     IOLoop.current().call_later(10, _cb_feng_ct, sensors, f_host)
 
+@gen.coroutine
 def _cb_feng_pack(sensor, f_host):
     """
     Sensor call back function to check F-engine pack block.
@@ -140,16 +142,16 @@ def _cb_feng_pack(sensor, f_host):
     LOGGER.debug('_cb_feng_pack ran on {}'.format(f_host.host))
     IOLoop.current().call_later(10, _cb_feng_pack, sensor, f_host)
 
-@gen.coroutine
-def _cb_fhost_lru(sensor, f_host):
-    """
-    Sensor call back function for F-engine LRU
-    :param sensor:
-    :return:
-    """
-    boolean_sensor_do(f_host, sensor, [f_host.host_okay])
-    LOGGER.debug('_cb_fhost_lru ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_fhost_lru, sensor, f_host)
+#@gen.coroutine
+#def _cb_fhost_lru(sensor, f_host):
+#    """
+#    Sensor call back function for F-engine LRU
+#    :param sensor:
+#    :return:
+#    """
+#    boolean_sensor_do(f_host, sensor, [f_host.host_okay])
+#    LOGGER.debug('_cb_fhost_lru ran on {}'.format(f_host.host))
+#    IOLoop.current().call_later(10, _cb_fhost_lru, sensor, f_host)
 
 
 @gen.coroutine
@@ -230,7 +232,7 @@ def _cb_feng_rx_spead(sensors, f_host):
     # SPEAD RX
     executor = sensors['cnt'].executor
     try:
-        results = yield executor.submit(f_host.get_spead_status)
+        results = yield executor.submit(f_host.get_unpack_status)
 #        accum_errors=0
 #        for key in ['header_err_cnt','magic_err_cnt','pad_err_cnt','pkt_len_err_cnt','time_err_cnt']:
 #            accum_errors+=results[key]
@@ -293,11 +295,11 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
     for _f in sens_man.instrument.fhosts:
         fhost = host_offset_lookup[_f.host]
         sensor = sens_man.do_sensor(
-            Corr2Sensor.integer, '{}-rxtimestamp'.format(fhost),
+            Corr2Sensor.integer, '{}-rx-timestamp'.format(fhost),
             'F-engine %s - sample-counter timestamps received from the '
             'digitisers' % _f.host)
         sensor_u = sens_man.do_sensor(
-            Corr2Sensor.float, '{}-rxtime-unix'.format(fhost),
+            Corr2Sensor.float, '{}-rx-unixtime'.format(fhost),
             'F-engine %s - UNIX timestamps received from '
             'the digitisers' % _f.host)
         sensors_value[_f.host] = (sensor, sensor_u)
@@ -338,7 +340,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
 #            'F-engine RX SPEAD packet errors',
 #            executor=executor),
             'cnt': sens_man.do_sensor(
-            Corr2Sensor.integer, '{}-spead-cnt'.format(fhost),
+            Corr2Sensor.integer, '{}-rx-pkt-cnt'.format(fhost),
             'F-engine RX SPEAD packet counter',
             executor=executor),
 #            'header_err_cnt': sens_man.do_sensor(
@@ -362,7 +364,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
 #            'F-engine RX SPEAD packet length errors',
 #            executor=executor),
             'time_err_cnt': sens_man.do_sensor(
-            Corr2Sensor.integer, '{}-spead-time-err-cnt'.format(fhost),
+            Corr2Sensor.integer, '{}-rx-pkt-time-err-cnt'.format(fhost),
             'F-engine RX SPEAD packet timestamp has non-zero lsbs.',
             executor=executor),
         }

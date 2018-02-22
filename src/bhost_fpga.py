@@ -194,9 +194,9 @@ class FpgaBHost(FpgaXHost):
         """
         if x_indices is None:
             x_indices = range(self.x_per_fpga)
-        stat0 = self.beng_get_status(x_indices)
+        stat0 = self.get_beng_status(x_indices)
         time.sleep(self._get_checktime())
-        stat1 = self.beng_get_status(x_indices)
+        stat1 = self.get_beng_status(x_indices)
         rv = []
         for xeng in x_indices:
             rvb = []

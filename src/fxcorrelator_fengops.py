@@ -315,24 +315,6 @@ class FEngineOperations(object):
         if sleeptime > 0:
             time.sleep(sleeptime)
 
-    def check_rx(self, max_waittime=30):
-        """
-        Check that the F-engines are receiving data correctly
-        :param max_waittime:
-        :return:
-        """
-        self.logger.info('Checking F hosts are receiving data...')
-        results = THREADED_FPGA_FUNC(
-            self.hosts, timeout=max_waittime+1,
-            target_function=('check_rx'))
-        all_okay = True
-        for _v in results.values():
-            all_okay = all_okay and _v
-        if not all_okay:
-            self.logger.error('\tERROR in F-engine rx data.')
-        self.logger.info('\tdone.')
-        return all_okay
-
     def get_rx_timestamps(self):
         """
         Are the timestamps being received by the F-engines okay?
@@ -344,59 +326,48 @@ class FEngineOperations(object):
             self.hosts, timeout=5,
             target_function='get_local_time')
         read_time = time.time()
-        synch_epoch = self.corr.synchronisation_epoch
-        if synch_epoch == -1:
-            self.logger.warning('System synch epoch unset, skipping F-engine '
-                                'future time test.')
+        feng_mcnts = {}
         feng_times = {}
-        feng_times_unix = {}
+        rv=True
         for host in self.hosts:
             feng_mcnt = results[host.host]
-            feng_times[host.host] = feng_mcnt
-            if synch_epoch != -1:
-                # is the time in the future?
-                feng_time_s = feng_mcnt / self.corr.sample_rate_hz
-                feng_time = synch_epoch + feng_time_s
-                feng_times_unix[host.host] = feng_time
-            else:
-                feng_times_unix[host.host] = -1
+            feng_mcnts[host.host] = feng_mcnt
+            feng_times[host.host] = self.corr.time_from_mcnt(feng_mcnt)
 
         for host in self.hosts:
             feng_mcnt = results[host.host]
+            feng_time = self.corr.time_from_mcnt(feng_mcnt)
             # are the count bits okay?
             if feng_mcnt & 0xfff != 0:
-                errmsg = '%s: bottom 12 bits of timestamp from F-engine are ' \
-                       'not zero?! feng_mcnt(%i)' % (host.host, feng_mcnt)
+                errmsg = '%s,%s: bottom 12 bits of timestamp from F-engine are ' \
+                       'not zero?! feng_mcnt(%012X)' % (host.host,
+                              host.fengines[0].input.name,feng_mcnt)
                 self.logger.error(errmsg)
-                return False, feng_times, feng_times_unix
-            # compare the F-engine times to the local UNIX time
-            if synch_epoch != -1:
-                # is the time in the future?
-                feng_time_s = feng_mcnt / self.corr.sample_rate_hz
-                feng_time = synch_epoch + feng_time_s
-                if feng_time > read_time:
-                    errmsg = '%s: F-engine time cannot be in the future? ' \
-                           'now(%.3f) feng_time(%.3f)' % (host.host, read_time,
-                                                          feng_time)
-                    self.logger.error(errmsg)
-                    return False, feng_times, feng_times_unix
-                # is the time close enough to local time?
-                if abs(read_time - feng_time) > self.corr.time_offset_allowed_s:
-                    errmsg = '%s: time calculated from board cannot be so ' \
-                             'far from local time: now(%.3f) feng_time(%.3f) ' \
-                             'diff(%.3f)' % (host.host, read_time, feng_time,
-                                             read_time - feng_time)
-                    self.logger.error(errmsg)
-                    return False, feng_times, feng_times_unix
+                rv=False
+            # is the time in the future?
+            if feng_time > read_time:
+                errmsg = '%s, %s: F-engine time cannot be in the future? ' \
+                       'now(%.3f) feng_time(%.3f)' % (host.host, 
+                          host.fengines[0].input.name,read_time,feng_time)
+                self.logger.error(errmsg)
+                rv=False
+            # is the time close enough to local time?
+            if abs(read_time - feng_time) > self.corr.time_offset_allowed_s:
+                errmsg = '%s, %s: time calculated from board cannot be so ' \
+                         'far from local time: now(%.3f) feng_time(%.3f) ' \
+                         'diff(%.3f)' % (host.host, host.fengines[0].input.name, 
+                            read_time, feng_time, read_time - feng_time)
+                self.logger.error(errmsg)
+                rv=False
         # are they all within 500ms of one another?
         diff = max(feng_times.values()) - min(feng_times.values())
-        diff_ms = diff / self.corr.sample_rate_hz * 1000.0
+        diff_ms = diff * 1000.0
         if diff_ms > self.corr.time_jitter_allowed_ms:
             errmsg = 'F-engine timestamps are too far apart: %.3fms' % diff_ms
             self.logger.error(errmsg)
-            return False, feng_times, feng_times_unix
+            rv=False
         self.logger.info('\tdone.')
-        return True, feng_times, feng_times_unix
+        return rv, feng_mcnts, feng_times
 
     def delay_set_all(self, loadtime, delay_list):
         """
@@ -497,22 +468,6 @@ class FEngineOperations(object):
         loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
         return loadtime_mcnt
 
-    def check_tx(self):
-        """
-        Check that the F-engines are sending data correctly
-        :return:
-        """
-        self.logger.info('Checking F hosts are transmitting data...')
-        results = THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                                     target_function=('check_tx_raw',
-                                                      (0.2, 5), {}))
-        all_okay = True
-        for _v in results.values():
-            all_okay = all_okay and _v
-        if not all_okay:
-            self.logger.error('\tERROR in F-engine tx data.')
-        self.logger.info('\tdone.')
-        return all_okay
 
     def resync_and_check(self):
         """

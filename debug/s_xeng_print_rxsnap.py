@@ -169,7 +169,7 @@ for pkt_cnt,pkt in enumerate(spead_processor.packets):
     chan_on_this_xeng=pkt.headers[0x3]/pkt.headers[0x4]
     if exp_xeng==0:
         print '%4i'%pkt_cnt,
-        print '[mcnt %16i]'%pkt.headers[0x1600],
+        print '[mcnt %012x]'%pkt.headers[0x1600],
     #    print '[flags %012X]'%pkt.headers[0x4102],
         print '[heap_id 0x%012X]'%pkt.headers[0x1],
         print '[heap_size %i]'%pkt.headers[0x2],

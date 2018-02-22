@@ -340,8 +340,8 @@ class XEngineOperations(object):
             """
             # older versions had other register names
 
-            vacc_data = self.vacc_status()
-            reord_data = self.reorder_status()
+            vacc_data = self.get_vacc_status()
+            reord_data = self.get_reorder_status()
             return {'reorder': reord_data, 'vacc': vacc_data}
     
         def _vacc_data_check(d0, d1):
@@ -487,7 +487,7 @@ class XEngineOperations(object):
             self.logger.info('\tAll X hosts are receiving data ok.')
         return all_okay
 
-    def reorder_status(self):
+    def get_rx_reorder_status(self):
         """
         Get a dictionary of the reorder status registers for all
         x-engines.
@@ -496,14 +496,14 @@ class XEngineOperations(object):
         return THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                   target_function='get_rx_reorder_status')
 
-    def vacc_status(self):
+    def get_vacc_status(self):
         """
         Get a dictionary of the vacc status registers for all
         x-engines.
         :return: {}
         """
         rv=THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                                  target_function='vacc_get_status')
+                                  target_function='get_vacc_status')
 
         sync=True
         timestamp=rv[rv.keys()[0]][0]['timestamp']
@@ -614,110 +614,37 @@ class XEngineOperations(object):
                              (time_from_mcnt, t_now))
         return ldmcnt
 
-    def _vacc_sync_print_vacc_statuses(self, vstatus):
+    def vacc_print_statuses(self, vstatus=None):
         """
         Print the vacc statuses to the logger
         :param vstatus:
         :return:
         """
+        if vstatus==None:
+            vstatus=self.get_vacc_status()
         self.logger.info('vacc statii:')
         for n,_host in enumerate(self.hosts):
             self.logger.info('\t%i, %s:' %(n,_host.host))
             for _ctr, _status in enumerate(vstatus[_host.host]):
                 self.logger.info('\t\t%i: %s' % (_ctr, _status))
 
-    def _vacc_sync_check_counts_initial(self):
-        """
-        Check the arm and load counts initially
-        :return:
-        """
-        # read the current arm and load counts
-        vacc_status = self.vacc_status()
-        arm_count0 = vacc_status[self.hosts[0].host][0]['armcount']
-        load_count0 = vacc_status[self.hosts[0].host][0]['loadcount']
-        reset_required=False
-        # check the xhosts load and arm counts
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                _bad_ldcnt = status['loadcount'] != load_count0
-                _bad_armcnt = status['armcount'] != arm_count0
-                if _bad_ldcnt or _bad_armcnt:
-                    errmsg = 'All hosts do not have matching arm and ' \
-                           'load counts. Forcing reset'
-                    self.logger.error(errmsg)
-                    self._vacc_sync_print_vacc_statuses(vacc_status)
-                    reset_required=True
-                    #raise RuntimeError(errmsg)
-        if reset_required:
-            self.vacc_reset_all()
-            vaccstat = THREADED_FPGA_FUNC(
-                self.hosts, timeout=10,
-                target_function='vacc_check_reset_status')
-            for xhost, result in vaccstat.items():
-                if not result:
-                    errmsg = 'xeng_vacc_sync: resetting vaccs on ' \
-                             '%s failed.' % xhost
-                    self.logger.error(errmsg)
-                    #raise RuntimeError(errmsg)
-
-        arm_count0 = vacc_status[self.hosts[0].host][0]['armcount']
-        load_count0 = vacc_status[self.hosts[0].host][0]['loadcount']
-        self.logger.info('\tBefore arming: arm_count(%i) load_count(%i)' %
-                         (arm_count0, load_count0))
-        return arm_count0, load_count0
-
-    def _vacc_sync_check_arm_count(self, armcount_initial):
+    def _vacc_sync_check_armload_increment(self, vacc_status_initial,check='arm_cnt'):
         """
         Check that the arm count increased
         :return:
         """
-        vacc_status = self.vacc_status()
-        arm_count_new = vacc_status[self.hosts[0].host][0]['armcount']
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                if ((status['armcount'] != arm_count_new) or
-                        (status['armcount'] != armcount_initial + 1)):
-                    errmsg = 'xeng_vacc_sync: all hosts do not have ' \
-                           'matching arm counts or arm count did ' \
-                           'not increase.'
+        vacc_status_new = self.get_vacc_status()
+        rv=True
+        for host in self.hosts: #iterate over hosts
+            for i,status_new in enumerate(vacc_status_new[host.host]): #iterate over vaccs on host
+                if (status_new[check] != vacc_status_initial[host.host][i][check] + 1):
+                    errmsg = "xeng_vacc_sync: %s vacc %i's %s did not incrment."%(host.host,i,check)
                     self.logger.error(errmsg)
-                    self._vacc_sync_print_vacc_statuses(vacc_status)
-                    return False
-        self.logger.info('\tDone arming')
-        return True
+                    rv=False
+        if rv: self.logger.info('\tVACC %s counters incremented successfully.'%check)
+        return rv
 
-    def _vacc_sync_check_loadtimes(self):
-        """
-
-        :return:
-        """
-        lsws = THREADED_FPGA_OP(
-            self.hosts, timeout=10,
-            target_function=(
-                lambda x: x.registers.vacc_time_lsw.read()['data']),)
-        msws = THREADED_FPGA_OP(
-            self.hosts, timeout=10,
-            target_function=(
-                lambda x: x.registers.vacc_time_msw.read()['data']),)
-        _host0 = self.hosts[0].host
-        for host in self.hosts:
-            if ((lsws[host.host]['lsw'] != lsws[_host0]['lsw']) or
-                    (msws[host.host]['msw'] != msws[_host0]['msw'])):
-                errmsg = 'xeng_vacc_sync: all hosts do not have matching ' \
-                       'vacc LSWs and MSWs'
-                self.logger.error(errmsg)
-                self.logger.error('LSWs: %s' % lsws)
-                self.logger.error('MSWs: %s' % msws)
-                vacc_status = self.vacc_status()
-                self._vacc_sync_print_vacc_statuses(vacc_status)
-                return False
-        lsw = lsws[self.hosts[0].host]['lsw']
-        msw = msws[self.hosts[0].host]['msw']
-        xldtime = (msw << 32) | lsw
-        self.logger.info('\tx engines have vacc ld time %i' % xldtime)
-        return True
-
-    def _vacc_sync_wait_for_arm(self, load_mcount):
+    def _vacc_sync_wait_for_mcnt(self, load_mcount):
         """
 
         :param load_mcount:
@@ -725,39 +652,18 @@ class XEngineOperations(object):
         """
         t_now = time.time()
         time_from_mcnt = self.corr.time_from_mcnt(load_mcount)
-        wait_time = time_from_mcnt - t_now + 1.2
+        wait_time = time_from_mcnt - t_now + self.get_acc_time() + 1.2
         if wait_time <= 0:
-            self.logger.error('\tThis is wonky - why is the wait_time '
-                              'less than zero? %.3f' % wait_time)
+            self.logger.error('\tTime passed %i seconds ago.'%wait_time)
             self.logger.error('\tcorr synch epoch: %i' %
                               self.corr.synchronisation_epoch)
             self.logger.error('\ttime.time(): %.10f' % t_now)
             self.logger.error('\ttime_from_mcnt: %.10f' % time_from_mcnt)
             self.logger.error('\tldmcnt: %i' % load_mcount)
-            # hack
-            wait_time = t_now + 4
 
         self.logger.info('\tWaiting %2.2f seconds for arm to '
                          'trigger.' % wait_time)
         time.sleep(wait_time)
-
-    def _vacc_sync_check_load_count(self, load_count0):
-        """
-        Did the vaccs load counts increment correctly?
-        :param load_count0:
-        :return:
-        """
-        vacc_status = self.vacc_status()
-        load_count_new = vacc_status[self.hosts[0].host][0]['loadcount']
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                if ((status['loadcount'] != load_count_new) or
-                        (status['loadcount'] != load_count0 + 1)):
-                    self.logger.error('vacc did not trigger!')
-                    self._vacc_sync_print_vacc_statuses(vacc_status)
-                    return False
-        self.logger.info('\tAll vaccs triggered correctly.')
-        return True
 
     def _vacc_sync_final_check(self):
         """
@@ -767,16 +673,10 @@ class XEngineOperations(object):
         self.logger.info('\tChecking for errors & accumulations...')
         vac_okay = self._vacc_check_okay_initial()
         if not vac_okay:
-            vacc_status = self.vacc_status()
-            vacc_error_detail = THREADED_FPGA_FUNC(
-                self.hosts, timeout=5,
-                target_function='vacc_get_error_detail')
+            vacc_status = self.get_vacc_status()
             self.logger.error('\t\txeng_vacc_sync: exited on vacc error')
             self.logger.error('\t\txeng_vacc_sync: vacc statii:')
             for host, item in vacc_status.items():
-                self.logger.error('\t\t\t%s: %s' % (host, str(item)))
-            self.logger.error('\t\txeng_vacc_sync: vacc errors:')
-            for host, item in vacc_error_detail.items():
                 self.logger.error('\t\t\t%s: %s' % (host, str(item)))
             self.logger.error('\t\txeng_vacc_sync: exited on vacc error')
             return False
@@ -790,7 +690,7 @@ class XEngineOperations(object):
         ticking over?
         :return: True or False
         """
-        vacc_status = self.vacc_status()
+        vacc_status = self.get_vacc_status()
         note_errors = False
         for host in self.hosts:
             for xeng_ctr, status in enumerate(vacc_status[host.host]):
@@ -875,29 +775,21 @@ class XEngineOperations(object):
             target_function=('vacc_set_loadtime', (load_mcount,),))
 
         # check the current counts
-        (arm_count0,
-         load_count0) = self._vacc_sync_check_counts_initial()
+        initial_status=self.get_vacc_status()
 
         # arm the xhosts
         THREADED_FPGA_FUNC(
             self.hosts, timeout=10, target_function='vacc_arm')
 
         # did the arm count increase?
-        self._vacc_sync_check_arm_count(arm_count0)
-
-        ## check the the load time was stored correctly
-        #self._vacc_sync_check_loadtimes()
+        self._vacc_sync_check_armload_increment(initial_status,check='arm_cnt')
 
         # wait for the vaccs to trigger
-        self._vacc_sync_wait_for_arm(load_mcount)
+        self._vacc_sync_wait_for_mcnt(load_mcount)
 
         # check the status to see that the load count increased
-        if not self._vacc_sync_check_load_count(load_count0):
-            feng_mcnt = self.corr.fhosts[0].get_local_time()
-            feng_time = self.corr.time_from_mcnt(feng_mcnt)
-            self.logger.info('Current Feng0 mcnt: %i (%i; %s)' %
-                             (feng_mcnt, feng_time,
-                              time.ctime(feng_time)))
+        if not self._vacc_sync_check_armload_increment(initial_status,check='ld_cnt'):
+            self.corr.fops.get_rx_timestamps()
             return -1
 
         synch_time = self.corr.time_from_mcnt(load_mcount)
@@ -988,6 +880,24 @@ class XEngineOperations(object):
             self.vacc_sync()
         if reenable_timer:
             self.vacc_check_timer_start()
+
+    def get_vacc_loadtime(self):
+        """
+        Return the last time the VACCs were all loaded (synchronised),
+        else, return -1
+        """
+        results = THREADED_FPGA_FUNC(
+            self.hosts, timeout=5,
+            target_function=('get_vacc_loadtime'))
+
+        first_loadtime=results.values()[0]
+        for hostname,loadtime in results.iteritems():
+            if first_loadtime!=loadtime:
+                errmsg = 'VACCs are not synchronised!'
+                self.logger.error(errmsg)
+                first_loadtime=-1
+                break
+        return first_loadtime
 
     def get_version_info(self):
         """
