@@ -430,60 +430,60 @@ class FpgaFHost(DigitiserStreamReceiver):
         return cls(hostname, katcp_port, bitstream=bitstream,
                    connect=True, config=config_source)
 
-    def cd_okay(self, wait_time=1):
-        """
-        Is the coarse-delay functioning correctly? Only applicable to the
-        QDR-based CD. Non-QDR CD will just return True.
-        :param wait_time:
-        :return:
-        """
-        if 'cd_ctrs' not in self.registers.names():
-            LOGGER.info('%s: cd_okay() - no QDR-based CD found.' % self.host)
-            return True
-        cd_ctrs0 = self.registers.cd_ctrs.read()['data']
-        time.sleep(wait_time)
-        cd_ctrs1 = self.registers.cd_ctrs.read()['data']
-        err0_diff = cd_ctrs1['cd_error_cnt0'] - cd_ctrs0['cd_error_cnt0']
-        err1_diff = cd_ctrs1['cd_error_cnt1'] - cd_ctrs0['cd_error_cnt1']
-        parerr0_diff = cd_ctrs1['cd_parerr_cnt0'] - cd_ctrs0['cd_parerr_cnt0']
-        parerr1_diff = cd_ctrs1['cd_parerr_cnt1'] - cd_ctrs0['cd_parerr_cnt1']
-        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
-            LOGGER.error('%s: cd_okay() - FALSE, QDR CD error.' % self.host)
-            return False
-        LOGGER.info('%s: cd_okay() - TRUE.' % self.host)
-        return True
-
-    def ct_okay(self, wait_time=1):
-        """
-        Is the corner turner working?
-        :param wait_time - time in seconds to wait between reg reads
-        :return: True or False,
-        """
-        ct_ctrs0 = self.registers.ct_ctrs.read()['data']
-        time.sleep(wait_time)
-        ct_ctrs1 = self.registers.ct_ctrs.read()['data']
-        err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
-        err1_diff = ct_ctrs1['ct_err_cnt1'] - ct_ctrs0['ct_err_cnt1']
-        parerr0_diff = ct_ctrs1['ct_parerr_cnt0'] - ct_ctrs0['ct_parerr_cnt0']
-        parerr1_diff = ct_ctrs1['ct_parerr_cnt1'] - ct_ctrs0['ct_parerr_cnt1']
-        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
-            LOGGER.error('%s: ct_okay() - FALSE, CT error.' % self.host)
-            return False
-        LOGGER.info('%s: ct_okay() - TRUE.' % self.host)
-        return True
-
-    def host_okay(self):
-        """
-        Is this host/LRU okay?
-        :return:
-        """
-        if ((not self.check_rx()) or
-                (not self.ct_okay()) or
-                (not self.cd_okay())):
-            LOGGER.debug('%s: host_okay() - FALSE.' % self.host)
-            return False
-        LOGGER.debug('%s: host_okay() - TRUE.' % self.host)
-        return True
+#    def cd_okay(self, wait_time=1):
+#        """
+#        Is the coarse-delay functioning correctly? Only applicable to the
+#        QDR-based CD. Non-QDR CD will just return True.
+#        :param wait_time:
+#        :return:
+#        """
+#        if 'cd_ctrs' not in self.registers.names():
+#            LOGGER.info('%s: cd_okay() - no QDR-based CD found.' % self.host)
+#            return True
+#        cd_ctrs0 = self.registers.cd_ctrs.read()['data']
+#        time.sleep(wait_time)
+#        cd_ctrs1 = self.registers.cd_ctrs.read()['data']
+#        err0_diff = cd_ctrs1['cd_error_cnt0'] - cd_ctrs0['cd_error_cnt0']
+#        err1_diff = cd_ctrs1['cd_error_cnt1'] - cd_ctrs0['cd_error_cnt1']
+#        parerr0_diff = cd_ctrs1['cd_parerr_cnt0'] - cd_ctrs0['cd_parerr_cnt0']
+#        parerr1_diff = cd_ctrs1['cd_parerr_cnt1'] - cd_ctrs0['cd_parerr_cnt1']
+#        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
+#            LOGGER.error('%s: cd_okay() - FALSE, QDR CD error.' % self.host)
+#            return False
+#        LOGGER.info('%s: cd_okay() - TRUE.' % self.host)
+#        return True
+#
+#    def ct_okay(self, wait_time=1):
+#        """
+#        Is the corner turner working?
+#        :param wait_time - time in seconds to wait between reg reads
+#        :return: True or False,
+#        """
+#        ct_ctrs0 = self.registers.ct_ctrs.read()['data']
+#        time.sleep(wait_time)
+#        ct_ctrs1 = self.registers.ct_ctrs.read()['data']
+#        err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
+#        err1_diff = ct_ctrs1['ct_err_cnt1'] - ct_ctrs0['ct_err_cnt1']
+#        parerr0_diff = ct_ctrs1['ct_parerr_cnt0'] - ct_ctrs0['ct_parerr_cnt0']
+#        parerr1_diff = ct_ctrs1['ct_parerr_cnt1'] - ct_ctrs0['ct_parerr_cnt1']
+#        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
+#            LOGGER.error('%s: ct_okay() - FALSE, CT error.' % self.host)
+#            return False
+#        LOGGER.info('%s: ct_okay() - TRUE.' % self.host)
+#        return True
+#
+#    def host_okay(self):
+#        """
+#        Is this host/LRU okay?
+#        :return:
+#        """
+#        if ((not self.check_rx()) or
+#                (not self.ct_okay()) or
+#                (not self.cd_okay())):
+#            LOGGER.debug('%s: host_okay() - FALSE.' % self.host)
+#            return False
+#        LOGGER.debug('%s: host_okay() - TRUE.' % self.host)
+#        return True
 
     def add_fengine(self, fengine):
         """
@@ -774,123 +774,49 @@ class FpgaFHost(DigitiserStreamReceiver):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
-    def check_qdr_devices(self, threshold=0):
-        """
-        Are the QDR devices behaving?
-        :param threshold: how many errors are permisible?
-        :return:
-        """
-        LOGGER.warn('ROACH2 support being deprecatedin our branch.')
-        return (self.check_ct_parity(threshold) and
-                self.check_cd_parity(threshold))
-
-    def check_ct_parity(self, threshold):
-        """
-        Check the QDR corner turner parity error counters
-        :param threshold: how many errors are permisible?
-        :return:
-        """
-        LOGGER.warn('ROACH2 support being deprecatedin our branch.')
-        return self._check_qdr_parity(
-            qdr_id='CT',
-            threshold=threshold,
-            reg_name='ct_ctrs',
-            reg_field_name='ct_parerr_cnt'
-        )
-
     def get_cd_status(self):
         """
         Retrieves all the Coarse Delay status registers.
         """
         return self.registers.cd_status.read()['data']
 
-    def check_cd(self):
-        """
-        Check the Coarse Delay, including any host memory errors.
-        """
-        d = self.get_cd_status()
-        if d['err_cnt'] > 0:
-            return False
-        return True
-
     def get_ct_status(self):
         """
         Retrieve all the Corner-Turner registers.
+        returns a list (one per pol on board) of status dictionaries.
         """ 
-        if 'ct_status0' in self.registers.names():
-            rv = self.registers.ct_status0.read()['data']
-        else:
-            rv = self.registers.ct_status.read()['data']
-        for ctr in range(1, 7):
-            try:
-                rv.update(self.registers['ct_status%i' % ctr].read()['data'])
-            except (AttributeError, KeyError):
-                pass
-        try:
-            reg = self.registers.ct_out_dv_rate
-            rv['out_dv_rate'] = reg.read()['data']['reg']
-            reg = self.registers.ct_in_dv_rate
-            rv['in_dv_rate'] = reg.read()['data']['reg']
-        except (AttributeError, KeyError):
-            pass
-        try:
-
-            rv.update(self.registers.ct_dv_err.read()['data'])
-        except (AttributeError, KeyError):
-            pass
+        rv=[]
+        for pol in range(self.num_fengines):
+            rv.append(self.registers['hmc_ct_err_status%i' %pol].read()['data'])
         return rv
+        
+        #rv = self.registers.ct_status0.read()['data']
+        #for ctr in range(1, 7):
+        #    try:
+        #        rv.update(self.registers['ct_status%i' % ctr].read()['data'])
+        #    except (AttributeError, KeyError):
+        #        pass
+        #try:
+        #    reg = self.registers.ct_out_dv_rate
+        #    rv['out_dv_rate'] = reg.read()['data']['reg']
+        #    reg = self.registers.ct_in_dv_rate
+        #    rv['in_dv_rate'] = reg.read()['data']['reg']
+        #except (AttributeError, KeyError):
+        #    pass
+        #try:
 
-    def check_ct(self):
-        """
-        Check the corner turner for errors
-        """
-        d0 = self.get_ct_status()
-        if not d0['init']:
-            LOGGER.error('%s: CT HMC did not init.', self.host)
-            return False
-        if not d0['post']:
-            LOGGER.error('%s: CT HMC did not POST.', self.host)
-            return False
-        time.sleep(0.1)
-        d1 = self.get_ct_status()
-        for not_change in [
-            'err_bank0', 'err_bank1', 'err_rdrdy0', 'err_rdrdy1',
-                'err_wrrdy0', 'err_wrrdy1', 'addr_err0_cnt',
-                'post_err0', 'post_err1', 'init_err0', 'init_err1',
-                'pktlen_err_cnt', 'dvblock_err_cnt']:
-            if not_change in d0:
-                if d0[not_change] != d1[not_change]:
-                    LOGGER.error('%s: CT %s is changing.' % (
-                        self.host, not_change))
-                    return False
-        for change in ['wr_ctr0', 'wr_ctr1']:
-            if d0[not_change] == d1[not_change]:
-                LOGGER.error('%s: CT %s is NOT changing.' % (
-                    self.host, change))
-                return False
-        return True
+        #    rv.update(self.registers.ct_dv_err.read()['data'])
+        #except (AttributeError, KeyError):
+        #    pass
+        #return rv
 
-    def check_fft_overflow(self, wait_time=2e-3):
+    def get_pfb_status(self):
         """
-        Checks if pfb counters on f-eng are not incrementing i.e. fft
-        is not overflowing
-        :param wait_time - time in seconds to wait between reg reads
-        :return: True/False
+        Returns the pfb counters on f-eng
+        :return: dict
         """
-        ctrs0 = self.registers.pfb_status.read()['data']
-        time.sleep(wait_time)
-        ctrs1 = self.registers.pfb_status.read()['data']
-        for cnt in range(0, 1):
-            overflow0 = ctrs0['pol%i_or_err_cnt' % cnt]
-            overflow1 = ctrs1['pol%i_or_err_cnt' % cnt]
-            if overflow0 != overflow1:
-            #     LOGGER.info('%s: pol%i_or_err_cnt okay.' % (self.host, cnt))
-            # else:
-                LOGGER.debug('%s: pol%i_or_err_cnt incrementing.' % (
-                    self.host, cnt))
-                return False
-        LOGGER.info('%s: PFB okay.' % self.host)
-        return True
+        return self.registers.pfb_status.read()['data']
+
 
     def get_adc_snapshot_for_input(self, input_name, unix_time=-1):
         """
@@ -1105,6 +1031,21 @@ class FpgaFHost(DigitiserStreamReceiver):
         return {'p0': AdcData(-1, rvp0),
                 'p1': AdcData(-1, rvp1)}
 
+    def get_pack_status(self):
+        """
+        Read the pack (output) status registers.
+        """
+        return self.registers.pack_dv_err.read()['data']
+
+    def get_unpack_status(self):
+        """
+        Returns the SPEAD counters on this FPGA.
+        """
+        rv = None
+        rv = self.registers.unpack_status.read()['data']
+        rv.update(self.registers.unpack_status1.read()['data'])
+        return rv
+
     def get_rx_reorder_status(self):
         """
         Read the reorder block counters
@@ -1112,8 +1053,11 @@ class FpgaFHost(DigitiserStreamReceiver):
         """
         if 'reorder_ctrs' in self.registers.names():
             return self.registers.reorder_ctrs.read()['data']
-        else:
-            return self.registers.reorder_status.read()['data']
+        elif 'reorder_status' in self.registers.names():
+            rv=self.registers.reorder_status.read()['data']
+        if 'reorder_status1' in self.registers.names():
+            rv.update(self.registers.reorder_status1.read()['data'])
+        return rv
 
     def _skarab_subscribe_to_multicast(self):
         """

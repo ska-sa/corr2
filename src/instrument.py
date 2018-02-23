@@ -224,7 +224,7 @@ class Instrument(object):
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
         self._synchronisation_epoch = float(new_synch_time)
-        if self.sensor_manager:
+        if hasattr(self.sensor_manager,'sensors_sync_time'):
             self.sensor_manager.sensors_sync_time()
         self.logger.info('Set synch epoch to %.5f.' % new_synch_time)
 
