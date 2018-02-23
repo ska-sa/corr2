@@ -59,7 +59,9 @@ spectrum_count = [[0] * NUM_FREQ, [0] * NUM_FREQ]
 
 def print_ips():
     for ipint in ips_and_freqs:
-        print(str(IpAddress(ipint)), ':', len(ips_and_freqs[ipint]))
+        numfreqs = len(ips_and_freqs[ipint])
+        print('{ip}: {numfreq}'.format(ip=str(IpAddress(ipint)),
+                                       numfreq=numfreqs))
     print('********** - press ctrl-c to quit or wait for %i '
           'fchans' % FREQS_PER_X)
 
@@ -72,10 +74,13 @@ def b2fp(dword):
     return r1**2 + i1**2
 
 
+allfreqs = {}
+
 while True:
     try:
-        #for ctr in range(4):
-        coredata = fpga.gbes.gbe0.read_txsnap()
+        gbe = fpga.gbes.keys()[0]
+        gbe = fpga.gbes[gbe]
+        coredata = gbe.read_txsnap()
 
         spead_processor = casperspead.SpeadProcessor(None, None, None, None)
         gbe_packets = caspersnap.Snap.packetise_snapdata(coredata, 'eof')
@@ -99,6 +104,13 @@ while True:
             # ask the SPEAD processor to turn the GBE packets into SPEAD packets
         spead_processor.process_data(gbe_data)
 
+        # for pkt in spead_processor.packets:
+        #     freq = pkt.headers[0x4103]
+        #     # print pkt.headers
+        #     if freq not in allfreqs:
+        #         allfreqs[freq] = 1
+        # print allfreqs.keys()
+
         for pkt in spead_processor.packets:
             if pkt.ip not in ips_and_freqs:
                 ips_and_freqs[pkt.ip] = []
@@ -106,38 +118,29 @@ while True:
             if freq not in ips_and_freqs[pkt.ip]:
                 ips_and_freqs[pkt.ip].append(freq)
             ips_and_freqs[pkt.ip].sort()
-
             pkt_words = 0
             for data in pkt.data:
-                pwr0 = b2fp((data >> 48) & 0xffff)
-                pwr1 = b2fp((data >> 32) & 0xffff)
-                pwr2 = b2fp((data >> 16) & 0xffff)
-                pwr3 = b2fp((data >> 0)  & 0xffff)
-
-                # print(freq, ':'
-                # print('\t', pwr0
-                # print('\t', pwr1
-                # print('\t', pwr2
-                # print('\t', pwr3
-                # print(''
-
+                pwr = [b2fp((data >> 48) & 0xffff),
+                       b2fp((data >> 32) & 0xffff),
+                       b2fp((data >> 16) & 0xffff),
+                       b2fp((data >> 0)  & 0xffff)]
+                print('freq({})'.format(freq))
+                for p in pwr:
+                    print('\t{}'.format(p))
+                print('')
                 # if (pwr1 != 0) or (pwr3 != 0):
                 #     raise RuntimeError('pol1 isnt zero?')
-
-                spectrum_total[0][freq] += (pwr0 + pwr2)
+                spectrum_total[0][freq] += (pwr[0] + pwr[2])
                 spectrum_count[0][freq] += 2
-
-                spectrum_total[1][freq] += (pwr1 + pwr3)
+                spectrum_total[1][freq] += (pwr[1] + pwr[3])
                 spectrum_count[1][freq] += 2
-
                 pkt_words += 2
-
             if pkt_words != 256:
                 print('WARNING: packet for freq(%i) had %i words?' %
                       (freq, pkt_words))
-
+        # import IPython
+        # IPython.embed()
         print_ips()
-
         all_freqs = True
         for ipint in ips_and_freqs:
             if len(ips_and_freqs[ipint]) < FREQS_PER_X:
