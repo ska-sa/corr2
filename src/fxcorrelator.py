@@ -494,7 +494,7 @@ class FxCorrelator(Instrument):
             except Exception as exc:
                 errmsg = 'Could not create fhost %s: %s' % (host, exc.message)
                 self.logger.error(errmsg)
-                raise RuntimeError(errmsg)
+                raise exc
             self.fhosts.append(fpgahost)
         # choose class (b-engine inherits x-engine functionality)
         if self.found_beamformer:
@@ -510,7 +510,7 @@ class FxCorrelator(Instrument):
                 fpgahost = _target_class.from_config_source(
                     host, hostindex, self.katcp_port, self.configd)
             except Exception as exc:
-                errmsg = 'Could not create xhost %s: %s' % (host, exc.message)
+                errmsg = 'Could not create xhost %s: {}'.format(host, exc)
                 self.logger.error(errmsg)
                 raise RuntimeError(errmsg)
             self.xhosts.append(fpgahost)

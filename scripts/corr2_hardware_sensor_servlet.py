@@ -12,23 +12,34 @@ from tornado.ioloop import IOLoop
 import tornado.gen as gen
 
 from corr2 import sensors
+from corr2.sensors import Corr2Sensor
 from corr2.utils import KatcpStreamHandler
 from concurrent.futures import ThreadPoolExecutor
 
+LOGGER = logging.getLogger(__name__)
 
 class Corr2HardwareSensorServer(katcp.DeviceServer):
     def __init__(self, *args, **kwargs):
-        super(Corr2HardwareSensorServer, self).__init__(*args, **kwargs)
+        super(Corr2HardwareSensorServer, self).__init__('127.0.0.1',kwargs["port"])
         self.set_concurrency_options(thread_safe=False, handler_thread=False)
+        self.host = casperfpga.CasperFpga(kwargs["skarab_host"])
+        self.sensor_manager = sensors.SensorManager(self, instrument=None)
 
     def setup_sensors(self):
         """
         Must be implemented in interface.
         :return: nothing
         """
-        sensor_manager = sensors.SensorManager(self, instrument=None)
-        host = casperfpga.CasperFpga("skarab020405-01")
+        return
+
+    def initialise(self):
+        """
+        Setup and start sensors
+        :return:
+
+        """
         executor = ThreadPoolExecutor(max_workers=1)
+        sensor_manager=self.sensor_manager
 
         ioloop = getattr(sensor_manager.instrument, 'ioloop', None)
         if not ioloop:
@@ -37,19 +48,34 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             raise RuntimeError('IOLoop-containing katcp version required. Can go '
                                'no further.')
         sensor_manager.sensors_clear()
-        _setup_sensors(sensor_manager, executors, ioloop)
 
-    def initialise(self, host):
-        """
-        Setup and start sensors
-        :param host: the skarab hostname to connect to
-        :return:
+        sensordict=self.host.transport.get_sensor_data()
+        sensors={}
+        for key,value in sensordict.iteritems():
+            print(key,value)
+            try:
+                #TODO: automatic types.
+                if type(value[0]) == float:
+                    sensortype=Corr2Sensor.float
+                elif type(value[0]) == int:
+                    sensortype=Corr2Sensor.integer
+                elif type(value[0]) == bool:
+                    sensortype=Corr2Sensor.boolean
+                elif type(value[0]) == str:
+                    sensortype=Corr2Sensor.string
+                else:
+                    raise RuntimeError("Unknown datatype!")
+                sensors[key]=sensor_manager.do_sensor(
+                sensortype, '{}'.format(key),
+                'a generic HW sensor',unit=value[1])
+            except Exception as e:
+                LOGGER.error('Unable to add sensor {}-{}. Skipping.'.format(key,value))
+                raise e
+        ioloop.add_callback(_sensor_cb_hw, executor, sensors, self.host)
 
-        """
-        sensors_hardware.setup_sensors(sensor_manager)
 
 @gen.coroutine
-def _sensor_cb_hw(sensors):
+def _sensor_cb_hw(executor, sensors, host):
     """
     Sensor call back to check all HW sensors
     :param sensors: per-host dict of sensors
@@ -58,20 +84,23 @@ def _sensor_cb_hw(sensors):
     def set_failure():
         for key,sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
-    executor = sensors['aaaa'].executor
     try:
-        results = yield executor.submit(transport.get_rx_timestamps)
-        print('ran it!')
+        results = yield executor.submit(host.transport.get_sensor_data)
     except Exception as e:
-        LOGGER.error('Error updating feng rxtime sensor '
-                     '- {}'.format(e.message))
-        sensor_ok.set(time.time(), Corr2Sensor.UNKNOWN, False)
-        for sensor, sensor_u in sensor_values.values():
-            sensor.set(time.time(), Corr2Sensor.UNKNOWN, -1)
-            sensor_u.set(time.time(), Corr2Sensor.UNKNOWN, -1)
-    LOGGER.debug('_sensor_cb_feng_rxtime ran')
-    IOLoop.current().call_later(10, _sensor_cb_feng_rxtime,
-                                sensor_ok, sensor_values)
+        LOGGER.error('Error retrieving %s sensors '
+                     '- {}'.format(host.host,e.message))
+        results={}
+        set_failure()
+    for key,value in results.iteritems():
+        try:
+            status=Corr2Sensor.NOMINAL if value[2]=='OK' else Corr2Sensor.ERROR
+            sensors[key].set(value=value[0],status=status)
+        except Exception as e:
+            LOGGER.error('Error updating {}-{} sensor '
+                     '- {}'.format(host.host,key,e.message))
+    LOGGER.debug('sensorloop ran')
+    IOLoop.current().call_later(10, _sensor_cb_hw,
+                                executor,sensors,host)
 
 @gen.coroutine
 def on_shutdown(ioloop, server):
@@ -99,7 +128,6 @@ if __name__ == '__main__':
     parser.add_argument('--host', dest='host', action='store',
                         help='SKARAB hostname or IP address to connect to.')
     args = parser.parse_args()
-    print(args)
 
     try:
         log_level = getattr(logging, args.loglevel)
@@ -124,16 +152,17 @@ if __name__ == '__main__':
 
 
     ioloop = IOLoop.current()
-    sensor_server = Corr2HardwareSensorServer('127.0.0.1', args.port)
+    sensor_server = Corr2HardwareSensorServer('127.0.0.1', port=args.port, skarab_host=args.host)
     signal.signal(signal.SIGINT,
                   lambda sig, frame: ioloop.add_callback_from_signal(
                       on_shutdown, ioloop, sensor_server))
-    print('Hardware sensor server listening on port %d:' % args.port, end='')
+    print('Hardware sensor server for %s listening on port %d:' %(args.host,args.port), end='')
+    #sensor_server.initialise()
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
-    ioloop.add_callback(sensor_server.initialise, args.host)
+    ioloop.add_callback(sensor_server.initialise)
     ioloop.start()
 
 # end
