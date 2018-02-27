@@ -52,9 +52,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
         sensordict=self.host.transport.get_sensor_data()
         sensors={}
         for key,value in sensordict.iteritems():
-            print(key,value)
             try:
-                #TODO: automatic types.
                 if type(value[0]) == float:
                     sensortype=Corr2Sensor.float
                 elif type(value[0]) == int:

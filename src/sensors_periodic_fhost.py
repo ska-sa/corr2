@@ -106,16 +106,18 @@ def _cb_feng_ct(sensors, f_host):
     executor = sensors['pol0_post'].executor
     try:
         results = yield executor.submit(f_host.get_ct_status)
-        pol0_errs=results[0]['crc_err_cnt']|results[0]['rd_not_rdy']|results[0]['wr_not_rdy']|results[0]['fifo_full']
-        pol1_errs=results[1]['crc_err_cnt']|results[1]['rd_not_rdy']|results[1]['wr_not_rdy']|results[1]['fifo_full']
+        pol0_errs=results[0]['rd_not_rdy']|results[0]['wr_not_rdy']|results[0]['fifo_full']
+        pol1_errs=results[1]['rd_not_rdy']|results[1]['wr_not_rdy']|results[1]['fifo_full']
         pol0_status=Corr2Sensor.ERROR if pol0_errs else Corr2Sensor.NOMINAL
         pol1_status=Corr2Sensor.ERROR if pol1_errs else Corr2Sensor.NOMINAL
-        sensors['pol0_err'].set(value=pol0_errs,status=pol0_status,errif='changed')
-        sensors['pol1_err'].set(value=pol1_errs,status=pol1_status,errif='changed')
+        sensors['pol0_err'].set(value=pol0_errs,status=pol0_status)
+        sensors['pol1_err'].set(value=pol1_errs,status=pol1_status)
         pol0_status=Corr2Sensor.NOMINAL if results[0]['hmc_post'] else Corr2Sensor.ERROR
         pol1_status=Corr2Sensor.NOMINAL if results[1]['hmc_post'] else Corr2Sensor.ERROR
         sensors['pol0_post'].set(value=results[0]['hmc_post'],status=pol0_status)
         sensors['pol1_post'].set(value=results[1]['hmc_post'],status=pol1_status)
+        sensors['pol0_crc_err_cnt'].set(value=results[0]['crc_err_cnt'],errif='changed')
+        sensors['pol1_crc_err_cnt'].set(value=results[1]['crc_err_cnt'],errif='changed')
     except Exception as e:
         LOGGER.error(
             'Error updating CT sensors for {} - {}'.format(
@@ -442,6 +444,12 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         'pol1_err':sens_man.do_sensor(
             Corr2Sensor.boolean, '{}-ct1-err'.format(fhost),
             'F-engine corner-turner error occurred, pol1 (latching)', executor=executor),
+        'pol0_crc_err_cnt':sens_man.do_sensor(
+            Corr2Sensor.integer, '{}-ct0-crc-err-cnt'.format(fhost),
+            'F-engine corner-turner HMC CRC error count, pol0.', executor=executor),
+        'pol1_crc_err_cnt':sens_man.do_sensor(
+            Corr2Sensor.integer, '{}-ct1-crc-err-cnt'.format(fhost),
+            'F-engine corner-turner HMC CRC error count, pol1.', executor=executor),
         }
         ioloop.add_callback(_cb_feng_ct, sensors, _f)
         
