@@ -929,34 +929,30 @@ class FpgaFHost(DigitiserStreamReceiver):
         snapshot read operation?
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
-        if 'd0' in self.snapshots.snap_adc0_ss.field_names():
-            return self._get_adc_snapshots_compat_wierd_skarab_version()
-        if 'p1_d3' not in self.snapshots.snap_adc0_ss.field_names():
-            return self._get_adc_snapshots_compat()
         if 'adc_snap_trig_select' in self.registers.control.field_names():
             self.registers.control.write(adc_snap_trig_select=trig_sel)
         self.registers.control.write(adc_snap_arm=0)
-        self.snapshots.snap_adc0_ss.arm()
-        self.snapshots.snap_adc1_ss.arm()
-        self.registers.control.write(adc_snap_arm=1)
-        if custom_timeout != -1:
-            d = self.snapshots.snap_adc0_ss.read(
-                arm=False, timeout=custom_timeout)
-            time48 = d['extra_value']['data']['timestamp']
-            d = d['data']
-            d.update(self.snapshots.snap_adc1_ss.read(
-                arm=False, timeout=custom_timeout)['data'])
-        else:
-            d = self.snapshots.snap_adc0_ss.read(arm=False)
-            time48 = d['extra_value']['data']['timestamp']
-            d = d['data']
-            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
-        self.registers.control.write(adc_snap_arm=0)
-        # process p1_d4, which was broken up over two snapshots
-        d['p1_d4'] = []
-        for ctr in range(len(d['p1_d4_u8'])):
-            tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
-            d['p1_d4'].append(caspermem.bin2fp(tmp, 10, 9, True))
+#        self.snapshots.snap_adc0_ss.arm()
+#        self.snapshots.snap_adc1_ss.arm()
+#        self.registers.control.write(adc_snap_arm=1)
+#        if custom_timeout != -1:
+#            d = self.snapshots.snap_adc0_ss.read(
+#                arm=False, timeout=custom_timeout)
+#            time48 = d['extra_value']['data']['timestamp']
+#            d = d['data']
+#            d.update(self.snapshots.snap_adc1_ss.read(
+#                arm=False, timeout=custom_timeout)['data'])
+#        else:
+#            d = self.snapshots.snap_adc0_ss.read(arm=False)
+#            time48 = d['extra_value']['data']['timestamp']
+#            d = d['data']
+#            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
+#        self.registers.control.write(adc_snap_arm=0)
+        d = self.snapshots.snap_adc0_ss.read(man_trig=True)
+        time48 = d['extra_value']['data']['timestamp']
+        d = d['data']
+        d.update(self.snapshots.snap_adc1_ss.read(man_trig=True)['data'])
+
         # pack the data into simple lists
         rvp0 = []
         rvp1 = []
