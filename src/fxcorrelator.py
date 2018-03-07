@@ -149,15 +149,6 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
                            target_function='connect')
 
-        # set the IGMP version to be used, on all boards
-        igmp_version = self.configd['FxCorrelator'].get('igmp_version')
-        if igmp_version is not None:
-            self.logger.info('Setting FPGA hosts IGMP version '
-                             'to %s' % igmp_version)
-            THREADED_FPGA_FUNC(
-                self.fhosts + self.xhosts, timeout=5,
-                target_function=('set_igmp_version', (igmp_version, ), {}))
-
         # if we need to program the FPGAs, do so
         xbof = self.xhosts[0].bitstream
         fbof = self.fhosts[0].bitstream
@@ -510,7 +501,7 @@ class FxCorrelator(Instrument):
                 fpgahost = _target_class.from_config_source(
                     host, hostindex, self.katcp_port, self.configd)
             except Exception as exc:
-                errmsg = 'Could not create xhost %s: {}'.format(host, exc)
+                errmsg = 'Could not create xhost {}: {}'.format(host, exc)
                 self.logger.error(errmsg)
                 raise RuntimeError(errmsg)
             self.xhosts.append(fpgahost)

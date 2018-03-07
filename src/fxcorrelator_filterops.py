@@ -81,10 +81,6 @@ class FilterOperations(object):
             THREADED_FPGA_OP(self.hosts, timeout=5,
                              target_function=(lambda fpga_:
                                               fpga_.registers.receptor_id.write(pol0_id=0, pol1_id=1),))
-            THREADED_FPGA_FUNC(self.hosts, timeout=5,
-                               target_function=('set_igmp_version',
-                                                (self.corr.configd['FxCorrelator']['igmp_version'])))
-    
             THREADED_FPGA_OP(self.hosts, timeout=5,
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
             THREADED_FPGA_OP(self.hosts, timeout=5,

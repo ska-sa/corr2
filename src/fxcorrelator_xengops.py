@@ -294,7 +294,7 @@ class XEngineOperations(object):
         mapping = {}
         for host in self.hosts:
             board_id = self.board_ids[host.host]
-            rv = ['xeng{0}'.format((board_id * self.corr.x_per_fpga) + ctr)
+            rv = ['xeng{:03}'.format((board_id * self.corr.x_per_fpga) + ctr)
                   for ctr in range(self.corr.x_per_fpga)]
             mapping[host.host] = rv
         return mapping

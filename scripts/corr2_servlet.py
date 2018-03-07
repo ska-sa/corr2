@@ -132,8 +132,8 @@ class Corr2Server(katcp.DeviceServer):
             sensor_manager.setup_mainloop_sensors()
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
-            if monitor_vacc:
-                self.instrument.xops.vacc_check_timer_start()
+            #if monitor_vacc:
+            #    self.instrument.xops.vacc_check_timer_start()
             self._initialised = True
             return 'ok',
         except Exception as ex:

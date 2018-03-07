@@ -626,7 +626,7 @@ class FEngineOperations(object):
         """
         mapping = {}
         for host in self.hosts:
-            rv = ['feng{0}'.format(feng.input_number)
+            rv = ['feng{:03}'.format(feng.input_number)
                   for feng in host.fengines]
             mapping[host.host] = rv
         return mapping

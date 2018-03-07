@@ -85,8 +85,7 @@ def _sensor_cb_hw(executor, sensors, host):
     try:
         results = yield executor.submit(host.transport.get_sensor_data)
     except Exception as e:
-        LOGGER.error('Error retrieving %s sensors '
-                     '- {}'.format(host.host,e.message))
+        LOGGER.error('Error retrieving %s sensors - {}'.format(host.host,e.message))
         results={}
         set_failure()
     for key,value in results.iteritems():
