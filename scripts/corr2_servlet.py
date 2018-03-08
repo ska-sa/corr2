@@ -579,33 +579,6 @@ class Corr2Server(katcp.DeviceServer):
                                        ' {0}.'.format(beam_name))
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))
 
-    @request(Str(), Float(default=-1), Float(default=-1))
-    @return_reply(Str(), Str(), Str())
-    def request_beam_passband(self, sock, beam_name, bandwidth, centerfreq):
-        """
-        Set the beamformer bandwidth/partitions
-        :param sock:
-        :param beam_name: required beam stream
-        :param bandwidth: required spectrum, in hz
-        :param centerfreq: required cf of spectrum bandwidth chunk
-        :return:
-        """
-        if not self.instrument.found_beamformer:
-            return self._log_excep(None, 'Cannot run beamformer commands with'
-                                         ' no beamformer')
-        if (bandwidth == -1) or (centerfreq == -1):
-            (cur_bw, cur_cf) = self.instrument.bops.get_beam_bandwidth(
-                beam_name)
-            return 'ok', beam_name, str(cur_bw), str(cur_cf)
-        try:
-            (cur_bw, cur_cf) = self.instrument.bops.set_beam_bandwidth(
-                beam_name,
-                bandwidth,
-                centerfreq)
-        except Exception as ex:
-            return self._log_excep(ex, 'Failed setting beam passband for beam'
-                                       ' {0}.'.format(beam_name))
-        return 'ok', beam_name, str(cur_bw), str(cur_cf)
 
     @request()
     @return_reply()

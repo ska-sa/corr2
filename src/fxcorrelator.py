@@ -159,7 +159,7 @@ class FxCorrelator(Instrument):
             skfops.reboot_skarabs_from_sdram(self.fhosts)
             skfops.upload_to_ram_progska(xbof, self.xhosts)
             skfops.reboot_skarabs_from_sdram(self.xhosts)
-            skfops.wait_after_reboot(self.fhosts + self.xhosts, timeout=200)
+            skfops.wait_after_reboot(self.fhosts + self.xhosts, timeout=300)
         fisskarab = True
         xisskarab = True
         if (not program) or fisskarab or xisskarab:
