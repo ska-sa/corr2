@@ -62,23 +62,6 @@ configd = c.configd
 n_chans = int(configd['fengine']['n_chans'])
 n_xeng = int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).split(','))
 
-#def get_fpga_data(fpga):
-#    # if 'gbe_in_msb_ss' not in fpga.snapshots.names():
-#    #     return get_fpga_data_new_snaps(fpga)
-#    control_reg = fpga.registers.gbesnap_control
-#    control_reg.write(arm=0)
-#    fpga.snapshots.gbe_in_msb_ss.arm()
-#    fpga.snapshots.gbe_in_lsb_ss.arm()
-#    fpga.snapshots.gbe_in_misc_ss.arm()
-#    control_reg.write(arm=1)
-#    time.sleep(1)
-#    d = fpga.snapshots.gbe_in_msb_ss.read(arm=False)['data']
-#    d.update(fpga.snapshots.gbe_in_lsb_ss.read(arm=False)['data'])
-#    d.update(fpga.snapshots.gbe_in_misc_ss.read(arm=False)['data'])
-#    control_reg.write(arm=0)
-#    return d
-
-
 def get_fpga_data(fpga):
     print 'fetching data...'
     gbe = fpga.gbes.keys()[0]
@@ -94,40 +77,19 @@ def print_snap_data(dd):
         if dd['eof'][ctr-1]:
             packet_counter = 0
         print'%5i,%5i' % (ctr, packet_counter),
-#        d64_0 = (dd['data'][ctr] >> 192) & (2 ** 64 - 1)
-#        d64_1 = (dd['data'][ctr] >> 128) & (2 ** 64 - 1)
-#        d64_2 = (dd['data'][ctr] >> 64 ) & (2 ** 64 - 1)
-#        d64_3 = dd['data'][ctr] & (2 ** 64 - 1)
-#        rv['data'].append(d64_0)
-#        rv['data'].append(d64_1)
-#        rv['data'].append(d64_2)
-#        rv['data'].append(d64_3)
         rv['data'].append(dd['data'][ctr])
         print '0x%016X'%dd['data'][ctr],
-#        print "0x%016X  0x%016X  0x%016X  0x%016X"%(d64_0,d64_1,d64_2,d64_3),
-        print "[%16s]"%str(network.IpAddress(dd['ip'][ctr])),
-        #print "[%16s:%i]"%(str(network.IpAddress(dd['ip_in'][ctr])),dd['dest_port'][ctr]),
+        print "[%16s]"%str(network.IpAddress(dd['src_ip'][ctr])),
         if dd['bad_frame'][ctr] == 1: print 'BAD' ,
         if not dd['led_up'][ctr]: print "[LINK_DN]",
         if dd['led_rx'][ctr]: print "[RX]",
-#        if dd['led_tx']: print "[TX]",
         if dd['valid'][ctr]>0: print "[valid]",
         if dd['overrun'][ctr]: print "[RX OVERFLOW]",
         if dd['eof'][ctr]: print '[EOF]',
         rv['eof'].append(dd['eof'][ctr])
-        rv['src_ip'].append(dd['ip'][ctr])
-        
-#            print 'EOF ',
-#            for wrd in range(3):
-#                rv['eof'].append(False)
-#            rv['eof'].append(True)
-#        else:
-#            for wrd in range(4):
-#                rv['eof'].append(False)
-#        for wrd in range(4):
-#            rv['src_ip'].append(dd['ip'][ctr])
-        print('')
+        rv['src_ip'].append(dd['src_ip'][ctr])
         packet_counter += 1
+        print ''
     return rv
 
 
@@ -143,20 +105,12 @@ for eof_n,eof in enumerate(unpacked_data['eof']):
         print '%i-%i=Pkt len: %i'%(eof_n,last_index,eof_n-last_index)
         last_index=eof_n
 
-
 spead_processor = spead.SpeadProcessor(None, None, None, None)
 gbe_packets = snap.Snap.packetise_snapdata(unpacked_data)
 gbe_data = []
 for pkt in gbe_packets:
-#    print pkt
     gbe_data.append(pkt['data'])
-#    print gbe_data[-1]
-#print gbe_data
-#print pkts[0:2]
 spead_processor.process_data(gbe_data)
-# data now in    spead_processor.packets
-
-
 
 packet_counter = 0
 print "============================================="
@@ -170,10 +124,9 @@ for pkt_cnt,pkt in enumerate(spead_processor.packets):
     if exp_xeng==0:
         print '%4i'%pkt_cnt,
         print '[mcnt %012x]'%pkt.headers[0x1600],
-    #    print '[flags %012X]'%pkt.headers[0x4102],
         print '[heap_id 0x%012X]'%pkt.headers[0x1],
         print '[heap_size %i]'%pkt.headers[0x2],
-        print '[heap_offset %6i]'%pkt.headers[0x3],
+        print '[heap_offset 0x%06X]'%pkt.headers[0x3],
         print '[length %i]'%pkt.headers[0x4],
         print '[ant %2i]'%pkt.headers[0x4101],
         print '[dest_ip %16s]'%network.IpAddress(gbe_packets[pkt_cnt]['src_ip'][-1]),
@@ -183,8 +136,4 @@ for pkt_cnt,pkt in enumerate(spead_processor.packets):
         print '[expected Xeng %3i]'%(exp_xeng),
         print '[chan on that xeng %4i]'%(chan_on_this_xeng),
         print ''
-
-
-
-
 
