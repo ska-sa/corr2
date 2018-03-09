@@ -42,7 +42,7 @@ class Corr2SensorServer(katcp.DeviceServer):
                                    require_epoch=False)
         sensor_manager = sensors.SensorManager(self, self.instrument)
         self.instrument.sensor_manager = sensor_manager
-        #sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
+        sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
 
 
 @tornado.gen.coroutine
