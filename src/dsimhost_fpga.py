@@ -470,8 +470,7 @@ class FpgaDsimHost(FpgaHost):
                                         repeat_en_reg_name, None)
                 repeat_len_reg = getattr(self.registers,
                                          repeat_len_reg_name, None)
-                repeat_len_field_name = 'cwg' + scale_reg_postfix + \
-                                        '_repeat_length'
+                repeat_len_field_name = 'repeat_length'
                 setattr(self.sine_sources, 'sin_' + sin_name, SineSource(
                     reg, scale_reg, sin_name,
                     repeat_len_register=repeat_len_reg,
