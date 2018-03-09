@@ -32,19 +32,21 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host):
     """
     try:
         h=host_offset_lookup[f_host.host]
-        if sensor_manager.sensor_get("{}.network.device-status".format(h)).status==Corr2Sensor.ERROR:
+        if sensor_manager.sensor_get("{}.network.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
-        elif sensor_manager.sensor_get("{}.network-reord.device-status".format(h)).status==Corr2Sensor.ERROR:
+        elif sensor_manager.sensor_get("{}.network-reord.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
-        elif sensor_manager.sensor_get("{}.cd.device-status".format(h)).status==Corr2Sensor.ERROR:
+        elif sensor_manager.sensor_get("{}.cd.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
-        elif sensor_manager.sensor_get("{}.ct.device-status".format(h)).status==Corr2Sensor.ERROR:
+        elif sensor_manager.sensor_get("{}.ct.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
-        elif sensor_manager.sensor_get("{}.network.device-status".format(h)).status==Corr2Sensor.WARN:
+        elif sensor_manager.sensor_get("{}.rx-timestamp".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.WARN
-        elif sensor_manager.sensor_get("{}.pfb.device-status".format(h)).status==Corr2Sensor.WARN:
+        elif sensor_manager.sensor_get("{}.network.device-status".format(h)).status()==Corr2Sensor.WARN:
             status=Corr2Sensor.WARN
-        elif sensor_manager.sensor_get("{}.cd.device-status".format(h)).status==Corr2Sensor.WARN:
+        elif sensor_manager.sensor_get("{}.pfb.device-status".format(h)).status()==Corr2Sensor.WARN:
+            status=Corr2Sensor.WARN
+        elif sensor_manager.sensor_get("{}.cd.device-status".format(h)).status()==Corr2Sensor.WARN:
             status=Corr2Sensor.WARN
         else:
             status=Corr2Sensor.NOMINAL
@@ -124,7 +126,7 @@ def _cb_feng_delays(sensors, f_host):
         sensors['delay0_updating'].tempstore=cd0_cnt
         sensors['delay1_updating'].tempstore=cd1_cnt
         sensors['cd_hmc_err_cnt'].set(value=results['err_cnt'],errif='changed')
-        if sensors['cd_hmc_err_cnt'].status==Corr2Sensor.ERROR:
+        if sensors['cd_hmc_err_cnt'].status()==Corr2Sensor.ERROR:
             device_status=Corr2Sensor.ERROR
         device_status_value=True if device_status==Corr2Sensor.NOMINAL else False
         sensors['device-status'].set(value=device_status_value,status=device_status)
@@ -162,12 +164,12 @@ def _cb_feng_ct(sensors, f_host):
         sensors['pol1_post'].set(value=results[1]['hmc_post'],status=pol1_status)
         sensors['pol0_crc_err_cnt'].set(value=results[0]['crc_err_cnt'],errif='changed')
         sensors['pol1_crc_err_cnt'].set(value=results[1]['crc_err_cnt'],errif='changed')
-        if ((sensors['pol0_err'].status==Corr2Sensor.ERROR) or
-            (sensors['pol1_err'].status==Corr2Sensor.ERROR) or
-            (sensors['pol0_crc_err_cnt'].status==Corr2Sensor.ERROR) or
-            (sensors['pol1_crc_err_cnt'].status==Corr2Sensor.ERROR) or
-            (sensors['pol0_post'].status==Corr2Sensor.ERROR) or
-            (sensors['pol1_post'].status==Corr2Sensor.ERROR)):
+        if ((sensors['pol0_err'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol1_err'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol0_crc_err_cnt'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol1_crc_err_cnt'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol0_post'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol1_post'].status()==Corr2Sensor.ERROR)):
             sensors['device-status'].set(value=False,status=Corr2Sensor.ERROR)
         else:
             sensors['device-status'].set(value=True,status=Corr2Sensor.NOMINAL)
@@ -179,23 +181,31 @@ def _cb_feng_ct(sensors, f_host):
     IOLoop.current().call_later(10, _cb_feng_ct, sensors, f_host)
 
 @gen.coroutine
-def _cb_feng_pack(sensor, f_host):
+def _cb_feng_pack(sensors, f_host):
     """
     Sensor call back function to check F-engine pack block.
     :param sensor:
     :return:
     """
-    executor=sensor.executor
+    executor=sensors['err_cnt'].executor
     try:
         results = yield executor.submit(f_host.get_pack_status)
-        sensor.set(value=results['dvblock_err_cnt'],errif='changed')
+        sensors['err_cnt'].set(value=results['dvblock_err_cnt'],errif='changed')
+        if sensors['err_cnt'].status()==Corr2Sensor.NOMINAL:
+            status=Corr2Sensor.NOMINAL
+            value=True
+        else:
+            status=Corr2Sensor.ERROR
+            value=False
+        sensors['device-status'].set(value=value,status=status)
     except Exception as e:
         LOGGER.error(
             'Error updating pack sensors for {} - {}'.format(
                 f_host.host, e.message))
-        sensor.set(value=-1,status=Corr2Sensor.FAILURE)
+        sensors['device-status'].set(value=False,status=Corr2Sensor.FAILURE)
+        sensors['err_cnt'].set(value=-1,status=Corr2Sensor.FAILURE)
     LOGGER.debug('_cb_feng_pack ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_feng_pack, sensor, f_host)
+    IOLoop.current().call_later(10, _cb_feng_pack, sensors, f_host)
 
 
 @gen.coroutine
@@ -216,7 +226,7 @@ def _cb_feng_pfbs(sensors, f_host):
         for key in ['pol0_or_err_cnt','pol1_or_err_cnt','sync_cnt']:
             sensor=sensors[key]
             sensor.set(value=results[key],warnif='changed')
-            if sensor.status==Corr2Sensor.WARN:
+            if sensor.status()==Corr2Sensor.WARN:
                 device_status=Corr2Sensor.WARN
         device_status_value=(device_status==Corr2Sensor.NOMINAL)
         sensors['device-status'].set(value=device_status_value,status=device_status)
@@ -225,7 +235,7 @@ def _cb_feng_pfbs(sensors, f_host):
             'Error updating PFB sensors for {} - {}'.format(
                 f_host.host, e.message))
         set_failure()
-    LOGGER.debug('_sensor_feng_pfbs ran on {}: {}'.format(f_host.host,results))
+    LOGGER.debug('_sensor_feng_pfbs ran on {}'.format(f_host.host))
     IOLoop.current().call_later(10, _cb_feng_pfbs, sensors, f_host)
 
 
@@ -258,8 +268,8 @@ def _cb_fhost_check_network(sensors, f_host):
             sensors['rx_gbps'].set(status=Corr2Sensor.WARN, value=result['rx_gbps'])
             device_status=Corr2Sensor.WARN
 
-        if ((sensors['tx_err_cnt'].status==Corr2Sensor.ERROR) or
-            (sensors['rx_err_cnt'].status==Corr2Sensor.ERROR)):
+        if ((sensors['tx_err_cnt'].status()==Corr2Sensor.ERROR) or
+            (sensors['rx_err_cnt'].status()==Corr2Sensor.ERROR)):
                 device_status=Corr2Sensor.ERROR
         device_status_value=(device_status==Corr2Sensor.NOMINAL)
         sensors['device-status'].set(value=device_status_value,status=device_status)
@@ -298,6 +308,8 @@ def _cb_feng_rx_spead(sensors, f_host):
 #            accum_errors+=results[key]
         sensors['time_err_cnt'].set(value=results['time_err_cnt'],errif='changed')
         sensors['cnt'].set(value=results['pkt_cnt'],warnif='notchanged')
+        timestamp, status, value = sensors['cnt'].read()
+        sensors['device-status'].set(value=value,status=status)
     except Exception as e:
         LOGGER.error(
             'Error updating spead sensors for {} - {}'.format(
@@ -326,7 +338,7 @@ def _cb_feng_rx_reorder(sensors, f_host):
             sensor=sensors[key]
             #print('Processing {},{}: {}'.format(key,sensor.name,results[key]))
             sensor.set(value=results[key],errif='changed')
-            if sensor.status==Corr2Sensor.ERROR:
+            if sensor.status()==Corr2Sensor.ERROR:
                 device_status=False
         if device_status:
             sensors['device-status'].set(status=Corr2Sensor.NOMINAL,value=True)
@@ -407,11 +419,14 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
 
         # SPEAD counters
         sensors = {
+        'device-status': sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}.spead-rx.device-status'.format(fhost),
+            'F-engine is not encountering SPEAD errors.', executor=executor),
 #            'err_cnt': sens_man.do_sensor(
 #            Corr2Sensor.integer, '{}-spead-timestamp-err-cnt'.format(fhost),
 #            'F-engine RX SPEAD packet errors',
 #            executor=executor),
-            'cnt': sens_man.do_sensor(
+        'cnt': sens_man.do_sensor(
             Corr2Sensor.integer, '{}.spead-rx.pkt-cnt'.format(fhost),
             'F-engine RX SPEAD packet counter',
             executor=executor),
@@ -435,7 +450,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
 #            Corr2Sensor.integer, '{}-spead-pkt-len-err-cnt'.format(fhost),
 #            'F-engine RX SPEAD packet length errors',
 #            executor=executor),
-            'time_err_cnt': sens_man.do_sensor(
+        'time_err_cnt': sens_man.do_sensor(
             Corr2Sensor.integer, '{}.spead-rx.pkt-time-err-cnt'.format(fhost),
             'F-engine RX SPEAD packet timestamp has non-zero lsbs.',
             executor=executor),
@@ -537,10 +552,15 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         ioloop.add_callback(_cb_feng_ct, sensors, _f)
         
         #Pack block
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.pack-tx.err-cnt'.format(fhost),
+        sensors = {
+        'device-status': sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}.spead-tx.device-status'.format(fhost),
+            'F-engine packetiser (TX) is ok.', executor=executor),
+        'err_cnt': sens_man.do_sensor(
+            Corr2Sensor.integer, '{}.spead-tx.err-cnt'.format(fhost),
             'F-engine pack (TX) error count', executor=executor)
-        ioloop.add_callback(_cb_feng_pack, sensor, _f)
+        }
+        ioloop.add_callback(_cb_feng_pack, sensors, _f)
 
         # Overall LRU ok
         sensor = sens_man.do_sensor(

@@ -196,38 +196,6 @@ class FpgaXHost(FpgaHost):
         return self.acc_len * self.xeng_accumulation_len * \
             self.n_chans * 2.0 / self.sample_rate_hz * 1.1
 
-
-    def vacc_check_arm_load_counts(self):
-        status = self.vacc_get_status()
-        reset_required = False
-        for xengctr, xengdata in enumerate(status):
-            if xengdata['arm_cnt'] != xengdata['ld_cnt']:
-                # self.logger.warning('vacc on xengine %i needs resetting, '
-                #                     'arm_cnt(%i) ld_cnt(%i).' % (
-                #     xengctr, xengdata['arm_cnt'], xengdata['ld_cnt']))
-                reset_required = True
-                break
-        return reset_required
-
-    def vacc_check_reset_status(self):
-        status = self.vacc_get_status()
-        reset_okay = True
-        for xengctr, xengdata in enumerate(status):
-            if (xengdata['arm_cnt'] != 0) or (xengdata['ld_cnt'] != 0):
-                # self.logger.warning('vacc on xengine %i failed to '
-                #                     'reset.' % xengctr)
-                reset_okay = False
-                break
-        return reset_okay
-
-#    def vacc_reset(self):
-#        """
-#        Reset the vector accumulator
-#        :return:
-#        """
-#        self.registers.vacc_time_msw.write(immediate='pulse')
-#        self.registers.control.write(vacc_rst='pulse')
-
     def vacc_arm(self):
         """
         Arm the vaccs on this host
@@ -235,14 +203,14 @@ class FpgaXHost(FpgaHost):
         """
         self.registers.vacc_time_msw.write(arm='pulse')
 
-    def vacc_set_loadtime(self, loadtime):
+    def vacc_set_loadtime(self, load_mcnt):
         """
         Set the vacc load time on this xengine board
         :param loadtime:
         :return:
         """
-        ldtime_msw = loadtime >> 32
-        ldtime_lsw = loadtime & 0xffffffff
+        ldtime_msw = load_mcnt >> 32
+        ldtime_lsw = load_mcnt & 0xffffffff
         self.registers.vacc_time_lsw.write(lsw=ldtime_lsw)
         self.registers.vacc_time_msw.write(msw=ldtime_msw)
 
@@ -257,7 +225,7 @@ class FpgaXHost(FpgaHost):
 
     def vacc_set_acc_len(self, acc_len):
         """
-
+        Set the VACC accumulation length
         :param acc_len:
         :return:
         """
@@ -266,11 +234,10 @@ class FpgaXHost(FpgaHost):
 
     def vacc_get_acc_len(self):
         """
-        Read the current VACC setting
+        Read the current VACC accumulation length
         :return:
         """
-        return self.acc_len
-        # return self.registers.acc_len.read_uint()
+        return self.registers.acc_len.read_uint()
 
 #    def get_beng_status(self, x_indices=None):
 #        """

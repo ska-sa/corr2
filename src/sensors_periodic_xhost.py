@@ -32,17 +32,17 @@ def _cb_xhost_lru(sensor_manager, sensor, x_host):
         status=Corr2Sensor.NOMINAL
         for xctr in range(x_host.x_per_fpga):
             pref = '{xhost}.xeng{xctr}'.format(xhost=h, xctr=xctr)
-            if sensor_manager.sensor_get("{}.vacc.device-status".format(pref)).status==Corr2Sensor.ERROR:
+            if sensor_manager.sensor_get("{}.vacc.device-status".format(pref)).status()==Corr2Sensor.ERROR:
                 status=Corr2Sensor.ERROR
-            elif sensor_manager.sensor_get("{}.bram-reorder.device-status".format(pref)).status==Corr2Sensor.ERROR:
+            elif sensor_manager.sensor_get("{}.bram-reorder.device-status".format(pref)).status()==Corr2Sensor.ERROR:
                 status=Corr2Sensor.ERROR
-        if sensor_manager.sensor_get("{}.network.device-status".format(h)).status==Corr2Sensor.ERROR:
+        if sensor_manager.sensor_get("{}.network.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
-        elif sensor_manager.sensor_get("{}.network-reorder.device-status".format(h)).status==Corr2Sensor.ERROR:
+        elif sensor_manager.sensor_get("{}.network-reorder.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
-        elif sensor_manager.sensor_get("{}.network.device-status".format(h)).status==Corr2Sensor.WARN:
+        elif sensor_manager.sensor_get("{}.network.device-status".format(h)).status()==Corr2Sensor.WARN:
             status=Corr2Sensor.WARN
-        elif sensor_manager.sensor_get("{}.network-reorder.device-status".format(h)).status==Corr2Sensor.WARN:
+        elif sensor_manager.sensor_get("{}.network-reorder.device-status".format(h)).status()==Corr2Sensor.WARN:
             status=Corr2Sensor.WARN
         sensor.set(value=False,status=status)
     except Exception as e:
@@ -82,8 +82,8 @@ def _cb_xeng_network(sensors, x_host):
             sensors['rx_gbps'].set(status=Corr2Sensor.WARN, value=result['rx_gbps'])
             device_status=Corr2Sensor.WARN
 
-        if ((sensors['tx_err_cnt'].status==Corr2Sensor.ERROR) or
-            (sensors['rx_err_cnt'].status==Corr2Sensor.ERROR)):
+        if ((sensors['tx_err_cnt'].status()==Corr2Sensor.ERROR) or
+            (sensors['rx_err_cnt'].status()==Corr2Sensor.ERROR)):
                 device_status=Corr2Sensor.ERROR
         device_status_value=(device_status==Corr2Sensor.NOMINAL)
         sensors['device_status'].set(value=device_status_value,status=device_status)
@@ -103,6 +103,8 @@ def _cb_xeng_rx_spead(sensors, x_host):
             sensor.set(status=Corr2Sensor.FAILURE,value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
     # SPEAD RX
     executor = sensors['time_err_cnt'].executor
+    status=Corr2Sensor.NOMINAL
+    value=True
     try:
         results = yield executor.submit(x_host.get_unpack_status)
 #        accum_errors=0
@@ -110,6 +112,13 @@ def _cb_xeng_rx_spead(sensors, x_host):
 #            accum_errors+=results[key]
         sensors['time_err_cnt'].set(value=results['time_err_cnt'],errif='changed')
         sensors['cnt'].set(value=results['valid_pkt_cnt'],warnif='notchanged')
+        if sensors['time_err_cnt'].status()==Corr2Sensor.ERROR:
+            status=Corr2Sensor.ERROR
+            value=False
+        elif sensors['cnt'].status()==Corr2Sensor.WARN:
+            status=Corr2Sensor.WARN
+            value=False
+        sensors['device_status'].set(value=value,status=status)
     except Exception as e:
         LOGGER.error('Error updating SPEAD sensors for {} - '
                      '{}'.format(x_host.host, e.message))
@@ -146,10 +155,10 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
         sensors['hmc_err_cnt'].set(value=errs,errif='changed')
 
         for key in ['miss_err_cnt']:
-            if sensors[key].status==Corr2Sensor.WARN:
+            if sensors[key].status()==Corr2Sensor.WARN:
                 device_status=Corr2Sensor.WARN
         for key in ['dest_err_cnt','ts_err_cnt','post_ok','hmc_overflow_err_cnt','hmc_err_cnt']:
-            if sensors[key].status==Corr2Sensor.ERROR:
+            if sensors[key].status()==Corr2Sensor.ERROR:
                 device_status=Corr2Sensor.ERROR
         device_sensor_value=(device_status==Corr2Sensor.NOMINAL)
         sensors['device_status'].set(value=device_sensor_value,status=device_status)
@@ -162,7 +171,7 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
     IOLoop.current().call_later(10, _cb_xeng_hmc_reorder, sensors, x_host)
 
 @gen.coroutine
-def _cb_xeng_missing_ants(sensors, x_host):
+def _cb_xeng_missing_ants(sensors, sensor_top, x_host):
     """
     X-engine missing packet counts per antenna.
     :param sensors:
@@ -171,17 +180,24 @@ def _cb_xeng_missing_ants(sensors, x_host):
     def set_failure():
         for sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
-    executor = sensors[0].executor
+        sensor_top.set(status=Corr2Sensor.FAILURE,value=False)
+    executor = sensor_top.executor
+    status=Corr2Sensor.NOMINAL
+    value=True
     try:
         results = yield executor.submit(x_host.get_missing_ant_counts)
         for n_ant,missing in enumerate(results):
             sensors[n_ant].set(value=missing,warnif='changed')
+            if sensors[n_ant].status()==Corr2Sensor.WARN:
+                status=Corr2Sensor.WARN
+                value=False
+        sensor_top.set(status=status,value=value)
     except Exception as e:
         LOGGER.error('Error updating RX reorder sensors for {} - '
                      '{}'.format(x_host.host, e.message))
         set_failure()
     LOGGER.debug('_cb_xeng_missing_ants ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(10, _cb_xeng_missing_ants, sensors, x_host)
+    IOLoop.current().call_later(10, _cb_xeng_missing_ants, sensors, sensor_top, x_host)
 
 @gen.coroutine
 def _cb_xeng_rx_reorder(sensors, x_host):
@@ -204,10 +220,10 @@ def _cb_xeng_rx_reorder(sensors, x_host):
             sensordict['missed_err_cnt'].set(value=rv[n_xengcore]['missed_err_cnt'],warnif='changed')
 
             for key in ['discard_err_cnt','missed_err_cnt']:
-                if sensordict[key].status==Corr2Sensor.WARN:
+                if sensordict[key].status()==Corr2Sensor.WARN:
                     device_status=Corr2Sensor.WARN
             for key in ['timeout_err_cnt']:
-                if sensordict[key].status==Corr2Sensor.ERROR:
+                if sensordict[key].status()==Corr2Sensor.ERROR:
                     device_status=Corr2Sensor.ERROR
             device_status_value=(device_status==Corr2Sensor.NOMINAL)
             sensordict['device_status'].set(value=device_status_value,status=device_status)
@@ -253,9 +269,9 @@ def _cb_xeng_vacc(sensors_value):
                     sensordict['err_cnt'].set(value=rv[_x][xctr]['err_cnt'],errif='changed')
                     sensordict['arm_cnt'].set(value=rv[_x][xctr]['arm_cnt'],errif='changed')
                     sensordict['ld_cnt'].set(value=rv[_x][xctr]['ld_cnt'],errif='changed')
-                    if ((sensordict['err_cnt'].status==Corr2Sensor.ERROR) or
-                        (sensordict['arm_cnt'].status==Corr2Sensor.ERROR) or
-                        (sensordict['ld_cnt'].status==Corr2Sensor.ERROR)):
+                    if ((sensordict['err_cnt'].status()==Corr2Sensor.ERROR) or
+                        (sensordict['arm_cnt'].status()==Corr2Sensor.ERROR) or
+                        (sensordict['ld_cnt'].status()==Corr2Sensor.ERROR)):
                         status = Corr2Sensor.ERROR
                         value=True
                     else:
@@ -282,12 +298,18 @@ def _cb_xeng_pack(sensors, x_host):
             for key,sensor in sensordict.iteritems():
                 sensor.set(status=Corr2Sensor.FAILURE,
                 value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
+    value=True
+    status=Corr2Sensor.NOMINAL
     try:
         executor = sensors[0]['align_err_cnt'].executor
         rv = yield executor.submit(x_host.get_pack_status)
         for n_xengcore,sensordict in enumerate(sensors):
-            for key,sensor in sensordict.iteritems():
-                sensor.set(value=rv[n_xengcore][key],errif='changed')
+            for key in ['align_err_cnt','overflow_err_cnt']:
+                sensordict[key].set(value=rv[n_xengcore][key],errif='changed')
+                if sensordict[key].status()==Corr2Sensor.ERROR:
+                    status=Corr2Sensor.ERROR
+                    value=False
+                sensordict['device_status'].set(value=value,status=status)
     except Exception as e:
         LOGGER.error('Error updating xeng pack sensors for {} - '
                      '{}'.format(x_host.host, e.message))
@@ -405,7 +427,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.float, '{}.tx-pps'.format(pref),
                 'X-engine network raw TX packets per second', executor=executor),
             'rx_pps': sens_man.do_sensor(
-                Corr2Sensor.float, '{}..rx-pps'.format(pref),
+                Corr2Sensor.float, '{}.rx-pps'.format(pref),
                 'X-engine network raw RX packets per second', executor=executor),
             'tx_gbps': sens_man.do_sensor(
                 Corr2Sensor.float, '{}.tx-gbps'.format(pref),
@@ -427,11 +449,15 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
         sensors = {
+        'device_status': sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}.spead-rx.device-status'.format(xhost),
+            'X-engine RX SPEAD unpack device status',
+            executor=executor),
 #            'err_cnt': sens_man.do_sensor(
 #            Corr2Sensor.integer, '{}-spead-timestamp-err-cnt'.format(xhost),
 #            'X-engine RX SPEAD packet errors',
 #            executor=executor),
-            'cnt': sens_man.do_sensor(
+        'cnt': sens_man.do_sensor(
             Corr2Sensor.integer, '{}.spead-rx.cnt'.format(xhost),
             'X-engine RX SPEAD packet counter',
             executor=executor),
@@ -455,7 +481,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
 #            Corr2Sensor.integer, '{}-spead-pkt-len-err-cnt'.format(xhost),
 #            'X-engine RX SPEAD packet length errors',
 #            executor=executor),
-            'time_err_cnt': sens_man.do_sensor(
+        'time_err_cnt': sens_man.do_sensor(
             Corr2Sensor.integer, '{}.spead-rx.time-err-cnt'.format(xhost),
             'X-engine RX SPEAD packet timestamp has non-zero lsbs.',
             executor=executor),
@@ -499,12 +525,15 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
     for _x in sens_man.instrument.xhosts:
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
+        sensor_top=sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}.missing-pkts.device-status'.format(xhost),
+            'Rolled-up missing packets sensor.',executor=executor)
         sensors=[]
         for ant in range(_x.n_ants):
             sensors.append(sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.fhost{:02}-missing-pkt-cnt'.format(xhost,ant),
+            Corr2Sensor.integer, '{}.missing-pkts.fhost{:02}-cnt'.format(xhost,ant),
             'Missing packet count for antenna %i.'%ant,executor=executor))
-        ioloop.add_callback(_cb_xeng_missing_ants, sensors, _x)
+        ioloop.add_callback(_cb_xeng_missing_ants, sensors, sensor_top, _x)
             
     #BRAM reorders
     for _x in sens_man.instrument.xhosts:
@@ -583,6 +612,9 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         for xctr in range(_x.x_per_fpga):
             pref = '{xhost}.xeng{xctr}'.format(xhost=xhost, xctr=xctr)
             sensordict = {
+            'device_status': sens_man.do_sensor(
+                Corr2Sensor.boolean, '{}.pack.device-status'.format(pref),
+                'X-engine pack (TX) status', executor=executor),
             'align_err_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.pack.align-err-cnt'.format(pref),
                 'X-engine pack (TX) misalignment error count', executor=executor),
