@@ -4,6 +4,7 @@ from __future__ import print_function
 import argparse
 import sys
 import os
+import time
 
 from corr2 import utils
 from corr2.dsimhost_fpga import FpgaDsimHost
@@ -117,9 +118,10 @@ if args.deprogram:
     print('Deprogrammed %s.' % dfpga.host)
 
 if args.resync:
-    print('Reset digitiser timer and sync timer')
     dfpga.data_resync()
+    sync_epoch =  time.time()
     something_happened = True
+    print('Reset digitiser timer and sync timer: %s' % sync_epoch)
 
 if args.start:
     # start tx
