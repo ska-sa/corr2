@@ -572,7 +572,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
     # VACC
     sensors_value = {}
     sensors_value['synchronised'] = sens_man.do_sensor(
-        Corr2Sensor.boolean, 'vaccs-synchronised',
+        Corr2Sensor.boolean, 'xeng-vaccs-synchronised',
         'Are the output timestamps of the Xengine VACCs synchronised?',
         executor=general_executor)
 
@@ -628,7 +628,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
 
         # LRU ok
         sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}-device-status'.format(xhost),
+            Corr2Sensor.boolean, '{}.device-status'.format(xhost),
             'X-engine %s LRU ok' % _x.host, executor=executor)
         ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, _x)
 
