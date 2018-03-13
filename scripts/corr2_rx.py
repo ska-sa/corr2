@@ -277,6 +277,15 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
     :param acc_scale: boolean, scale the data down or not
     :return:
     """
+
+    # Calculate the substreams that have been captured
+    n_chans_per_substream = n_chans / NUM_XENG
+    strt_substream = int(channels[0]/n_chans_per_substream)
+    stop_substream = int(channels[1]/n_chans_per_substream)
+    if stop_substream == NUM_XENG: stop_substream = NUM_XENG-1
+    n_substreams = stop_substream - strt_substream + 1
+    chan_offset = n_chans_per_substream * strt_substream
+
     if 'xeng_raw' not in ig.keys():
         return None
     if ig['xeng_raw'] is None:
@@ -285,7 +294,7 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
     if xeng_raw is None:
         return None
     logger.debug('PROCESSING %i BASELINES, %i CHANNELS' % (
-        len(baselines), len(channels)))
+        len(baselines), channels[1]-channels[0]))
     this_time = ig['timestamp'].value
     this_freq = ig['frequency'].value
     # start a new heap for this timestamp if it's not in our data
@@ -325,8 +334,12 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
         :return:
         """
         freqs = hdata.keys()
+        print ('freqs = {}'.format(freqs))
         freqs.sort()
-        if freqs != range(0, n_chans, n_chans / NUM_XENG):
+        check_range = range(n_chans_per_substream*strt_substream,
+                            n_chans_per_substream*stop_substream+1,
+                            n_chans_per_substream)
+        if freqs != check_range:
             logger.error('Did not get all frequencies from the x-engines for '
                          'time %i: %s' % (htime, str(freqs)))
             heap_data.pop(htime)
@@ -359,7 +372,8 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
             # /TODO scaling
             powerdata = []
             phasedata = []
-            for ctr in range(channels[0], channels[1]):
+            chan_range = range(channels[0]-chan_offset, channels[1]-chan_offset)
+            for ctr in chan_range:
                 complex_tuple = bdata[ctr]
                 pwr = np.sqrt(complex_tuple[0] ** 2 + complex_tuple[1] ** 2)
                 powerdata.append(pwr)
@@ -393,7 +407,7 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
         logger.debug('Processing heaptime 0x%012x, already '
                      'have %i datapoints.' % (heaptime, lendata))
         # do we have all the data for this heaptime?
-        if len(heap_data[heaptime]) == NUM_XENG:
+        if len(heap_data[heaptime]) == n_substreams:
             rv = process_heaptime(
                 heaptime, heap_data[heaptime])
             if rv:
@@ -499,15 +513,25 @@ class CorrReceiver(threading.Thread):
         :return:
         """
         logger = self.logger
-        logger.info('RXing data on %s+%i, port %i.' % (self.base_ip,NUM_XENG, self.port))
+        logger.info('RXing data with base IP addres: %s+%i, port %i.' % (self.base_ip,NUM_XENG, self.port))
 
         # make a SPEAD2 receiver stream
         strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
                            max_heaps=40, ring_heaps=40)
         self.interface_address = ''.join([ethx for ethx in network_interfaces()
                                          if ethx.startswith(interface_prefix)])
-        self.interface_address
-        for ctr in range(NUM_XENG):
+
+        n_chans_per_substream = n_chans / NUM_XENG
+        strt_substream = int(self.channels[0]/n_chans_per_substream)
+        stop_substream = int(self.channels[1]/n_chans_per_substream)
+        if stop_substream == NUM_XENG: stop_substream = NUM_XENG - 1
+        n_substreams = stop_substream - strt_substream + 1
+        start_ip = casperfpga.network.IpAddress(self.base_ip.ip_int + strt_substream).ip_str
+        end_ip = casperfpga.network.IpAddress(self.base_ip.ip_int + stop_substream).ip_str
+        print('Subscribing to {} substream/s in the range {} to {}'
+                    .format(n_substreams, start_ip, end_ip))
+
+        for ctr in range(strt_substream,stop_substream+1):
             addr=casperfpga.network.IpAddress(self.base_ip.ip_int+ctr).ip_str
             strm.add_udp_reader(multicast_group=addr,
                                 port=self.port,
@@ -531,6 +555,7 @@ class CorrReceiver(threading.Thread):
 
         # process received heaps
         for heap in strm:
+            #import IPython;IPython.embed()
             ig.update(heap)
             cnt_diff = heap.cnt - last_cnt
             last_cnt = heap.cnt
