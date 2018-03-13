@@ -142,16 +142,16 @@ class CorrRx(threading.Thread):
     ItemGroup into the `data_queue` attribute. If the Queue is full, the newer dumps will
     be discarded.
     """
-    def __init__(self, product_name='baseline-correlation-products', servlet_ip='127.0.0.1',
-                 servlet_port=7601, port=8888, queue_size=1000):
+    def __init__(self, product_name='baseline-correlation-products', katcp_ip='127.0.0.1',
+                 katcp_port=7147, port=7148, queue_size=3):
         self.logger = LOGGER
         self.quit_event = threading.Event()
         self.data_queue = Queue.Queue(maxsize=queue_size)
         self.running_event = threading.Event()
         self.data_port = int(port)
         self.product_name = product_name
-        self.servlet_ip = servlet_ip
-        self.servlet_port = int(servlet_port)
+        self.katcp_ip = katcp_ip
+        self.katcp_port = int(katcp_port)
         self.get_sensors()
         threading.Thread.__init__(self)
 
@@ -171,20 +171,20 @@ class CorrRx(threading.Thread):
         product_name = self.product_name
         try:
             import katcp
-            client = katcp.BlockingClient(self.servlet_ip, self.servlet_port)
+            client = katcp.BlockingClient(self.katcp_ip, self.katcp_port)
             client.setDaemon(True)
             client.start()
             is_connected = client.wait_connected(10)
             if not is_connected:
                 client.stop()
-                raise RuntimeError('Could not connect to corr2_servlet, timed out.')
-            reply, informs = client.blocking_request(
-                katcp.Message.request('sensor-value'), timeout=5)
+                raise RuntimeError('Could not connect to katcp, timed out.')
+
+            reply, informs = client.blocking_request(katcp.Message.request('sensor-value'),
+                timeout=5)
+            assert reply.reply_ok()
             client.stop()
             client = None
-            if not reply.reply_ok():
-                raise RuntimeError('Could not read sensors from corr2_servlet, '
-                                   'request failed.')
+
             sensors_required = ['n-ants',
                                 'scale-factor-timestamp',
                                 'sync-time',
@@ -209,7 +209,7 @@ class CorrRx(threading.Thread):
             self.sync_time = float(sensors.get('sync-time', 0))
             self.scale_factor_timestamp = float(sensors.get('scale-factor-timestamp', 0))
         except Exception:
-            msg = 'Failed to connect to corr2_servlet and retrieve sensors values'
+            msg = 'Failed to connect to katcp and retrieve sensors values'
             self.logger.exception(msg)
             raise RuntimeError(msg)
         else:
@@ -243,18 +243,17 @@ class CorrRx(threading.Thread):
         self.logger.info('RXing data on %s+%i, port %i.' % (self.data_ip, self.NUM_XENG, self.data_port))
         self.interface_address = ''.join([ethx for ethx in network_interfaces()
                                          if ethx.startswith(interface_prefix)])
-
+        self.logger.info("Interface Address: %s" % self.interface_address)
         self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, max_heaps=self.NUM_XENG,
                             ring_heaps=40)
         for ctr in range(self.NUM_XENG):
             self._addr = network.IpAddress(self.data_ip.ip_int + ctr).ip_str
-            strm.add_udp_reader(
-                multicast_group=self._addr,
-                port=self.data_port,
-                max_size=9200,
-                buffer_size=5120000,
-                interface_address=self.interface_address
-                )
+            strm.add_udp_reader(multicast_group=self._addr,
+                                port=self.data_port,
+                                max_size=9200,
+                                buffer_size=5120000,
+                                interface_address=self.interface_address
+                                )
 
         try:
             self.running_event.set()

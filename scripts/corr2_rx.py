@@ -20,24 +20,33 @@
 # 2010-11-26  JRM Added command-line option for autoscaling.
 # """
 from __future__ import print_function
-import matplotlib.pyplot as plt
-import numpy as np
-import katcp
-import spead2
-import spead2.recv as s2rx
-import time
+import argparse
+import array
+import casperfpga
+import corr2
+import fcntl
 import h5py
-import threading
+import katcp
+import logging
 import Queue
 import re
-import logging
-import argparse
+import socket
+import spead2
+import struct
 import sys
-import corr2
-import casperfpga
+import threading
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+import spead2.recv as s2rx
 
 from corr2 import data_stream
 
+interface_prefix = "10.100"
+
+logging.getLogger("casperfpga").setLevel(logging.FATAL)
+logging.getLogger("casperfpga.register").setLevel(logging.FATAL)
+logging.getLogger("casperfpga.bitfield").setLevel(logging.FATAL)
 
 class PrintConsumer(object):
     def __init__(self):
@@ -257,8 +266,7 @@ def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
         # next item...
 
 
-def process_xeng_data(heap_data, ig, logger, baselines,
-                      channels, acc_scale=False):
+def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=False):
     """
     Assemble data for the the plotting/printing thread to deal with.
     :param heap_data: heaps of data from the x-engines
@@ -392,6 +400,23 @@ def process_xeng_data(heap_data, ig, logger, baselines,
                 rvs[rv[0]] = (rv[1], rv[2])
     return rvs
 
+def network_interfaces():
+    """
+    Get system interfaces and IP list
+    """
+    def format_ip(addr):
+        return "%s.%s.%s.%s" %(ord(addr[0]), ord(addr[1]), ord(addr[2]), ord(addr[3]))
+
+    max_possible = 128  # arbitrary. raise if needed.
+    bytes = max_possible * 32
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    names = array.array('B', '\0' * bytes)
+    outbytes = struct.unpack('iL', fcntl.ioctl(s.fileno(), 0x8912,  # SIOCGIFCONF
+               struct.pack('iL', bytes, names.buffer_info()[0])))[0]
+    namestr = names.tostring()
+    lst = [format_ip(namestr[i + 20:i + 24]) for i in range(0, outbytes, 40)]
+    return lst
+
 
 class CorrReceiver(threading.Thread):
     """
@@ -479,15 +504,17 @@ class CorrReceiver(threading.Thread):
         # make a SPEAD2 receiver stream
         strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
                            max_heaps=40, ring_heaps=40)
+        self.interface_address = ''.join([ethx for ethx in network_interfaces()
+                                         if ethx.startswith(interface_prefix)])
+        self.interface_address
         for ctr in range(NUM_XENG):
             addr=casperfpga.network.IpAddress(self.base_ip.ip_int+ctr).ip_str
-            strm.add_udp_reader(
-                multicast_group=addr,
-                port=7148,
-                max_size=9200,
-                buffer_size=5120000,
-                interface_address='10.100.22.13'
-            )
+            strm.add_udp_reader(multicast_group=addr,
+                                port=self.port,
+                                max_size=9200,
+                                buffer_size=5120000,
+                                interface_address=self.interface_address
+                                )
 
         # were we given a H5 file to which to write?
         h5_file = None
