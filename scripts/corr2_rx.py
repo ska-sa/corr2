@@ -516,8 +516,6 @@ class CorrReceiver(threading.Thread):
         logger.info('RXing data with base IP addres: %s+%i, port %i.' % (self.base_ip,NUM_XENG, self.port))
 
         # make a SPEAD2 receiver stream
-        strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
-                           max_heaps=40, ring_heaps=40)
         self.interface_address = ''.join([ethx for ethx in network_interfaces()
                                          if ethx.startswith(interface_prefix)])
 
@@ -530,6 +528,8 @@ class CorrReceiver(threading.Thread):
         end_ip = casperfpga.network.IpAddress(self.base_ip.ip_int + stop_substream).ip_str
         print('Subscribing to {} substream/s in the range {} to {}'
                     .format(n_substreams, start_ip, end_ip))
+        strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
+                           max_heaps=n_substreams+1, ring_heaps=n_substreams+1)
 
         for ctr in range(strt_substream,stop_substream+1):
             addr=casperfpga.network.IpAddress(self.base_ip.ip_int+ctr).ip_str
