@@ -32,10 +32,16 @@ def _cb_xhost_lru(sensor_manager, sensor, x_host):
         status=Corr2Sensor.NOMINAL
         for xctr in range(x_host.x_per_fpga):
             pref = '{xhost}.xeng{xctr}'.format(xhost=h, xctr=xctr)
+            eng_status=Corr2Sensor.NOMINAL
             if sensor_manager.sensor_get("{}.vacc.device-status".format(pref)).status()==Corr2Sensor.ERROR:
                 status=Corr2Sensor.ERROR
+                eng_status=Corr2Sensor.ERROR
             elif sensor_manager.sensor_get("{}.bram-reorder.device-status".format(pref)).status()==Corr2Sensor.ERROR:
                 status=Corr2Sensor.ERROR
+                eng_status=Corr2Sensor.ERROR
+            sens_val=(eng_status==Corr2Sensor.NOMINAL)
+            sensor_manager.sensor_get("{}.device-status".format(pref)).set(value=sens_val,status=eng_status)
+            
         if sensor_manager.sensor_get("{}.network.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
         elif sensor_manager.sensor_get("{}.network-reorder.device-status".format(h)).status()==Corr2Sensor.ERROR:
@@ -44,7 +50,8 @@ def _cb_xhost_lru(sensor_manager, sensor, x_host):
             status=Corr2Sensor.WARN
         elif sensor_manager.sensor_get("{}.network-reorder.device-status".format(h)).status()==Corr2Sensor.WARN:
             status=Corr2Sensor.WARN
-        sensor.set(value=False,status=status)
+        sens_val=(status==Corr2Sensor.NOMINAL)
+        sensor.set(value=sens_val,status=status)
     except Exception as e:
         LOGGER.error(
             'Error updating LRU sensor for {} - {}'.format(
@@ -630,6 +637,10 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         sensor = sens_man.do_sensor(
             Corr2Sensor.boolean, '{}.device-status'.format(xhost),
             'X-engine %s LRU ok' % _x.host, executor=executor)
+        for xctr in range(_x.x_per_fpga):
+            pref = '{xhost}.xeng{xctr}'.format(xhost=xhost, xctr=xctr)
+            sens_man.do_sensor(Corr2Sensor.boolean, 
+                '{}.device-status'.format(pref),'X-engine core status')
         ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, _x)
 
 # end
