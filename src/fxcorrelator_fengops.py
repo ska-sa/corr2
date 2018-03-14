@@ -516,7 +516,7 @@ class FEngineOperations(object):
                 return fhost.get_fengine(input_name)
             except fhost_fpga.InputNotFoundError:
                 pass
-        errmsg = 'Fengine \'%s\' not found on any host.' % input_name
+        errmsg = ('Could not find input %s anywhere. Available inputs: %s' % (input_name, self.corr.get_input_labels()))
         self.logger.error(errmsg)
         raise ValueError(errmsg)
 
@@ -709,70 +709,36 @@ class FEngineOperations(object):
             'Could not find input %s anywhere. Available inputs: %s' % (
                 input_name, self.corr.get_input_labels()))
 
-    def _get_adc_snapshot_compat(self, input_name):
-        """
-
-        :return:
-        """
-        if input_name is None:
-            res = THREADED_FPGA_FUNC(
-                self.hosts, timeout=10,
-                target_function=('get_adc_snapshots', [], {}))
-            rv = {}
-            for feng in self.fengines:
-                rv[feng.name] = res[feng.host.host]['p%i' % feng.offset]
-            return rv
-        else:
-            # return the data only for one given input
-            try:
-                feng = self.get_fengine(input_name)
-                d = feng.host.get_adc_snapshots()
-                return {input_name: d['p%i' % feng.offset]}
-            except ValueError:
-                pass
-            raise ValueError(
-                'Could not find input %s anywhere. Available inputs: %s' % (
-                    input_name, self.corr.get_input_labels()))
-
     def get_adc_snapshot(self, input_name=None, unix_time=-1):
         """
         Read the small voltage buffer for a input from a host.
         :param input_name: the input name, if None, will return all inputs
-        :param unix_time: the time at which to read
+        :param unix_time: the time at which to trigger the snapshots
         :return: {feng_name0: AdcData(),
                   feng_name1: AdcData(),
                  }
         """
-        # check for compatibility for really old f-engines
-        ctrl_reg = self.hosts[0].registers.control
-        old_fengines = 'adc_snap_trig_select' not in ctrl_reg.field_names()
-        if old_fengines:
-            if unix_time == -1:
-                self.logger.warning('REALLY OLD F-ENGINES ENCOUNTERED, USING '
-                                    'IMMEDIATE ADC SNAPSHOTS')
-                return self._get_adc_snapshot_compat(input_name)
-            else:
-                raise RuntimeError('Timed ADC snapshots are not supported by '
-                                   'the F-engine hardware. Please try again '
-                                   'without specifying the snapshot trigger '
-                                   'time.')
+        #if no trigger time was specified, trigger in 2s' time.
+        if unix_time < 0:
+            #unix_time = time.time() + 2
+            #self.logger.info('Trigger time not specified; triggering in 2s.')
+            ldmcnt=None
+            timeout=10
+        else: 
+            ldmcnt=self.corr.mcnt_from_time(unix_time)
+            ldmcnt = (ldmcnt >> 12) << 12
+            timeout=unix_time-time.time()
+            if timeout < 0:
+                raise RuntimeError("Cannot trigger at a time in the past!")
+
+
         if input_name is None:
             # get data for all F-engines triggered at the same time
-            localtime = self.hosts[0].get_local_time()
-            _sample_rate = self.hosts[0].rx_data_sample_rate_hz
-            if unix_time == -1:
-                timediff = 2
-            else:
-                timediff = unix_time - time.time()
-            timediff_samples = (timediff * 1.0) * _sample_rate
-            loadtime = int(localtime + timediff_samples)
-            loadtime += 2**12
-            loadtime = (loadtime >> 12) << 12
             res = THREADED_FPGA_FUNC(
-                self.hosts, timeout=10,
-                target_function=('get_adc_snapshots_timed', [],
-                                 {'loadtime_system': loadtime,
-                                  'localtime': localtime}))
+                self.hosts, timeout=timeout+10,
+                target_function=('get_adc_snapshots', [],
+                                 {'loadcnt': ldmcnt,
+                                  'timeout': timeout}))
             rv = {}
             for feng in self.fengines:
                 rv[feng.name] = res[feng.host.host]['p%i' % feng.offset]
@@ -780,17 +746,8 @@ class FEngineOperations(object):
         else:
             # return the data only for one given input
             rv = None
-            for host in self.hosts:
-                try:
-                    rv = host.get_adc_snapshot_for_input(
-                        input_name, unix_time)
-                    break
-                except ValueError:
-                    pass
-            if rv is None:
-                raise ValueError(
-                    'Could not find input %s anywhere. Available inputs: %s' % (
-                        input_name, self.corr.get_input_labels()))
+            host=self.get_fengine(input_name).host
+            rv = host.get_adc_snapshots(input_name, loadcnt=loadcnt, timeout=timeout)
             return {input_name: rv}
 
     def get_version_info(self):

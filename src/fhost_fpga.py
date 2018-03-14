@@ -818,140 +818,33 @@ class FpgaFHost(DigitiserStreamReceiver):
         return self.registers.pfb_status.read()['data']
 
 
-    def get_adc_snapshot_for_input(self, input_name, unix_time=-1):
-        """
-        Read the small voltage buffer for a input from a host.
-        :param input_name: the input name
-        :param unix_time: the time at which to read
-        :return: AdcData()
-        """
-        feng = self.get_fengine(input_name)
-        if unix_time == -1:
-            d = self.get_adc_snapshots_timed(from_now=2)
-        else:
-            d = self.get_adc_snapshots_timed(loadtime_unix=unix_time)
-        return d['p%i' % feng.offset]
-
-    def _get_adc_timed_convert_times(
-            self, from_now=2, loadtime_unix=-1,
-            loadtime_system=-1, localtime=-1):
-        """
-        Given trigger times as a number of options, convert them to a
-        single system time.
-        :param from_now: trigger x seconds from now, default is two
-        :param loadtime_unix: the load time as a UNIX time
-        :param loadtime_system: the load time as a system board time.
-        :param localtime: pass the system localtime, in ticks, to the function
-        :return: localtime, system load time
-        """
-        start_tic = time.time()
-        if localtime == -1:
-            localtime = self.get_local_time()
-        if localtime & ((2**12) - 1) != 0:
-            errmsg = 'Bottom 12 bits of local time are not zero? %i' % localtime
-            LOGGER.error(errmsg)
-            raise ValueError(errmsg)
-        if loadtime_system != -1:
-            if loadtime_system & ((2**12) - 1) != 0:
-                errmsg = 'Time resolution from the digitiser is only 2^12, ' \
-                         'trying to trigger at %i would never ' \
-                         'work.' % loadtime_system
-                LOGGER.error(errmsg)
-                raise ValueError(errmsg)
-            return localtime, loadtime_system
-        if loadtime_unix != -1:
-            timediff = loadtime_unix - start_tic
-        else:
-            timediff = from_now
-        timediff_samples = (timediff * 1.0) * self.rx_data_sample_rate_hz
-        loadtime = int(localtime + timediff_samples)
-        loadtime += 2**12
-        loadtime = (loadtime >> 12) << 12
-        return localtime, loadtime
-
-    def get_adc_snapshots_timed(self, from_now=2, loadtime_unix=-1,
-                                loadtime_system=-1, localtime=-1):
-        """
-        Get a snapshot of incoming ADC data at a specific time.
-        :param from_now: trigger x seconds from now
-        :param loadtime_unix: the load time as a UNIX time
-        :param loadtime_system: the load time as a system board time.
-        :param localtime: pass the system localtime, in ticks, to the function
-        Default is 2 seconds in the future.
-        :return {'p0': AdcData(), 'p1': AdcData()}
-        """
-        if self.rx_data_sample_rate_hz == -1:
-            raise ValueError('Cannot continue with unknown input sample '
-                             'rate. Please set this with: '
-                             '\'host.rx_data_sample_rate_hz = xxxx\' first.')
-
-        if 'adc_snap_trig_select' not in self.registers.control.field_names():
-            raise NotImplementedError('Timed ADC snapshot support does '
-                                      'not exist on older F-engines.')
-
-        tic = time.time()
-        localtime, loadtime = self._get_adc_timed_convert_times(
-            from_now=from_now, loadtime_unix=loadtime_unix,
-            loadtime_system=loadtime_system, localtime=localtime)
-
-        if loadtime <= localtime:
-            errmsg = 'A load time in past makes no sense. %i < %i = %i' % (
-                loadtime, localtime, loadtime - localtime)
-            LOGGER.error(errmsg)
-            raise ValueError(errmsg)
-
-        custom_timeout = int((loadtime - localtime) /
-                             self.rx_data_sample_rate_hz) + 1
-
-        ltime_msw = (loadtime >> 32) & (2**16 - 1)
-        ltime_lsw = loadtime & ((2**32) - 1)
-        self.registers.trig_time_msw.write_int(ltime_msw)
-        self.registers.trig_time_lsw.write_int(ltime_lsw)
-        snap_tic = time.time()
-        rv = self.get_adc_snapshots(trig_sel=0, custom_timeout=custom_timeout)
-        toc = time.time()
-        LOGGER.debug('%s: timed ADC read took %.3f sec, total %.3f sec' % (
-            self.host, (toc - snap_tic), (toc - tic)))
-        if ((loadtime >> 12) & ((2**32)-1)) != rv['p0'].timestamp:
-            errmsg = 'ADC data not read at specified time: %i != %s' % (
-                loadtime, str(rv['p0'].timestamp))
-            LOGGER.error(errmsg)
-            raise RuntimeError(errmsg)
-        rv['p0'].timestamp = loadtime
-        rv['p1'].timestamp = loadtime
-        return rv
-
-    def get_adc_snapshots(self, trig_sel=1, custom_timeout=-1):
+    def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10):
         """
         Read the ADC snapshots from this Fhost
-        :param trig_sel: 0 for time-trigger, 1 for constant trigger
-        :param custom_timeout: should a custom timeout be applied to the
-        snapshot read operation?
+        :param loadcnt: the trigger/load time in ADC samples.
+        :param timeout: timeout in seconds for snapshot read operation.
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
-        if 'adc_snap_trig_select' in self.registers.control.field_names():
-            self.registers.control.write(adc_snap_trig_select=trig_sel)
-        self.registers.control.write(adc_snap_arm=0)
-#        self.snapshots.snap_adc0_ss.arm()
-#        self.snapshots.snap_adc1_ss.arm()
-#        self.registers.control.write(adc_snap_arm=1)
-#        if custom_timeout != -1:
-#            d = self.snapshots.snap_adc0_ss.read(
-#                arm=False, timeout=custom_timeout)
-#            time48 = d['extra_value']['data']['timestamp']
-#            d = d['data']
-#            d.update(self.snapshots.snap_adc1_ss.read(
-#                arm=False, timeout=custom_timeout)['data'])
-#        else:
-#            d = self.snapshots.snap_adc0_ss.read(arm=False)
-#            time48 = d['extra_value']['data']['timestamp']
-#            d = d['data']
-#            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
-#        self.registers.control.write(adc_snap_arm=0)
-        d = self.snapshots.snap_adc0_ss.read(man_trig=True)
-        time48 = d['extra_value']['data']['timestamp']
-        d = d['data']
-        d.update(self.snapshots.snap_adc1_ss.read(man_trig=True)['data'])
+        if input_name != None: 
+            fengine = self.get_fengine(input_name)
+        if loadcnt>0:
+            LOGGER.info("Triggering ADC snapshot at %i"%loadcnt)
+            ltime_msw = (loadcnt >> 32) & (2**16 - 1)
+            ltime_lsw = loadcnt & ((2**32) - 1)
+            self.registers.trig_time_msw.write_int(ltime_msw)
+            self.registers.trig_time_lsw.write_int(ltime_lsw)
+            self.snapshots.snap_adc0_ss.arm()
+            self.snapshots.snap_adc1_ss.arm()
+        else:
+            self.snapshots.snap_adc0_ss.arm(man_trig=True)
+            self.snapshots.snap_adc1_ss.arm(man_trig=True)
+
+        d0 = self.snapshots.snap_adc0_ss.read(arm=False, timeout=timeout)
+        d1 = self.snapshots.snap_adc1_ss.read(arm=False, timeout=timeout)
+        time48_0 = d0['extra_value']['timestamp']
+        time48_1 = d1['extra_value']['timestamp']
+        d = d0['data']
+        d.update(d1['data'])
 
         # pack the data into simple lists
         rvp0 = []
@@ -960,72 +853,13 @@ class FpgaFHost(DigitiserStreamReceiver):
             for ctr2 in range(8):
                 rvp0.append(d['p0_d%i' % ctr2][ctr])
                 rvp1.append(d['p1_d%i' % ctr2][ctr])
-        return {'p0': AdcData(time48, rvp0),
-                'p1': AdcData(time48, rvp1)}
-
-    def _get_adc_snapshots_compat(self):
-        """
-        Old implementations of reading the ADC snapshots, included for
-        compatibility.
-        :return {'p0': AdcData(), 'p1': AdcData()}
-        """
-        if 'p1_4' in self.snapshots.snap_adc0_ss.field_names():
-            # temp new style
-            self.registers.control.write(adc_snap_arm=0)
-            self.snapshots.snap_adc0_ss.arm()
-            self.snapshots.snap_adc1_ss.arm()
-            self.registers.control.write(adc_snap_arm=1)
-            d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
-            d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
-            self.registers.control.write(adc_snap_arm=0)
-            p0 = {'d%i' % ctr: d['p0_d%i' % ctr] for ctr in range(8)}
-            p1 = {'d%i' % ctr: d['p1_%i' % ctr]
-                  for ctr in [0, 1, 2, 4, 5, 6, 7]}
-            p1['d3'] = []
-            for ctr in range(len(d['p1_3_u8'])):
-                _tmp = (d['p1_3_u8'][ctr] << 2) | d['p1_3_l2'][ctr]
-                p1['d3'].append(caspermem.bin2fp(_tmp, 10, 9, True))
+        rv= {'p0': AdcData(time48_0, rvp0),
+             'p1': AdcData(time48_1, rvp1)}
+        if input_name != None:
+            return rv['p%i' % fengine.offset]
         else:
-            p0 = self.snapshots.snap_adc0_ss.read()['data']
-            p1 = self.snapshots.snap_adc1_ss.read()['data']
-        # pack the data into simple lists
-        rvp0 = []
-        rvp1 = []
-        for ctr in range(0, len(p0['d0'])):
-            for ctr2 in range(8):
-                rvp0.append(p0['d%i' % ctr2][ctr])
-                rvp1.append(p1['d%i' % ctr2][ctr])
-        return {'p0': AdcData(-1, rvp0),
-                'p1': AdcData(-1, rvp1)}
+            return rv
 
-    def _get_adc_snapshots_compat_wierd_skarab_version(self):
-        """
-        Compatibility implementation of reading the ADC snapshots, for an odd
-        version of the snapshot found in a skarab fengine. Why? Who knows?!
-        :return {'p0': AdcData(), 'p1': AdcData()}
-        """
-        self.registers.control.write(adc_snap_arm=0)
-        self.snapshots.snap_adc0_ss.arm()
-        self.snapshots.snap_adc1_ss.arm()
-        self.registers.control.write(adc_snap_arm=1)
-        d = self.snapshots.snap_adc0_ss.read(arm=False)['data']
-        d.update(self.snapshots.snap_adc1_ss.read(arm=False)['data'])
-        self.registers.control.write(adc_snap_arm=0)
-        p0 = {'d%i' % ctr: d['d%i' % ctr] for ctr in range(8)}
-        p1 = {'d%i' % ctr: d['p1_d%i' % ctr]
-              for ctr in [0, 1, 2, 3, 5, 6, 7]}
-        p1['d4'] = []
-        for ctr in range(len(d['p1_d4_u8'])):
-            _tmp = (d['p1_d4_u8'][ctr] << 2) | d['p1_d4_l2'][ctr]
-            p1['d4'].append(caspermem.bin2fp(_tmp, 10, 9, True))
-        rvp0 = []
-        rvp1 = []
-        for ctr in range(0, len(p0['d0'])):
-            for ctr2 in range(8):
-                rvp0.append(p0['d%i' % ctr2][ctr])
-                rvp1.append(p1['d%i' % ctr2][ctr])
-        return {'p0': AdcData(-1, rvp0),
-                'p1': AdcData(-1, rvp1)}
 
     def get_pack_status(self):
         """
