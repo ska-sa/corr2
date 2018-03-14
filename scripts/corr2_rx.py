@@ -20,24 +20,33 @@
 # 2010-11-26  JRM Added command-line option for autoscaling.
 # """
 from __future__ import print_function
-import matplotlib.pyplot as plt
-import numpy as np
-import katcp
-import spead2
-import spead2.recv as s2rx
-import time
+import argparse
+import array
+import casperfpga
+import corr2
+import fcntl
 import h5py
-import threading
+import katcp
+import logging
 import Queue
 import re
-import logging
-import argparse
+import socket
+import spead2
+import struct
 import sys
-import corr2
-import casperfpga
+import threading
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+import spead2.recv as s2rx
 
 from corr2 import data_stream
 
+interface_prefix = "10.100"
+
+logging.getLogger("casperfpga").setLevel(logging.FATAL)
+logging.getLogger("casperfpga.register").setLevel(logging.FATAL)
+logging.getLogger("casperfpga.bitfield").setLevel(logging.FATAL)
 
 class PrintConsumer(object):
     def __init__(self):
@@ -257,8 +266,7 @@ def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
         # next item...
 
 
-def process_xeng_data(heap_data, ig, logger, baselines,
-                      channels, acc_scale=False):
+def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=False):
     """
     Assemble data for the the plotting/printing thread to deal with.
     :param heap_data: heaps of data from the x-engines
@@ -269,6 +277,15 @@ def process_xeng_data(heap_data, ig, logger, baselines,
     :param acc_scale: boolean, scale the data down or not
     :return:
     """
+
+    # Calculate the substreams that have been captured
+    n_chans_per_substream = n_chans / NUM_XENG
+    strt_substream = int(channels[0]/n_chans_per_substream)
+    stop_substream = int(channels[1]/n_chans_per_substream)
+    if stop_substream == NUM_XENG: stop_substream = NUM_XENG-1
+    n_substreams = stop_substream - strt_substream + 1
+    chan_offset = n_chans_per_substream * strt_substream
+
     if 'xeng_raw' not in ig.keys():
         return None
     if ig['xeng_raw'] is None:
@@ -277,7 +294,7 @@ def process_xeng_data(heap_data, ig, logger, baselines,
     if xeng_raw is None:
         return None
     logger.debug('PROCESSING %i BASELINES, %i CHANNELS' % (
-        len(baselines), len(channels)))
+        len(baselines), channels[1]-channels[0]))
     this_time = ig['timestamp'].value
     this_freq = ig['frequency'].value
     # start a new heap for this timestamp if it's not in our data
@@ -317,8 +334,12 @@ def process_xeng_data(heap_data, ig, logger, baselines,
         :return:
         """
         freqs = hdata.keys()
+        print ('freqs = {}'.format(freqs))
         freqs.sort()
-        if freqs != range(0, n_chans, n_chans / NUM_XENG):
+        check_range = range(n_chans_per_substream*strt_substream,
+                            n_chans_per_substream*stop_substream+1,
+                            n_chans_per_substream)
+        if freqs != check_range:
             logger.error('Did not get all frequencies from the x-engines for '
                          'time %i: %s' % (htime, str(freqs)))
             heap_data.pop(htime)
@@ -351,7 +372,8 @@ def process_xeng_data(heap_data, ig, logger, baselines,
             # /TODO scaling
             powerdata = []
             phasedata = []
-            for ctr in range(channels[0], channels[1]):
+            chan_range = range(channels[0]-chan_offset, channels[1]-chan_offset)
+            for ctr in chan_range:
                 complex_tuple = bdata[ctr]
                 pwr = np.sqrt(complex_tuple[0] ** 2 + complex_tuple[1] ** 2)
                 powerdata.append(pwr)
@@ -385,12 +407,29 @@ def process_xeng_data(heap_data, ig, logger, baselines,
         logger.debug('Processing heaptime 0x%012x, already '
                      'have %i datapoints.' % (heaptime, lendata))
         # do we have all the data for this heaptime?
-        if len(heap_data[heaptime]) == NUM_XENG:
+        if len(heap_data[heaptime]) == n_substreams:
             rv = process_heaptime(
                 heaptime, heap_data[heaptime])
             if rv:
                 rvs[rv[0]] = (rv[1], rv[2])
     return rvs
+
+def network_interfaces():
+    """
+    Get system interfaces and IP list
+    """
+    def format_ip(addr):
+        return "%s.%s.%s.%s" %(ord(addr[0]), ord(addr[1]), ord(addr[2]), ord(addr[3]))
+
+    max_possible = 128  # arbitrary. raise if needed.
+    bytes = max_possible * 32
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    names = array.array('B', '\0' * bytes)
+    outbytes = struct.unpack('iL', fcntl.ioctl(s.fileno(), 0x8912,  # SIOCGIFCONF
+               struct.pack('iL', bytes, names.buffer_info()[0])))[0]
+    namestr = names.tostring()
+    lst = [format_ip(namestr[i + 20:i + 24]) for i in range(0, outbytes, 40)]
+    return lst
 
 
 class CorrReceiver(threading.Thread):
@@ -473,91 +512,119 @@ class CorrReceiver(threading.Thread):
         The main receive loop method.
         :return:
         """
-        logger = self.logger
-        logger.info('RXing data on %s+%i, port %i.' % (self.base_ip,NUM_XENG, self.port))
+        # TODO: This runs a capture once with only one substream.
+        # It seems to be needed to get larger captures to work.
+        # Must be investigated
+        # After the warmup loop the normal loop runs
+        warmup_cap = True
+        for double_loop in range (2):
+            logger = self.logger
+            logger.info('RXing data with base IP addres: %s+%i, port %i.' % (self.base_ip,NUM_XENG, self.port))
 
-        # make a SPEAD2 receiver stream
-        strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
-                           max_heaps=40, ring_heaps=40)
-        for ctr in range(NUM_XENG):
-            addr=casperfpga.network.IpAddress(self.base_ip.ip_int+ctr).ip_str
-            strm.add_udp_reader(
-                multicast_group=addr,
-                port=7148,
-                max_size=9200,
-                buffer_size=5120000,
-                interface_address='10.100.22.13'
-            )
-
-        # were we given a H5 file to which to write?
-        h5_file = None
-        if self.h5_filename:
-            logger.info('Starting H5 file %s.' % self.h5_filename)
-            h5_file = h5py.File(self.h5_filename, mode='w')
-
-        # make the ItemGroup and some local vars
-        ig = spead2.ItemGroup()
-        idx = 0
-        last_cnt = -1 * NUM_XENG
-
-        heap_contents = {}
-
-        # process received heaps
-        for heap in strm:
-            ig.update(heap)
-            cnt_diff = heap.cnt - last_cnt
-            last_cnt = heap.cnt
-            logger.debug('PROCESSING HEAP idx(%i) cnt(%i) cnt_diff(%i) '
-                         '@ %.4f' % (idx, heap.cnt, cnt_diff, time.time()))
-            logger.debug('Contents dict is now %i long' % len(heap_contents))
-            # if self.track_list:
-            #     do_track_items(ig, logger, track_list=self.track_list)
-            # if h5_file:
-            #     do_h5_file(ig, logger, h5_file,
-            #                self.h5_datasets, self.h5_dataset_indices)
-            if len(heap.get_items()) == 0:
-                logger.debug('Empty heap - was this descriptors?')
-                continue
-            # do we need to process more data?
-            if self.print_queue:
-                need_print = self.need_print_data.is_set()
+            # make a SPEAD2 receiver stream
+            self.interface_address = ''.join([ethx for ethx in network_interfaces()
+                                             if ethx.startswith(interface_prefix)])
+            if warmup_cap:
+                channels = (0,15)
             else:
-                need_print = False
-            if self.plot_queue:
-                need_plot = self.need_plot_data.is_set()
-            else:
-                need_plot = False
-            if need_print or need_plot:
-                data = process_xeng_data(
-                    heap_contents, ig, logger, self.baselines,
-                    self.channels, self.acc_scale)
-            else:
-                logger.debug('\talready got data, skipping '
-                             'processing this heap.')
-                data = None
-            if data:
-                for datatime in data:
-                    # add to consumer queues if necessary
-                    if need_print:
-                        self.need_print_data.clear()
-                        try:
-                            self.print_queue.put(data[datatime])
-                        except Queue.Full:
-                            self.print_queue.get()
-                            self.print_queue.put(data[datatime])
-                    if need_plot:
-                        self.need_plot_data.clear()
-                        try:
-                            self.plot_queue.put(data[datatime])
-                        except Queue.Full:
-                            self.plot_queue.get()
-                            self.plot_queue.put(data[datatime])
-            # should we quit?
-            if self.quit_event.is_set():
-                logger.info('Got a signal from main(), exiting rx loop...')
-                break
-            # count processed heaps
-            idx += 1
+                channels = self.channels
+
+            n_chans_per_substream = n_chans / NUM_XENG
+            strt_substream = int(channels[0]/n_chans_per_substream)
+            stop_substream = int(channels[1]/n_chans_per_substream)
+            if stop_substream == NUM_XENG: stop_substream = NUM_XENG - 1
+            n_substreams = stop_substream - strt_substream + 1
+            start_ip = casperfpga.network.IpAddress(self.base_ip.ip_int + strt_substream).ip_str
+            end_ip = casperfpga.network.IpAddress(self.base_ip.ip_int + stop_substream).ip_str
+            print('Subscribing to {} substream/s in the range {} to {}'
+                        .format(n_substreams, start_ip, end_ip))
+            strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
+                               #max_heaps=40, ring_heaps=40)
+                               max_heaps=n_substreams*3, ring_heaps=n_substreams*3)
+
+            for ctr in range(strt_substream,stop_substream+1):
+                addr=casperfpga.network.IpAddress(self.base_ip.ip_int+ctr).ip_str
+                strm.add_udp_reader(multicast_group=addr,
+                                    port=self.port,
+                                    max_size=9200,
+                                    buffer_size=5120000,
+                                    interface_address=self.interface_address
+                                    )
+
+            # were we given a H5 file to which to write?
+            h5_file = None
+            if self.h5_filename:
+                logger.info('Starting H5 file %s.' % self.h5_filename)
+                h5_file = h5py.File(self.h5_filename, mode='w')
+
+            # make the ItemGroup and some local vars
+            ig = spead2.ItemGroup()
+            idx = 0
+            last_cnt = -1 * NUM_XENG
+
+            heap_contents = {}
+
+            # process received heaps
+            for heap in strm:
+                #import IPython;IPython.embed()
+                ig.update(heap)
+                cnt_diff = heap.cnt - last_cnt
+                last_cnt = heap.cnt
+                logger.debug('PROCESSING HEAP idx(%i) cnt(%i) cnt_diff(%i) '
+                             '@ %.4f' % (idx, heap.cnt, cnt_diff, time.time()))
+                logger.debug('Contents dict is now %i long' % len(heap_contents))
+                # if self.track_list:
+                #     do_track_items(ig, logger, track_list=self.track_list)
+                # if h5_file:
+                #     do_h5_file(ig, logger, h5_file,
+                #                self.h5_datasets, self.h5_dataset_indices)
+                if len(heap.get_items()) == 0:
+                    logger.debug('Empty heap - was this descriptors?')
+                    continue
+                # do we need to process more data?
+                if self.print_queue:
+                    need_print = self.need_print_data.is_set()
+                else:
+                    need_print = False
+                if self.plot_queue:
+                    need_plot = self.need_plot_data.is_set()
+                else:
+                    need_plot = False
+                if need_print or need_plot:
+                    data = process_xeng_data(
+                        heap_contents, ig, logger, self.baselines,
+                        channels, self.acc_scale)
+                else:
+                    logger.debug('\talready got data, skipping '
+                                 'processing this heap.')
+                    data = None
+                if data:
+                    for datatime in data:
+                        # add to consumer queues if necessary
+                        if need_print:
+                            self.need_print_data.clear()
+                            try:
+                                self.print_queue.put(data[datatime])
+                            except Queue.Full:
+                                self.print_queue.get()
+                                self.print_queue.put(data[datatime])
+                        if need_plot:
+                            self.need_plot_data.clear()
+                            try:
+                                self.plot_queue.put(data[datatime])
+                            except Queue.Full:
+                                self.plot_queue.get()
+                                self.plot_queue.put(data[datatime])
+                    if warmup_cap:
+                        break
+                # should we quit?
+                if self.quit_event.is_set():
+                    logger.info('Got a signal from main(), exiting rx loop...')
+                    break
+                # count processed heaps
+                idx += 1
+            if warmup_cap:
+                warmup_cap = False
 # TODO file
 #        for (name,idx) in datasets_index.iteritems():
 #            if idx == 1:
@@ -623,7 +690,7 @@ if __name__ == '__main__':
         default='baseline-correlation-products',
         help='name of correlation product')
     parser.add_argument(
-        '--file', dest='writefile', action='store_true', default=False,
+        '--f5ile', dest='writefile', action='store_true', default=False,
         help='Write an H5 file.')
     parser.add_argument(
         '--filename', dest='filename', action='store', default='',

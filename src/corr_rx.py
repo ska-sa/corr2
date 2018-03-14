@@ -27,14 +27,23 @@ from corr2 import utils
 LOGGER = logging.getLogger(__name__)
 interface_prefix = "10.100"
 
-def process_xeng_data(self, heap_data, ig):
+def process_xeng_data(self, heap_data, ig, channels):
     """
     Assemble data for the the plotting/printing thread to deal with.
     :param self: corr_rx object
     :param heap_data: heaps of data from the x-engines
     :param ig: the SPEAD2 item group
+    :param channels: the channels in which we are interested
     :return:
     """
+    # Calculate the substreams that have been captured
+    n_chans_per_substream = self.n_chans / self.NUM_XENG
+    strt_substream = int(channels[0]/n_chans_per_substream)
+    stop_substream = int(channels[1]/n_chans_per_substream)
+    if stop_substream == self.NUM_XENG: stop_substream = self.NUM_XENG-1
+    n_substreams = stop_substream - strt_substream + 1
+    chan_offset = n_chans_per_substream * strt_substream
+
     if 'xeng_raw' not in ig.keys():
         return None
     if ig['xeng_raw'] is None:
@@ -83,7 +92,10 @@ def process_xeng_data(self, heap_data, ig):
         """
         freqs = hdata.keys()
         freqs.sort()
-        if freqs != range(0, self.n_chans, self.n_chans / self.NUM_XENG):
+        check_range = range(n_chans_per_substream*strt_substream,
+                            n_chans_per_substream*stop_substream+1,
+                            n_chans_per_substream)
+        if freqs != check_range:
             self.logger.error('Did not get all frequencies from the x-engines for time %i: %s' % (
                 htime, str(freqs)))
             heap_data.pop(htime)
@@ -105,7 +117,7 @@ def process_xeng_data(self, heap_data, ig):
     heaptimes = heap_data.keys()
 
     for heaptime in heaptimes:
-        if len(heap_data[heaptime]) == self.NUM_XENG:
+        if len(heap_data[heaptime]) == n_substreams:
             rv = process_heaptime(
                 heaptime, heap_data[heaptime])
             if rv:
@@ -142,16 +154,17 @@ class CorrRx(threading.Thread):
     ItemGroup into the `data_queue` attribute. If the Queue is full, the newer dumps will
     be discarded.
     """
-    def __init__(self, product_name='baseline-correlation-products', servlet_ip='127.0.0.1',
-                 servlet_port=7601, port=8888, queue_size=1000):
+    def __init__(self, product_name='baseline-correlation-products', katcp_ip='127.0.0.1',
+                 katcp_port=7147, port=7148, queue_size=3, channels = (0,4096)):
         self.logger = LOGGER
         self.quit_event = threading.Event()
         self.data_queue = Queue.Queue(maxsize=queue_size)
         self.running_event = threading.Event()
         self.data_port = int(port)
+        self.channels = channels
         self.product_name = product_name
-        self.servlet_ip = servlet_ip
-        self.servlet_port = int(servlet_port)
+        self.katcp_ip = katcp_ip
+        self.katcp_port = int(katcp_port)
         self.get_sensors()
         threading.Thread.__init__(self)
 
@@ -171,20 +184,20 @@ class CorrRx(threading.Thread):
         product_name = self.product_name
         try:
             import katcp
-            client = katcp.BlockingClient(self.servlet_ip, self.servlet_port)
+            client = katcp.BlockingClient(self.katcp_ip, self.katcp_port)
             client.setDaemon(True)
             client.start()
             is_connected = client.wait_connected(10)
             if not is_connected:
                 client.stop()
-                raise RuntimeError('Could not connect to corr2_servlet, timed out.')
-            reply, informs = client.blocking_request(
-                katcp.Message.request('sensor-value'), timeout=5)
+                raise RuntimeError('Could not connect to katcp, timed out.')
+
+            reply, informs = client.blocking_request(katcp.Message.request('sensor-value'),
+                timeout=5)
+            assert reply.reply_ok()
             client.stop()
             client = None
-            if not reply.reply_ok():
-                raise RuntimeError('Could not read sensors from corr2_servlet, '
-                                   'request failed.')
+
             sensors_required = ['n-ants',
                                 'scale-factor-timestamp',
                                 'sync-time',
@@ -209,7 +222,7 @@ class CorrRx(threading.Thread):
             self.sync_time = float(sensors.get('sync-time', 0))
             self.scale_factor_timestamp = float(sensors.get('scale-factor-timestamp', 0))
         except Exception:
-            msg = 'Failed to connect to corr2_servlet and retrieve sensors values'
+            msg = 'Failed to connect to katcp and retrieve sensors values'
             self.logger.exception(msg)
             raise RuntimeError(msg)
         else:
@@ -240,21 +253,33 @@ class CorrRx(threading.Thread):
         self.logger.info("SPEAD receiver started")
 
     def run(self):
-        self.logger.info('RXing data on %s+%i, port %i.' % (self.data_ip, self.NUM_XENG, self.data_port))
+
+        self.logger.info('RXing data with base IP addres: %s+%i, port %i.' % (self.data_ip, self.NUM_XENG, self.data_port))
+
+        n_chans_per_substream = self.n_chans / self.NUM_XENG
+        strt_substream = int(self.channels[0]/n_chans_per_substream)
+        stop_substream = int(self.channels[1]/n_chans_per_substream)
+        if stop_substream == self.NUM_XENG: stop_substream = self.NUM_XENG - 1
+        n_substreams = stop_substream - strt_substream + 1
+        strt_ip = network.IpAddress(self.data_ip.ip_int + strt_substream).ip_str
+        stop_ip = network.IpAddress(self.data_ip.ip_int + stop_substream).ip_str
+        self.logger.info('Subscribing to {} substream/s in the range {} to {}'
+                         .format(n_substreams, strt_ip, stop_ip))
+
         self.interface_address = ''.join([ethx for ethx in network_interfaces()
                                          if ethx.startswith(interface_prefix)])
+        self.logger.info("Interface Address: %s" % self.interface_address)
+        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, max_heaps=n_substreams + 1,
+                            ring_heaps=n_substreams + 1)
 
-        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, max_heaps=self.NUM_XENG,
-                            ring_heaps=40)
-        for ctr in range(self.NUM_XENG):
+        for ctr in range(strt_substream,stop_substream+1):
             self._addr = network.IpAddress(self.data_ip.ip_int + ctr).ip_str
-            strm.add_udp_reader(
-                multicast_group=self._addr,
-                port=self.data_port,
-                max_size=9200,
-                buffer_size=5120000,
-                interface_address=self.interface_address
-                )
+            strm.add_udp_reader(multicast_group=self._addr,
+                                port=self.data_port,
+                                max_size=9200,
+                                buffer_size=5120000,
+                                interface_address=self.interface_address
+                                )
 
         try:
             self.running_event.set()
@@ -273,7 +298,7 @@ class CorrRx(threading.Thread):
                     idx, heap.cnt, cnt_diff, time.time()))
                 self.logger.debug('Contents dict is now %i long' % len(heap_contents))
                 # output item values specified
-                data = process_xeng_data(self, heap_contents, ig)
+                data = process_xeng_data(self, heap_contents, ig, self.channels)
                 ig_copy = copy.deepcopy(data)
                 if ig_copy:
                     try:

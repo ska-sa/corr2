@@ -309,6 +309,7 @@ def _cb_feng_rx_spead(sensors, f_host):
         sensors['time_err_cnt'].set(value=results['time_err_cnt'],errif='changed')
         sensors['cnt'].set(value=results['pkt_cnt'],warnif='notchanged')
         timestamp, status, value = sensors['cnt'].read()
+        value=(status==Corr2Sensor.NOMINAL)
         sensors['device-status'].set(value=value,status=status)
     except Exception as e:
         LOGGER.error(
