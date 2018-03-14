@@ -460,27 +460,27 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         # Rx reorder counters
         sensors = {
         'device-status': sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}.network-reord.device-status'.format(fhost),
+            Corr2Sensor.boolean, '{}.network-reorder.device-status'.format(fhost),
             'F-engine is receiving a good, clean digitiser data stream.',
             executor=executor),
         'timestep_err_cnt': sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.network-reord.timestep-err-cnt'.format(fhost),
+            Corr2Sensor.integer, '{}.network-reorder.timestep-err-cnt'.format(fhost),
             'F-engine RX timestamps not incrementing correctly.',
             executor=executor),
         'receive_err_cnt': sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.network-reord.miss-err-cnt'.format(fhost),
+            Corr2Sensor.integer, '{}.network-reorder.miss-err-cnt'.format(fhost),
             'F-engine error reordering packets: missing packet.',
             executor=executor),
         'discard_cnt': sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.network-reord.discard-err-cnt'.format(fhost),
+            Corr2Sensor.integer, '{}.network-reorder.discard-err-cnt'.format(fhost),
             'F-engine error reordering packets: discarded packet (bad timestamp).',
             executor=executor),
         'relock_err_cnt': sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.network-reord.relock-err-cnt'.format(fhost),
+            Corr2Sensor.integer, '{}.network-reorder.relock-err-cnt'.format(fhost),
             'F-engine error reordering packets: relocked to deng stream count.',
             executor=executor),
         'overflow_err_cnt': sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.network-reord.overflow-err-cnt'.format(fhost),
+            Corr2Sensor.integer, '{}.network-reorder.overflow-err-cnt'.format(fhost),
             'F-engine error reordering packets: input buffer overflow.',
             executor=executor),
         }
