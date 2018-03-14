@@ -37,7 +37,7 @@ def process_xeng_data(self, heap_data, ig, channels):
     :return:
     """
     # Calculate the substreams that have been captured
-    n_chans_per_substream = n_chans / self.NUM_XENG
+    n_chans_per_substream = self.n_chans / self.NUM_XENG
     strt_substream = int(channels[0]/n_chans_per_substream)
     stop_substream = int(channels[1]/n_chans_per_substream)
     if stop_substream == self.NUM_XENG: stop_substream = self.NUM_XENG-1
@@ -298,7 +298,7 @@ class CorrRx(threading.Thread):
                     idx, heap.cnt, cnt_diff, time.time()))
                 self.logger.debug('Contents dict is now %i long' % len(heap_contents))
                 # output item values specified
-                data = process_xeng_data(self, heap_contents, ig)
+                data = process_xeng_data(self, heap_contents, ig, self.channels)
                 ig_copy = copy.deepcopy(data)
                 if ig_copy:
                     try:
