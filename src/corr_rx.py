@@ -159,6 +159,7 @@ class CorrRx(threading.Thread):
         self.logger = LOGGER
         self.quit_event = threading.Event()
         self.data_queue = Queue.Queue(maxsize=queue_size)
+        self.queue_size = queue_size
         self.running_event = threading.Event()
         self.data_port = int(port)
         self.channels = channels
@@ -260,6 +261,8 @@ class CorrRx(threading.Thread):
         strt_substream = int(self.channels[0]/n_chans_per_substream)
         stop_substream = int(self.channels[1]/n_chans_per_substream)
         if stop_substream == self.NUM_XENG: stop_substream = self.NUM_XENG - 1
+        self.strt_channel =  n_chans_per_substream *  strt_substream
+        self.stop_channel =  n_chans_per_substream * (stop_substream + 1)
         n_substreams = stop_substream - strt_substream + 1
         strt_ip = network.IpAddress(self.data_ip.ip_int + strt_substream).ip_str
         stop_ip = network.IpAddress(self.data_ip.ip_int + stop_substream).ip_str
@@ -269,8 +272,9 @@ class CorrRx(threading.Thread):
         self.interface_address = ''.join([ethx for ethx in network_interfaces()
                                          if ethx.startswith(interface_prefix)])
         self.logger.info("Interface Address: %s" % self.interface_address)
-        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, max_heaps=n_substreams + 1,
-                            ring_heaps=n_substreams + 1)
+        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, 
+                            max_heaps=n_substreams  * self.queue_size+1,
+                            ring_heaps=n_substreams * self.queue_size+1)
 
         for ctr in range(strt_substream,stop_substream+1):
             self._addr = network.IpAddress(self.data_ip.ip_int + ctr).ip_str
@@ -348,9 +352,11 @@ class CorrRx(threading.Thread):
         try:
             self.logger.info('Waiting for a clean dump:')
             _dump = self.data_queue.get(timeout=dump_timeout)
+            self.n_channels_selected = self.stop_channel - self.strt_channel
             _errmsg = ('No of channels in the spead data is inconsistent with the no of'
-                      ' channels (%s) expected' %self.n_chans)
-            assert _dump['xeng_raw'].shape[0] == self.n_chans, _errmsg
+                      ' channels (%s) expected' %self.n_channels_selected)
+            assert _dump['xeng_raw'].shape[0] == self.n_channels_selected, _errmsg
+            _dump['n_channels_selected'] = self.n_channels_selected
             _errmsg = ('Dump data type cannot be nonetype, confirm you are subscribed to multicast group.')
             assert _dump is not None, _errmsg
         except AssertionError:
