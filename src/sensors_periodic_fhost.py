@@ -34,7 +34,7 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host):
         h=host_offset_lookup[f_host.host]
         if sensor_manager.sensor_get("{}.network.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
-        elif sensor_manager.sensor_get("{}.network-reord.device-status".format(h)).status()==Corr2Sensor.ERROR:
+        elif sensor_manager.sensor_get("{}.network-reorder.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
         elif sensor_manager.sensor_get("{}.cd.device-status".format(h)).status()==Corr2Sensor.ERROR:
             status=Corr2Sensor.ERROR
