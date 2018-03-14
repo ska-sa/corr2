@@ -101,7 +101,7 @@ def print_snap_data(dd):
         rv['data'].append(dd['data'][ctr])
 #        print "0x%016X  0x%016X  0x%016X  0x%016X"%(d64_0,d64_1,d64_2,d64_3),
         print "0x%016X"%(dd['data'][ctr]),
-        print "[%16s]"%str(network.IpAddress(dd['ip'][ctr])),
+        print "[%16s]"%str(network.IpAddress(dd['src_ip'][ctr])),
         #print "[%16s:%i]"%(str(network.IpAddress(dd['ip_in'][ctr])),dd['dest_port'][ctr]),
         if dd['bad_frame'][ctr] == 1: print 'BAD' ,
         if not dd['led_up'][ctr]: print "[LINK_DN]",
@@ -114,7 +114,7 @@ def print_snap_data(dd):
             rv['eof'].append(True)
         else:
             rv['eof'].append(False)
-        rv['src_ip'].append(dd['ip'][ctr])
+        rv['src_ip'].append(dd['src_ip'][ctr])
         print('')
         packet_counter += 1
     return rv

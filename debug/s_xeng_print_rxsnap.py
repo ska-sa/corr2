@@ -121,7 +121,8 @@ print ""
 for pkt_cnt,pkt in enumerate(spead_processor.packets):
     exp_xeng=pkt.headers[0x4103]/(n_chans/n_xeng)
     chan_on_this_xeng=pkt.headers[0x3]/pkt.headers[0x4]
-    if exp_xeng==0:
+    #if exp_xeng==0:
+    if True:
         print '%4i'%pkt_cnt,
         print '[mcnt %012x]'%pkt.headers[0x1600],
         print '[heap_id 0x%012X]'%pkt.headers[0x1],
