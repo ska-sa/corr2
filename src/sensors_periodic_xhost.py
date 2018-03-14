@@ -523,7 +523,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             'X-engine error reordering packets: HMC link not ready.',
             executor=executor),
         'hmc_err_cnt': sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.network-reord.hmc-err-cnt'.format(xhost),
+            Corr2Sensor.integer, '{}.hmc-err-cnt'.format(pref),
             'HMC hardware memory error counters.',executor=executor),
         }
         ioloop.add_callback(_cb_xeng_hmc_reorder, sensors, _x)
