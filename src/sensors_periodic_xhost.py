@@ -280,10 +280,10 @@ def _cb_xeng_vacc(sensors_value):
                         (sensordict['arm_cnt'].status()==Corr2Sensor.ERROR) or
                         (sensordict['ld_cnt'].status()==Corr2Sensor.ERROR)):
                         status = Corr2Sensor.ERROR
-                        value=True
+                        value=False
                     else:
                         status = Corr2Sensor.NOMINAL
-                        value=False
+                        value=True
                     sensordict['device_status'].set(value=value,status=status)
     except Exception as e:
         LOGGER.error('Error updating VACC sensors '
@@ -617,16 +617,16 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
         for xctr in range(_x.x_per_fpga):
-            pref = '{xhost}.xeng{xctr}'.format(xhost=xhost, xctr=xctr)
+            pref = '{xhost}.xeng{xctr}.spead-tx'.format(xhost=xhost, xctr=xctr)
             sensordict = {
             'device_status': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}.pack.device-status'.format(pref),
+                Corr2Sensor.boolean, '{}.device-status'.format(pref),
                 'X-engine pack (TX) status', executor=executor),
             'align_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.pack.align-err-cnt'.format(pref),
+                Corr2Sensor.integer, '{}.align-err-cnt'.format(pref),
                 'X-engine pack (TX) misalignment error count', executor=executor),
             'overflow_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.pack.overflow-err-cnt'.format(pref),
+                Corr2Sensor.integer, '{}.overflow-err-cnt'.format(pref),
                 'X-engine pack (TX) fifo overflow error count', executor=executor)
             }        
             sensors.append(sensordict)

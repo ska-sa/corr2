@@ -339,6 +339,8 @@ def _cb_feng_rx_reorder(sensors, f_host):
             sensor=sensors[key]
             #print('Processing {},{}: {}'.format(key,sensor.name,results[key]))
             sensor.set(value=results[key],errif='changed')
+        for key in ['timestep_err_cnt','receive_err_cnt','relock_err_cnt','overflow_err_cnt']:
+            sensor=sensors[key]
             if sensor.status()==Corr2Sensor.ERROR:
                 device_status=False
         if device_status:
@@ -413,7 +415,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.network.tx-err-cnt'.format(fhost),
                 'TX network error count', executor=executor),
             'rx_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.network.tx-err-cnt'.format(fhost),
+                Corr2Sensor.integer, '{}.network.rx-err-cnt'.format(fhost),
                 'RX network error count (bad packets received)', executor=executor),
         }
         ioloop.add_callback(_cb_fhost_check_network, network_sensors, _f)
