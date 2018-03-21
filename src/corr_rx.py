@@ -38,8 +38,8 @@ def process_xeng_data(self, heap_data, ig, channels):
     """
     # Calculate the substreams that have been captured
     n_chans_per_substream = self.n_chans / self.NUM_XENG
-    strt_substream = int(channels[0]/n_chans_per_substream)
-    stop_substream = int(channels[1]/n_chans_per_substream)
+    strt_substream = int(channels[0] / n_chans_per_substream)
+    stop_substream = int(channels[1] / n_chans_per_substream)
     if stop_substream == self.NUM_XENG: stop_substream = self.NUM_XENG-1
     n_substreams = stop_substream - strt_substream + 1
     chan_offset = n_chans_per_substream * strt_substream
@@ -92,8 +92,8 @@ def process_xeng_data(self, heap_data, ig, channels):
         """
         freqs = hdata.keys()
         freqs.sort()
-        check_range = range(n_chans_per_substream*strt_substream,
-                            n_chans_per_substream*stop_substream+1,
+        check_range = range(n_chans_per_substream * strt_substream,
+                            n_chans_per_substream * stop_substream + 1,
                             n_chans_per_substream)
         if freqs != check_range:
             self.logger.error('Did not get all frequencies from the x-engines for time %i: %s' % (
@@ -128,6 +128,8 @@ def process_xeng_data(self, heap_data, ig, channels):
                 rvs['dump_timestamp'] = _dump_timestamp
                 rvs['dump_timestamp_readable'] = _dump_timestamp_readable
                 rvs['xeng_raw'] = rv[1]
+                rvs['n_chans_selected'] = abs(self.stop_channel - self.strt_channel)
+
     return rvs
 
 def network_interfaces():
@@ -258,11 +260,11 @@ class CorrRx(threading.Thread):
         self.logger.info('RXing data with base IP addres: %s+%i, port %i.' % (self.data_ip, self.NUM_XENG, self.data_port))
 
         n_chans_per_substream = self.n_chans / self.NUM_XENG
-        strt_substream = int(self.channels[0]/n_chans_per_substream)
-        stop_substream = int(self.channels[1]/n_chans_per_substream)
+        strt_substream = int(self.channels[0] / n_chans_per_substream)
+        stop_substream = int(self.channels[1] / n_chans_per_substream)
         if stop_substream == self.NUM_XENG: stop_substream = self.NUM_XENG - 1
-        self.strt_channel =  n_chans_per_substream *  strt_substream
-        self.stop_channel =  n_chans_per_substream * (stop_substream + 1)
+        self.strt_channel = n_chans_per_substream * strt_substream
+        self.stop_channel = n_chans_per_substream * (stop_substream + 1)
         n_substreams = stop_substream - strt_substream + 1
         strt_ip = network.IpAddress(self.data_ip.ip_int + strt_substream).ip_str
         stop_ip = network.IpAddress(self.data_ip.ip_int + stop_substream).ip_str
@@ -272,7 +274,7 @@ class CorrRx(threading.Thread):
         self.interface_address = ''.join([ethx for ethx in network_interfaces()
                                          if ethx.startswith(interface_prefix)])
         self.logger.info("Interface Address: %s" % self.interface_address)
-        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0, 
+        self.strm = strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
                             max_heaps=n_substreams  * self.queue_size+1,
                             ring_heaps=n_substreams * self.queue_size+1)
 
@@ -356,7 +358,6 @@ class CorrRx(threading.Thread):
             _errmsg = ('No of channels in the spead data is inconsistent with the no of'
                       ' channels (%s) expected' %self.n_channels_selected)
             assert _dump['xeng_raw'].shape[0] == self.n_channels_selected, _errmsg
-            _dump['n_channels_selected'] = self.n_channels_selected
             _errmsg = ('Dump data type cannot be nonetype, confirm you are subscribed to multicast group.')
             assert _dump is not None, _errmsg
         except AssertionError:

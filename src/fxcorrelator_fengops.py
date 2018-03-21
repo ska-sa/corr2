@@ -65,13 +65,13 @@ class FengineStream(SPEADStream):
                     (lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
                 n_retries = -1
             except RuntimeError:
-                if n_retries == 0: 
+                if n_retries == 0:
                     raise
                 else:
                     n_retries -= 1
                     self.fops.logger.warning('Failed to start F-engine output; %i retries remaining.'%n_retries)
                     time.sleep(2)
-        if n_retries == -1: 
+        if n_retries == -1:
             self.tx_enabled = True
             self.fops.logger.info('F-engine output enabled')
 
@@ -347,7 +347,7 @@ class FEngineOperations(object):
             # is the time in the future?
             if feng_time > read_time:
                 errmsg = '%s, %s: F-engine time cannot be in the future? ' \
-                       'now(%.3f) feng_time(%.3f)' % (host.host, 
+                       'now(%.3f) feng_time(%.3f)' % (host.host,
                           host.fengines[0].input.name,read_time,feng_time)
                 self.logger.error(errmsg)
                 rv=False
@@ -355,7 +355,7 @@ class FEngineOperations(object):
             if abs(read_time - feng_time) > self.corr.time_offset_allowed_s:
                 errmsg = '%s, %s: time calculated from board cannot be so ' \
                          'far from local time: now(%.3f) feng_time(%.3f) ' \
-                         'diff(%.3f)' % (host.host, host.fengines[0].input.name, 
+                         'diff(%.3f)' % (host.host, host.fengines[0].input.name,
                             read_time, feng_time, read_time - feng_time)
                 self.logger.error(errmsg)
                 rv=False
@@ -412,8 +412,8 @@ class FEngineOperations(object):
                    phase=None, phase_rate=None):
         """
         Set the delay for a given input.
-        :param input_name: the name of the input to which we should 
-            apply the delays 
+        :param input_name: the name of the input to which we should
+            apply the delays
         :param loadtime: the UNIX time to effect the changes
         :param delay:
         :param delay_rate:
@@ -502,7 +502,7 @@ class FEngineOperations(object):
         """
         if force_disable:
             self.data_stream._tx_disable()
-        else: 
+        else:
             self.data_stream.tx_disable()
 
     def get_fengine(self, input_name):
@@ -640,8 +640,8 @@ class FEngineOperations(object):
 
     def setup_rx_ip_masks(self):
         """
-        Configure software registers on F-engines to accept a range of source IP addresses. 
-        :return: 
+        Configure software registers on F-engines to accept a range of source IP addresses.
+        :return:
         """
         self.logger.info('Setting Feng RX IP mask software registers.')
 
@@ -722,12 +722,12 @@ class FEngineOperations(object):
         if unix_time < 0:
             #unix_time = time.time() + 2
             #self.logger.info('Trigger time not specified; triggering in 2s.')
-            ldmcnt=None
-            timeout=10
-        else: 
-            ldmcnt=self.corr.mcnt_from_time(unix_time)
+            ldmcnt= None
+            timeout= 10
+        else:
+            ldmcnt = self.corr.mcnt_from_time(unix_time)
             ldmcnt = (ldmcnt >> 12) << 12
-            timeout=unix_time-time.time()
+            timeout = unix_time-time.time()
             if timeout < 0:
                 raise RuntimeError("Cannot trigger at a time in the past!")
 
@@ -746,8 +746,8 @@ class FEngineOperations(object):
         else:
             # return the data only for one given input
             rv = None
-            host=self.get_fengine(input_name).host
-            rv = host.get_adc_snapshots(input_name, loadcnt=loadcnt, timeout=timeout)
+            host = self.get_fengine(input_name).host
+            rv = host.get_adc_snapshots(input_name, timeout=timeout)
             return {input_name: rv}
 
     def get_version_info(self):

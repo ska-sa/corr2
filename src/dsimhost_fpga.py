@@ -80,10 +80,8 @@ class SineSource(Source):
     def repeat(self):
         if self.repeat_len_register is None or self.repeat_en_register is None:
             return None
-        if not self.repeat_en_register.read()['data']['en']:
-            return None
-        return self.repeat_len_register.read()['data'][
-            self.repeat_len_field_name]
+        else:
+            return self.repeat_len_register.read()['data'][self.repeat_len_field_name]
 
     def set(self, scale=None, frequency=None, repeat_n=None):
         """Set source parameters
@@ -465,7 +463,7 @@ class FpgaDsimHost(FpgaHost):
                 scale_reg = getattr(self.registers, 'scale_cwg' +
                                     scale_reg_postfix)
                 repeat_en_reg_name = 'rpt_en_cwg' + scale_reg_postfix
-                repeat_len_reg_name = 'rpt_length_cwg' + scale_reg_postfix
+                repeat_len_reg_name = 'rpt_length_cwg{}'.format(scale_reg_postfix)
                 repeat_en_reg = getattr(self.registers,
                                         repeat_en_reg_name, None)
                 repeat_len_reg = getattr(self.registers,
