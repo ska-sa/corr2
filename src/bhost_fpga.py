@@ -63,6 +63,7 @@ class FpgaBHost(FpgaXHost):
             source_labels = []
             for source in beam.source_streams:
                 source_labels.append(source.name)
+        LOGGER.info('%s: setting beamweights for beam %i' % (self.host, beam.index))
         for source_name in source_labels:
             source = beam.get_source(source_name)
             source_info = beam.source_streams[source]
@@ -78,7 +79,6 @@ class FpgaBHost(FpgaXHost):
                     '' % (self.host, self.index, beam.index, beam.name,
                           beng_ctr, source_index, source_weight))
             time.sleep(0.1)
-        LOGGER.info('%s: set beamweights for beam %i' % (self.host, beam.index))
 
     def beam_weights_get(self, beam, source_labels=None):
         """

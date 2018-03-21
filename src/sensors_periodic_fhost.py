@@ -239,6 +239,7 @@ def _cb_feng_pfbs(sensors, f_host):
     IOLoop.current().call_later(10, _cb_feng_pfbs, sensors, f_host)
 
 
+
 @gen.coroutine
 def _cb_fhost_check_network(sensors, f_host):
     """
@@ -249,6 +250,10 @@ def _cb_fhost_check_network(sensors, f_host):
     #GBE CORE
     executor = sensors['tx_pps'].executor
     device_status=Corr2Sensor.NOMINAL
+    def set_failure():
+        for key,sensor in sensors.iteritems():
+            sensor.set(status=Corr2Sensor.FAILURE,value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
+            #heck dictionary
     try:
         result = yield executor.submit(f_host.gbes.gbe0.get_stats)
         sensors['tx_err_cnt'].set(errif='changed', value=result['tx_over'])
@@ -277,15 +282,8 @@ def _cb_fhost_check_network(sensors, f_host):
         LOGGER.error(
             'Error updating gbe_stats for {} - {}'.format(
                 f_host.host, e.message))
-        sensors['tx_pps'].set(status=Corr2Sensor.FAILURE, value=-1)
-        sensors['rx_pps'].set(status=Corr2Sensor.FAILURE, value=-1)
-        sensors['tx_gbps'].set(status=Corr2Sensor.FAILURE, value=-1)
-        sensors['rx_gbps'].set(status=Corr2Sensor.FAILURE, value=-1)
-        sensors['tx_err_cnt'].set(status=Corr2Sensor.FAILURE, value=-1)
-        sensors['rx_err_cnt'].set(status=Corr2Sensor.FAILURE, value=-1)
-        sensors['device-status'].set(status=Corr2Sensor.FAILURE, value=-1)
-    
-    LOGGER.debug('_cb_fhost_check_network ran')
+        set_failure()
+    LOGGER.debug('_sensor_fhost_check_network ran on {}: {}'.format(f_host.host,results))
     IOLoop.current().call_later(10, _cb_fhost_check_network, sensors, f_host)
 
 @gen.coroutine
