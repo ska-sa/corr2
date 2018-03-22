@@ -85,7 +85,6 @@ def _cb_feng_rxtime(sensor_ok, sensors_value):
             else:
                 sensor_u.set(value=times[host],status=Corr2Sensor.FAILURE)
     except Exception as e:
-        raise
         sensor_ok.set(value=False,status=Corr2Sensor.FAILURE)
         for sensor, sensor_u in sensors_value.values():
             sensor.set(value=0,status=Corr2Sensor.FAILURE)
@@ -283,7 +282,7 @@ def _cb_fhost_check_network(sensors, f_host):
             'Error updating gbe_stats for {} - {}'.format(
                 f_host.host, e.message))
         set_failure()
-    LOGGER.debug('_sensor_fhost_check_network ran on {}: {}'.format(f_host.host,results))
+    LOGGER.debug('_sensor_fhost_check_network ran on {}'.format(f_host.host))
     IOLoop.current().call_later(10, _cb_fhost_check_network, sensors, f_host)
 
 @gen.coroutine
