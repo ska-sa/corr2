@@ -25,6 +25,8 @@ parser = argparse.ArgumentParser(description='Display the contents of an FPGA''s
 parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',
     help='a corr2 config file.')
+parser.add_argument('-A',dest='no_arm', action='store_true',
+                    help='Do not arm the snapshots.')
 parser.add_argument(dest='host', type=str, action='store',
                     help='the host index of the engine')
 #parser.add_argument('-l', '--listcores', dest='listcores', action='store_true',
@@ -45,7 +47,11 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-
+if args.no_arm:
+    print("NOT arming the snapshots... I hope you've done this manually yourself!")
+    arm=False
+else:
+    arm=True
 
 configfile = args.config
 if 'CORR2INI' in os.environ.keys() and configfile == '':
@@ -61,25 +67,9 @@ configd = c.configd
 n_chans=int(configd['fengine']['n_chans'])
 n_xeng=int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).split(','))
 
-#def get_fpga_data(fpga):
-#    # if 'gbe_in_msb_ss' not in fpga.snapshots.names():
-#    #     return get_fpga_data_new_snaps(fpga)
-#    control_reg = fpga.registers.gbesnap_control
-#    control_reg.write(arm=0)
-#    fpga.snapshots.gbe_in_msb_ss.arm()
-#    fpga.snapshots.gbe_in_lsb_ss.arm()
-#    fpga.snapshots.gbe_in_misc_ss.arm()
-#    control_reg.write(arm=1)
-#    time.sleep(1)
-#    d = fpga.snapshots.gbe_in_msb_ss.read(arm=False)['data']
-#    d.update(fpga.snapshots.gbe_in_lsb_ss.read(arm=False)['data'])
-#    d.update(fpga.snapshots.gbe_in_misc_ss.read(arm=False)['data'])
-#    control_reg.write(arm=0)
-#    return d
-
-def get_fpga_data(fpga):
+def get_fpga_data(fpga,arm):
     print 'fetching data...'
-    return fpga.gbes['gbe0'].read_rxsnap()
+    return fpga.gbes['gbe0'].read_rxsnap(arm=arm)
 
 def print_snap_data(dd):
     packet_counter = 0
@@ -121,7 +111,7 @@ def print_snap_data(dd):
 
 
 # read and print the data
-data = get_fpga_data(fpga)
+data = get_fpga_data(fpga,arm)
 unpacked_data=print_snap_data(data)
 pkts=[]
 last_index=-1
