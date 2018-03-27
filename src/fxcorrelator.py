@@ -297,12 +297,11 @@ class FxCorrelator(Instrument):
         self.logger.info('\tcurrent F-engine mcnt: %i' % feng_mcnt)
         if feng_mcnt & 0xfff != 0:
             errmsg = 'Bottom 12 bits of timestamp from F-engine are not ' \
-                   'zero?! feng_mcnt(%i)' % feng_mcnt
-            self.logger.error(errmsg)
-            raise RuntimeError(errmsg)
+                   'zero?! feng_mcnt(0x%012X)' % feng_mcnt
+            self.logger.warning(errmsg)
         t_now = time.time()
         self.synchronisation_epoch = t_now - feng_mcnt / self.sample_rate_hz
-        self.logger.info('\tnew epoch: %.3f' % self.synchronisation_epoch)
+        self.logger.info('\tnew epoch: %.3f (%s)' % (self.synchronisation_epoch,time.ctime(self.synchronisation_epoch)))
 
     def time_from_mcnt(self, mcnt):
         """

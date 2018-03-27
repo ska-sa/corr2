@@ -14,7 +14,7 @@ import matplotlib.pyplot as pyplot
 import corr2
 from corr2 import data_stream
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -123,6 +123,8 @@ if __name__ == '__main__':
                         help='Interactive mode plotting.')
     parser.add_argument('--log', dest='log', action='store_true', default=False,
                         help='Logarithmic y axis.')
+    parser.add_argument('--sum', dest='sum', action='store_true', default=False,
+                        help='Sum the spectra in the packet.')
     parser.add_argument('--sum', dest='sum', action='store_true', default=False,
                         help='Sum the spectra in the packet.')
     parser.add_argument(

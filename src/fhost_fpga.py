@@ -430,60 +430,19 @@ class FpgaFHost(DigitiserStreamReceiver):
         return cls(hostname, katcp_port, bitstream=bitstream,
                    connect=True, config=config_source)
 
-#    def cd_okay(self, wait_time=1):
-#        """
-#        Is the coarse-delay functioning correctly? Only applicable to the
-#        QDR-based CD. Non-QDR CD will just return True.
-#        :param wait_time:
-#        :return:
-#        """
-#        if 'cd_ctrs' not in self.registers.names():
-#            LOGGER.info('%s: cd_okay() - no QDR-based CD found.' % self.host)
-#            return True
-#        cd_ctrs0 = self.registers.cd_ctrs.read()['data']
-#        time.sleep(wait_time)
-#        cd_ctrs1 = self.registers.cd_ctrs.read()['data']
-#        err0_diff = cd_ctrs1['cd_error_cnt0'] - cd_ctrs0['cd_error_cnt0']
-#        err1_diff = cd_ctrs1['cd_error_cnt1'] - cd_ctrs0['cd_error_cnt1']
-#        parerr0_diff = cd_ctrs1['cd_parerr_cnt0'] - cd_ctrs0['cd_parerr_cnt0']
-#        parerr1_diff = cd_ctrs1['cd_parerr_cnt1'] - cd_ctrs0['cd_parerr_cnt1']
-#        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
-#            LOGGER.error('%s: cd_okay() - FALSE, QDR CD error.' % self.host)
-#            return False
-#        LOGGER.info('%s: cd_okay() - TRUE.' % self.host)
-#        return True
-#
-#    def ct_okay(self, wait_time=1):
-#        """
-#        Is the corner turner working?
-#        :param wait_time - time in seconds to wait between reg reads
-#        :return: True or False,
-#        """
-#        ct_ctrs0 = self.registers.ct_ctrs.read()['data']
-#        time.sleep(wait_time)
-#        ct_ctrs1 = self.registers.ct_ctrs.read()['data']
-#        err0_diff = ct_ctrs1['ct_err_cnt0'] - ct_ctrs0['ct_err_cnt0']
-#        err1_diff = ct_ctrs1['ct_err_cnt1'] - ct_ctrs0['ct_err_cnt1']
-#        parerr0_diff = ct_ctrs1['ct_parerr_cnt0'] - ct_ctrs0['ct_parerr_cnt0']
-#        parerr1_diff = ct_ctrs1['ct_parerr_cnt1'] - ct_ctrs0['ct_parerr_cnt1']
-#        if err0_diff or err1_diff or parerr0_diff or parerr1_diff:
-#            LOGGER.error('%s: ct_okay() - FALSE, CT error.' % self.host)
-#            return False
-#        LOGGER.info('%s: ct_okay() - TRUE.' % self.host)
-#        return True
-#
-#    def host_okay(self):
-#        """
-#        Is this host/LRU okay?
-#        :return:
-#        """
-#        if ((not self.check_rx()) or
-#                (not self.ct_okay()) or
-#                (not self.cd_okay())):
-#            LOGGER.debug('%s: host_okay() - FALSE.' % self.host)
-#            return False
-#        LOGGER.debug('%s: host_okay() - TRUE.' % self.host)
-#        return True
+    def get_local_time(self,src=0):
+        """
+        Get the local timestamp of this board, received from the digitiser
+        :param: src: 0 for direct (out of unpack), 1 is out of reorder, 2 out of PFB, 3 into pack block.
+        :return: time in samples since the digitiser epoch
+        """
+        self.registers.control.write(local_time_source=src)
+        self.registers.control.write(local_time_capture='pulse')
+        lsw = self.registers.local_time_lsw.read()['data']['timestamp_lsw']
+        msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
+        rv = (msw << 32) | lsw
+        return rv
+
 
     def add_fengine(self, fengine):
         """
