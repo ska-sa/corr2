@@ -95,6 +95,7 @@ class Beam(SPEADStream):
 
         # link source streams to weights
         weights = {}
+        obj.input_names = []
         if 'source_weights' in beam_dict:
             # OLD STYLE
             for weight in beam_dict['source_weights'].strip().split(','):
@@ -109,8 +110,11 @@ class Beam(SPEADStream):
                     input_name = key.replace('weight_', '')
                     input_weight = float(beam_dict[key])
                     weights[input_name] = input_weight
+                    obj.input_names.append(input_name)
         obj.source_streams = {}
-        source_index = 0
+        #print obj.input_names
+        obj.input_names.sort()
+        #print obj.input_names
         for input_name, input_weight in weights.items():
             match = None
             for fengine in fengops.fengines:
@@ -121,13 +125,15 @@ class Beam(SPEADStream):
                 raise RuntimeError('beam %s has a weight given for input %s,'
                                    'but no matching F-engine output found'
                                    'with that name.' % (obj.name, input_name))
+            source_index = obj.input_names.index(input_name)
             obj.source_streams[match] = {'weight': input_weight,
                                          'index': source_index}
-            source_index += 1
+
         obj.set_source(fengops.data_stream.destination)
         obj.quant_gain = 1
         obj.source_poly = []
         obj.descriptors_setup()
+        obj.source_names = obj.input_names
         return obj
 
     def __str__(self):
@@ -245,11 +251,12 @@ class Beam(SPEADStream):
         """
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_destination_set', [self], {}))
 
-    @property
-    def source_names(self):
-        tmp = [source.name for source in self.source_streams.keys()]
-        tmp.sort()
-        return tmp
+#    @property
+#    def source_names(self):
+#        tmp = [source.name for source in self.source_streams.keys()]
+#        tmp.sort()
+#        return tmp
+#        return self.
 
     def get_source(self, source_name):
         """
