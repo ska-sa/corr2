@@ -139,6 +139,10 @@ class BEngineOperations(object):
             for bm in self.beams:
                 self.set_beam_weights(new_weight, bm, input_name)
             return
+        if input_name is None:
+            for input_name in self.get_beam_by_name(beam_name).input_names:
+                self.set_beam_weights(new_weight, beam_name, input_name)
+            return
         beam = self.get_beam_by_name(beam_name)
         self.beams[beam_name].set_weights(input_name, new_weight)
         if self.corr.sensor_manager:

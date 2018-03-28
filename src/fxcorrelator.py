@@ -243,7 +243,7 @@ class FxCorrelator(Instrument):
 
         # start F-engine TX
         self.logger.info('Starting F-engine datastream')
-        self.fops.tx_enable()
+        self.fops.tx_enable(force_enable=True)
 
         # wait for switches to learn, um, stuff
         self.logger.info('post mess-with-the-switch delay of %is' %

@@ -260,7 +260,7 @@ def _cb_fhost_check_network(sensors, f_host):
         sensors['tx_pps'].set(status=Corr2Sensor.NOMINAL, value=result['tx_pps'])
         sensors['tx_gbps'].set(status=Corr2Sensor.NOMINAL, value=result['tx_gbps'])
 
-        if (result['rx_pps']>900000) and (result['rx_pps']<950000):
+        if (result['rx_pps']>800000) and (result['rx_pps']<900000):
             sensors['rx_pps'].set(status=Corr2Sensor.NOMINAL, value=result['rx_pps'])
         else:
             sensors['rx_pps'].set(status=Corr2Sensor.WARN, value=result['rx_pps'])

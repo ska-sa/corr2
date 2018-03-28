@@ -57,6 +57,13 @@ class FengineStream(SPEADStream):
         :return:
         """
         self.descriptors_issue()
+        self.fops.logger.warn(
+            '{}: Ignoring command to start F-engine stream.'.format(self.name))
+
+    def _tx_enable(self, n_retries=5):
+        """
+        Enable TX for this data stream
+        """
         done = False
         while n_retries > 0:
             try:
@@ -74,6 +81,8 @@ class FengineStream(SPEADStream):
         if n_retries == -1:
             self.tx_enabled = True
             self.fops.logger.info('F-engine output enabled')
+
+        
 
     def tx_disable(self):
         """
@@ -488,12 +497,15 @@ class FEngineOperations(object):
             attempts -= 1
         return False
 
-    def tx_enable(self):
+    def tx_enable(self,force_enable=False):
         """
         Enable TX on all tengbe cores on all F hosts
         :return:
         """
-        self.data_stream.tx_enable()
+        if force_enable:
+            self.data_stream._tx_enable()
+        else:
+            self.data_stream.tx_enable()
 
     def tx_disable(self,force_disable=False):
         """
