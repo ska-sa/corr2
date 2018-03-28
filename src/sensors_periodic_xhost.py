@@ -17,6 +17,7 @@ XHOST_REGS = ['status']
 #XHOST_REGS.extend(['status%i' % ctr for ctr in range(4)])
 
 host_offset_lookup = {}
+sensor_poll_time = 10
 
 
 @gen.coroutine
@@ -59,7 +60,7 @@ def _cb_xhost_lru(sensor_manager, sensor, x_host):
         sensor.set(value=False,status=Corr2Sensor.FAILURE)
 
     LOGGER.debug('_cb_xhost_lru ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(10, _cb_xhost_lru, sensor_manager, sensor, x_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_xhost_lru, sensor_manager, sensor, x_host)
 
 
 @gen.coroutine
@@ -101,7 +102,7 @@ def _cb_xeng_network(sensors, x_host):
                 x_host.host, e.message))
         set_failure()
     LOGGER.debug('_cb_xhost_check_network ran')
-    IOLoop.current().call_later(10, _cb_xeng_network, sensors, x_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_network, sensors, x_host)
 
 @gen.coroutine
 def _cb_xeng_rx_spead(sensors, x_host): 
@@ -131,7 +132,7 @@ def _cb_xeng_rx_spead(sensors, x_host):
                      '{}'.format(x_host.host, e.message))
         set_failure()
     LOGGER.debug('_cb_xeng_rx_spead ran')
-    IOLoop.current().call_later(10, _cb_xeng_rx_spead, sensors, x_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_rx_spead, sensors, x_host)
 
 @gen.coroutine
 def _cb_xeng_hmc_reorder(sensors, x_host):
@@ -175,7 +176,7 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
                      '{}'.format(x_host.host, e.message))
         set_failure() 
     LOGGER.debug('_cb_xhost_hmc_reorder ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(10, _cb_xeng_hmc_reorder, sensors, x_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_hmc_reorder, sensors, x_host)
 
 @gen.coroutine
 def _cb_xeng_missing_ants(sensors, sensor_top, x_host):
@@ -204,7 +205,7 @@ def _cb_xeng_missing_ants(sensors, sensor_top, x_host):
                      '{}'.format(x_host.host, e.message))
         set_failure()
     LOGGER.debug('_cb_xeng_missing_ants ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(10, _cb_xeng_missing_ants, sensors, sensor_top, x_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_missing_ants, sensors, sensor_top, x_host)
 
 @gen.coroutine
 def _cb_xeng_rx_reorder(sensors, x_host):
@@ -239,7 +240,7 @@ def _cb_xeng_rx_reorder(sensors, x_host):
         LOGGER.error('Error updating RX reorder sensors for {} - '
                      '{}'.format(x_host.host, e.message))
     LOGGER.debug('_cb_xeng_rx_reorder ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(10, _cb_xeng_rx_reorder, sensors, x_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_rx_reorder, sensors, x_host)
 
 @gen.coroutine
 def _cb_xeng_vacc(sensors_value):
@@ -290,7 +291,7 @@ def _cb_xeng_vacc(sensors_value):
                      '- {}'.format(e.message))
         set_failure()
     LOGGER.debug('_cb_xeng_vacc ran')
-    IOLoop.current().call_later(10,_cb_xeng_vacc, sensors_value) 
+    IOLoop.current().call_later(sensor_poll_time,_cb_xeng_vacc, sensors_value) 
 
 @gen.coroutine
 def _cb_xeng_pack(sensors, x_host):
@@ -321,7 +322,7 @@ def _cb_xeng_pack(sensors, x_host):
         LOGGER.error('Error updating xeng pack sensors for {} - '
                      '{}'.format(x_host.host, e.message))
     LOGGER.debug('_cb_xeng_pack ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(10, _cb_xeng_pack, sensors, x_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_pack, sensors, x_host)
 
 
 @gen.coroutine
@@ -355,7 +356,7 @@ def _cb_beng_pack(sensors, x_host):
             for pctr in range(2):
                 sensors[xctr][pctr].set(value=False)
     LOGGER.debug('_cb_beng ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(10, _cb_beng, sensors, x_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_beng, sensors, x_host)
 
 
 def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
@@ -418,6 +419,8 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
     :return:
     """
     global host_offset_lookup
+    global sensor_poll_time 
+    sensor_poll_time = sens_man.instrument.sensor_poll_time
     if len(host_offset_lookup) == 0:
         host_offset_lookup = host_offset_dict.copy()
 

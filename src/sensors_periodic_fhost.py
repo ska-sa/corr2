@@ -22,6 +22,7 @@ FHOST_REGS = ['spead_status', 'reorder_status', 'sync_ctrs', 'pfb_status',
 #FHOST_REGS.extend(['gbe%i_rxbadctr' % ctr for ctr in range(1)])
 
 host_offset_lookup = {}
+sensor_poll_time = 10
 
 @gen.coroutine
 def _cb_fhost_lru(sensor_manager, sensor, f_host):
@@ -58,7 +59,7 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host):
         sensor.set(value=False,status=Corr2Sensor.FAILURE)
     
     LOGGER.debug('_cb_fhost_lru ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_fhost_lru, sensor_manager, sensor, f_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_fhost_lru, sensor_manager, sensor, f_host)
 
 @gen.coroutine
 def _cb_feng_rxtime(sensor_ok, sensors_value):
@@ -92,7 +93,7 @@ def _cb_feng_rxtime(sensor_ok, sensors_value):
         LOGGER.error('Error updating feng rxtime sensor '
                      '- {}'.format(e.message))
     LOGGER.debug('_cb_feng_rxtime ran')
-    IOLoop.current().call_later(10, _cb_feng_rxtime,
+    IOLoop.current().call_later(sensor_poll_time, _cb_feng_rxtime,
                                 sensor_ok, sensors_value)
 
 @gen.coroutine
@@ -136,7 +137,7 @@ def _cb_feng_delays(sensors, f_host):
                 f_host.host, e.message))
         set_failure()
     LOGGER.debug('_sensor_feng_delays ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_feng_delays, sensors, f_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_feng_delays, sensors, f_host)
 
 @gen.coroutine
 def _cb_feng_ct(sensors, f_host):
@@ -177,7 +178,7 @@ def _cb_feng_ct(sensors, f_host):
             'Error updating CT sensors for {} - {}'.format(
                 f_host.host, e.message))
     LOGGER.debug('_cb_feng_ct ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_feng_ct, sensors, f_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_feng_ct, sensors, f_host)
 
 @gen.coroutine
 def _cb_feng_pack(sensors, f_host):
@@ -204,7 +205,7 @@ def _cb_feng_pack(sensors, f_host):
         sensors['device-status'].set(value=False,status=Corr2Sensor.FAILURE)
         sensors['err_cnt'].set(value=-1,status=Corr2Sensor.FAILURE)
     LOGGER.debug('_cb_feng_pack ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_feng_pack, sensors, f_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_feng_pack, sensors, f_host)
 
 
 @gen.coroutine
@@ -235,7 +236,7 @@ def _cb_feng_pfbs(sensors, f_host):
                 f_host.host, e.message))
         set_failure()
     LOGGER.debug('_sensor_feng_pfbs ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_feng_pfbs, sensors, f_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_feng_pfbs, sensors, f_host)
 
 
 
@@ -283,7 +284,7 @@ def _cb_fhost_check_network(sensors, f_host):
                 f_host.host, e.message))
         set_failure()
     LOGGER.debug('_sensor_fhost_check_network ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_fhost_check_network, sensors, f_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_fhost_check_network, sensors, f_host)
 
 @gen.coroutine
 def _cb_feng_rx_spead(sensors, f_host):
@@ -314,7 +315,7 @@ def _cb_feng_rx_spead(sensors, f_host):
                 f_host.host, e.message))
         set_failure()
     LOGGER.debug('_sensor_feng_rx_spead ran on {}: {}'.format(f_host.host,results))
-    IOLoop.current().call_later(10, _cb_feng_rx_spead, sensors, f_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_feng_rx_spead, sensors, f_host)
 
 
 @gen.coroutine
@@ -350,7 +351,7 @@ def _cb_feng_rx_reorder(sensors, f_host):
         set_failure()
 
     LOGGER.debug('_sensor_feng_rx_reorder ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(10, _cb_feng_rx_reorder, sensors, f_host)
+    IOLoop.current().call_later(sensor_poll_time, _cb_feng_rx_reorder, sensors, f_host)
 
 
 def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
@@ -365,6 +366,8 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
     :return:
     """
     global host_offset_lookup
+    global sensor_poll_time
+    sensor_poll_time = sens_man.instrument.sensor_poll_time
     if len(host_offset_lookup) == 0:
         host_offset_lookup = host_offset_dict.copy()
 
