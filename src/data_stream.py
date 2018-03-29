@@ -19,7 +19,7 @@ BEAMFORMER_INCOHERENT = 5  # incoherent-beam-total-power
 FLYS_EYE = 6  # antenna-correlation-products
 ANTENNA_VOLTAGE_BUFFER = 7  # antenna-voltage-buffer
 
-SPEAD_PKT_TTL = 2
+SPEAD_PKT_TTL = 5
 
 
 class StreamAddress(object):

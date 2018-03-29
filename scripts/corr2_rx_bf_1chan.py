@@ -48,7 +48,7 @@ class CorrRx(threading.Thread):
                         port=data_port,
                         max_size=9200,
                         buffer_size=5120000,
-                        )
+                        interface_address='10.100.22.13')
 
         last_heap_cnt = -1
         heap_ctr = 0
@@ -89,10 +89,10 @@ class CorrRx(threading.Thread):
                         # integrate the spectra in the heap
                         (speclen, numspec, cplx) = np.shape(bfraw)
                         intdata = bfraw[chan_on_partition,:,:]
+#                        import IPython
+#                        IPython.embed()
                         plotqueue.put(intdata)
                         got_data_event.set()
-                        #import IPython
-                        #IPython.embed()
         except MemoryError:
             self.memory_error_event.set()
 
