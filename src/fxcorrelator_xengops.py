@@ -1,22 +1,130 @@
 import time
 import numpy
+import utils
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
-from katcp import Sensor
 
 from casperfpga import utils as fpgautils
 
 import data_stream
-from net_address import NetAddress
-from fxcorrelator_speadops import SPEAD_ADDRSIZE
+import fxcorrelator_speadops as speadops
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 use_xeng_sim = False
 
-MAX_VACC_SYNCH_ATTEMPTS = 5
+class XengineStream(data_stream.SPEADStream):
+    """
+    An x-engine SPEAD stream
+    """
+    def __init__(self, name, destination, xops):
+        """
+        Make a SPEAD stream.
+        :param name: the name of the stream
+        :param destination: where is it going?
+        :return:
+        """
+        self.xops = xops
+        super(XengineStream, self).__init__(
+            name, data_stream.XENGINE_CROSS_PRODUCTS, destination)
+
+    def descriptors_setup(self):
+        """
+        Set up the data descriptors for an X-engine stream.
+        :return:
+        """
+        speadops.item_0x1600(self.descr_ig)
+
+        # # xeng flags
+        # speadops.add_item(
+        #     self.descr_ig, name='flags_xeng_raw', id=0x1601,
+        #     description=
+        #     'Flags associated with xeng_raw data output. bit 34 - corruption '
+        #     'or data missing during integration, bit 33 - overrange in '
+        #     'data path, bit 32 - noise diode on during integration, '
+        #     'bits 0 - 31 reserved for internal debugging',
+        #     shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
+
+        # xeng data
+        # shape of the x-engine data is:
+        # shape=[self.corr.n_chans, len(self.corr.baselines), 2]
+        # for debug:
+        # shape=[self.corr.n_chans * len(self.corr.baselines), 2]
+        n_xengs = len(self.xops.corr.xhosts) * self.xops.corr.x_per_fpga
+        speadops.add_item(
+            self.descr_ig, name='xeng_raw', id=0x1800,
+            description=
+            'Raw data for %i xengines in the system. This item represents a '
+            'full spectrum (all frequency channels) assembled from lowest '
+            'frequency to highest frequency. Each frequency channel contains '
+            'the data for all baselines (n_bls given by SPEAD ID 0x100b). '
+            'Each value is a complex number - two (real and imaginary) '
+            'unsigned integers.' % n_xengs,
+            dtype=numpy.dtype('>i4'),
+            # shape=[self.xops.corr.n_chans, len(self.xops.corr.baselines), 2])
+            shape=[self.xops.corr.n_chans/n_xengs,
+                   len(self.xops.corr.baselines), 2])
+
+        speadops.add_item(
+            self.descr_ig, name='frequency', id=0x4103,
+            description=
+            'Identifies the first channel in the band of frequency channels '
+            'in the SPEAD heap',
+            shape=[], format=[('u', speadops.SPEAD_ADDRSIZE)])
+
+    def write_destination(self):
+        """
+        Write the destination to the hardware.
+        :return:
+        """
+        txip = int(self.destination.ip_address)
+        txport = self.destination.port
+        try:
+            THREADED_FPGA_OP(
+                self.xops.hosts, timeout=10,
+                target_function=(lambda fpga_:
+                                 fpga_.registers.gbe_iptx.write(reg=txip),))
+            THREADED_FPGA_OP(
+                self.xops.hosts, timeout=10,
+                target_function=(lambda fpga_:
+                                 fpga_.registers.gbe_porttx.write(reg=txport),))
+        except AttributeError:
+            errmsg = 'Writing stream %s destination to hardware ' \
+                     'failed!' % self.name
+            self.xops.logger.error(errmsg)
+            raise RuntimeError(errmsg)
+
+    def tx_enable(self):
+        """
+        Enable TX for this data stream
+        :return:
+        """
+        self.descriptors_issue()
+        THREADED_FPGA_OP(
+            self.xops.hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.control.write(gbe_txen=True),))
+        self.tx_enabled = True
+        self.xops.logger.info('X-engine output enabled')
+
+    def tx_disable(self):
+        """
+        Disable TX for this data stream
+        :return:
+        """
+        THREADED_FPGA_OP(
+            self.xops.hosts, timeout=5,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.control.write(gbe_txen=False),))
+        self.tx_enabled = False
+        self.xops.logger.info('X-engine output disabled')
+
+    def __str__(self):
+        return 'XengineStream %s -> %s' % (self.name, self.destination)
 
 
 class VaccSynchAttemptsMaxedOut(RuntimeError):
@@ -37,6 +145,8 @@ class XEngineOperations(object):
         self.logger = corr_obj.logger
         self.data_stream = None
 
+        self._board_ids = {}
+
         self.vacc_synch_running = IOLoopEvent()
         self.vacc_synch_running.clear()
         self.vacc_check_enabled = IOLoopEvent()
@@ -52,6 +162,15 @@ class XEngineOperations(object):
                 lambda fpga_:
                 fpga_.registers.control.write(gbe_rst=state),))
 
+    @property
+    def board_ids(self):
+        if len(self._board_ids) == 0:
+            self._board_ids = {
+                f.host: f.registers.board_id.read()['data']['reg']
+                for f in self.hosts
+            }
+        return self._board_ids
+
     def initialise_post_gbe(self):
         """
         Perform post-gbe setup initialisation steps
@@ -60,11 +179,14 @@ class XEngineOperations(object):
         # write the board IDs to the xhosts
         board_id = 0
         for f in self.hosts:
+            self._board_ids[f.host] = board_id
             f.registers.board_id.write(reg=board_id)
             board_id += 1
 
         # write the data stream destination to the registers
-        self.write_data_stream_destination(None)
+        self.data_stream.write_destination()
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_stream_destinations()
 
         # clear gbe status
         THREADED_FPGA_OP(
@@ -136,17 +258,17 @@ class XEngineOperations(object):
                         gapsize-1),))
             # /HACK
         else:
-            _errmsg = 'X-engine image has no register gap_size/gapsize?'
-            self.logger.exception(_errmsg)
-            raise RuntimeError(_errmsg)
+            errmsg = 'X-engine image has no register gap_size/gapsize?'
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
 
         # disable transmission, place cores in reset, and give control
         # register a known state
-        self.xeng_tx_disable(None)
+        self.data_stream.tx_disable()
 
         XEngineOperations._gberst(self.hosts, True)
-
-        self.clear_status_all()
+        #Why is this needed here:?
+        #self.clear_status_all()
 
     def configure(self):
         """
@@ -157,36 +279,48 @@ class XEngineOperations(object):
         # set up the xengine data stream
         self._setup_data_stream()
 
+        # vacc check
+        self.vacc_check_enabled.clear()
+        self.vacc_synch_running.clear()
+        if self.vacc_check_cb is not None:
+            self.vacc_check_cb.stop()
+        self.vacc_check_cb = None
+
+    def xengine_to_host_mapping(self):
+        """
+        Return a mapping of hostnames to engine numbers
+        :return:
+        """
+        mapping = {}
+        for host in self.hosts:
+            board_id = self.board_ids[host.host]
+            rv = ['xeng{:03}'.format((board_id * self.corr.x_per_fpga) + ctr)
+                  for ctr in range(self.corr.x_per_fpga)]
+            mapping[host.host] = rv
+        return mapping
+
     def _setup_data_stream(self):
         """
         Set up the data stream for the xengine output
         :return:
         """
         # the x-engine output data stream setup
-        _xeng_d = self.corr.configd['xengine']
-
-        data_addr = NetAddress(_xeng_d['output_destination_ip'],
-                               _xeng_d['output_destination_port'])
-        meta_addr = NetAddress(_xeng_d['output_destination_ip'],
-                               _xeng_d['output_destination_port'])
-
-        xeng_stream = data_stream.DataStream(
-            name=_xeng_d['output_products'][0],
-            category=data_stream.XENGINE_CROSS_PRODUCTS,
-            destination=data_addr,
-            meta_destination=meta_addr,
-            destination_cb=self.write_data_stream_destination,
-            meta_destination_cb=self.spead_meta_issue_all,
-            tx_enable_method=self.xeng_tx_enable,
-            tx_disable_method=self.xeng_tx_disable)
-
+        xeng_d = self.corr.configd['xengine']
+        num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
+        output_name, output_address = utils.parse_output_products(xeng_d)
+        assert len(output_name) == 1, 'Currently only single xeng products ' \
+                                      'supported.'
+        output_name = output_name[0]
+        output_address = output_address[0]
+        if output_address.ip_range != 1:
+            raise RuntimeError(
+                'The x-engine\'s given address range (%s) must be one, a '
+                'starting base.' % output_address)
+        output_address.ip_range = num_xeng
+        xeng_stream = XengineStream(output_name, output_address, self)
         self.data_stream = xeng_stream
-        self.corr.register_data_stream(xeng_stream)
-        self.vacc_check_enabled.clear()
-        self.vacc_synch_running.clear()
-        if self.vacc_check_cb is not None:
-            self.vacc_check_cb.stop()
-        self.vacc_check_cb = None
+        self.data_stream.set_source(self.corr.fops.data_stream.destination)
+        self.corr.add_data_stream(xeng_stream)
 
     def _vacc_periodic_check(self):
 
@@ -205,22 +339,10 @@ class XEngineOperations(object):
             Get the relevant data from the X-engine FPGAs
             """
             # older versions had other register names
-            _OLD = 'reorderr_timeout0' in self.hosts[0].registers.names()
 
-            def _get_reorder_data(fpga):
-                rv = {}
-                for _ctr in range(0, fpga.x_per_fpga):
-                    if _OLD:
-                        _reg = fpga.registers['reorderr_timeout%i' % _ctr]
-                        rv['etim%i' % _ctr] = _reg.read()['data']['reg']
-                    else:
-                        _reg = fpga.registers['reorderr_timedisc%i' % _ctr]
-                        rv['etim%i' % _ctr] = _reg.read()['data']['timeout']
-                return rv
-            reo_data = THREADED_FPGA_OP(self.hosts, timeout=5,
-                                        target_function=_get_reorder_data)
-            vacc_data = self.vacc_status()
-            return {'reorder': reo_data, 'vacc': vacc_data}
+            vacc_data = self.get_vacc_status()
+            reord_data = self.get_reorder_status()
+            return {'reorder': reord_data, 'vacc': vacc_data}
     
         def _vacc_data_check(d0, d1):
             # check errors are not incrementing
@@ -230,7 +352,7 @@ class XEngineOperations(object):
                     status1 = d1[host.host][xeng]
                     if ((status1['errors'] > status0['errors']) or
                             (status0['errors'] != 0)):
-                        self.logger.error('    vacc %i on %s has '
+                        self.logger.error('\tvacc %i on %s has '
                                           'errors' % (xeng, host.host))
                         return False
             # check that the accumulations are ticking over
@@ -239,7 +361,7 @@ class XEngineOperations(object):
                     status0 = d0[host.host][xeng]
                     status1 = d1[host.host][xeng]
                     if status1['count'] == status0['count']:
-                        self.logger.error('    vacc %i on %s is not '
+                        self.logger.error('\tvacc %i on %s is not '
                                           'incrementing' % (xeng, host.host))
                         return False
             return True
@@ -249,7 +371,7 @@ class XEngineOperations(object):
                 for ctr in range(0, host.x_per_fpga):
                     reg = 'etim%i' % ctr
                     if d0[host.host][reg] != d1[host.host][reg]:
-                        self.logger.error('    %s - vacc check reorder '
+                        self.logger.error('\t%s - vacc check reorder '
                                           'reg %s error' % (host.host, reg))
                         return False
             return True
@@ -269,7 +391,7 @@ class XEngineOperations(object):
                                            new_data['reorder']):
                     force_sync = True
             if force_sync:
-                self.logger.error('    forcing vacc sync')
+                self.logger.error('\tforcing vacc sync')
                 self.vacc_sync()
 
         self.corr.logger.debug('scheduled check done @ %s' % time.ctime())
@@ -307,38 +429,9 @@ class XEngineOperations(object):
         self.vacc_check_cb.start()
         self.corr.logger.info('vacc check timer started')
 
-    def write_data_stream_destination(self, data_stream):
-        """
-        Write the x-engine data stream destination to the hosts.
-        :param data_stream - the data stream on which to act
-        :return:
-        """
-        dstrm = data_stream or self.data_stream
-        txip = int(dstrm.destination.ip)
-        txport = dstrm.destination.port
-        try:
-            THREADED_FPGA_OP(
-                self.hosts, timeout=10,
-                target_function=(lambda fpga_:
-                                 fpga_.registers.gbe_iptx.write(reg=txip),))
-            THREADED_FPGA_OP(
-                self.hosts, timeout=10,
-                target_function=(lambda fpga_:
-                                 fpga_.registers.gbe_porttx.write(reg=txport),))
-        except AttributeError:
-            self.logger.warning('Writing stream %s destination to '
-                                'hardware failed!' % dstrm.name)
-
-        # update meta data on stream destination change
-        self.spead_meta_update_stream_destination()
-        dstrm.meta_transmit()
-
-        self.logger.info('Wrote stream %s destination to %s in hardware' % (
-            dstrm.name, dstrm.destination))
-
     def clear_status_all(self):
         """
-        Clear the various status registers and counters on all the fengines
+        Clear the various status registers and counters on all the xengines
         :return:
         """
         THREADED_FPGA_FUNC(self.hosts, timeout=10,
@@ -346,136 +439,144 @@ class XEngineOperations(object):
 
     def subscribe_to_multicast(self):
         """
-        Subscribe the x-engines to the f-engine output multicast groups -
+        Subscribe the x-engines to the F-engine output multicast groups -
         each one subscribes to only one group, with data meant only for it.
         :return:
         """
-        if self.corr.fengine_output.is_multicast():
-            self.logger.info('F > X is multicast from base %s' %
-                             self.corr.fengine_output)
-            source_address = str(self.corr.fengine_output.ip_address)
-            source_bits = source_address.split('.')
-            source_base = int(source_bits[3])
-            source_prefix = '%s.%s.%s.' % (source_bits[0],
-                                           source_bits[1],
-                                           source_bits[2])
-            source_ctr = 0
-            for host_ctr, host in enumerate(self.hosts):
-                for gbe in host.tengbes:
-                    rxaddress = '%s%d' % (source_prefix,
-                                          source_base + source_ctr)
-                    gbe.multicast_receive(rxaddress, 0)
-
-                    # CLUDGE
-                    source_ctr += 1
-                    # source_ctr += 4
-
-                    self.logger.info('\txhost %s %s subscribing to address %s' %
-                                     (host.host, gbe.name, rxaddress))
-        else:
-            self.logger.info('F > X is unicast from base %s' %
-                             self.corr.fengine_output)
+        source_address = self.corr.fops.data_stream.destination
+        if not source_address.is_multicast():
+            self.logger.info('F > X is unicast from base %s' % source_address)
+            return
+        self.logger.info('F > X is multicast from base %s' % source_address)
+        source_range = source_address.ip_range
+        source_address = str(source_address.ip_address)
+        source_bits = source_address.split('.')
+        source_base = int(source_bits[3])
+        source_prefix = '%s.%s.%s.' % (
+            source_bits[0], source_bits[1], source_bits[2])
+        source_ctr = 0
+        num_x_hosts = len(self.hosts)
+        num_gbes_per_x = len(self.hosts[0].gbes)
+        num_ips_total = source_range + 1
+        addresses_per_gbe = num_ips_total / (num_x_hosts * num_gbes_per_x)
+        for host_ctr, host in enumerate(self.hosts):
+            for gbe in host.gbes:
+                rxaddress = '%s%d' % (source_prefix,
+                                      source_base + source_ctr)
+                gbe.multicast_receive(rxaddress, addresses_per_gbe)
+                source_ctr += addresses_per_gbe
+                self.logger.info('\t%s: %s(%s+%i)' % (
+                    host.host, gbe.name, rxaddress, addresses_per_gbe - 1))
 
     def check_rx(self, max_waittime=30):
         """
-        Check that the x hosts are receiving data correctly
+        Check that the X-engines are receiving data correctly
         :param max_waittime:
         :return:
         """
         self.logger.info('Checking X hosts are receiving data...')
         results = THREADED_FPGA_FUNC(
             self.hosts, timeout=max_waittime+1,
-            target_function=('check_rx', (max_waittime,),))
+            target_function=('check_rx'))
         all_okay = True
         for _v in results.values():
             all_okay = all_okay and _v
         if not all_okay:
-            self.logger.error('\tERROR in X-engine rx data.')
-        self.logger.info('\tdone.')
+            self.logger.error('\tX-engine RX data error.')
+        else:
+            self.logger.info('\tAll X hosts are receiving data ok.')
         return all_okay
 
-    def vacc_status(self):
+    def get_rx_reorder_status(self):
+        """
+        Get a dictionary of the reorder status registers for all
+        x-engines.
+        :return: {}
+        """
+        return THREADED_FPGA_FUNC(self.hosts, timeout=10,
+                                  target_function='get_rx_reorder_status')
+
+    def get_vacc_status(self):
         """
         Get a dictionary of the vacc status registers for all
         x-engines.
         :return: {}
         """
-        return THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                                  target_function='vacc_get_status')
+        rv=THREADED_FPGA_FUNC(self.hosts, timeout=10,
+                                  target_function='get_vacc_status')
 
-    def _vacc_sync_check_reset(self):
-        """
-        Do the vaccs need resetting before a synch?
-        :return:
-        """
-        vaccstat = THREADED_FPGA_FUNC(
-            self.hosts, timeout=10,
-            target_function='vacc_check_arm_load_counts')
-        reset_required = False
-        for xhost, result in vaccstat.items():
-            if result:
-                self.logger.info('xeng_vacc_sync: %s has a vacc that '
-                                 'needs resetting' % xhost)
-                reset_required = True
+        sync=True
+        timestamp=rv[rv.keys()[0]][0]['timestamp']
+        for hostname in rv:
+            for vacc in rv[hostname]:
+                if vacc['timestamp'] != timestamp:
+                    sync=False
+        rv['synchronised']=sync
+        return rv
 
-        if reset_required:
-            THREADED_FPGA_FUNC(self.hosts, timeout=10,
+    def vacc_reset_all(self):
+        """
+        Reset all Xengine VACCs
+        """
+        self.logger.info('Resetting all VACCs.')
+        THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                target_function='vacc_reset')
-            vaccstat = THREADED_FPGA_FUNC(
-                self.hosts, timeout=10,
-                target_function='vacc_check_reset_status')
-            for xhost, result in vaccstat.items():
-                if not result:
-                    errstr = 'xeng_vacc_sync: resetting vaccs on ' \
-                             '%s failed.' % xhost
-                    self.logger.error(errstr)
-                    raise RuntimeError(errstr)
 
-    def _vacc_sync_create_loadtime(self, min_loadtime):
+    def _vacc_sync_create_loadtime(self, load_time=None):
         """
-        Calculate the load time for the vacc synch based on a
-        given minimum load time
-        :param min_loadtime:
+        Returns a valid load time for the vacc synch.
+        Checks minimum load time.
+        Generates a suitable loadtime if none is provided.
+        :param load_time:
         :return: the vacc load time, in seconds since the UNIX epoch
         """
-        # how long should we wait for the vacc load
-        self.logger.info('Vacc sync time not specified. Syncing in '
-                         '%2.2f seconds\' time.' % (min_loadtime*2))
+        min_loadtime = self.get_acc_time() * 2.0
+        # min_loadtime = 2
         t_now = time.time()
-        vacc_load_time = t_now + (min_loadtime*2)
-
+        if load_time is None:
+            # how long should we wait for the vacc load
+            self.logger.info('Vacc sync time not specified.')
+            vacc_load_time = t_now + (min_loadtime*2)
+        else:
+            vacc_load_time = load_time
+        askstr = 'You asked for %s.%i, and it is now %s.%i.' % (
+            time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
+            (vacc_load_time-int(vacc_load_time))*100,
+            time.strftime('%H:%M:%S', time.gmtime(t_now)),
+            (t_now-int(t_now))*100)
         if vacc_load_time < (t_now + min_loadtime):
             raise RuntimeError(
-                'Cannot load at a time in the past. '
-                'Need at least %2.2f seconds lead time. You asked for '
-                '%s.%i, and it is now %s.%i.' % (
-                    min_loadtime,
-                    time.strftime('%H:%M:%S', time.gmtime(vacc_load_time)),
-                    (vacc_load_time-int(vacc_load_time))*100,
-                    time.strftime('%H:%M:%S', time.gmtime(t_now)),
-                    (t_now-int(t_now))*100))
-
-        self.logger.info('    xeng vaccs will sync at %s (in %2.2fs)'
+                'Cannot load at a time in the past. Need at least %2.2f '
+                'seconds lead time. %s' % (min_loadtime, askstr))
+        elif vacc_load_time > (t_now + 10):
+            self.logger.warn('Requested loadtime is more than '
+                             '10 seconds away. %s' % askstr)
+        self.logger.info('Vaccs will sync at %s (in %2.2fs)'
                          % (time.ctime(t_now), vacc_load_time-t_now))
         return vacc_load_time
 
-    def _vacc_sync_calc_load_mcount(self, vacc_loadtime):
+    def _vacc_sync_calc_load_mcount(self, vacc_loadtime, phase_sync=True):
         """
-        Calculate the loadtime in clock ticks
+        Calculate the loadtime in clock ticks,
+         from a vacc_loadtime in seconds since the unix epoch. 
+        Accounts for quantisation due to Feng PFB.
         :param vacc_loadtime:
         :return:
         """
         ldmcnt = int(self.corr.mcnt_from_time(vacc_loadtime))
         self.logger.debug('$$$$$$$$$$$ - ldmcnt = %i' % ldmcnt)
         _ldmcnt_orig = ldmcnt
-        _cfgd = self.corr.configd
-        n_chans = int(_cfgd['fengine']['n_chans'])
-        xeng_acc_len = int(_cfgd['xengine']['xeng_accumulation_len'])
-
         quantisation_bits = int(
-            numpy.log2(n_chans) + 1 +
-            numpy.log2(xeng_acc_len))
+            numpy.log2(self.corr.n_chans) + 1 +
+            numpy.log2(self.corr.xeng_accumulation_len))
 
+        if phase_sync:
+            last_loadmcnt=self.get_vacc_loadtime()
+            acc_len=self.get_acc_len()
+            n_accs=int(((ldmcnt-last_loadmcnt)>>(quantisation_bits))/acc_len)+1
+            self.logger.info("Attempting to phase-up VACC at acc_cnt {} since {}.".format(n_accs,last_loadmcnt))
+            ldmcnt=last_loadmcnt+(((n_accs)*acc_len-1)<<quantisation_bits)
+            
         self.logger.debug('$$$$$$$$$$$ - quant bits = %i' % quantisation_bits)
         ldmcnt = ((ldmcnt >> quantisation_bits) + 1) << quantisation_bits
         self.logger.debug('$$$$$$$$$$$ - ldmcnt quantised = %i' % ldmcnt)
@@ -488,99 +589,42 @@ class XEngineOperations(object):
         time_from_mcnt = self.corr.time_from_mcnt(ldmcnt)
         t_now = time.time()
         if time_from_mcnt <= t_now:
-            self.logger.warn('    Warning: the board timestamp has probably'
+            self.logger.warn('\tWarning: the board timestamp has probably'
                              ' wrapped! mcnt_time(%.3f) time.time(%.3f)' %
                              (time_from_mcnt, t_now))
         return ldmcnt
 
-    def _vacc_sync_print_vacc_statuses(self, vstatus):
+    def vacc_print_statuses(self, vstatus=None):
         """
         Print the vacc statuses to the logger
         :param vstatus:
         :return:
         """
+        if vstatus==None:
+            vstatus=self.get_vacc_status()
         self.logger.info('vacc statii:')
-        for _host in self.hosts:
-            self.logger.info('    %s:' % _host.host)
+        for n,_host in enumerate(self.hosts):
+            self.logger.info('\t%i, %s:' %(n,_host.host))
             for _ctr, _status in enumerate(vstatus[_host.host]):
-                self.logger.info('        %i: %s' % (_ctr, _status))
+                self.logger.info('\t\t%i: %s' % (_ctr, _status))
 
-    def _vacc_sync_check_counts_initial(self):
-        """
-        Check the arm and load counts initially
-        :return:
-        """
-        # read the current arm and load counts
-        vacc_status = self.vacc_status()
-        arm_count0 = vacc_status[self.hosts[0].host][0]['armcount']
-        load_count0 = vacc_status[self.hosts[0].host][0]['loadcount']
-        # check the xhosts load and arm counts
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                _bad_ldcnt = status['loadcount'] != load_count0
-                _bad_armcnt = status['armcount'] != arm_count0
-                if _bad_ldcnt or _bad_armcnt:
-                    _err = 'All hosts do not have matching arm and ' \
-                           'load counts.'
-                    self.logger.error(_err)
-                    self._vacc_sync_print_vacc_statuses(vacc_status)
-                    raise RuntimeError(_err)
-        self.logger.info('    Before arming: arm_count(%i) load_count(%i)' %
-                         (arm_count0, load_count0))
-        return arm_count0, load_count0
-
-    def _vacc_sync_check_arm_count(self, armcount_initial):
+    def _vacc_sync_check_armload_increment(self, vacc_status_initial,check='arm_cnt'):
         """
         Check that the arm count increased
         :return:
         """
-        vacc_status = self.vacc_status()
-        arm_count_new = vacc_status[self.hosts[0].host][0]['armcount']
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                if ((status['armcount'] != arm_count_new) or
-                        (status['armcount'] != armcount_initial + 1)):
-                    _err = 'xeng_vacc_sync: all hosts do not have ' \
-                           'matching arm counts or arm count did ' \
-                           'not increase.'
-                    self.logger.error(_err)
-                    self._vacc_sync_print_vacc_statuses(vacc_status)
-                    return False
-        self.logger.info('    Done arming')
-        return True
+        vacc_status_new = self.get_vacc_status()
+        rv=True
+        for host in self.hosts: #iterate over hosts
+            for i,status_new in enumerate(vacc_status_new[host.host]): #iterate over vaccs on host
+                if (status_new[check] != vacc_status_initial[host.host][i][check] + 1):
+                    errmsg = "xeng_vacc_sync: %s vacc %i's %s did not incrment."%(host.host,i,check)
+                    self.logger.error(errmsg)
+                    rv=False
+        if rv: self.logger.info('VACC %s counters incremented successfully.'%check)
+        return rv
 
-    def _vacc_sync_check_loadtimes(self):
-        """
-
-        :return:
-        """
-        lsws = THREADED_FPGA_OP(
-            self.hosts, timeout=10,
-            target_function=(
-                lambda x: x.registers.vacc_time_lsw.read()['data']),)
-        msws = THREADED_FPGA_OP(
-            self.hosts, timeout=10,
-            target_function=(
-                lambda x: x.registers.vacc_time_msw.read()['data']),)
-        _host0 = self.hosts[0].host
-        for host in self.hosts:
-            if ((lsws[host.host]['lsw'] != lsws[_host0]['lsw']) or
-                    (msws[host.host]['msw'] != msws[_host0]['msw'])):
-                _err = 'xeng_vacc_sync: all hosts do not have matching ' \
-                       'vacc LSWs and MSWs'
-                self.logger.error(_err)
-                self.logger.error('LSWs: %s' % lsws)
-                self.logger.error('MSWs: %s' % msws)
-                vacc_status = self.vacc_status()
-                self._vacc_sync_print_vacc_statuses(vacc_status)
-                return False
-        lsw = lsws[self.hosts[0].host]['lsw']
-        msw = msws[self.hosts[0].host]['msw']
-        xldtime = (msw << 32) | lsw
-        self.logger.info('    x engines have vacc ld time %i' % xldtime)
-        return True
-
-    def _vacc_sync_wait_for_arm(self, load_mcount):
+    def _vacc_sync_wait_for_mcnt(self, load_mcount):
         """
 
         :param load_mcount:
@@ -588,39 +632,19 @@ class XEngineOperations(object):
         """
         t_now = time.time()
         time_from_mcnt = self.corr.time_from_mcnt(load_mcount)
-        wait_time = time_from_mcnt - t_now + 0.2
+        wait_time = time_from_mcnt - t_now + self.get_acc_time() + 1.2
         if wait_time <= 0:
-            self.logger.error('    This is wonky - why is the wait_time '
-                              'less than zero? %.3f' % wait_time)
-            self.logger.error('    corr synch epoch: %i' %
-                              self.corr.get_synch_time())
-            self.logger.error('    time.time(): %.10f' % t_now)
-            self.logger.error('    time_from_mcnt: %.10f' % time_from_mcnt)
-            self.logger.error('    ldmcnt: %i' % load_mcount)
-            # hack
-            wait_time = t_now + 4
+            self.logger.error('\tTime passed %i seconds ago.'%wait_time)
+            self.logger.error('\tcorr synch epoch: %i' %
+                              self.corr.synchronisation_epoch)
+            self.logger.error('\ttime.time(): %.10f' % t_now)
+            self.logger.error('\ttime_from_mcnt: %.10f' % time_from_mcnt)
+            self.logger.error('\tldmcnt: %i' % load_mcount)
+            return
 
-        self.logger.info('    Waiting %2.2f seconds for arm to '
+        self.logger.info('Waiting %2.2f seconds for arm to '
                          'trigger.' % wait_time)
         time.sleep(wait_time)
-
-    def _vacc_sync_check_load_count(self, load_count0):
-        """
-        Did the vaccs load counts increment correctly?
-        :param load_count0:
-        :return:
-        """
-        vacc_status = self.vacc_status()
-        load_count_new = vacc_status[self.hosts[0].host][0]['loadcount']
-        for host in self.hosts:
-            for status in vacc_status[host.host]:
-                if ((status['loadcount'] != load_count_new) or
-                        (status['loadcount'] != load_count0 + 1)):
-                    self.logger.error('vacc did not trigger!')
-                    self._vacc_sync_print_vacc_statuses(vacc_status)
-                    return False
-        self.logger.info('    All vaccs triggered correctly.')
-        return True
 
     def _vacc_sync_final_check(self):
         """
@@ -630,16 +654,10 @@ class XEngineOperations(object):
         self.logger.info('\tChecking for errors & accumulations...')
         vac_okay = self._vacc_check_okay_initial()
         if not vac_okay:
-            vacc_status = self.vacc_status()
-            vacc_error_detail = THREADED_FPGA_FUNC(
-                self.hosts, timeout=5,
-                target_function='vacc_get_error_detail')
+            vacc_status = self.get_vacc_status()
             self.logger.error('\t\txeng_vacc_sync: exited on vacc error')
             self.logger.error('\t\txeng_vacc_sync: vacc statii:')
             for host, item in vacc_status.items():
-                self.logger.error('\t\t\t%s: %s' % (host, str(item)))
-            self.logger.error('\t\txeng_vacc_sync: vacc errors:')
-            for host, item in vacc_error_detail.items():
                 self.logger.error('\t\t\t%s: %s' % (host, str(item)))
             self.logger.error('\t\txeng_vacc_sync: exited on vacc error')
             return False
@@ -653,7 +671,7 @@ class XEngineOperations(object):
         ticking over?
         :return: True or False
         """
-        vacc_status = self.vacc_status()
+        vacc_status = self.get_vacc_status()
         note_errors = False
         for host in self.hosts:
             for xeng_ctr, status in enumerate(vacc_status[host.host]):
@@ -712,7 +730,7 @@ class XEngineOperations(object):
             return True
         return False
 
-    def vacc_sync(self):
+    def vacc_sync(self, sync_time=None):
         """
         Sync the vector accumulators on all the x-engines.
         Assumes that the x-engines are all receiving data.
@@ -723,88 +741,60 @@ class XEngineOperations(object):
             self.logger.error('vacc_sync called when it was already running?')
             return
         self.vacc_synch_running.set()
-        min_load_time = 2
 
-        attempts = 0
-        try:
-            while True:
-                attempts += 1
+        # work out the load time
+        vacc_load_time = self._vacc_sync_create_loadtime(load_time=sync_time)
 
-                if attempts > MAX_VACC_SYNCH_ATTEMPTS:
-                    raise VaccSynchAttemptsMaxedOut(
-                        'Reached maximum vacc synch attempts, aborting')
+        # set the vacc load time on the xengines
+        # should automatically estimate sync time, if needed.
+        load_mcount = self._vacc_sync_calc_load_mcount(vacc_load_time)
 
-                # check if the vaccs need resetting
-                self._vacc_sync_check_reset()
+        # set the load mcount on the x-engines
+        self.logger.info('Applying load time: %i.' % load_mcount)
+        THREADED_FPGA_FUNC(
+            self.hosts, timeout=10,
+            target_function=('vacc_set_loadtime', (load_mcount,),))
 
-                # estimate the sync time, if needed
-                self._vacc_sync_calc_load_mcount(time.time())
+        # check the current counts
+        initial_status=self.get_vacc_status()
 
-                # work out the load time
-                vacc_load_time = self._vacc_sync_create_loadtime(min_load_time)
+        # arm the xhosts
+        THREADED_FPGA_FUNC(
+            self.hosts, timeout=10, target_function='vacc_arm')
 
-                # set the vacc load time on the xengines
-                load_mcount = self._vacc_sync_calc_load_mcount(vacc_load_time)
+        # did the arm count increase?
+        self._vacc_sync_check_armload_increment(initial_status,check='arm_cnt')
 
-                # set the load mcount on the x-engines
-                self.logger.info('    Applying load time: %i.' % load_mcount)
-                THREADED_FPGA_FUNC(
-                    self.hosts, timeout=10,
-                    target_function=('vacc_set_loadtime', (load_mcount,),))
+        # wait for the vaccs to trigger
+        self._vacc_sync_wait_for_mcnt(load_mcount)
 
-                # check the current counts
-                (arm_count0,
-                 load_count0) = self._vacc_sync_check_counts_initial()
+        # check the status to see that the load count increased
+        if not self._vacc_sync_check_armload_increment(initial_status,check='ld_cnt'):
+            self.corr.fops.get_rx_timestamps()
+            return -1
 
-                # arm the xhosts
-                THREADED_FPGA_FUNC(
-                    self.hosts, timeout=10, target_function='vacc_arm')
+        synch_time = self.corr.time_from_mcnt(load_mcount)
+        self.vacc_synch_running.clear()
+        return synch_time
 
-                # did the arm count increase?
-                if not self._vacc_sync_check_arm_count(arm_count0):
-                    continue
+    def acc_len_from_time(self, acc_time_s):
+        """
+        Given an acc time in seconds, get the number of cycles
+        :param acc_time_s: the time for which to accumulate, in seconds
+        :return:
+        """
+        new_acc_len = (self.corr.sample_rate_hz * acc_time_s) / (
+                self.corr.xeng_accumulation_len * self.corr.n_chans * 2.0)
+        return round(new_acc_len)
 
-                # check the the load time was stored correctly
-                if not self._vacc_sync_check_loadtimes():
-                    continue
-
-                # wait for the vaccs to arm
-                self._vacc_sync_wait_for_arm(load_mcount)
-
-                # check the status to see that the load count increased
-                if not self._vacc_sync_check_load_count(load_count0):
-                    continue
-
-                # allow vacc to flush and correctly populate parity bits:
-                self.logger.info('    Waiting %2.2fs for an accumulation to '
-                                 'flush, to correctly populate parity bits.' %
-                                 self.get_acc_time())
-                time.sleep(self.get_acc_time() + 0.2)
-
-                self.logger.info('    Clearing status and reseting counters.')
-                THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                                   target_function='clear_status')
-
-                # wait for a good accumulation to finish.
-                self.logger.info('    Waiting %2.2fs for an accumulation to '
-                                 'flush before checking counters.' %
-                                 self.get_acc_time())
-                time.sleep(self.get_acc_time() + 0.2)
-
-                # check the vacc status, errors and accumulations
-                if not self._vacc_sync_final_check():
-                    continue
-
-                # done
-                synch_time = self.corr.time_from_mcnt(load_mcount)
-                self.vacc_synch_running.clear()
-                return synch_time
-        except KeyboardInterrupt:
-            self.vacc_synch_running.clear()
-        except VaccSynchAttemptsMaxedOut as e:
-            self.vacc_synch_running.clear()
-            self.logger.error(e.message)
-            raise e
+    def acc_time_from_len(self, acc_len_cycles):
+        """
+        Given an acc time in seconds, get the number of cycles
+        :param acc_len_cycles: number of clock cycles for which to accumulate
+        :return:
+        """
+        return (acc_len_cycles * self.corr.xeng_accumulation_len *
+                self.corr.n_chans * 2.0 / self.corr.sample_rate_hz)
 
     def set_acc_time(self, acc_time_s, vacc_resync=True):
         """
@@ -816,16 +806,10 @@ class XEngineOperations(object):
         """
         if use_xeng_sim:
             raise RuntimeError('That\'s not an option anymore.')
-        new_acc_len = (
-            (self.corr.sample_rate_hz * acc_time_s) /
-            (self.corr.xeng_accumulation_len * self.corr.n_chans * 2.0))
-        new_acc_len = round(new_acc_len)
+        new_acc_len = self.acc_len_from_time(acc_time_s)
         self.corr.logger.info('set_acc_time: %.3fs -> new_acc_len(%i)' %
                               (acc_time_s, new_acc_len))
         self.set_acc_len(new_acc_len, vacc_resync)
-        if self.corr.sensor_manager:
-            sensor = self.corr.sensor_manager.sensor_get('integration-time')
-            sensor.set_value(self.get_acc_time())
 
     def get_acc_time(self):
         """
@@ -837,27 +821,26 @@ class XEngineOperations(object):
         I.e., the number of accumulations are _not_ read from the FPGAs.
         :return:
         """
-        return (self.corr.xeng_accumulation_len * self.corr.accumulation_len *
-                self.corr.n_chans * 2.0) / self.corr.sample_rate_hz
+        return self.acc_time_from_len(self.corr.accumulation_len)
 
     def get_acc_len(self):
         """
         Read the acc len currently programmed into the FPGA.
         :return:
         """
-        return self.hosts[0].registers.acc_len.read_uint()
+        return self.hosts[0].vacc_get_acc_len()
 
     def set_acc_len(self, acc_len=None, vacc_resync=True):
         """
-        Set the QDR vector accumulation length.
-        :param acc_len:
+        Set the vector accumulation length.
+        :param acc_len: the accumulation length, in clock cycles
         :param vacc_resync: force a vacc resynchronisation
         :return:
         """
         if (acc_len is not None) and (acc_len <= 0):
-            _err = 'new acc_len of %i makes no sense' % acc_len
-            self.logger.error(_err)
-            raise RuntimeError(_err)
+            errmsg = 'new acc_len of %i makes no sense' % acc_len
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
         reenable_timer = False
         if self.vacc_check_enabled.is_set():
             self.vacc_check_timer_stop()
@@ -868,267 +851,43 @@ class XEngineOperations(object):
             self.hosts, timeout=10,
             target_function=(
                 lambda fpga_:
-                fpga_.registers.acc_len.write_int(self.corr.accumulation_len),))
+                fpga_.vacc_set_acc_len(self.corr.accumulation_len),))
         if self.corr.sensor_manager:
-            sensor = self.corr.sensor_manager.sensor_get('n-accs')
-            sensor.set_value(self.corr.accumulation_len)
+            self.corr.sensor_manager.sensors_xeng_acc_time()
         self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
                          (self.corr.accumulation_len, self.get_acc_time()))
-        self.corr.speadops.update_metadata([0x1015, 0x1016])
         if vacc_resync:
             self.vacc_sync()
         if reenable_timer:
             self.vacc_check_timer_start()
 
-    def xeng_tx_enable(self, data_stream):
+    def get_vacc_loadtime(self):
         """
-        Start transmission of data streams from the x-engines
-        :param data_stream - the data stream on which to act
-        :return:
+        Return the last time the VACCs were all loaded (synchronised),
+        else, return -1
         """
-        dstrm = data_stream or self.data_stream
-        THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(
-                    lambda fpga_:
-                    fpga_.registers.control.write(gbe_txen=True),))
-        self.logger.info('X-engine output enabled')
+        results = THREADED_FPGA_FUNC(
+            self.hosts, timeout=5,
+            target_function=('get_vacc_loadtime'))
 
-    def xeng_tx_disable(self, data_stream):
+        first_loadtime=results.values()[0]
+        for hostname,loadtime in results.iteritems():
+            if first_loadtime!=loadtime:
+                errmsg = 'VACCs are not synchronised!'
+                self.logger.error(errmsg)
+                first_loadtime=-1
+                break
+        return first_loadtime
+
+    def get_version_info(self):
         """
-        Start transmission of data streams from the x-engines
-        :param data_stream - the data stream on which to act
-        :return:
+        Get the version information for the hosts
+        :return: a dict of {file: version_info, }
         """
-        dstrm = data_stream or self.data_stream
-        THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(
-                    lambda fpga_:
-                    fpga_.registers.control.write(gbe_txen=False),))
-        self.logger.info('X-engine output disabled')
-
-    def spead_meta_update_stream_destination(self):
-        """
-
-        :return:
-        """
-        meta_ig = self.data_stream.meta_ig
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='rx_udp_port', id=0x1022,
-            description='Destination UDP port for %s data '
-                        'output.' % self.data_stream.name,
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.data_stream.destination.port)
-
-        ipstr = numpy.array(str(self.data_stream.destination.ip))
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='rx_udp_ip_str', id=0x1024,
-            description='Destination IP address for %s data '
-                        'output.' % self.data_stream.name,
-            shape=ipstr.shape,
-            dtype=ipstr.dtype,
-            value=ipstr)
-
-    # x-engine-specific SPEAD operations
-    def spead_meta_update_all(self):
-        """
-        Update metadata for this correlator's xengine output.
-        :return:
-        """
-        meta_ig = self.data_stream.meta_ig
-
-        self.corr.speadops.item_0x1007(meta_ig)
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='n_bls', id=0x1008,
-            description='Number of baselines in the data stream.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=len(self.corr.baselines))
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='n_chans', id=0x1009,
-            description='Number of frequency channels in an integration.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.corr.n_chans)
-
-        self.corr.speadops.item_0x100a(meta_ig)
-
-        n_xengs = len(self.corr.xhosts) * self.corr.x_per_fpga
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='n_xengs', id=0x100B,
-            description='The number of x-engines in the system.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=n_xengs)
-
-        bls_ordering = numpy.array(
-            [baseline for baseline in self.corr.baselines])
-        # this is a list of the baseline stream pairs, e.g. ['ant0x' 'ant0y']
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='bls_ordering', id=0x100C,
-            description='The baseline ordering in the output data stream.',
-            shape=bls_ordering.shape,
-            dtype=bls_ordering.dtype,
-            value=bls_ordering)
-
-        self.corr.speadops.item_0x100e(meta_ig)
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='center_freq', id=0x1011,
-            description='The on-sky centre-frequency.',
-            shape=[], format=[('f', 64)],
-            value=int(self.corr.configd['fengine']['true_cf']))
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='bandwidth', id=0x1013,
-            description='The input (analogue) bandwidth of the system.',
-            shape=[], format=[('f', 64)],
-            value=int(self.corr.configd['fengine']['bandwidth']))
-
-        self.corr.speadops.item_0x1015(meta_ig)
-        self.corr.speadops.item_0x1016(meta_ig)
-        self.corr.speadops.item_0x101e(meta_ig)
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='xeng_acc_len', id=0x101F,
-            description='Number of spectra accumulated inside X engine. '
-                        'Determines minimum integration time and '
-                        'user-configurable integration time stepsize. '
-                        'X-engine correlator internals.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.corr.xeng_accumulation_len)
-
-        self.corr.speadops.item_0x1020(meta_ig)
-
-        pkt_len = int(self.corr.configd['fengine']['10gbe_pkt_len'])
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='feng_pkt_len', id=0x1021,
-            description='Payload size of 10GbE packet exchange between '
-                        'F and X engines in 64 bit words. Usually equal '
-                        'to the number of spectra accumulated inside X '
-                        'engine. F-engine correlator internals.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=pkt_len)
-
-        self.spead_meta_update_stream_destination()
-
-        port = int(self.corr.configd['fengine']['10gbe_port'])
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='feng_udp_port', id=0x1023,
-            description='Port for F-engines 10Gbe links in the system.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=port)
-
-        ipstr = numpy.array(self.corr.configd['fengine']['10gbe_start_ip'])
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='feng_start_ip', id=0x1025,
-            description='Start IP address for F-engines in the system.',
-            shape=ipstr.shape,
-            dtype=ipstr.dtype,
-            value=ipstr)
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='xeng_rate', id=0x1026,
-            description='Target clock rate of processing engines (xeng).',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.corr.xeng_clk)
-
-        self.corr.speadops.item_0x1027(meta_ig)
-
-        x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='x_per_fpga', id=0x1041,
-            description='Number of X engines per FPGA host.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=x_per_fpga)
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='ddc_mix_freq', id=0x1043,
-            description='Digital downconverter mixing frequency as a fraction '
-                        'of the ADC sampling frequency. eg: 0.25. Set to zero '
-                        'if no DDC is present.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=0)
-
-        self.corr.speadops.item_0x1045(meta_ig)
-        self.corr.speadops.item_0x1046(meta_ig)
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='xeng_out_bits_per_sample', id=0x1048,
-            description='The number of bits per value of the xeng '
-                        'accumulator output. Note this is for a '
-                        'single value, not the combined complex size.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.corr.xeng_outbits)
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='f_per_fpga', id=0x1049,
-            description='Number of F engines per FPGA host.',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)],
-            value=self.corr.f_per_fpga)
-
-        self.corr.speadops.item_0x104a(meta_ig)
-        self.corr.speadops.item_0x104b(meta_ig)
-
-        self.corr.speadops.item_0x1400(meta_ig)
-
-        self.corr.speadops.item_0x1600(meta_ig)
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='flags_xeng_raw', id=0x1601,
-            description='Flags associated with xeng_raw data output. '
-                        'bit 34 - corruption or data missing during integration'
-                        'bit 33 - overrange in data path '
-                        'bit 32 - noise diode on during integration '
-                        'bits 0 - 31 reserved for internal debugging',
-            shape=[], format=[('u', SPEAD_ADDRSIZE)])
-
-        self.corr.speadops.add_item(
-            meta_ig,
-            name='xeng_raw', id=0x1800,
-            description='Raw data for %i xengines in the system. This item '
-                        'represents a full spectrum (all frequency channels) '
-                        'assembled from lowest frequency to highest '
-                        'frequency. Each frequency channel contains the data '
-                        'for all baselines (n_bls given by SPEAD ID 0x100b). '
-                        'Each value is a complex number - two (real and '
-                        'imaginary) unsigned integers.' % n_xengs,
-            # dtype=numpy.int32,
-            dtype=numpy.dtype('>i4'),
-            shape=[self.corr.n_chans, len(self.corr.baselines), 2])
-            # shape=[self.corr.n_chans * len(self.corr.baselines), 2])
-
-    def spead_meta_issue_all(self, data_stream):
-        """
-        Issue = update the metadata then send it.
-        :param data_stream: The DataStream object for which to send metadata
-        :return: True if the callback transmits the metadata as well
-        """
-        dstrm = data_stream or self.data_stream
-        self.spead_meta_update_all()
-        dstrm.meta_transmit()
-        self.logger.info('Issued SPEAD data descriptor for data stream %s '
-                         'to %s.' % (dstrm.name,
-                                     dstrm.meta_destination))
-        return True
+        try:
+            return self.hosts[0].get_version_info()
+        except AttributeError:
+            return {}
 
 # end

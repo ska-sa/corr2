@@ -49,7 +49,7 @@ if args.log_level:
         raise RuntimeError('No such log level: %s' % log_level)
 
 if not (args.stop or args.start or args.listproducts):
-    print 'Cowardly refusing to do nothing!'
+    print('Cowardly refusing to do nothing!')
     import sys
     sys.exit()
 
@@ -63,13 +63,13 @@ c.initialise(program=False, qdr_cal=False)
 
 if (args.product != '') and (args.product != 'all') and \
         (args.product not in c.data_products):
-    print 'ERROR: %s not in data products for this instrument.' % args.product
+    print('ERROR: %s not in data products for this instrument.' % args.product)
     args.listproducts = True
 
 if args.listproducts:
-    print 'Available products:'
+    print('Available products:')
     for prod in c.data_products.values():
-        print '\t', prod
+        print('\t%s' % str(prod))
     import sys
     sys.exit()
 

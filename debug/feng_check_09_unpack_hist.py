@@ -13,8 +13,6 @@ import matplotlib.pyplot as pyplot
 import numpy
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Display a histogram of the post-coarse delay data.',
@@ -41,7 +39,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -64,8 +62,8 @@ for fpga_ in fpgas:
     if not 'snapcoarse_0_ss' in fpga_.snapshots.names():
         snapshot_missing.append(fpga_.host)
 if len(snapshot_missing) > 0:
-    print 'The following hosts are missing the post-unpack snapshot. Bailing.'
-    print snapshot_missing
+    print('The following hosts are missing the post-unpack snapshot. Bailing.'
+    print(snapshot_missing
     exit_gracefully(None, None)
 
 def get_data():
@@ -89,14 +87,14 @@ def get_data():
             if 'data' not in value.keys():
                 raise RuntimeError('Did not get p0 snap data from host %s' % key)
     except:
-        print snapdata_p0
+        print(snapdata_p0
         raise RuntimeError('Error getting p0 snap data')
     try:
         for key, value in snapdata_p1.items():
             if 'data' not in value.keys():
                 raise RuntimeError('Did not get p1 snap data from host %s' % key)
     except:
-        print snapdata_p1
+        print(snapdata_p1
         raise RuntimeError('Error getting p1 snap data')
 
     # unpack the data and the timestamps
@@ -123,7 +121,7 @@ def _populate_subplots(data, figure):
     _plot_ctr = 0
     sub_plots = {}
     for fpga in data:
-        print 'Adding subplot for fpga {}'.format(fpga)
+        print('Adding subplot for fpga {}'.format(fpga)
         sub_plots['{}'.format(fpga)] = figure.add_subplot(len(data), 1, _plot_ctr + 1)
         _plot_ctr += 1
     return sub_plots
@@ -133,7 +131,7 @@ def plot_func(figure, sub_plots):
     if len(sub_plots) == 0:
         sub_plots.update(_populate_subplots(unpacked_data, figure))
     for fpga, fpga_data in unpacked_data.items():
-        print '%s data started at %d' % (fpga, fpga_data['packettime48']),
+        print('%s data started at %d' % (fpga, fpga_data['packettime48']),
         _sbplt = sub_plots['{}'.format(fpga)]
         if args.pol == 0:
             plotdata = fpga_data['p0']
@@ -142,9 +140,9 @@ def plot_func(figure, sub_plots):
         allsamples = utils.AdcData.eighty_to_ten(plotdata)
         _sbplt.cla()
         _sbplt.hist(allsamples, 100, (-0.5, 0.5))
-        print 'and ended %d samples later. All okay.' % (len(allsamples))
-        print '\tMean:  %.5f' % numpy.mean(allsamples)
-        print '\tStddev: %.10f' % numpy.std(allsamples)
+        print('and ended %d samples later. All okay.' % (len(allsamples))
+        print('\tMean:  %.5f' % numpy.mean(allsamples)
+        print('\tStddev: %.10f' % numpy.std(allsamples)
     pyplot.xlim((-0.5, 0.5))
     figure.canvas.draw()
     figure.canvas.manager.window.after(100, plot_func, figure, sub_plots)
@@ -154,10 +152,10 @@ fig = pyplot.figure()
 subplots = {}
 fig.canvas.manager.window.after(100, plot_func, fig, subplots)
 pyplot.show()
-print 'Plot started.'
+print('Plot started.'
 
 # wait here so that the plot can be viewed
-print 'Press Ctrl-C to exit...'
+print('Press Ctrl-C to exit...'
 sys.stdout.flush()
 import time
 while True:

@@ -14,8 +14,6 @@ import signal
 import time
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 
 SPEAD_EXPECTED_VERSION = 4
 SPEAD_EXPECTED_FLAVOUR = '64,48'
@@ -47,7 +45,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -118,7 +116,7 @@ def process_spead_word(current_spead_info, data, pkt_counter):
 
             # check the lsbs
             if hdr_data & (2**args.zerobits - 1) != 0:
-                print 'spead 0x1600 time lsb error: %i' % hdr_data
+                print('spead 0x1600 time lsb error: %i' % hdr_data
                 sys.stdout.flush()
 
             if First_time == -1:
@@ -129,7 +127,7 @@ def process_spead_word(current_spead_info, data, pkt_counter):
                     timediff = hdr_data - First_time
                     if timediff != args.timestep:
                         Time_errors += 1
-                    print 'spead 0x1600 time diff: %i -> %i = %i' % (First_time, hdr_data, timediff), \
+                    print('spead 0x1600 time diff: %i -> %i = %i' % (First_time, hdr_data, timediff), \
                         '-', 'okay' if timediff == args.timestep else 'ERROR',\
                         '%i steps, %i errors' % (Time_steps, Time_errors)
                     sys.stdout.flush()
@@ -210,7 +208,7 @@ while True:
             if packet_counter != spead_info['packet_length'] + 1:
                 packet_length_error = True
             packet_counter = 0
-        # print '%5d,%3d' % (ctr, packet_counter),
+        # print('%5d,%3d' % (ctr, packet_counter),
         for key in key_order:
             if key == ip_key:
                 if key == 'ip':
@@ -219,19 +217,19 @@ while True:
                     display_key = 'src_ip'
                 else:
                     raise RuntimeError('Unknown IP key?')
-                # print '%s(%s)' % (display_key, tengbe.IpAddress.ip2str(coredata[key][ctr])), '\t',
+                # print('%s(%s)' % (display_key, tengbe.IpAddress.ip2str(coredata[key][ctr])), '\t',
             elif key == data_key:
                 new_spead_info, spead_stringdata = process_spead_word(spead_info, coredata[data_key][ctr], packet_counter)
                 if new_spead_info is not None:
                     spead_info = new_spead_info.copy()
-                # print '%s(%s)' % (key, spead_stringdata), '\t',
+                # print('%s(%s)' % (key, spead_stringdata), '\t',
             # else:
             #     if args.hex:
-            #         print '%s(0x%X)' % (key, coredata[key][ctr]), '\t',
+            #         print('%s(0x%X)' % (key, coredata[key][ctr]), '\t',
             #     else:
-            #         print '%s(%s)' % (key, coredata[key][ctr]), '\t',
+            #         print('%s(%s)' % (key, coredata[key][ctr]), '\t',
         if packet_length_error:
-            print 'PACKET LENGTH ERROR'
+            print('PACKET LENGTH ERROR'
         packet_counter += 1
 
 # end

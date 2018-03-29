@@ -16,8 +16,7 @@ import copy
 import threading
 import Queue
 
-from casperfpga import dcp_fpga
-from casperfpga import katcp_fpga
+from casperfpga import CasperFpga
 
 parser = argparse.ArgumentParser(
     description='Display information about a MeerKAT digitiser.',
@@ -35,9 +34,6 @@ parser.add_argument(
     '--get_tx_ips', dest='get_tx_ips', action='store_true', default=False,
     help='query outgoing IPs, takes a few seconds')
 parser.add_argument(
-    '--comms', dest='comms', action='store', default='katcp', type=str,
-    help='katcp (default) or dcp?')
-parser.add_argument(
     '--loglevel', dest='log_level', action='store', default='',
     help='log level to use, default None, options INFO, DEBUG, ERROR')
 args = parser.parse_args()
@@ -54,13 +50,8 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
-else:
-    HOSTCLASS = dcp_fpga.DcpFpga
-
 # create the device and connect to it
-digitiser_fpga = HOSTCLASS(args.hostname, 7147)
+digitiser_fpga = CasperFpga(args.hostname, 7147)
 time.sleep(0.2)
 if not digitiser_fpga.is_connected():
     digitiser_fpga.connect()
@@ -68,15 +59,15 @@ digitiser_fpga.test_connection()
 digitiser_fpga.get_system_information()
 
 # is there a 10gbe core in the design?
-numgbes = len(digitiser_fpga.tengbes)
+numgbes = len(digitiser_fpga.gbes)
 if not numgbes == 4:
     raise RuntimeError('A digitiser must have four 10Gbe cores.')
-print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
+print('Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's'))
 
 
 def get_tx_ips():
     snapdata = {}
-    for device in digitiser_fpga.tengbes:
+    for device in digitiser_fpga.gbes:
         snapdata[device.name] = device.read_txsnap()
 
 
@@ -84,7 +75,7 @@ def get_coredata():
     """Get the updated counters for all the cores.
     """
     cdata = {}
-    for device in digitiser_fpga.tengbes:
+    for device in digitiser_fpga.gbes:
         cdata[device.name] = device.read_counters()
         for key in cdata[device.name].keys():
             cdata[device.name][key]['data'] = cdata[device.name][key]['data']['reg']
@@ -94,10 +85,10 @@ def get_coredata():
 def get_coredata_new():
     """Get the updated counters for all the cores.
     """
-    num_cores = len(digitiser_fpga.tengbes)
+    num_cores = len(digitiser_fpga.gbes)
     result_queue = Queue.Queue(maxsize=num_cores)
     thread_list = []
-    for core_ in digitiser_fpga.tengbes:
+    for core_ in digitiser_fpga.gbes:
         thread = threading.Thread(target=lambda gbecore: result_queue.put_nowait((gbecore.name, gbecore.read_counters())),
                                   args=(core_,))
         thread.daemon = True
@@ -117,7 +108,7 @@ def get_coredata_new():
         except Queue.Empty:
             break
     if len(coredata) != num_cores:
-        print coredata
+        print(coredata)
         raise RuntimeError('Given %d cores, only got %d results' % (num_cores, len(coredata)))
     return coredata
 
@@ -125,7 +116,7 @@ def get_coredata_new():
 def reset_counters(cdata):
     """Reset all core counters.
     """
-    for device in digitiser_fpga.tengbes:
+    for device in digitiser_fpga.gbes:
         for key in cdata[device.name].keys():
             cdata[device.name][key]['data'] = 0
             cdata[device.name][key]['timestamp'] = -1
@@ -215,9 +206,9 @@ def mainloop(stdscr):
                 ipstr = tap_data[core]['ip']
                 line = 3 + ctr
                 if stdscr is None:
-                    print newdata
-                    print ''
-                    print counter_data
+                    print(newdata)
+                    print('')
+                    print(counter_data)
                 if stdscr is not None:
                     stdscr.move(line, 20)
                     stdscr.clrtoeol()
@@ -264,12 +255,12 @@ def mainfunc(stdscr):
 # set up the counters
 counter_data = get_coredata()
 tap_data = {}
-for core in digitiser_fpga.tengbes.names():
-    tap_data[core] = digitiser_fpga.tengbes[core].tap_info()
-    print '\t', core
+for core in digitiser_fpga.gbes.names():
+    tap_data[core] = digitiser_fpga.gbes[core].tap_info()
+    print('\t%s' % core)
 counter_data = reset_counters(counter_data)
 starttime = time.time()
-device_list = digitiser_fpga.tengbes.names()
+device_list = digitiser_fpga.gbes.names()
 for device in device_list:
     if not (((device + '_txctr') in counter_data[device].keys()) and
             ((device + '_txerrctr') in counter_data[device].keys()) and

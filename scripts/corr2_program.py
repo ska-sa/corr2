@@ -8,7 +8,6 @@ import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
@@ -31,6 +30,8 @@ parser.add_argument(
     help='.fpg file to program')
 args = parser.parse_args()
 
+raise RuntimeError('Not working with Skarabs yet.')
+
 if args.log_level != '':
     import logging
     log_level = args.log_level.strip()
@@ -42,9 +43,9 @@ if args.log_level != '':
 # look for hosts in the leases file
 if args.dnsmasq:
     hosts, lease_filename = utils.hosts_from_dhcp_leases()
-    print 'Found %i roaches in %s.' % (len(hosts), lease_filename)
+    print('Found %i roaches in %s.' % (len(hosts), lease_filename))
     for host in hosts:
-        print '\t', host
+        print('\t%s' % host)
 else:
     # are we doing it by class?
     if 'CORR2INI' in os.environ.keys() and args.hosts == '':
@@ -63,7 +64,7 @@ if len(hosts) == 0:
     raise RuntimeError('No good carrying on without hosts.')
 
 # create the devices and program them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
+fpgas = fpgautils.threaded_create_fpgas_from_hosts(hosts)
 running = fpgautils.threaded_fpga_function(fpgas, 10, 'is_running')
 fpgautils.threaded_fpga_function(fpgas, 10,
                                  'upload_to_ram_and_program', args.fpg)

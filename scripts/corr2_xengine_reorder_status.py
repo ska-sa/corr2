@@ -10,7 +10,6 @@ View status and error registers for x-engine reorder.
 import sys
 import time
 import argparse
-import os
 import signal
 
 from casperfpga import utils as fpgautils
@@ -23,7 +22,7 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',
-    help='comma-delimited list of f-engine hosts')
+    help='comma-delimited list of F-engine hosts')
 parser.add_argument(
     '-p', '--polltime', dest='polltime', action='store',
     default=1, type=int,
@@ -47,16 +46,8 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts, section='xengine')
-if len(hosts) == 0:
-    raise RuntimeError('No good carrying on without hosts.')
-
-# create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(FpgaXHost, hosts)
-fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
-
+# create the fpgas
+fpgas = utils.xeng_script_get_fpgas(args)
 
 if args.rstcnt:
     if 'unpack_cnt_rst' in fpgas[0].registers.control.field_names():
@@ -75,7 +66,8 @@ def get_fpga_data(fpga):
 
 
 def exit_gracefully(sig, frame):
-    print sig, frame
+    print(sig)
+    print(frame)
     scroll.screen_teardown()
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)

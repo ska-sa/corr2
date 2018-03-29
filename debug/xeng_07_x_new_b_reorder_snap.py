@@ -3,8 +3,6 @@
 """
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='View the reorder snap block on an x-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -33,7 +31,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -92,17 +90,17 @@ else:
 
 xeng_fpga.disconnect()
 
-# print the results
+# print(the results
 for snapctr in range(0, 1):
     data = snapdata[snapctr]
     snapkeys = data.keys()
     snaplen = len(data[snapkeys[0]])
-    print 'Read %d values from snapblock %d:\n' % (snaplen, snapctr)
+    print('Read %d values from snapblock %d:\n' % (snaplen, snapctr)
     for ctr in range(0, snaplen):
-        print '%5d:' % ctr,
+        print('%5d:' % ctr,
         for key in snapkeys:
-            print '%s(%d)\t' % (key, data[key][ctr]),
-        print ''
-    print 50 * '*'
+            print('%s(%d)\t' % (key, data[key][ctr]),
+        print(''
+    print(50 * '*'
 
 # end

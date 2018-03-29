@@ -3,8 +3,6 @@
 """
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='View the unpack snap block on an x-engine.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -37,7 +35,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -54,13 +52,13 @@ else:
 def print_snapshot(snapdata):
     snapkeys = snapdata.keys()
     snaplen = len(snapdata[snapkeys[0]])
-    print 'Read %d values from the snapblock:\n' % snaplen
+    print('Read %d values from the snapblock:\n' % snaplen
     for ctr in range(0, snaplen):
         if args.showall or snapdata['eof'][ctr] == 1:
-            print '%5d:' % ctr,
+            print('%5d:' % ctr,
             for key in snapkeys:
-                print '%s(%d)  ' % (key, snapdata[key][ctr]),
-            print ''
+                print('%s(%d)  ' % (key, snapdata[key][ctr]),
+            print(''
 
 if args.check:
     snapdata = xeng_fpga.snapshots.snap_unpack0_ss.read()['data']
@@ -94,7 +92,7 @@ if args.check:
         for feng in range(0, 4):
             found_freq[feng] = sorted(found_freq[feng])
             assert found_freq[feng] == range(0, 256)
-        print 'Got all frequencies for time %d' % targettime
+        print('Got all frequencies for time %d' % targettime
         newtimepos += 1024
 
 elif args.plot:
@@ -108,7 +106,7 @@ elif args.plot:
 
     def exit_gracefully(signal, frame):
         xeng_fpga.disconnect()
-        print diff_histogram
+        print(diff_histogram
         sys.exit(0)
 
     signal.signal(signal.SIGINT, exit_gracefully)
@@ -116,10 +114,10 @@ elif args.plot:
     bins = [0]
     while True:
         if timestep_errors > 0:
-            print '%d total timestep errors' % timestep_errors
+            print('%d total timestep errors' % timestep_errors
         else:
-            print 'spread(%d, %d)' % (min(bins), max(bins))
-            print diff_histogram
+            print('spread(%d, %d)' % (min(bins), max(bins))
+            print(diff_histogram
         sys.stdout.flush()
         snapdata = xeng_fpga.snapshots.snap_unpack0_ss.read()['data']
         snapkeys = snapdata.keys()
@@ -137,7 +135,7 @@ elif args.plot:
                 if freq_diff_abs < 0:
                     freq_diff_abs *= -1
                 if (args.stopon > 0) and (freq_diff_abs > args.stopon):
-                        print 50*'$', ctr, this_freq, max_freq
+                        print(50*'$', ctr, this_freq, max_freq
                 try:
                     diff_histogram[freq_diff] += 1
                 except KeyError:
@@ -163,14 +161,14 @@ elif args.plot:
         maxallowed = max(diff_histogram.keys())
         minallowed = min(diff_histogram.keys())
         bins = range(minallowed, maxallowed+1)
-        # print bins
+        # print(bins
         values = len(bins) * [0]
         for key, value in diff_histogram.items():
-            # print key, value
+            # print(key, value
             if key <= maxallowed:
                 values[bins.index(key)] = value
-        # print bins
-        # print values
+        # print(bins
+        # print(values
         pyplot.interactive(True)
         pyplot.clf()
         pyplot.subplot(211)

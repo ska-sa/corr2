@@ -3,25 +3,23 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-Plot the spectrum using the output snapshots on the f-engine
+Plot the spectrum using the output snapshots on the F-engine
 """
 import argparse
-import os
 
-from corr2.fhost_fpga import FpgaFHost
 from casperfpga import spead as casperspead
 from casperfpga import snap as caspersnap
-from casperfpga import tengbe
+from casperfpga.network import IpAddress
 from casperfpga.memory import bin2fp
 from matplotlib import pyplot
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Plot the spectrum using the output snapshots on the f-engine.',
+    description='Plot the spectrum using the output snapshots on the F-engine.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     dest='host', type=str, action='store', default='',
-    help='the f-engine host to query, if an int, will be taken positionally '
+    help='the F-engine host to query, if an int, will be taken positionally '
          'from the config file list of f-hosts')
 parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',
@@ -42,21 +40,8 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.config == '':
-    args.config = os.environ['CORR2INI']
-if args.config != '':
-    host_list = utils.parse_hosts(args.config, section='fengine')
-else:
-    host_list = []
-
-try:
-    hostname = host_list[int(args.host)]
-    logging.info('Got hostname %s from config file.' % hostname)
-except ValueError:
-    hostname = args.host
-
-f = FpgaFHost(hostname)
-f.get_system_information()
+# make the FPGA
+fpga = utils.feng_script_get_fpga(args)
 
 # read the config
 config = utils.parse_ini_file(args.config)
@@ -74,9 +59,9 @@ spectrum_count = [[0] * NUM_FREQ, [0] * NUM_FREQ]
 
 def print_ips():
     for ipint in ips_and_freqs:
-        print str(tengbe.IpAddress(ipint)), ':', len(ips_and_freqs[ipint])
-    print '********** - press ctrl-c to quit or wait for %i fchans' % \
-          FREQS_PER_X
+        print(str(IpAddress(ipint)), ':', len(ips_and_freqs[ipint]))
+    print('********** - press ctrl-c to quit or wait for %i '
+          'fchans' % FREQS_PER_X)
 
 
 def b2fp(dword):
@@ -129,12 +114,12 @@ while True:
                     pwr2 = b2fp((data >> 16) & 0xffff)
                     pwr3 = b2fp((data >> 0)  & 0xffff)
 
-                    # print freq, ':'
-                    # print '\t', pwr0
-                    # print '\t', pwr1
-                    # print '\t', pwr2
-                    # print '\t', pwr3
-                    # print ''
+                    # print(freq, ':'
+                    # print('\t', pwr0
+                    # print('\t', pwr1
+                    # print('\t', pwr2
+                    # print('\t', pwr3
+                    # print(''
 
                     # if (pwr1 != 0) or (pwr3 != 0):
                     #     raise RuntimeError('pol1 isnt zero?')
@@ -148,9 +133,8 @@ while True:
                     pkt_words += 2
 
                 if pkt_words != 256:
-                    print 'WARNING: packet for freq(%i) had %i words?' % (
-                        freq, pkt_words
-                    )
+                    print('WARNING: packet for freq(%i) had %i words?' %
+                          (freq, pkt_words))
 
             print_ips()
 
@@ -160,7 +144,7 @@ while True:
                 all_freqs = False
                 break
         if all_freqs:
-            print 'Got all frequencies for each IP.'
+            print('Got all frequencies for each IP.')
             break
     except KeyboardInterrupt:
         break

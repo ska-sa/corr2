@@ -12,22 +12,22 @@ def receive():
     timesdone = 0
     f = open('/tmp/woo', 'w')
     f.close()
-    print 'RX: Initializing...'
+    print('RX: Initializing...'
     t = spead.TransportUDPrx(PORT)
     ig = spead.ItemGroup()
     last_timestamp = 0
     timestamp = 0
     for heap in spead.iterheaps(t):
-        #print spead.readable_heap(heap)
+        #print(spead.readable_heap(heap)
         ig.update(heap)
-        print 'Got heap cnt(%d):' % ig.heap_cnt
+        print('Got heap cnt(%d):' % ig.heap_cnt
         for name in ig.keys():
-            print '   ', name
+            print('   ', name
             item = ig.get_item(name)
-            print '      Description: ', item.description
-            print '           Format: ', item.format
-            print '            Shape: ', item.shape
-            # print '            Value: ', ig[name]
+            print('      Description: ', item.description
+            print('           Format: ', item.format
+            print('            Shape: ', item.shape
+            # print('            Value: ', ig[name]
             if ig[name] is not None:
                 if name == 'timestamp':
                     last_timestamp = timestamp
@@ -43,7 +43,7 @@ def receive():
                             fstr = 'acc_ctr(%010d) baseline(%02d) freq(%04d) ' % (data_[1], data_[0] & 63,
                                                                                   (data_[0] >> 6) & 4095)
                             f.write('%s\n' % fstr)
-                        # print data
+                        # print(data
                         # data = int(data)
                         # timestep = data & 0xffffffff
                         # bls = (data >> 32) & 63
@@ -55,11 +55,11 @@ def receive():
                         del ig
                         del t
                         return
-    print 'RX: Done.'
+    print('RX: Done.'
 
 
 def transmit():
-    print 'TX: Initializing...'
+    print('TX: Initializing...'
     tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1', PORT))
     ig = spead.ItemGroup()
 
@@ -77,7 +77,7 @@ def transmit():
     tx.send_heap(ig.get_heap())
 
     tx.end()
-    print 'TX: Done.'
+    print('TX: Done.'
 
 if sys.argv[-1] == 'tx': transmit()
 elif sys.argv[-1] == 'rx': receive()

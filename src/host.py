@@ -13,6 +13,7 @@ class Host(object):
     A processing host - ROACH board, PC, etc.
     Hosts processing engines and communicates via a TCP/IP network.
     """
+
     def __init__(self, host, katcp_port):
         """Constructor
         @param host: the unique hostname/identifier for this Host
@@ -22,17 +23,12 @@ class Host(object):
         self.katcp_port = katcp_port
         self.engines = {}
 
-    def initialise(self):
-        """Initialise this host node to its normal running state.
-        """
-        raise NotImplementedError('%s.initialise() not implemented' % self.host)
-
     def host_okay(self):
         """
         Is this host/LRU okay?
         :return:
         """
-        raise NotImplementedError('%s.host_okay() not implemented' % self.host)
+        raise NotImplementedError
 
     def add_engine(self, new_engine):
         """

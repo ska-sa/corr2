@@ -13,22 +13,23 @@ import sys
 import time
 import argparse
 import signal
-import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Display information about a MeerKAT f-engine.',
+    description='Display information about a MeerKAT F-engine.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--hosts', dest='hosts', type=str, action='store', default='',
-    help='comma-delimited list of hosts, or a corr2 config file')
+    help='comma-delimited list of hosts')
+parser.add_argument(
+    '--config', dest='config', type=str, action='store', default='',
+    help='a corr2 config file, will use $CORR2INI if none given')
 parser.add_argument(
     '-p', '--polltime', dest='polltime', action='store', default=1, type=int,
-    help='time at which to poll f-engine data, in seconds')
+    help='time at which to poll F-engine data, in seconds')
 parser.add_argument(
     '-r', '--reset_count', dest='rstcnt', action='store_true', default=False,
     help='reset all counters at script startup')
@@ -47,22 +48,17 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts, section='fengine')
-if len(hosts) == 0:
-    raise RuntimeError('No good carrying on without hosts.')
-
-# make the FPGA objects
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
-fpgautils.threaded_fpga_function(fpgas, 10, 'get_system_information')
+# make the fpgas
+fpgas = utils.feng_script_get_fpgas(args)
 
 # check for 10gbe cores
 for fpga_ in fpgas:
-    numgbes = len(fpga_.tengbes)
+    numgbes = len(fpga_.gbes)
     if numgbes < 1:
-        raise RuntimeError('Cannot have an f-engine with no 10gbe cores? %s' % fpga_.host)
-    print '%s: found %i 10gbe core%s.' % (fpga_.host, numgbes, '' if numgbes == 1 else 's')
+        raise RuntimeError('Cannot have an F-engine with no '
+                           'gbe cores? %s' % fpga_.host)
+    print('%s: found %i gbe core%s.' % (
+        fpga_.host, numgbes, '' if numgbes == 1 else 's'))
     if args.rstcnt:
         fpga_.registers.control.write(cnt_rst='pulse')
 
@@ -79,7 +75,7 @@ def fengine_rxtime(fpga_):
 
 def get_fpga_data(fpga_):
     rv = {
-        'gbe': {core_.name: core_.read_counters() for core_ in fpga_.tengbes},
+        'gbe': {core_.name: core_.read_counters() for core_ in fpga_.gbes},
         'rxtime': fengine_rxtime(fpga_),
         'mcnt_nolock': 555
     }
@@ -153,7 +149,7 @@ try:
         if time.time() > last_refresh + polltime:
             scroller.clear_buffer()
             scroller.add_string(
-                'Polling %i f-engine%s every %s - %is elapsed.' % (
+                'Polling %i F-engine%s every %s - %is elapsed.' % (
                     len(fpgas),
                     '' if len(fpgas) == 1 else 's',
                     'second' if polltime == 1 else ('%i seconds' % polltime),

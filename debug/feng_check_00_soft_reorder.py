@@ -7,7 +7,6 @@ Read big incoming GBE snapshots to perform a software reorder on the f-engine in
 """
 import argparse
 
-from casperfpga import katcp_fpga
 
 parser = argparse.ArgumentParser(description='Perform a software reorder on incoming digitiser data'
                                              'from GBE snapshot blocks.',
@@ -30,7 +29,7 @@ if args.host == '':
     raise RuntimeError('No good carrying on without a host.')
 
 # make the FPGA objects
-fpga = katcp_fpga.KatcpFpga(args.host)
+fpga = CasperFpga(args.host)
 fpga.get_system_information()
 
 import time
@@ -53,7 +52,7 @@ try:
         d1 = fpga.snapshots.s1_ss.read(arm=False)['data']
         fpga.registers.snap_control.write(enable=False)
 
-        print 'Read %i words from two snapblocks.' % len(d0['data_in'])
+        print('Read %i words from two snapblocks.' % len(d0['data_in'])
 
         # convert the data into gbe packets
         from casperfpga import Snap
@@ -101,7 +100,7 @@ try:
                 if this_diff != 8192:
                     out_of_order[1] += 1
             if abs(pkt_time1 - pkt_time0) != 4096:
-                print 'pkt_time0(0x%0x) -> pkt_time1(0x%0x) ' \
+                print('pkt_time0(0x%0x) -> pkt_time1(0x%0x) ' \
                       '!= 4096 - 0x%0x' % (pkt_time0,
                                            pkt_time1,
                                            pkt_time1 - pkt_time0)
@@ -111,23 +110,23 @@ try:
             times[0].append(pkt_time0)
             times[1].append(pkt_time1)
 
-        print 'pol 0 timestamps:'
-        print '\tgot %i packets' % len(sp0.packets)
-        print '\tranged from 0x%x to 0x%x with ' \
+        print('pol 0 timestamps:'
+        print('\tgot %i packets' % len(sp0.packets)
+        print('\tranged from 0x%x to 0x%x with ' \
               'a max difference ' \
               'between packets of %i' % (min(times[0]),
                                          max(times[0]),
                                          max_diff[0])
-        print '\t%i of them were out of order' % out_of_order[0]
+        print('\t%i of them were out of order' % out_of_order[0]
 
-        print 'pol 1 timestamps:'
-        print '\tgot %i packets' % len(sp1.packets)
-        print '\tranged from 0x%x to 0x%x with ' \
+        print('pol 1 timestamps:'
+        print('\tgot %i packets' % len(sp1.packets)
+        print('\tranged from 0x%x to 0x%x with ' \
               'a max difference ' \
               'between packets of %i' % (min(times[1]),
                                          max(times[1]),
                                          max_diff[1])
-        print '\t%i of them were out of order' % out_of_order[1]
+        print('\t%i of them were out of order' % out_of_order[1]
 
         if out_of_order[0] > 0 or out_of_order[1] > 0:
             break
@@ -142,7 +141,7 @@ except KeyboardInterrupt:
 
 stop_time = time.time()
 
-print 'ran %i times in %.3f seconds' % (stop_time - start_time,
+print('ran %i times in %.3f seconds' % (stop_time - start_time,
                                         loopctr)
 
 import IPython

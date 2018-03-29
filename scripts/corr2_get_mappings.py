@@ -64,20 +64,20 @@ def baselines_from_source(source):
 # host name
 if args.host != '':
     host = args.host
-    print '%s:' % host
-    print '\tSources:'
+    print('%s:' % host)
+    print('\tSources:')
     bls = {}
     srcs = utils.host_to_sources(host, config=configd)
     for ctr, source in enumerate(srcs[host]):
-        print '\t\t%i: %s' % (ctr, source)
+        print('\t\t%i: %s' % (ctr, source))
         bls.update(baselines_from_source(source))
-    print '\tBaselines:'
+    print('\tBaselines:')
     for bls_index in bls:
-        print '\t\t%i: %s' % (bls_index, bls[bls_index])
+        print('\t\t%i: %s' % (bls_index, bls[bls_index]))
 
 elif args.source != '':
     source = args.source
-    print '%s:' % source
+    print('%s:' % source)
     all_sources = utils.host_to_sources(fhosts, config=configd)
     source_host = None
     for host in all_sources:
@@ -86,15 +86,16 @@ elif args.source != '':
                 source_host = host
                 break
     if not source_host:
-        print '\tERROR: could not match source %s to system host.' % source
+        print('\tERROR: could not match source %s to system host.' % source)
     else:
-        print '\tMatched to host %s.' % source_host
+        print('\tMatched to host %s.' % source_host)
         bls = baselines_from_source(source)
-        print '\tBaselines:'
+        print('\tBaselines:')
         for bls_index in bls:
-            print '\t\t%i: %s' % (bls_index, bls[bls_index])
+            print('\t\t%i: %s' % (bls_index, bls[bls_index]))
 
 elif args.baseline_index != -1:
-    print 'Baseline %i:' % args.baseline_index, baselines[args.baseline_index]
+    print('Baseline %i: %s' % (args.baseline_index,
+                               baselines[args.baseline_index]))
 
 # end

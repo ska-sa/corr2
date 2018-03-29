@@ -71,18 +71,18 @@ def recode_control_value(valdict):
            ((valdict['mrst'] & 0x01) << 0)
 
 control_current = read_register(addr_control)
-print 'Current control register:', format(control_current, '#032b')
-print '\tdecoded:', decode_control_reg(control_current)
-print '\trecoded:', format(recode_control_value(decode_control_reg(control_current)), '#032b')
+print('Current control register:', format(control_current, '#032b')
+print('\tdecoded:', decode_control_reg(control_current)
+print('\trecoded:', format(recode_control_value(decode_control_reg(control_current)), '#032b')
 assert control_current == recode_control_value(decode_control_reg(control_current))
 
-print '\nCurrent PPS ticks: 0x%032X' % read_register(addr_pps_ticks)
+print('\nCurrent PPS ticks: 0x%032X' % read_register(addr_pps_ticks)
 
 local_time = (read_register(addr_localtime_msw) << 32) | (read_register(addr_localtime_lsw))
-print '\nCurrent local time: %i (%.2f bits)' % (local_time, numpy.log2(local_time))
+print('\nCurrent local time: %i (%.2f bits)' % (local_time, numpy.log2(local_time))
 
 offset_time = (read_register(addr_offset_msw) << 32) | (read_register(addr_offset_lsw))
-print '\nCurrent offsettime: %i (%.2f bits)' % (offset_time, numpy.log2(offset_time) if offset_time > 0 else 0)
+print('\nCurrent offsettime: %i (%.2f bits)' % (offset_time, numpy.log2(offset_time) if offset_time > 0 else 0)
 
 # set the offset time so that it will wrap in 5 minutes time
 wrap_offset = 2**48 - (2 * 60 * 1720000000)
@@ -98,8 +98,8 @@ control_current = read_register(addr_control)
 control_dict = decode_control_reg(control_current)
 control_dict['pps_ctrl'] = 1
 control_new = recode_control_value(control_dict)
-print 'New control register:', format(control_new, '#032b')
-print '\tdecoded:', decode_control_reg(control_new)
+print('New control register:', format(control_new, '#032b')
+print('\tdecoded:', decode_control_reg(control_new)
 write_register(addr_control, control_new)
 # control_dict['pps_ctrl'] = 0
 # control_new = recode_control_value(control_dict)
@@ -107,11 +107,11 @@ write_register(addr_control, control_new)
 
 # check the ticking pps
 while True:
-    print '\nCurrent PPS ticks: 0x%032X' % read_register(addr_pps_ticks)
+    print('\nCurrent PPS ticks: 0x%032X' % read_register(addr_pps_ticks)
     local_time = (read_register(addr_localtime_msw) << 32) | (read_register(addr_localtime_lsw))
-    print 'Current local time: %i (%.2f bits) %s' % (local_time,
+    print('Current local time: %i (%.2f bits) %s' % (local_time,
                                                      numpy.log2(local_time),
                                                      '3OKAY' if local_time & (2**3-1) == 0 else '3BAD')
     offset_time = (read_register(addr_offset_msw) << 32) | (read_register(addr_offset_lsw))
-    print 'Current offsettime: %i (%.2f bits)' % (offset_time, numpy.log2(offset_time) if offset_time > 0 else 0)
+    print('Current offsettime: %i (%.2f bits)' % (offset_time, numpy.log2(offset_time) if offset_time > 0 else 0)
     time.sleep(1)

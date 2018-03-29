@@ -41,17 +41,10 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.hosts == '':
-    args.hosts = os.environ['CORR2INI']
-hosts = utils.parse_hosts(args.hosts, section='xengine')
-if len(hosts) == 0:
-    raise RuntimeError('No good carrying on without hosts.')
-
 # TODO - sort out getting sys info from the config file
 
-# create the devices and connect to them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(xhost_fpga.FpgaXHost, hosts)
-fpgautils.threaded_fpga_function(fpgas, 15, 'get_system_information')
+# create the fpgas
+fpgas = utils.xeng_script_get_fpgas(args)
 
 if args.rstcnt:
     fpgautils.threaded_fpga_operation(
@@ -89,7 +82,7 @@ max_1st_col_offset += 5
 
 
 def exit_gracefully(sig, frame):
-    print sig, frame
+    print('%s %s' % (sig, frame))
     scroll.screen_teardown()
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     sys.exit(0)

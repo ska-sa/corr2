@@ -1,10 +1,7 @@
-from distutils.core import setup
+from setuptools import setup
 import glob
 
-__version__ = '2.0.1'
-
 setup(name='corr2',
-      version=__version__,
       description='Interfaces to MeerKAT CBF',
       long_description='Provides interfaces and functions to '
                        'configure MeerKAT packetised digital backend; '
@@ -23,7 +20,7 @@ setup(name='corr2',
           'Topic :: Software Development :: Libraries :: Python Modules',
       ],
       install_requires=['casperfpga', 'katcp', 'matplotlib', 'iniparse',
-                        'numpy', 'spead2', 'h5py'],
+                        'numpy', 'spead2', 'h5py', 'tornado'],
       provides=['corr2'],
       packages=['corr2'],
       package_dir={'corr2': 'src'},

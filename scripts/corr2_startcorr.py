@@ -49,9 +49,9 @@ c.standard_log_config(log_level=eval('logging.%s' % log_level))
 try:
     _tic = time.time()
     c.initialise(program=not args.noprogram, qdr_cal=not args.no_qdr_cal)
-    print 'Intialisation took %.3f seconds.' % (time.time() - _tic)
+    print('Intialisation took %.3f seconds.' % (time.time() - _tic))
 except Exception as e:
-    print e
+    print(e)
 
 if args.ipython:
     import IPython

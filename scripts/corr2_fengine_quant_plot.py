@@ -2,33 +2,34 @@
 # -*- coding: utf-8 -*-
 """
 Plot the output of the quantiser snapshot.
-
-@author: paulp
 """
 import time
 import argparse
-import os
 import sys
 import signal
 import numpy
 from matplotlib import pyplot
+import math
 
-from corr2.fhost_fpga import FpgaFHost
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
-    description='Display the output of the quantiser on an f-engine.',
+    description='Display the output of the quantiser on an F-engine.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     '--fftshift', dest='fftshift', action='store', default=-1, type=int,
     help='the FFT shift to set')
 parser.add_argument(
     dest='host', type=str, action='store', default='',
-    help='the f-engine host to query, if an int, will be taken positionally '
+    help='the F-engine host to query, if an int, will be taken positionally '
          'from the config file list of f-hosts')
 parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',
     help='a corr2 config file, will use $CORR2INI if none given')
+parser.add_argument(
+    '--bitstream', dest='bitstream', type=str, action='store', default='',
+    help='a bitstream for the f-engine hosts (Skarabs need this given '
+         'if no config is found)')
 parser.add_argument(
     '--range', dest='range', action='store', default='-1,-1',
     help='range to plot, -1 means start/end')
@@ -43,7 +44,7 @@ parser.add_argument(
     help='plot linear, not log')
 parser.add_argument(
     '--print', dest='printvals', action='store_true', default=False,
-    help='print the plotted values to the screen')
+    help='print(the plotted values to the screen')
 parser.add_argument(
     '--noplot', dest='noplot', action='store_true', default=False,
     help='do not plot anything')
@@ -61,20 +62,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.noplot and (not args.printvals):
-    raise RuntimeError('Must either plot or print vals!')
-
-if 'CORR2INI' in os.environ.keys() and args.config == '':
-    args.config = os.environ['CORR2INI']
-if args.config != '':
-    host_list = utils.parse_hosts(args.config, section='fengine')
-else:
-    host_list = []
-
-try:
-    hostname = host_list[int(args.host)]
-    logging.info('Got hostname %s from config file.' % hostname)
-except ValueError:
-    hostname = args.host
+    raise RuntimeError('Must either plot or print(vals!')
 
 # read the config
 config = utils.parse_ini_file(args.config)
@@ -97,45 +85,43 @@ def exit_gracefully(_, __):
     sys.exit(0)
 signal.signal(signal.SIGINT, exit_gracefully)
 
-# make the FPGA object
-fpga = FpgaFHost(hostname)
-time.sleep(0.5)
-fpga.get_system_information()
+# make the FPGA
+fpga = utils.feng_script_get_fpga(args)
 
 # set the FFT shift
 if args.fftshift != -1:
     fpga.registers.fft_shift.write_int(args.fftshift)
 current_fft_shift = fpga.registers.fft_shift.read()['data']['fft_shift']
-print 'Current FFT shift for %s is %i.' % (fpga.host, current_fft_shift)
+print('Current FFT shift for %s is %i.' % (fpga.host, current_fft_shift))
 
 # check the size of the snapshot blocks
 snap0 = fpga.snapshots.snap_quant0_ss
 nsamples = int(snap0.block_info['snap_nsamples'])
 dwidth = int(snap0.block_info['snap_data_width'])
 snapshot_bytes = (2**nsamples) * (dwidth/8)
-print 'Snapshot is %i bytes long' % snapshot_bytes
+print('Snapshot is %i bytes long' % snapshot_bytes)
 snapshot_samples = (2**nsamples) * 4
-print 'Snapshot is %i samples long' % snapshot_samples
-#loops_necessary = EXPECTED_FREQS / snapshot_samples
-#print 'Will need to read the snapshot %i times' % loops_necessary
+print('Snapshot is %i samples long' % snapshot_samples)
+# loops_necessary = EXPECTED_FREQS / snapshot_samples
+# print('Will need to read the snapshot %i times' % loops_necessary
 
-import math
-print 'Range:', plotrange
+print('Range: %s' % str(plotrange))
 numtoplot = plotrange[1] - plotrange[0]
-print 'Chans to plot:', numtoplot
+print('Chans to plot: %s' % numtoplot)
 loopnec = int(math.ceil((numtoplot * 1.0) / snapshot_samples))
 loopstart = plotrange[0] / snapshot_samples
 loopstop = loopstart + loopnec
-plotrange_shifted = (plotrange[0] - (loopstart * snapshot_samples), plotrange[1] - (loopstart * snapshot_samples))
+plotrange_shifted = (plotrange[0] - (loopstart * snapshot_samples),
+                     plotrange[1] - (loopstart * snapshot_samples))
 
-#print 'loopsnec:', loopnec
-#print 'loopstart:', loopstart
-#print 'loopstop:', loopstop
-#print 'plotrange:', plotrange
-#print 'plotrange_shifted:', plotrange_shifted
-#raise RuntimeError
+# print('loopsnec:', loopnec
+# print('loopstart:', loopstart
+# print('loopstop:', loopstop
+# print('plotrange:', plotrange
+# print('plotrange_shifted:', plotrange_shifted
+# raise RuntimeError
 
-print 'Will need to read the snapshot %i times' % (loopstop - loopstart)
+print('Will need to read the snapshot %i times' % (loopstop - loopstart))
 
 
 def get_data():
@@ -145,7 +131,7 @@ def get_data():
         temp_snapdata = {}
         for snap in required_snaps:
             offset = snapshot_bytes * loop_ctr
-            print 'reading %s at offset %i' % (snap, offset)
+            print('reading %s at offset %i' % (snap, offset))
             sys.stdout.flush()
             temp_snapdata[snap] = fpga.snapshots[snap].read(offset=offset)
         snapdata.append(temp_snapdata)
@@ -154,10 +140,10 @@ def get_data():
     pol_data = [[], []]
     # reorder the data
     for loop_ctr in range(loopstart, loopstop):
-        print 'calculating quant data for loop %i' % loop_ctr
+        print('calculating quant data for loop %i' % loop_ctr)
         quant_data = [snapdata[loop_ctr][required_snaps[0]]['data'],
                       snapdata[loop_ctr][required_snaps[1]]['data']]
-        print '\tsnap was %i long' % len(quant_data[0]['real0'])
+        print('\tsnap was %i long' % len(quant_data[0]['real0']))
         for polctr in range(0, 2):
             for data_ctr in range(0, len(quant_data[0]['real0'])):
                 for valctr in range(0, 4):
@@ -165,11 +151,11 @@ def get_data():
                     ival = quant_data[polctr]['imag%i' % valctr][data_ctr]
                     cplx = numpy.complex(rval, ival)
                     pol_data[polctr].append(cplx)
-        print '\tpol_data is now %i long' % len(pol_data[0])
+        print('\tpol_data is now %i long' % len(pol_data[0]))
 
     if len(pol_data[0]) != len(pol_data[1]):
         raise RuntimeError('Unequal length data for p0 and p1?!')
-    print '%s data is %d points long.' % (fpga.host, len(pol_data[0]))
+    print('%s data is %d points long.' % (fpga.host, len(pol_data[0])))
     assert len(pol_data[0]) >= numtoplot, 'Not enough snap data for the ' \
                                           'required number of channels! %i - %i' % (len(pol_data[0]), numtoplot)
     fpga_data['p0'] = pol_data[0][plotrange_shifted[0]:plotrange_shifted[1]]
@@ -208,10 +194,10 @@ def plot_spectrum(figure, sub_plots, idata, ictr, pctr):
     for ctr in range(0, len(p0_data)):
         idata[0][ctr] += p0_data[ctr]
         idata[1][ctr] += p1_data[ctr]
-    #print '\tMean:   %.10f' % numpy.mean(p0_data[100:4000])
-    #print '\tStddev: %.10f' % numpy.std(p0_data[100:4000])
+    # print('\tMean:   %.10f' % numpy.mean(p0_data[100:4000])
+    # print('\tStddev: %.10f' % numpy.std(p0_data[100:4000])
     if args.printvals:
-        print idata
+        print(idata)
     if args.noplot:
         return
     # actually draw the plots
@@ -242,8 +228,8 @@ if args.printvals and args.noplot:
     while True:
         try:
             d = get_data()
-            print 'p0:', d['p0']
-            print 'p1:', d['p1']
+            print('p0: %s' % d['p0'])
+            print('p1: %s' % d['p1'])
             time.sleep(1)
         except KeyboardInterrupt:
             break
@@ -269,10 +255,10 @@ else:
                                     integrated_data, integration_counter,
                                     plot_counter)
 pyplot.show()
-print 'Plot started.'
+print('Plot started.')
 
 # wait here so that the plot can be viewed
-print 'Press Ctrl-C to exit...'
+print('Press Ctrl-C to exit...')
 sys.stdout.flush()
 while True:
     time.sleep(1)

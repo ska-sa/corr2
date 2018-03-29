@@ -13,8 +13,6 @@ import argparse
 
 from casperfpga import spead as casperspead
 from casperfpga import utils as casperutils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 from corr2.utils import AdcData
 
 parser = argparse.ArgumentParser(description='Display the contents of an FPGA\'s 10Gbe buffers.',
@@ -51,7 +49,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -67,9 +65,9 @@ fpga.get_system_information()
 if args.listcores:
     cores = fpga.tengbes.names()
     numgbes = len(cores)
-    print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
+    print('Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
     for core in cores:
-        print '\t', core
+        print('\t', core
     fpga.disconnect()
     sys.exit(0)
 
@@ -91,13 +89,13 @@ fpga.disconnect()
 # read through the data from the core snapshot and check the ramp inside it
 spead_processor = casperspead.SpeadProcessor(4, '64,48', 640, 8)
 gbepackets = casperutils.packetise_snapdata(coredata, eof_key=eof_key)
-print 'Found %i GBE packets.\nChecking length and decoding SPEAD.' % len(gbepackets)
+print('Found %i GBE packets.\nChecking length and decoding SPEAD.' % len(gbepackets)
 gbe_data = []
 for pkt in gbepackets:
     gbe_data.append(pkt[data_key])
 spead_processor.process_data(gbe_data)
 del gbepackets
-print 'Checking packet contents.'
+print('Checking packet contents.'
 last_time = spead_processor.packets[0].headers[0x1600] - 8192
 errors_headers = 0
 errors_datatime = 0
@@ -142,12 +140,12 @@ if errors_dataramp > 0 or errors_datatime > 0 or errors_headers > 0:
             data_tvg.append((time80, ctr80, pol80))
         del data80
         unpacked.append(data_tvg)
-    print unpacked
-    print 'Header errors: ', errors_headers
-    print 'Data time errors: ', errors_datatime
-    print 'Data ramp errors: ', errors_dataramp
+    print(unpacked
+    print('Header errors: ', errors_headers
+    print('Data time errors: ', errors_datatime
+    print('Data ramp errors: ', errors_dataramp
     raise RuntimeError('Some data was not correct.')
 
-print 'Contents okay. Found SPEAD packets with timestamps:', pkt_times
+print('Contents okay. Found SPEAD packets with timestamps:', pkt_times
 
 # end

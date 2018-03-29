@@ -9,8 +9,6 @@ import sys
 import signal
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='Read raw incoming data on the f-engines.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -36,7 +34,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -70,19 +68,19 @@ while True:
 
     p0time_from_data = p0d['p0_80'][0] >> 44
     if not p0time_from_data == time36:
-        print 'ERROR: timestamp does NOT match tvg time in the data! %d != %d' % (p0d['p0_80'][0], time36)
+        print('ERROR: timestamp does NOT match tvg time in the data! %d != %d' % (p0d['p0_80'][0], time36)
     else:
-        print 'Time matches okay - %d.' % time36
+        print('Time matches okay - %d.' % time36
 
     if args.verbose:
         for ctr in range(0, len(p0d['p0_80'])):
-            print ctr, ':',
+            print(ctr, ':',
             for key in p0d.keys():
                 if key == 'p0_80':
-                    print '%s(%d)\t' % (key, p0d[key][ctr] >> 44),
+                    print('%s(%d)\t' % (key, p0d[key][ctr] >> 44),
                 else:
-                    print '%s(%d)\t' % (key, p0d[key][ctr]),
-            print ''
+                    print('%s(%d)\t' % (key, p0d[key][ctr]),
+            print(''
 
 fpga.disconnect()
 # end

@@ -12,8 +12,6 @@ import time
 import argparse
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import casperfpga.scroll as scroll
 from corr2 import utils
 from casperfpga import tengbe
@@ -49,7 +47,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -67,9 +65,9 @@ verbose = False
 if args.listcores:
     cores = fpga.tengbes.names()
     numgbes = len(cores)
-    print 'Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
+    print('Found %i ten gbe core%s:' % (numgbes, '' if numgbes == 1 else 's')
     for core in cores:
-        print '\t', core
+        print('\t', core
     fpga.disconnect()
     sys.exit(0)
 
@@ -121,7 +119,7 @@ def process_spead(current_spead_info, data, packet_counter):
         data = '%d, %d, %d, %d' % (p0_0, p1_0, p0_1, p1_1)
         if current_fchan != -1:
             if (p0_0 != current_fchan) or (p0_1 != current_fchan) or (p1_0 != current_fchan + 4096) or (p1_1 != current_fchan + 4096):
-                print 'hdr says fchan %d, data in that packet says %d, %d, %d, %d. Issue.' % (current_fchan, p0_0, p1_0, p0_1, p1_1)
+                print('hdr says fchan %d, data in that packet says %d, %d, %d, %d. Issue.' % (current_fchan, p0_0, p1_0, p0_1, p1_1)
         data = '%d, %d, %d, %d' % (p0_0, p1_0, p0_1, p1_1)
         return None, data
 
@@ -145,7 +143,7 @@ discovered_fchans = []
 for ppp in range(0, 10):
     current_fchan = -1
     coredata = fpga.tengbes[args.core].read_rxsnap()
-    print '.',
+    print('.',
     sys.stdout.flush()
     for ctr in range(0, len(coredata[coredata.keys()[0]])):
         packet_length_error = False
@@ -154,26 +152,26 @@ for ppp in range(0, 10):
                 packet_length_error = True
             packet_counter = 0
         if verbose:
-            print '%5d,%3d' % (ctr, packet_counter),
+            print('%5d,%3d' % (ctr, packet_counter),
         for key in key_order:
             if key == ip_key:
                 if verbose:
-                    print '%s(%s)' % (key, tengbe.ip2str(coredata[key][ctr])), '\t',
+                    print('%s(%s)' % (key, tengbe.ip2str(coredata[key][ctr])), '\t',
             elif (key == data_key) and args.spead:
                 new_spead_info, spead_stringdata = process_spead(spead_info, coredata[data_key][ctr], packet_counter)
                 if new_spead_info != None:
                     spead_info = new_spead_info.copy()
                 if verbose:
-                    print '%s(%s)' % (key, spead_stringdata), '\t',
+                    print('%s(%s)' % (key, spead_stringdata), '\t',
             else:
                 if verbose:
-                    print '%s(%s)' % (key, coredata[key][ctr]), '\t',
+                    print('%s(%s)' % (key, coredata[key][ctr]), '\t',
         if verbose:
-            print 'PACKET LENGTH ERROR' if packet_length_error else ''
+            print('PACKET LENGTH ERROR' if packet_length_error else ''
         packet_counter += 1
 
 discovered_fchans.sort()
-print discovered_fchans
+print(discovered_fchans
 
 
 # end

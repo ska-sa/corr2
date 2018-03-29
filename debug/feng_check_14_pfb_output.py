@@ -12,8 +12,6 @@ import sys
 import signal
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(description='Display the output of the PFB on an f-engine.',
@@ -47,7 +45,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -75,8 +73,8 @@ for fpga_ in fpgas:
         if snap not in fpga_.snapshots.names():
             snapshot_missing.append(fpga_.host)
 if len(snapshot_missing) > 0:
-    print 'The following hosts are missing one or more of the post-pfb snapshots. Bailing.'
-    print snapshot_missing
+    print('The following hosts are missing one or more of the post-pfb snapshots. Bailing.'
+    print(snapshot_missing
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     raise RuntimeError
 
@@ -89,7 +87,7 @@ signal.signal(signal.SIGINT, exit_gracefully)
 if args.fftshift != -1:
     fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.write_int(args.fftshift))
 current_fft_shift = fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.fft_shift.read())
-print 'Current FFT shift is: ', current_fft_shift
+print('Current FFT shift is: ', current_fft_shift
 
 # select the polarisation
 fpgautils.threaded_fpga_operation(fpgas, 10, lambda fpga_: fpga_.registers.control.write(snappfb_dsel=args.pol))
@@ -134,12 +132,12 @@ while (looplimit < 0) or (loopctr < looplimit):
         # p0_data = range(0, EXPECTED_FREQS*2, 2)
         # p1_data = range(1, EXPECTED_FREQS*2+1, 2)
         spectra_per_snapshot = len(p_data) / EXPECTED_FREQS
-        print '%d: %s snap data is %d points long, %d spectra per snapshot.' % (loopctr, fpga, len(p_data), spectra_per_snapshot)
+        print('%d: %s snap data is %d points long, %d spectra per snapshot.' % (loopctr, fpga, len(p_data), spectra_per_snapshot)
 
         for spectrum_ctr in range(0, spectra_per_snapshot):
             sindex = spectrum_ctr * EXPECTED_FREQS
             eindex = sindex + EXPECTED_FREQS - 1
-            # print sindex, eindex
+            # print(sindex, eindex
             # integrated_data[fpga]['p0'] = [sum(x) for x in zip(integrated_data[fpga]['p0'], p0_data[sindex:eindex])]
             # integrated_data[fpga]['p1'] = [sum(x) for x in zip(integrated_data[fpga]['p1'], p1_data[sindex:eindex])]
             for datactr in range(0, len(integrated_data[fpga])):
@@ -160,8 +158,8 @@ while (looplimit < 0) or (loopctr < looplimit):
 
         p_show_data = p_show_data[:-10]
 
-        print '\tMean:   %.10f' % numpy.mean(p_show_data[1000:3000])
-        print '\tStddev: %.10f' % numpy.std(p_show_data[1000:3000])
+        print('\tMean:   %.10f' % numpy.mean(p_show_data[1000:3000])
+        print('\tStddev: %.10f' % numpy.std(p_show_data[1000:3000])
 
         if args.log:
             plt = pyplot.plot([10*numpy.log10(_d) for _d in p_show_data])
@@ -188,7 +186,7 @@ while (looplimit < 0) or (loopctr < looplimit):
     loopctr += 1
 
 # wait here so that the plot can be viewed
-print 'Press Ctrl-C to exit...'
+print('Press Ctrl-C to exit...'
 sys.stdout.flush()
 import time
 while True:

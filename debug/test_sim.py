@@ -32,20 +32,20 @@ def deprogram_all():
         try:
             f.get_system_information()
         except RuntimeError:
-            print 'could not get to host %s' % f.host
+            print('could not get to host %s' % f.host
             continue
         f.deprogram()
-    print 'deprogrammed all'
+    print('deprogrammed all'
 
 
 def stop_tx():
-    print 'Stopping TX.'
+    print('Stopping TX.'
     for f in fpgas:
         f.registers.ctrl.write(comms_en=False)
 
 
 def send_meta():
-    print 'Sending meta'
+    print('Sending meta'
     spead_ig = spead.ItemGroup()
     spead_tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1', DATA_PORT))
     # ndarray = numpy.dtype(numpy.int64), (4096 * 40 * 1, 1, 1)
@@ -57,7 +57,7 @@ def send_meta():
 
 
 def start_tx():
-    print 'Starting TX.'
+    print('Starting TX.'
     for f in fpgas:
         f.registers.ctrl.write(comms_en=True)
 
@@ -68,11 +68,11 @@ def setup():
     macbase = 10
     boardbase = 0
 
-    print 'programming...',
+    print('programming...',
     sys.stdout.flush()
     utils.program_fpgas('/srv/bofs/xeng/r2_2f_r366_sim_2014_Aug_01_1556.fpg', fpgas)
     #utils.program_fpgas('/home/paulp/xengsim_test_2014_Aug_01_1355.fpg', fpgas)
-    print 'done.'
+    print('done.'
 
     for fpga_ in fpgas:
         fpga_.get_system_information()
@@ -98,7 +98,7 @@ def setup():
         fpga_.registers.acc_len.write_int(200)
     #send_meta()
     #start_tx()
-    print 'now check for spead heaps'
+    print('now check for spead heaps'
 
 if __name__ == '__main__':
 
@@ -124,7 +124,7 @@ if __name__ == '__main__':
     if args.deprogram_all:
         deprogram_all()
 
-    print 'making roaches'
+    print('making roaches'
     fpgas = []
     for h in hosts:
         f = casperfpga.KatcpClientFpga(h)

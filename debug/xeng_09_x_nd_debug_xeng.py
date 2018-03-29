@@ -3,8 +3,6 @@
 """
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 import corr2
 
 parser = argparse.ArgumentParser(description='Debug the shift in the x-engine...',
@@ -30,7 +28,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -81,17 +79,17 @@ for input_ctr in range(0, 8):
         def print_snap(data):
             snapkeys = data.keys()
             snaplen = len(data[snapkeys[0]])
-            print 'Read %d values from snapblock:\n' % snaplen
+            print('Read %d values from snapblock:\n' % snaplen
             for ctr in range(0, snaplen):
-                print '%5d:' % ctr,
+                print('%5d:' % ctr,
                 for key in snapkeys:
-                    print '%s(%d)\t' % (key, data[key][ctr]),
-                print ''
-            print 50 * '*'
+                    print('%s(%d)\t' % (key, data[key][ctr]),
+                print(''
+            print(50 * '*'
 
         for freq in range(0, F_PER_X, NUM_ANT):
             byte_offset = freq * bytes_per_freq_block
-            print 'reading %i frequencies starting at %i, reading %i bytes at offset %i' % (freqs_in_snap, freq + start_f,
+            print('reading %i frequencies starting at %i, reading %i bytes at offset %i' % (freqs_in_snap, freq + start_f,
                                                                                             snap_bytes, byte_offset)
             d = xeng_fpga.snapshots.snap_reord0_ss.read(offset=byte_offset)['data']
             assert d['freq'][0] == start_f + freq
@@ -99,7 +97,7 @@ for input_ctr in range(0, 8):
             for freq_ctr in range(0, freqs_in_snap):
                 for ant_ctr in range(0, NUM_ANT):
                     snap_offset = ((freq_ctr * bytes_per_freq_block) + (ant_ctr * bytes_per_freq)) / 16
-                    print 'freq(%i) ant(%i) data is at offset %i in snapblock' % (freq_ctr, ant_ctr, snap_offset)
+                    print('freq(%i) ant(%i) data is at offset %i in snapblock' % (freq_ctr, ant_ctr, snap_offset)
                     for data_ctr in range(0, F_CORNERTURN_LEN):
                         word_pos = snap_offset + data_ctr
                         if (args.nzinput == (ant_ctr * 2)) or (args.nzinput == (ant_ctr * 2) + 1):

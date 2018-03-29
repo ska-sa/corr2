@@ -1,12 +1,13 @@
 import logging
 
-from fhost_fpga import DigitiserDataReceiver
+from digitiser_receiver import DigitiserStreamReceiver
+
 import utils as c2_utils
 
 LOGGER = logging.getLogger(__name__)
 
 
-class FpgaFilterHost(DigitiserDataReceiver):
+class FpgaFilterHost(DigitiserStreamReceiver):
     """
     A Host, that hosts SNB filter engines, that is a CASPER KATCP FPGA.
     """
@@ -29,7 +30,7 @@ class FpgaFilterHost(DigitiserDataReceiver):
         _hosts = self._config['hosts'].strip().split(',')
         super(FpgaFilterHost, self).__init__(_hosts[board_id],
                                              katcp_port=_katcp_port,
-                                             boffile=_bof,
+                                             bitstream=_bof,
                                              connect=True)
         self.board_id = board_id
         self.data_sources = []
@@ -63,8 +64,8 @@ class FpgaFilterHost(DigitiserDataReceiver):
                                                rxaddr_bits[1],
                                                rxaddr_bits[2])
                 for _ctr in range(0, source.ip_range):
-                    gbename = self.tengbes.names()[gbe_ctr]
-                    gbe = self.tengbes[gbename]
+                    gbename = self.gbes.names()[gbe_ctr]
+                    gbe = self.gbes[gbename]
                     rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + _ctr)
                     LOGGER.info('\t{} subscribing to address {}'.format(
                         str(gbe.name), str(rxaddress),

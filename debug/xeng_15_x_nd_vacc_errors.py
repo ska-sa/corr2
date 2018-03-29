@@ -40,7 +40,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 # if args.comms == 'katcp':
-#     HOSTCLASS = katcp_fpga.KatcpFpga
+#     HOSTCLASS = CasperFpga
 # else:
 #     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -82,7 +82,7 @@ except Exception:
 
 
 def exit_gracefully(sig, frame):
-    print sig, frame
+    print(sig, frame
     fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
     scroll.screen_teardown()
     sys.exit(0)

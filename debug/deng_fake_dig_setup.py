@@ -4,10 +4,10 @@ import argparse
 import sys
 import signal
 
-from casperfpga import katcp_fpga, tengbe
+from casperfpga import casperfpga, tengbe
 
 
-class DengTvg(katcp_fpga.KatcpFpga):
+class DengTvg(CasperFpga):
     def setup_tengbes(self, ip_and_port, base_mac):
         ip, port = ip_and_port.split(':')
         port = int(port)

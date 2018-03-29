@@ -7,8 +7,6 @@
 """
 import argparse
 
-from casperfpga import katcp_fpga
-from casperfpga import dcp_fpga
 
 parser = argparse.ArgumentParser(description='Read raw incoming data on the f-engines.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -32,7 +30,7 @@ if args.log_level != '':
         raise RuntimeError('No such log level: %s' % log_level)
 
 if args.comms == 'katcp':
-    HOSTCLASS = katcp_fpga.KatcpFpga
+    HOSTCLASS = CasperFpga
 else:
     HOSTCLASS = dcp_fpga.DcpFpga
 
@@ -47,8 +45,8 @@ snapdata = fpga.snapshots.unpack_output_ss.read(man_valid=True)['data']
 
 for ctr in range(0, len(snapdata['dv'])):
     for key in snapdata.keys():
-        print '%s(%d)\t' % (key, snapdata[key][ctr]),
-    print ''
+        print('%s(%d)\t' % (key, snapdata[key][ctr]),
+    print(''
 
 # handle exits cleanly
 fpga.disconnect()

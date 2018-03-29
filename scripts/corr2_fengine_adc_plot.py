@@ -3,7 +3,7 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-Plot the ADC data on one or more f-engines
+Plot the ADC data on one or more F-engines
 """
 import time
 import argparse
@@ -11,21 +11,31 @@ import os
 import sys
 import signal
 import numpy
+
+# force the use of the TkAgg backend
+import matplotlib
+matplotlib.use('TkAgg')
+
 from matplotlib import pyplot
 
-from corr2.fhost_fpga import FpgaFHost
+import casperfpga.memory as caspermem
 from corr2 import utils
+from corr2 import fhost_fpga
 
 parser = argparse.ArgumentParser(
     description='Plot a histogram of the incoming ADC data for a fengine host.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     dest='host', type=str, action='store', default='',
-    help='the f-engine host to query, if an int, will be taken positionally '
+    help='the F-engine host to query, if an int, will be taken positionally '
          'from the config file list of f-hosts')
 parser.add_argument(
     '--config', dest='config', type=str, action='store', default='',
     help='a corr2 config file, will use $CORR2INI if none given')
+parser.add_argument(
+    '--bitstream', dest='bitstream', type=str, action='store', default='',
+    help='a bitstream for the f-engine hosts (Skarabs need this given '
+         'if no config is found)')
 parser.add_argument(
     '--range', dest='range', action='store', default='-1,-1',
     help='range to plot, -1 means start/end')
@@ -57,19 +67,6 @@ if args.log_level != '':
     except AttributeError:
         raise RuntimeError('No such log level: %s' % log_level)
 
-if 'CORR2INI' in os.environ.keys() and args.config == '':
-    args.config = os.environ['CORR2INI']
-if args.config != '':
-    host_list = utils.parse_hosts(args.config, section='fengine')
-else:
-    host_list = []
-
-try:
-    hostname = host_list[int(args.host)]
-    logging.info('Got hostname %s from config file.' % hostname)
-except ValueError:
-    hostname = args.host
-
 # process the range argument
 plotrange = [int(a) for a in args.range.split(',')]
 if plotrange[0] == -1:
@@ -84,14 +81,12 @@ def exit_gracefully(_, __):
     sys.exit(0)
 signal.signal(signal.SIGINT, exit_gracefully)
 
-# make the FPGA object
-fpga = FpgaFHost(hostname)
-time.sleep(0.5)
-fpga.get_system_information()
+# make the FPGA
+fpga = utils.feng_script_get_fpga(args)
 
 
 def plot_func(figure, sub_plots, idata, ictr, pctr):
-    data = fpga.get_adc_snapshots()
+    data = get_data()
     ictr += 1
 
     topstop = plotrange[1] if plotrange[1] != -1 else len(data['p0'].data)
@@ -99,8 +94,8 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
     p0_data = data['p0'].data[plotrange[0]:topstop]
     p1_data = data['p1'].data[plotrange[0]:topstop]
 
-    # print '\tMean:   %.10f' % numpy.mean(p0_data[1000:3000])
-    # print '\tStddev: %.10f' % numpy.std(p0_data[1000:3000])
+    # print('\tMean:   %.10f' % numpy.mean(p0_data[1000:3000])
+    # print('\tStddev: %.10f' % numpy.std(p0_data[1000:3000])
 
     if args.fft:
         plot_data0 = numpy.abs(numpy.fft.fft(p0_data))
@@ -154,14 +149,45 @@ def plot_func(figure, sub_plots, idata, ictr, pctr):
     fig.canvas.manager.window.after(10, plot_func, figure,
                                     sub_plots, idata, ictr, pctr)
 
+
+def get_data():
+    if 'snap_adc0_ss' not in fpga.snapshots.names():
+        fpga.registers.fft_shift.write(cdsnap_arm=0)
+        fpga.snapshots.snap_cd0_ss.arm()
+        fpga.snapshots.snap_cd1_ss.arm()
+        fpga.registers.fft_shift.write(cdsnap_arm=1)
+        time.sleep(0.1)
+        d0 = fpga.snapshots.snap_cd0_ss.read(arm=False)['data']
+        d1 = fpga.snapshots.snap_cd1_ss.read(arm=False)['data']
+        fpga.registers.fft_shift.write(cdsnap_arm=0)
+        rvp0 = []
+        rvp1 = []
+        for ctr in range(0, len(d0['d0'])):
+            for ctr2 in range(8):
+                rvp0.append(d0['d%i' % ctr2][ctr])
+            for ctr2 in range(4):
+                rvp1.append(d0['p1_d%i' % ctr2][ctr])
+            tmp = (d0['p1_d4_u8'][ctr] << 2) | d1['p1_d4_l2'][ctr]
+            rvp1.append(caspermem.bin2fp(tmp, 10, 9, True))
+            for ctr2 in range(5, 8):
+                rvp1.append(d1['p1_d%i' % ctr2][ctr])
+        return {'p0': fhost_fpga.AdcData(-1, rvp0),
+                'p1': fhost_fpga.AdcData(-1, rvp1)}
+    else:
+        return fpga.get_adc_snapshots()
+
+if 'snap_adc0_ss' not in fpga.snapshots.names():
+    print('Could not find ADC snapshots, attempting to use '
+          'CD snaps instead.')
+
 # set up the figure with a subplot to be plotted
-data = fpga.get_adc_snapshots()
+data = get_data()
 
 if args.noplot:
     while True:
-        print data
+        print(data)
         time.sleep(1)
-        data = fpga.get_adc_snapshots()
+        data = get_data()
 else:
     fig = pyplot.figure()
     subplots = []
@@ -176,10 +202,10 @@ else:
                                     subplots, integrated_data,
                                     integration_counter, plot_counter)
     pyplot.show()
-    print 'Plot started.'
+    print('Plot started.')
 
     # wait here so that the plot can be viewed
-    print 'Press Ctrl-C to exit...'
+    print('Press Ctrl-C to exit...')
     sys.stdout.flush()
     while True:
         time.sleep(1)

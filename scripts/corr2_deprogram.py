@@ -8,7 +8,6 @@ import argparse
 import os
 
 from casperfpga import utils as fpgautils
-from casperfpga import katcp_fpga
 from corr2 import utils
 
 parser = argparse.ArgumentParser(
@@ -22,7 +21,7 @@ parser.add_argument(
     help='start/stop a class: fengine or xengine')
 parser.add_argument(
     '--dnsmasq', dest='dnsmasq', action='store_true', default=False,
-    help='search for roach hostnames in /var/lib/misc/dnsmasq.leases')
+    help='search for roach/skarab hostnames in /var/lib/misc/dnsmasq.leases')
 parser.add_argument(
     '--reboot', action='store_true', default=False,
     help='reboot roach in /var/lib/misc/dnsmasq.leases')
@@ -41,10 +40,10 @@ if args.log_level != '':
 
 # look for hosts in the leases file
 if args.dnsmasq:
-    hosts, lease_filename = utils.hosts_from_dhcp_leases()
-    print 'Found %i roaches in %s.' % (len(hosts), lease_filename)
+    hosts, lease_filename = fpgautils.hosts_from_dhcp_leases()
+    print('Found %i roaches in %s.' % (len(hosts), lease_filename))
     for host in hosts:
-        print '\t', host
+        print('\t%s' % host)
 else:
     # are we doing it by class?
     if 'CORR2INI' in os.environ.keys() and args.hosts == '':
@@ -59,33 +58,6 @@ else:
     else:
         hosts = utils.parse_hosts(args.hosts)
 
-if len(hosts) == 0:
-    raise RuntimeError('No good carrying on without hosts.')
-
-# create the devices and deprogram them
-fpgas = fpgautils.threaded_create_fpgas_from_hosts(katcp_fpga.KatcpFpga, hosts)
-running = fpgautils.threaded_fpga_function(fpgas, 10, 'is_running')
-deprogrammed = []
-to_deprogram = []
-already_deprogrammed = []
-for fpga in fpgas:
-    if running[fpga.host]:
-        deprogrammed.append(fpga.host)
-        to_deprogram.append(fpga)
-    else:
-        already_deprogrammed.append(fpga.host)
-running = fpgautils.threaded_fpga_function(to_deprogram, 10, 'deprogram')
-
-if len(deprogrammed) != 0:
-    print deprogrammed, ': deprogrammed okay.'
-if len(already_deprogrammed) != 0:
-    print already_deprogrammed, ': already deprogrammed.'
-
-if args.reboot:
-    for fpga in fpgas:
-        fpga.katcprequest(name='restart', request_timeout=-1.0,
-                          require_ok=True, request_args=())
-        print 'Restarting {}'.format(fpga.host)
-fpgautils.threaded_fpga_function(fpgas, 10, 'disconnect')
+fpgautils.deprogram_hosts(hosts)
 
 # end

@@ -1,10 +1,10 @@
 import time
 
 from casperfpga import utils as fpgautils
-from casperfpga import tengbe
+from casperfpga.network import Mac, IpAddress
 
 import filthost_fpga
-from data_source import DataSource
+from data_stream import StreamAddress
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -13,6 +13,8 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 def parse_sources(name_string, ip_string):
     """
     Parse lists of source name and IPs into a list of DataSource objects.
+    :param name_string
+    :param ip_string
     :return:
     """
     source_names = name_string.strip().split(',')
@@ -23,7 +25,7 @@ def parse_sources(name_string, ip_string):
     _sources = []
     source_ctr = 0
     for counter, address in enumerate(source_mcast):
-        new_source = DataSource.from_mcast_string(address)
+        new_source = StreamAddress.from_mcast_string(address)
         new_source.name = source_names[counter]
         new_source.source_number = source_ctr
         _sources.append(new_source)
@@ -69,7 +71,7 @@ class FilterOperations(object):
         if program:
             THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                target_function=('upload_to_ram_and_program',
-                                                (self.hosts[0].boffile,),))
+                                                (self.hosts[0].bitstream,),))
         else:
             THREADED_FPGA_FUNC(self.hosts, timeout=5,
                                target_function='get_system_information')
@@ -79,10 +81,6 @@ class FilterOperations(object):
             THREADED_FPGA_OP(self.hosts, timeout=5,
                              target_function=(lambda fpga_:
                                               fpga_.registers.receptor_id.write(pol0_id=0, pol1_id=1),))
-            THREADED_FPGA_FUNC(self.hosts, timeout=5,
-                               target_function=('set_igmp_version',
-                                                (self.corr.configd['FxCorrelator']['igmp_version'])))
-    
             THREADED_FPGA_OP(self.hosts, timeout=5,
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
             THREADED_FPGA_OP(self.hosts, timeout=5,
@@ -98,7 +96,7 @@ class FilterOperations(object):
                                                   fpga_.data_destinations[0].port),))
     
             # set up the 10gbe cores
-            self._setup_tengbe()
+            self._setup_gbe()
     
             THREADED_FPGA_OP(self.hosts, timeout=5,
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
@@ -164,7 +162,7 @@ class FilterOperations(object):
         self.logger.info('\tdone.')
         return all_okay
 
-    def _setup_tengbe(self):
+    def _setup_gbe(self):
         """
         Set up the 10gbe cores on the filter hosts
         :param corr: the correlator instance
@@ -172,14 +170,14 @@ class FilterOperations(object):
         """
         # set up the 10gbe cores
         feng_port = int(self.corr.configd['filter']['10gbe_port'])
-        mac_start = tengbe.Mac(self.corr.configd['filter']['10gbe_start_mac'])
+        mac_start = Mac(self.corr.configd['filter']['10gbe_start_mac'])
         # set up shared board info
         boards_info = {}
         board_id = 0
         mac = int(mac_start)
         for f in self.hosts:
             macs = []
-            for gbe in f.tengbes:
+            for gbe in f.gbes:
                 macs.append(mac)
                 mac += 1
             boards_info[f.host] = board_id, macs
@@ -187,7 +185,7 @@ class FilterOperations(object):
     
         def setup_gbes(f):
             board_id, macs = boards_info[f.host]
-            for gbe, this_mac in zip(f.tengbes, macs):
+            for gbe, this_mac in zip(f.gbes, macs):
                 gbe.setup(mac=this_mac, ipaddress='0.0.0.0', port=feng_port)
                 self.logger.debug(
                     'filthost(%s) gbe(%s) mac(%s) port(%i) board_id(%i)' %
@@ -198,7 +196,7 @@ class FilterOperations(object):
             setup_gbes(_fpga)
     
         for _fpga in self.hosts:
-            for _gbe in _fpga.tengbes:
+            for _gbe in _fpga.gbes:
                 self.logger.info('{}: {} got address {}'.format(_fpga.host, _gbe.name,
                                                                 _gbe.core_details['ip']))
     
@@ -241,7 +239,7 @@ class FilterOperations(object):
                     _dest_ip = int(_dest.ip_address) + _range
                     filthost.registers['gbe_iptx%i' % _dest_ctr].write_int(_dest_ip)
                     self.logger.debug('{}: wrote TX IP {} to register {}'.format(
-                        filthost.host, str(tengbe.IpAddress(_dest_ip)),
+                        filthost.host, str(IpAddress(_dest_ip)),
                         'gbe_iptx%i' % _dest_ctr,
                     ))
                     _dest_ctr += 1

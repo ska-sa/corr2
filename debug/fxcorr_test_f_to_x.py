@@ -67,7 +67,7 @@ def check_data_things(ig, heap_ctr):
     if xeng_raw is None:
         return 0
 
-    print heap_ctr, 'rx\'d heap:', np.shape(xeng_raw)
+    print(heap_ctr, 'rx\'d heap:', np.shape(xeng_raw)
 
     err_bls = []
     okay_bls = []
@@ -77,7 +77,7 @@ def check_data_things(ig, heap_ctr):
 
         err = False
 
-        if VERBOSE: print '\ttesting baseline:', baseline, BASELINES[baseline]
+        if VERBOSE: print('\ttesting baseline:', baseline, BASELINES[baseline]
         if baseline in BLS_UNDER_TEST:
             non_zero_range = FREQS_UNDER_TEST
             zero_range = range(0, min(FREQS_UNDER_TEST))
@@ -86,22 +86,22 @@ def check_data_things(ig, heap_ctr):
             non_zero_range = []
             zero_range = range(N_CHANS)
 
-        if VERBOSE: print '\t\ttesting should-be-zero fchans:'
+        if VERBOSE: print('\t\ttesting should-be-zero fchans:'
         for ctr in zero_range:
             complex_tuple = bdata[ctr]
             pwr = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
             if pwr != 0.0:
                 if VERBOSE:
-                    print '\t\t\tfchan(%i) != 0: 2^%.5f + 2^%.5f = %.5f' % (ctr, complex_tuple[0], complex_tuple[1], pwr)
+                    print('\t\t\tfchan(%i) != 0: 2^%.5f + 2^%.5f = %.5f' % (ctr, complex_tuple[0], complex_tuple[1], pwr)
                 err = True
             # assert pwr == 0.0
 
-        if VERBOSE: print '\t\ttesting should-be-non-zero fchans:'
+        if VERBOSE: print('\t\ttesting should-be-non-zero fchans:'
         for ctr in non_zero_range:
             complex_tuple = bdata[ctr]
             pwr = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
             if VERBOSE:
-                print '\t\t\tfchan(%i): 2^%.5f + 2^%.5f = %.5f' % (ctr, complex_tuple[0], complex_tuple[1], pwr)
+                print('\t\t\tfchan(%i): 2^%.5f + 2^%.5f = %.5f' % (ctr, complex_tuple[0], complex_tuple[1], pwr)
             #if pwr == 0.0:
             #    cplx_bef = bdata[ctr - 1]
             #    pwr_bef = (complex_tuple[0] ** 2) + (complex_tuple[1] ** 2)
@@ -113,9 +113,9 @@ def check_data_things(ig, heap_ctr):
         else:
             okay_bls.append(baseline)
 
-    print '\tbaselines in error:', err_bls
-    print '\tbaselines okay:', okay_bls
-    print ''
+    print('\tbaselines in error:', err_bls
+    print('\tbaselines okay:', okay_bls
+    print(''
     sys.stdout.flush()
     return 1
 
@@ -140,7 +140,7 @@ class CorrRx(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
-        print 'starting target with kwargs ', self._kwargs
+        print('starting target with kwargs ', self._kwargs
         self._target(**self._kwargs)
 
     def rx_cont(self, data_port=7148, acc_scale=True,
@@ -243,10 +243,10 @@ if __name__ == '__main__':
     FREQS_UNDER_TEST = range(fstart, fstop)
 
     BLS_UNDER_TEST = ants_to_baselines(ANTS_UNDER_TEST)
-    print 'testing frequencies:', min(FREQS_UNDER_TEST), '-', max(FREQS_UNDER_TEST)
-    print 'testing ants:', ANTS_UNDER_TEST
-    print 'testing baselines:', BLS_UNDER_TEST
-    print 'checking %i heaps' % NUM_HEAPS
+    print('testing frequencies:', min(FREQS_UNDER_TEST), '-', max(FREQS_UNDER_TEST)
+    print('testing ants:', ANTS_UNDER_TEST
+    print('testing baselines:', BLS_UNDER_TEST
+    print('checking %i heaps' % NUM_HEAPS
 
     fhosts = config['fengine']['hosts'].split(',')
 
@@ -254,7 +254,7 @@ if __name__ == '__main__':
 
     n_bls = n_ants * (n_ants+1) / 2 * 4
 
-    print 'Loaded instrument info from config file:\n\t%s' % args.config
+    print('Loaded instrument info from config file:\n\t%s' % args.config
 
 
     if args.log_level:
@@ -274,12 +274,12 @@ if __name__ == '__main__':
             raise RuntimeError('No such log level: %s' % spead_log_level)
 
 
-print 'Initialising SPEAD transports for data:'
-print '\tData reception on port', data_port
+print('Initialising SPEAD transports for data:'
+print('\tData reception on port', data_port
 if filename is not None:
-    print '\tStoring to file %s' % filename
+    print('\tStoring to file %s' % filename
 else:
-    print '\tNot saving to disk.'
+    print('\tNot saving to disk.'
 
 quit_event = threading.Event()
 crx = CorrRx(quit_event=quit_event,
@@ -291,15 +291,15 @@ try:
     crx.start()
     while crx.isAlive():
         time.sleep(0.1)
-    print 'RX process ended.'
+    print('RX process ended.'
     crx.join()
 except KeyboardInterrupt:
     import sys
     quit_event.set()
-    print 'Stopping, waiting for thread to exit...',
+    print('Stopping, waiting for thread to exit...',
     sys.stdout.flush()
     while quit_event.is_set():
         time.sleep(0.1)
-    print 'all done.'
+    print('all done.'
 
 # end

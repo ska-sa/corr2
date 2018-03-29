@@ -1,32 +1,17 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import logging
 import sys
 import argparse
 import os
 import katcp
 import signal
-import tornado
-import time
-
 from tornado.ioloop import IOLoop
+import tornado.gen
+
 from corr2 import sensors, sensors_periodic, fxcorrelator
-
-
-class KatcpStreamHandler(logging.StreamHandler):
-
-    def format(self, record):
-        """
-        Convert the record message contents to a katcp #log format
-        :param record: a logging.LogRecord
-        :return:
-        """
-        level = 'WARN' if record.levelname == 'WARNING' else record.levelname
-        level = level.lower()
-        msg = record.msg.replace(' ', '\_')
-        msg = msg.replace('\t', '\_' * 4)
-        return '#log ' + level + ' ' + '%.6f' % time.time() + ' ' + \
-               record.filename + ' ' + msg
+from corr2.utils import KatcpStreamHandler
 
 
 class Corr2SensorServer(katcp.DeviceServer):
@@ -43,18 +28,21 @@ class Corr2SensorServer(katcp.DeviceServer):
         """
         pass
 
-    def initialise(self, instrument):
+    def initialise(self, config):
         """
         Setup and start sensors
-        :param instrument: a corr2 Instrument object
+        :param config: the config to use when making the instrument
         :return:
 
         """
+        instrument = fxcorrelator.FxCorrelator(
+            'dummy fx correlator for sensors', config_source=config)
         self.instrument = instrument
-        self.instrument.initialise(program=False)
+        self.instrument.initialise(program=False, configure=False,
+                                   require_epoch=False)
         sensor_manager = sensors.SensorManager(self, self.instrument)
         self.instrument.sensor_manager = sensor_manager
-        sensors_periodic.setup_sensors(sensor_manager)
+        sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
 
 
 @tornado.gen.coroutine
@@ -68,6 +56,7 @@ def on_shutdown(ioloop, server):
     print('Sensor server shutting down')
     yield server.stop()
     ioloop.stop()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -86,8 +75,11 @@ if __name__ == '__main__':
 
     try:
         log_level = getattr(logging, args.loglevel)
-    except:
+    except AttributeError:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
+
+    # def boop():
+    #     raise KeyboardInterrupt
 
     # set up the logger
     corr2_sensors_logger = logging.getLogger('corr2.sensors')
@@ -115,12 +107,13 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT,
                   lambda sig, frame: ioloop.add_callback_from_signal(
                       on_shutdown, ioloop, sensor_server))
-    print 'Sensor server listening on port %d:' % args.port,
+    print('Sensor server listening on port %d:' % args.port, end='')
     sensor_server.set_ioloop(ioloop)
     ioloop.add_callback(sensor_server.start)
-    print 'started. Running somewhere in the ether... exit however you see fit.'
-    instrument = fxcorrelator.FxCorrelator('dummy corr for sensors',
-                                           config_source=args.config)
-    ioloop.add_callback(sensor_server.initialise, instrument)
+    print('started. Running somewhere in the ether... '
+          'exit however you see fit.')
+    ioloop.add_callback(sensor_server.initialise, args.config)
+    # ioloop.call_later(10, boop)
     ioloop.start()
+
 # end

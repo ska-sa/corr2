@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
 import spead2
 import spead2.recv as s2rx
 import time
@@ -10,15 +11,17 @@ import logging
 import Queue
 import numpy as np
 import matplotlib.pyplot as pyplot
+import corr2
+from corr2 import data_stream
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
 
 class CorrRx(threading.Thread):
     def __init__(self, **kwargs):
 
-        spead2._logger.setLevel(logging.DEBUG)
+        spead2._logger.setLevel(logging.INFO)
         self._target = self.rx_cont
         self._kwargs = kwargs
         self.spead_queue = spead_queue
@@ -29,7 +32,7 @@ class CorrRx(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
-        print 'Starting target with kwargs ', self._kwargs
+        print('Starting target with kwargs %s' % self._kwargs)
         self._target(**self._kwargs)
 
     def rx_cont(self, **kwargs):
@@ -86,7 +89,7 @@ class CorrRx(threading.Thread):
                                     self.xeng_acclen, numspec))
                         intdata = [0] * speclen
                         for specctr in range(0, numspec):
-                            # print 'processing spectrum %i' % specctr
+                            # print('processing spectrum %i' % specctr
                             specdata = bfraw[:, specctr, :]
                             for ctr, _d in enumerate(specdata):
                                 _pwr = np.sqrt(_d[0]**2 + _d[1]**2)
@@ -113,19 +116,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Plot SPEAD data from a beamformer.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(dest='beam', action='store',default=0, help='beam index to plot')
     parser.add_argument('--config', dest='config', action='store', default='',
                         help='corr2 config file')
-    parser.add_argument(dest='beam', action='store', help='beam to plot')
-    parser.add_argument('--listbeams', dest='listbeams', action='store_true',
-                        default=False, help='List available beams.')
     parser.add_argument('--ion', dest='ion', action='store_true', default=False,
                         help='Interactive mode plotting.')
     parser.add_argument('--log', dest='log', action='store_true', default=False,
                         help='Logarithmic y axis.')
     parser.add_argument('--sum', dest='sum', action='store_true', default=False,
                         help='Sum the spectra in the packet.')
+    parser.add_argument('--sum', dest='sum', action='store_true', default=False,
+                        help='Sum the spectra in the packet.')
     parser.add_argument(
-        '--loglevel', dest='log_level', action='store', default='DEBUG',
+        '--loglevel', dest='log_level', action='store', default='INFO',
         help='log level to use, default INFO, options INFO, DEBUG, ERROR')
     parser.add_argument(
         '--speadloglevel', dest='spead_log_level', action='store',
@@ -137,25 +140,25 @@ if __name__ == '__main__':
     if 'CORR2INI' in os.environ.keys() and args.config == '':
         args.config = os.environ['CORR2INI']
 
-    # load the rx port and sd info from the config file
-    config = utils.parse_ini_file(args.config)
+    print('Loading instrument info from config file:\n\t%s' % args.config)
+    configfile = args.config
+    c=corr2.fxcorrelator.FxCorrelator('bob',config_source=configfile)
+    c.initialise(configure=False,program=False,require_epoch=False)
+    configd = c.configd
+    streams = c.get_data_streams_by_type(data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
+    print('Available beams:')
+    for n,s in enumerate(streams):
+        print(n,': ',s)
+    stream = streams[int(args.beam)]
+    print('Subscribing to %s'%stream.name)
+    data_port = stream.destination.port
+    xeng_acclen = int(configd['xengine']['xeng_accumulation_len'])
+    n_chans=int(configd['fengine']['n_chans'])
+    heap_ctr_step = xeng_acclen * n_chans * 2
 
-    if args.listbeams:
-        print 'Available beams:'
-        for section_name in config:
-            if section_name.startswith('beam'):
-                print '\t', section_name
-        import sys
-        sys.exit(0)
-    beam_config = config[args.beam]
-    data_port = int(beam_config['data_port'])
-    xeng_acclen = int(config['xengine']['xeng_accumulation_len'])
-    num_chans = int(config['fengine']['n_chans'])
-    heap_ctr_step = xeng_acclen * num_chans * 2
-    print 'Loaded instrument info from config file:\n\t%s' % args.config
 
-print 'Initialising SPEAD transports for data:'
-print '\tData reception on port', data_port
+print('Initialising SPEAD transports for data:')
+print('\tData reception on port %s' % data_port)
 
 quit_event = threading.Event()
 memory_error_event = threading.Event()
@@ -205,16 +208,16 @@ try:
         time.sleep(0.1)
         if plotqueue is not None:
             plot()
-    print 'RX process ended.'
+    print('RX process ended.')
     crx.join()
 except KeyboardInterrupt:
     import sys
     quit_event.set()
-    print 'Stopping, waiting for thread to exit...',
+    print('Stopping, waiting for thread to exit...', end='')
     sys.stdout.flush()
     while quit_event.is_set():
         time.sleep(0.1)
-    print 'all done.'
+    print('all done.')
 
 if memory_error_event.is_set():
     srx = spead_queue.get()
