@@ -40,7 +40,8 @@ class Corr2SensorServer(katcp.DeviceServer):
         self.instrument = instrument
         self.instrument.initialise(program=False, configure=False,
                                    require_epoch=False)
-        sensor_manager = sensors.SensorManager(self, self.instrument)
+        #disable manually-issued sensor update informs (aka 'kcs' sensors):
+        sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False)
         self.instrument.sensor_manager = sensor_manager
         sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
 
