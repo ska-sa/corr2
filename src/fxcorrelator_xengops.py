@@ -176,13 +176,6 @@ class XEngineOperations(object):
         Perform post-gbe setup initialisation steps
         :return:
         """
-        # write the board IDs to the xhosts
-        board_id = 0
-        for f in self.hosts:
-            self._board_ids[f.host] = board_id
-            f.registers.board_id.write(reg=board_id)
-            board_id += 1
-
         # write the data stream destination to the registers
         self.data_stream.write_destination()
         if self.corr.sensor_manager:
@@ -231,36 +224,27 @@ class XEngineOperations(object):
                     lambda fpga_: fpga_.registers.simulator.write(
                         en=False, rst='pulse'),))
 
+        # write the board IDs to the xhosts
+        board_id = 0
+        for f in self.hosts:
+            self._board_ids[f.host] = board_id
+            f.registers.board_id.write(reg=board_id)
+            board_id += 1
+
+        #set the tx_offset registers:
+        board_id = 0
+        for f in self.hosts:
+            offset=board_id*self.corr.n_antennas*self.corr.xeng_accumulation_len/(256/32)
+            f.registers.hmc_pkt_reord_rd_offset.write(rd_offset=offset)
+            board_id += 1
+
         # set the gapsize register
         gapsize = int(self.corr.configd['xengine']['10gbe_pkt_gapsize'])
         self.logger.info('X-engines: setting packet gap size to %i' % gapsize)
-        if 'gapsize' in self.hosts[0].registers.names():
-            # these versions have the correct logic surrounding the register
-            THREADED_FPGA_OP(
+        THREADED_FPGA_OP(
                 self.hosts, timeout=5,
                 target_function=(
                     lambda fpga_: fpga_.registers.gapsize.write_int(gapsize),))
-        elif 'gap_size' in self.hosts[0].registers.names():
-            # these versions do not, they need a software hack for the setting
-            # to 'take'
-            THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(
-                    lambda fpga_: fpga_.registers.gap_size.write_int(gapsize),))
-            # HACK - this is a hack to overcome broken x-engine firmware in
-            # versions around a2d0615bc9cd95eabf7c8ed922c1a15658c0688e.
-            # The logic next to the gap_size register is broken, registering
-            # the LAST value written, not the new one.
-            THREADED_FPGA_OP(
-                self.hosts, timeout=5,
-                target_function=(
-                    lambda fpga_: fpga_.registers.gap_size.write_int(
-                        gapsize-1),))
-            # /HACK
-        else:
-            errmsg = 'X-engine image has no register gap_size/gapsize?'
-            self.logger.error(errmsg)
-            raise RuntimeError(errmsg)
 
         # disable transmission, place cores in reset, and give control
         # register a known state

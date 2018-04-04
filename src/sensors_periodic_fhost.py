@@ -51,7 +51,8 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host):
             status=Corr2Sensor.WARN
         else:
             status=Corr2Sensor.NOMINAL
-        sensor.set(value=False,status=status)
+        sens_val=(status==Corr2Sensor.NOMINAL)
+        sensor.set(value=sens_val,status=status)
     except Exception as e:
         LOGGER.error(
             'Error updating LRU sensor for {} - {}'.format(
