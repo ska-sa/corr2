@@ -86,12 +86,13 @@ class Beam(SPEADStream):
 
         obj.center_freq = float(beam_dict['center_freq'])
         obj.bandwidth = float(beam_dict['bandwidth'])
-
+        obj.outbits = int(beam_dict['beng_outbits'])
         obj.xeng_acc_len = int(config['xengine']['xeng_accumulation_len'])
         obj.chans_total = int(config['fengine']['n_chans'])
         obj.beng_per_host = int(config['xengine']['x_per_fpga'])
         chans_per_host = obj.chans_total / len(obj.hosts)
         obj.chans_per_partition = chans_per_host / obj.beng_per_host
+        obj.quant_gain = float(beam_dict['quant_gain'])
 
         # link source streams to weights
         weights = {}
@@ -130,7 +131,6 @@ class Beam(SPEADStream):
                                          'index': source_index}
 
         obj.set_source(fengops.data_stream.destination)
-        obj.quant_gain = 1
         obj.source_poly = []
         obj.descriptors_setup()
         obj.source_names = obj.input_names
@@ -234,7 +234,8 @@ class Beam(SPEADStream):
                         'in the same packet. The heap offset and frequency '
                         'SPEAD items can be used to calculate the exact '
                         'frequency in relation to the spectrum',
-            dtype=numpy.int8,
+            #dtype=numpy.int8,
+            format=[('i', self.outbits)],
             shape=[self.chans_per_partition, self.xeng_acc_len, 2])
 
         speadops.add_item(

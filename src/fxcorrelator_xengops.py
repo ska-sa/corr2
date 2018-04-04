@@ -233,10 +233,13 @@ class XEngineOperations(object):
 
         #set the tx_offset registers:
         board_id = 0
-        for f in self.hosts:
-            offset=board_id*self.corr.n_antennas*self.corr.xeng_accumulation_len/(256/32)
-            f.registers.hmc_pkt_reord_rd_offset.write(rd_offset=offset)
-            board_id += 1
+        if 'hmc_pkt_reord_rd_offset' in self.hosts[0].registers:
+            self.logger.info("Setting TX offsets.")
+            for f in self.hosts:
+                offset=board_id*self.corr.n_antennas*self.corr.xeng_accumulation_len/(256/32)
+                f.registers.hmc_pkt_reord_rd_offset.write(rd_offset=offset)
+                board_id += 1
+        else: self.logger.info("No TX offset register found.")
 
         # set the gapsize register
         gapsize = int(self.corr.configd['xengine']['10gbe_pkt_gapsize'])

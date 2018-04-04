@@ -611,10 +611,7 @@ class FxCorrelator(Instrument):
         self.found_beamformer = False
         if 'beam0' in self.configd.keys():
             self.found_beamformer = True
-            try:
-                self.beng_outbits = int(self.configd['beam0']['beng_outbits'])
-            except KeyError:
-                self.beng_outbits = 8
+            self.beng_outbits = int(self.configd['beam0']['beng_outbits'])
 
     def _create_digitiser_streams(self):
         """
