@@ -354,7 +354,7 @@ class FEngineOperations(object):
                 self.logger.error(errmsg)
                 rv=False
             # is the time in the future?
-            if feng_time > read_time:
+            if feng_time > (read_time+(self.corr.time_jitter_allowed_ms/1000)):
                 errmsg = '%s, %s: F-engine time cannot be in the future? ' \
                        'now(%.3f) feng_time(%.3f)' % (host.host,
                           host.fengines[0].input.name,read_time,feng_time)
