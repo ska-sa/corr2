@@ -82,10 +82,6 @@ class BEngineOperations(object):
         self.logger.info('Found {} beams: {}'.format(len(beam_names),
                                                      beam_names))
 
-        # configure the beams
-        for beam in self.beams.values():
-            beam.configure()
-
         # add the beam data streams to the instrument list
         for beam in self.beams.values():
             self.corr.add_data_stream(beam)

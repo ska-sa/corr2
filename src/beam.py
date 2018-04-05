@@ -169,14 +169,11 @@ class Beam(SPEADStream):
 
     def configure(self):
         """
-        Configure the beam when starting a correlator instance
+        Does nothing at the moment!
         :return:
         """
-        # set the active partitions to the partitions set in hardware
-        #self.partitions_active = self.partitions_current()
+        return
 
-        # set the default gain to one
-        self.set_quant_gains(1.0)
 
     def tx_enable(self):
         """
