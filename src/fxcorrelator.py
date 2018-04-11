@@ -26,6 +26,10 @@ from fxcorrelator_filterops import FilterOperations
 from data_stream import StreamAddress
 from digitiser import DigitiserStream
 
+from tornado.ioloop import IOLoop
+from tornado.ioloop import PeriodicCallback
+from tornado.locks import Event as IOLoopEvent
+
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
@@ -110,6 +114,12 @@ class FxCorrelator(Instrument):
 
         # update the list of baselines on this system
         self.baselines = utils.baselines_from_config(config=self.configd)
+
+        # for periodic instrument engine monitoring
+        self.instrument_monitoring_loop_enabled = IOLoopEvent()
+        self.instrument_monitoring_loop_enabled.clear()
+        self.instrument_monitoring_loop_cb = None
+
 
     # @profile
     def initialise(self, program=True, configure=True,
@@ -709,5 +719,71 @@ class FxCorrelator(Instrument):
         for fname, fver in self.xops.get_version_info():
             rv['xengine_firmware_' + fname] = (fver, '')
         return rv
+
+    def instrument_monitoring_loop_timer_start(self, check_time=30):
+        """
+        Set up periodic check of various instrument elements
+        :param check_time: the interval, in seconds, at which to check
+        :return:
+        """
+
+        if not IOLoop.current()._running:
+            raise RuntimeError('IOLoop not running, this will not work')
+
+        self.logger.info('instrument_monitoring_loop for instrument %s '
+                         'set up with a period '
+                         'of %i seconds' % (self.descriptor, check_time))
+
+        if self.instrument_monitoring_loop_cb is not None:
+            self.instrument_monitoring_loop_cb.stop()
+        self.instrument_monitoring_loop_cb = PeriodicCallback(
+            self._instrument_monitoring_loop, check_time * 1000)
+
+        self.instrument_monitoring_loop_enabled.set()
+        self.instrument_monitoring_loop_cb.start()
+        self.logger.info('Instrument Monitoring Loop Timer Started @ '
+                         '%s' % time.ctime())
+
+    def instrument_monitoring_loop_timer_stop(self):
+        """
+        Disable the periodic instrument monitoring loop
+        :return:
+        """
+
+        if self.instrument_monitoring_loop_cb is not None:
+            self.instrument_monitoring_loop_cb.stop()
+        self.instrument_monitoring_loop_cb = None
+        self.instrument_monitoring_loop_enabled.clear()
+        self.logger.info('Instrument Monitoring Loop Timer Halted @ '
+                         '%s' % time.ctime())
+
+    def _instrument_monitoring_loop(self, corner_turner_check=True,
+                                    coarse_delay_check=False,
+                                    vacc_check=False):
+        """
+        Perform various checks periodically.
+        :param corner_turner_check: enable periodic checking of the corner-
+        turner; will disable F-engine output on overflow
+        :param coarse_delay_check: enable periodic checking of the coarse
+        delay
+        :param vacc_check: enable periodic checking of the vacc
+        turner
+        :return:
+        """
+
+        if corner_turner_check:
+            # perform corner-turner check
+            self.logger.info("Performing CT overflow check . . .")
+            rv = self.fops.check_ct_overflow()
+
+        if coarse_delay_check:
+            # perform coarse delay check
+            raise NotImplementedError("Periodic coarse delay check not yet "
+                                      "implemented")
+
+        if vacc_check:
+            # perform vacc check
+            raise NotImplementedError("Periodic vacc check not yet "
+                                      "implemented")
 
 # end

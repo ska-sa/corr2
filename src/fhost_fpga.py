@@ -769,6 +769,33 @@ class FpgaFHost(DigitiserStreamReceiver):
         #    pass
         #return rv
 
+    def check_ct_overflow(self):
+        """
+        Check the Corner-Turner for overflow errors.
+        Stop F-Engine output if overflow error detected.
+        :return:
+        """
+
+        # define registers to check
+        reg = ('rd_not_rdy', 'wr_not_rdy')
+        ct_overflow_status = []
+
+        for pol in self.get_ct_status():
+            ct_overflow_status.append(any([pol[key] for key in reg]))
+
+        ct_overflow = any(ct_overflow_status)
+
+        # if overflow detected, stop F-engine output
+        if ct_overflow:
+            LOGGER.warning("corner-turner overflow. stopping Feng %s output"
+                           % self.host)
+            self.registers.control.write(gbe_txen=False)
+            return True
+        else:
+            LOGGER.info("Feng: %s : no corner-turner overflow errs. ok!" %
+                        self.host)
+            return False
+
     def get_pfb_status(self):
         """
         Returns the pfb counters on f-eng

@@ -106,7 +106,7 @@ class Corr2Server(katcp.DeviceServer):
              Bool(default=True))
     @return_reply()
     def request_initialise(self, sock, program, configure, require_epoch,
-                           monitor_vacc):
+                           monitor_vacc, monitor_instrument=True):
         """
         Initialise self.instrument
         :param sock:
@@ -114,6 +114,7 @@ class Corr2Server(katcp.DeviceServer):
         :param configure: setup the FPGA registers if True
         :param require_epoch: the synch epoch MUST be set before init if True
         :param monitor_vacc: start the VACC monitoring ioloop
+        :param monitor_instrument: start the instrument monitoring ioloop
         :return:
         """
         if self._initialised:
@@ -134,6 +135,8 @@ class Corr2Server(katcp.DeviceServer):
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
             #if monitor_vacc:
             #    self.instrument.xops.vacc_check_timer_start()
+            if monitor_instrument:
+                self.instrument.instrument_monitoring_loop_timer_start()
             self._initialised = True
             return 'ok',
         except Exception as ex:
