@@ -236,7 +236,7 @@ class XEngineOperations(object):
         if 'hmc_pkt_reord_rd_offset' in self.hosts[0].registers:
             self.logger.info("Setting TX offsets.")
             for f in self.hosts:
-                offset=board_id*self.corr.n_antennas*self.corr.xeng_accumulation_len/(256/32)
+                offset=4*board_id*self.corr.n_antennas*self.corr.xeng_accumulation_len/(256/32)
                 f.registers.hmc_pkt_reord_rd_offset.write(rd_offset=offset)
                 board_id += 1
         else: self.logger.info("No TX offset register found.")
