@@ -733,11 +733,20 @@ class FpgaFHost(DigitiserStreamReceiver):
             p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
         return p_data
 
+    def tx_disable(self):
+        self.registers.control.write(gbe_txen=False)
+
+    def tx_enable(self):
+        self.registers.control.write(gbe_txen=True)
+
     def get_cd_status(self):
         """
         Retrieves all the Coarse Delay status registers.
         """
-        return self.registers.cd_status.read()['data']
+        rv=[]
+        for pol in range(self.num_fengines):
+            rv.append(self.registers['cd_hmc_hmc_delay_err_status%i'%pol].read()['data'])
+        return rv
 
     def get_ct_status(self):
         """

@@ -108,10 +108,9 @@ def _cb_feng_delays(sensors, f_host):
         for key,sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
             
-    executor = sensors['cd_hmc_err_cnt'].executor
+    executor = sensors['device-status'].executor
+    device_status=Corr2Sensor.NOMINAL
     try:
-        results = yield executor.submit(f_host.get_cd_status)
-        device_status=Corr2Sensor.NOMINAL
         cd0_cnt=f_host.registers.tl_cd0_status.read()['data']['load_count']
         cd1_cnt=f_host.registers.tl_cd1_status.read()['data']['load_count']
         if cd0_cnt == sensors['delay0_updating'].tempstore:
@@ -126,9 +125,32 @@ def _cb_feng_delays(sensors, f_host):
             sensors['delay1_updating'].set(value=True,status=Corr2Sensor.NOMINAL)
         sensors['delay0_updating'].tempstore=cd0_cnt
         sensors['delay1_updating'].tempstore=cd1_cnt
-        sensors['cd_hmc_err_cnt'].set(value=results['err_cnt'],errif='changed')
-        if sensors['cd_hmc_err_cnt'].status()==Corr2Sensor.ERROR:
+
+        results = yield executor.submit(f_host.get_cd_status)
+        pol0_errs=results[0]['rd_not_rdy']|results[0]['wr_not_rdy']|results[0]['parity_err']|results[0]['reorder_jitter_err']
+        pol1_errs=results[1]['rd_not_rdy']|results[1]['wr_not_rdy']|results[1]['parity_err']|results[1]['reorder_jitter_err']
+        pol0_status=Corr2Sensor.ERROR if pol0_errs else Corr2Sensor.NOMINAL
+        pol1_status=Corr2Sensor.ERROR if pol1_errs else Corr2Sensor.NOMINAL
+        sensors['pol0_err'].set(value=pol0_errs,status=pol0_status)
+        sensors['pol1_err'].set(value=pol1_errs,status=pol1_status)
+        pol0_status=Corr2Sensor.NOMINAL if results[0]['hmc_post'] else Corr2Sensor.ERROR
+        pol1_status=Corr2Sensor.NOMINAL if results[1]['hmc_post'] else Corr2Sensor.ERROR
+        sensors['pol0_post'].set(value=results[0]['hmc_post'],status=pol0_status)
+        sensors['pol1_post'].set(value=results[1]['hmc_post'],status=pol1_status)
+        sensors['pol0_crc_err_cnt'].set(value=results[0]['crc_err_cnt'],errif='changed')
+        sensors['pol1_crc_err_cnt'].set(value=results[1]['crc_err_cnt'],errif='changed')
+        sensors['pol0_reorder_missing_err_cnt'].set(value=results[0]['reorder_missing_cnt'],warnif='changed')
+        sensors['pol1_reorder_missing_err_cnt'].set(value=results[1]['reorder_missing_cnt'],warnif='changed')
+        if ((sensors['pol0_err'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol1_err'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol0_crc_err_cnt'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol1_crc_err_cnt'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol0_reorder_missing_err_cnt'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol1_reorder_missing_err_cnt'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol0_post'].status()==Corr2Sensor.ERROR) or
+            (sensors['pol1_post'].status()==Corr2Sensor.ERROR)):
             device_status=Corr2Sensor.ERROR
+
         device_status_value=True if device_status==Corr2Sensor.NOMINAL else False
         sensors['device-status'].set(value=device_status_value,status=device_status)
 
@@ -495,10 +517,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         'device-status': sens_man.do_sensor(
             Corr2Sensor.boolean, '{}.cd.device-status'.format(fhost),
             'F-engine coarse delays ok.', executor=executor),
-        'cd_hmc_err_cnt':sens_man.do_sensor(
-            Corr2Sensor.integer, '{}.cd.hmc-err-cnt'.format(fhost),
-            'F-engine HMC Coarse Delay failure count.',
-            executor=executor),
         'delay0_updating':sens_man.do_sensor(
             Corr2Sensor.boolean, '{}.cd.delay0-updating'.format(fhost),
             'Delay updates are being received and applied.',
@@ -507,6 +525,30 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             Corr2Sensor.boolean, '{}.cd.delay1-updating'.format(fhost),
             'Delay updates are being received and applied.',
             executor=executor),
+        'pol0_post':sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}.cd.post0'.format(fhost),
+            'F-engine coarse delay init&POST, pol0', executor=executor),
+        'pol1_post':sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}.cd.post1'.format(fhost),
+            'F-engine coarse delay init&POST, pol1', executor=executor),
+        'pol0_err':sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}.cd.err0'.format(fhost),
+            'F-engine coarse delay error occurred, pol0 (latching)', executor=executor),
+        'pol1_err':sens_man.do_sensor(
+            Corr2Sensor.boolean, '{}.cd.err1'.format(fhost),
+            'F-engine coarse delay error occurred, pol1 (latching)', executor=executor),
+        'pol0_crc_err_cnt':sens_man.do_sensor(
+            Corr2Sensor.integer, '{}.cd.crc0-err-cnt'.format(fhost),
+            'F-engine coarse delay HMC CRC error count, pol0.', executor=executor),
+        'pol1_crc_err_cnt':sens_man.do_sensor(
+            Corr2Sensor.integer, '{}.cd.crc1-err-cnt'.format(fhost),
+            'F-engine coarse delay HMC CRC error count, pol1.', executor=executor),
+        'pol0_reorder_missing_err_cnt':sens_man.do_sensor(
+            Corr2Sensor.integer, '{}.cd.reord-missing0-err-cnt'.format(fhost),
+            'F-engine coarse delay HMC reorder missing samples error count, pol0.', executor=executor),
+        'pol1_reorder_missing_err_cnt':sens_man.do_sensor(
+            Corr2Sensor.integer, '{}.cd.reord-missing1-err-cnt'.format(fhost),
+            'F-engine coarse delay HMC reorder missing samples error count, pol1.', executor=executor),
         }
         sensors['delay0_updating'].tempstore=0
         sensors['delay1_updating'].tempstore=0
