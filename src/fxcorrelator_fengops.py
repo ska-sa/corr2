@@ -69,7 +69,7 @@ class FengineStream(SPEADStream):
             try:
                 THREADED_FPGA_OP(
                     self.fops.hosts, 5,
-                    (lambda fpga_: fpga_.registers.control.write(gbe_txen=True),))
+                    (lambda fpga_: fpga_.tx_enable(),))
                 n_retries = -1
             except RuntimeError:
                 if n_retries == 0:
@@ -100,7 +100,7 @@ class FengineStream(SPEADStream):
         """
         THREADED_FPGA_OP(
             self.fops.hosts, 5,
-            (lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
+            (lambda fpga_: fpga_.tx_disable(),))
         self.fops.logger.info('F-engine output disabled')
 
     def __str__(self):

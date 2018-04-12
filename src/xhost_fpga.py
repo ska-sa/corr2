@@ -120,7 +120,7 @@ class FpgaXHost(FpgaHost):
         Retrieve the HMC packet RX reorder status on this board.
         """
         rv={}
-        for i in range(3):
+        for i in range(4):
             rv.update(self.registers['hmc_pkt_reord_status%i'%i].read()['data'])
         return rv
 
