@@ -106,7 +106,7 @@ class Corr2Server(katcp.DeviceServer):
              Bool(default=True))
     @return_reply()
     def request_initialise(self, sock, program, configure, require_epoch,
-                           monitor_vacc, monitor_instrument=True):
+                           monitor_instrument):
         """
         Initialise self.instrument
         :param sock:

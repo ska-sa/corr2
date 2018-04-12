@@ -771,15 +771,4 @@ class FEngineOperations(object):
             return self.hosts[0].get_version_info()
         except AttributeError:
             return {}
-
-    def check_ct_overflow(self):
-        """
-        Check all F-engine corner-turners for overflow errors and disable
-        F-engine output if overflow is detected
-        :return:
-        """
-
-        _ = THREADED_FPGA_FUNC(self.hosts, timeout=10,
-                               target_function='check_ct_overflow')
-
 # end

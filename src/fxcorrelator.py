@@ -720,7 +720,7 @@ class FxCorrelator(Instrument):
             rv['xengine_firmware_' + fname] = (fver, '')
         return rv
 
-    def instrument_monitoring_loop_timer_start(self, check_time=30):
+    def instrument_monitoring_loop_timer_start(self, check_time=5):
         """
         Set up periodic check of various instrument elements
         :param check_time: the interval, in seconds, at which to check
@@ -758,7 +758,7 @@ class FxCorrelator(Instrument):
                          '%s' % time.ctime())
 
     def _instrument_monitoring_loop(self, corner_turner_check=True,
-                                    coarse_delay_check=False,
+                                    coarse_delay_check=True,
                                     vacc_check=False):
         """
         Perform various checks periodically.
@@ -771,19 +771,60 @@ class FxCorrelator(Instrument):
         :return:
         """
 
-        if corner_turner_check:
-            # perform corner-turner check
-            self.logger.info("Performing CT overflow check . . .")
-            rv = self.fops.check_ct_overflow()
+        # check boards
 
-        if coarse_delay_check:
-            # perform coarse delay check
-            raise NotImplementedError("Periodic coarse delay check not yet "
-                                      "implemented")
+        f_eng_board_monitoring_dict = {}
+        # f-engines
+        for fhost in self.fhosts:
+            status = {'corner_tuner': 0,
+                      'coarse_delay': 0}
+
+            if corner_turner_check:
+                # perform corner-turner check
+                if fhost.check_ct_overflow():
+                    status['corner_tuner'] = 1
+
+            if coarse_delay_check:
+                # perform coarse delay check
+                if fhost.check_cd_overflow():
+                    status['coarse_delay'] = 1
+                # raise NotImplementedError("Periodic coarse delay check not yet "
+                #                           "implemented")
+
+            f_eng_board_monitoring_dict[fhost] = status
+
+        #TODO: x-eng checks
+        '''
+        vacc out of sync but errors - stop xeng output
+        vacc out of sync no errors - resync vacc
+        '''
+        # x_eng_board_monitoring_dict = {}
+        # x-engines
+        #for xhost in self.xhosts:
+            # x_eng_board_monitoring_dict[xhost.host]
 
         if vacc_check:
             # perform vacc check
             raise NotImplementedError("Periodic vacc check not yet "
                                       "implemented")
 
+        # make decision based on status, determine which actions to take
+
+        f_eng_board_action_dict = {}
+        for host, status in f_eng_board_monitoring_dict.iteritems():
+            action = {'disable_ouput': 0}
+
+            if status['corner_tuner'] == 1 or status['coarse_delay'] == 1:
+                action['disable_output'] = 1
+                f_eng_board_action_dict[host] = action
+
+        # take actions, if necessary
+
+        if f_eng_board_action_dict:
+            for host, action in f_eng_board_action_dict.iteritems():
+                if action['disable_output'] == 1:
+                    host.tx_disable()
+                    self.logger.warning('feng %s output disabled!' % host.host)
+        else:
+            self.logger.info('instrument monitor loop run ok')
 # end
