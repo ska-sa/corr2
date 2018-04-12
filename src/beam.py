@@ -158,7 +158,7 @@ class Beam(SPEADStream):
         self.write_destination()
 
         # set the weights for this beam
-        THREADED_FPGA_FUNC(self.hosts, 60, ('beam_weights_set', [self], {}))
+        #THREADED_FPGA_FUNC(self.hosts, 60, ('beam_weights_set', [self], {}))
 
         # set the quantiser gains for this beam
         THREADED_FPGA_FUNC(self.hosts, 60, ('beam_quant_gains_set',

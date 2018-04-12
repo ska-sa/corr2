@@ -324,7 +324,7 @@ class FEngineOperations(object):
         if sleeptime > 0:
             time.sleep(sleeptime)
 
-    def get_rx_timestamps(self):
+    def get_rx_timestamps(self,src=0):
         """
         Are the timestamps being received by the F-engines okay?
         :return: (a boolean, the F-engine times as 48-bit counts,
@@ -333,7 +333,7 @@ class FEngineOperations(object):
         self.logger.info('Checking timestamps on F hosts...')
         results = THREADED_FPGA_FUNC(
             self.hosts, timeout=5,
-            target_function='get_local_time')
+            target_function=('get_local_time',[src],{}))
         read_time = time.time()
         feng_mcnts = {}
         feng_times = {}
