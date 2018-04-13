@@ -743,9 +743,9 @@ class FpgaFHost(DigitiserStreamReceiver):
         """
         Retrieves all the Coarse Delay status registers.
         """
-        rv=[]
-        for pol in range(self.num_fengines):
-            rv.append(self.registers['cd_hmc_hmc_delay_err_status%i'%pol].read()['data'])
+        rv={}
+        for i in range(6):
+            rv.update(self.registers['cd_hmc_hmc_delay_status%i'%i].read()['data'])
         return rv
 
     def get_ct_status(self):
@@ -753,9 +753,9 @@ class FpgaFHost(DigitiserStreamReceiver):
         Retrieve all the Corner-Turner registers.
         returns a list (one per pol on board) of status dictionaries.
         """ 
-        rv=[]
-        for pol in range(self.num_fengines):
-            rv.append(self.registers['hmc_ct_err_status%i' %pol].read()['data'])
+        rv={}
+        for i in range(5):
+            rv.update(self.registers['hmc_ct_status%i' %i].read()['data'])
         return rv
         
         #rv = self.registers.ct_status0.read()['data']
