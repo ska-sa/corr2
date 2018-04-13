@@ -808,9 +808,9 @@ class FxCorrelator(Instrument):
 
         f_eng_board_action_dict = {}
         for host, status in self.f_eng_board_monitoring_dict_current.iteritems():
-            action = {'disable_ouput': 0}
+            action = {'disable_output': 0}
 
-            if status.has_key['corner_turner']:
+            if status.has_key('corner_turner'):
                 # check the kinds of corner-turner errors
 
                 ct_dict = status['corner_turner']
@@ -829,7 +829,7 @@ class FxCorrelator(Instrument):
                     # dict exists
                 if self.f_eng_board_monitoring_dict_prev:
                     ct_dict_prev = self.f_eng_board_monitoring_dict_prev[host][
-                        'corner-turner']
+                        'corner_turner']
                     # check error counters
                     if ct_dict['bank_err_cnt_pol0'] != ct_dict_prev[
                         'bank_err_cnt_pol0'] or ct_dict[\
@@ -858,7 +858,7 @@ class FxCorrelator(Instrument):
                                             'overflow errors' % host.host)
                         action['disable_output'] = True
 
-            if status.has_key['coarse_delay']:
+            if status.has_key('coarse_delay'):
                 # check the kinds of corner-turner errors
 
                 cd_dict = status['coarse_delay']
@@ -900,17 +900,17 @@ class FxCorrelator(Instrument):
 
         # take actions, if necessary
 
+        action_taken = False
         if f_eng_board_action_dict:
             for host, action in f_eng_board_action_dict.iteritems():
                 if action['disable_output']:
+                    action_taken = True
                     host.tx_disable()
                     self.logger.warning('feng %s output disabled!' % host.host)
-        else:
+
+        if not action_taken:
             self.logger.info('instrument monitor loop run ok - no errs')
 
         # loop run complete, store latest status values
-        self.f_eng_board_monitoring_dict_prev['corner-turner'] = \
-            self.f_eng_board_monitoring_dict_current['corner-turner']
-        self.f_eng_board_monitoring_dict_prev['coarse-delay'] = \
-            self.f_eng_board_monitoring_dict_current['coarse-delay']
+        self.f_eng_board_monitoring_dict_prev = self.f_eng_board_monitoring_dict_current
 # end
