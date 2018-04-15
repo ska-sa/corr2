@@ -853,7 +853,7 @@ class FxCorrelator(Instrument):
                     if ct_dict['hmc_overflow_err_cnt_pol0'] != ct_dict_prev[
                         'hmc_overflow_err_cnt_pol0'] or ct_dict[
                         'hmc_overflow_err_cnt_pol1'] != ct_dict_prev[
-                        'hmc_overflow_err_cnt_pol0']:
+                        'hmc_overflow_err_cnt_pol1']:
                         self.logger.warning('fhost %s corner-turner has '
                                             'overflow errors' % host.host)
                         action['disable_output'] = True
@@ -891,7 +891,7 @@ class FxCorrelator(Instrument):
                     if cd_dict['hmc_overflow_err_cnt_pol0'] != cd_dict_prev[
                         'hmc_overflow_err_cnt_pol0'] or cd_dict[
                         'hmc_overflow_err_cnt_pol1'] != cd_dict_prev[
-                        'hmc_overflow_err_cnt_pol0']:
+                        'hmc_overflow_err_cnt_pol1']:
                         self.logger.warning('fhost %s coarse delay has '
                                             'overflow errors' % host.host)
                         action['disable_output'] = True
