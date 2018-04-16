@@ -183,14 +183,6 @@ class FxCorrelator(Instrument):
                 self.xhosts, timeout=5,
                 target_function=('get_system_information', [xbof], {}))
 
-        # # TODO!!
-        # print(200 * '%^')
-        # for f in self.fhosts:
-        #     f.registers.ct_control0.write(tvg_en=1)
-        #     # f.registers.control.write(cd_bypass=1)
-        # print(200 * '%^')
-        # # /TODO!!
-
         # remove test hardware from designs
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)

@@ -103,6 +103,7 @@ class FengineStream(SPEADStream):
             (lambda fpga_: fpga_.tx_disable(),))
         self.fops.logger.info('F-engine output disabled')
 
+
     def __str__(self):
         return 'FengineStream %s -> %s' % (self.name, self.destination)
 
@@ -135,7 +136,8 @@ class FEngineOperations(object):
         devices in the instrument.
         :return:
         """
-        # TODO this shouldn't be necessary directly after programming; F-engines start-up disabled. However, is needed if re-initialising an already-running correlator.
+        #This isn't necessary directly after programming; F-engines start-up disabled. 
+        #However, is needed if re-initialising an already-running correlator.
         self.data_stream._tx_disable()
         num_x_hosts = len(self.corr.xhosts)
         x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
@@ -210,18 +212,9 @@ class FEngineOperations(object):
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_stream_destinations()
 
-        # set up the fpga comms
-        # TODO ROACH2 may need this, but disabled for now, since SKARAB's 40G behaviour is unknown.
-        # THREADED_FPGA_OP(
-        #     self.hosts, timeout=10,
-        #     target_function=(
-        #         lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
-
         # set eq and shift
         self.eq_write_all()
         self.set_fft_shift_all()
-
-        # self.clear_status_all()  # Why would this be needed here?
 
     def configure(self):
         """
@@ -516,6 +509,25 @@ class FEngineOperations(object):
             self.data_stream._tx_disable()
         else:
             self.data_stream.tx_disable()
+
+    def auto_rst_enable(self):
+        """
+        Enable hardware automatic resync upon error detection.
+        """
+        THREADED_FPGA_OP(
+            self.hosts, 5,
+            (lambda fpga_: fpga_.registers.control.write(auto_rst_enable=True),))
+        self.logger.info('F-engine hardware auto rst/resync mechanism enabled.')
+
+    def auto_rst_disable(self):
+        """
+        Disable hardware automatic resync upon error detection.
+        """
+        THREADED_FPGA_OP(
+            self.hosts, 5,
+            (lambda fpga_: fpga_.registers.control.write(auto_rst_enable=False),))
+        self.logger.info('F-engine hardware auto rst/resync mechanism disabled.')
+        
 
     def get_fengine(self, input_name):
         """
