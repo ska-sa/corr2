@@ -119,6 +119,8 @@ class FxCorrelator(Instrument):
         self.instrument_monitoring_loop_enabled = IOLoopEvent()
         self.instrument_monitoring_loop_enabled.clear()
         self.instrument_monitoring_loop_cb = None
+        self.f_eng_board_monitoring_dict_prev = {}
+        self.f_eng_board_monitoring_dict_current = {}
 
 
     # @profile
@@ -773,25 +775,19 @@ class FxCorrelator(Instrument):
 
         # check boards
 
-        f_eng_board_monitoring_dict = {}
         # f-engines
         for fhost in self.fhosts:
-            status = {'corner_tuner': 0,
-                      'coarse_delay': 0}
-
+            status = {}
             if corner_turner_check:
                 # perform corner-turner check
-                if fhost.check_ct_overflow():
-                    status['corner_tuner'] = 1
-
+                ct_status = fhost.get_ct_status()
+                status['corner_turner'] = ct_status
             if coarse_delay_check:
                 # perform coarse delay check
-                if fhost.check_cd_overflow():
-                    status['coarse_delay'] = 1
-                # raise NotImplementedError("Periodic coarse delay check not yet "
-                #                           "implemented")
+                cd_status = fhost.get_cd_status()
+                status['coarse_delay'] = cd_status
 
-            f_eng_board_monitoring_dict[fhost] = status
+            self.f_eng_board_monitoring_dict_current[fhost] = status
 
         #TODO: x-eng checks
         '''
@@ -811,20 +807,110 @@ class FxCorrelator(Instrument):
         # make decision based on status, determine which actions to take
 
         f_eng_board_action_dict = {}
-        for host, status in f_eng_board_monitoring_dict.iteritems():
-            action = {'disable_ouput': 0}
+        for host, status in self.f_eng_board_monitoring_dict_current.iteritems():
+            action = {'disable_output': 0}
 
-            if status['corner_tuner'] == 1 or status['coarse_delay'] == 1:
-                action['disable_output'] = 1
-                f_eng_board_action_dict[host] = action
+            if status.has_key('corner_turner'):
+                # check the kinds of corner-turner errors
+
+                ct_dict = status['corner_turner']
+                # flags
+                if not ct_dict['hmc_init_pol0'] or not ct_dict['hmc_init_pol1']:
+                    self.logger.warning('fhost %s corner-turner has hmc init errors' %
+                                        host.host)
+                    action['disable_output'] = True
+                if not ct_dict['hmc_post_pol0'] or not ct_dict['hmc_post_pol1']:
+                    self.logger.warning('fhost %s corner-turner has hmc post '
+                                        'errors' %
+                                        host.host)
+                    action['disable_output'] = True
+
+                # check error counters, first check if a previous status
+                    # dict exists
+                if self.f_eng_board_monitoring_dict_prev:
+                    ct_dict_prev = self.f_eng_board_monitoring_dict_prev[host][
+                        'corner_turner']
+                    # check error counters
+                    if ct_dict['bank_err_cnt_pol0'] != ct_dict_prev[
+                        'bank_err_cnt_pol0'] or ct_dict[\
+                            'bank_err_cnt_pol1'] != ct_dict_prev[
+                        'bank_err_cnt_pol1']:
+                        self.logger.warning('fhost %s corner-turner has bank errors'  %
+                                        host.host)
+                        action['disable_output'] = True
+                    if ct_dict['fifo_full_err_cnt'] != ct_dict_prev['fifo_full_err_cnt']:
+                        self.logger.warning('fhost %s corner-turner has fifo full '
+                                            'errors' % host.host)
+                        action['disable_output'] = True
+                    if ct_dict['rd_go_err_cnt'] != ct_dict_prev['rd_go_err_cnt']:
+                        self.logger.warning('fhost %s corner-turner has read go '
+                                            'errors' % host.host)
+                        action['disable_output'] = True
+                    if ct_dict['obuff_bank_err_cnt'] != ct_dict_prev['obuff_bank_err_cnt']:
+                        self.logger.warning('fhost %s corner-turner has '
+                                            'obuff errors' % host.host)
+                        action['disable_output'] = True
+                    if ct_dict['hmc_overflow_err_cnt_pol0'] != ct_dict_prev[
+                        'hmc_overflow_err_cnt_pol0'] or ct_dict[
+                        'hmc_overflow_err_cnt_pol1'] != ct_dict_prev[
+                        'hmc_overflow_err_cnt_pol1']:
+                        self.logger.warning('fhost %s corner-turner has '
+                                            'overflow errors' % host.host)
+                        action['disable_output'] = True
+
+            if status.has_key('coarse_delay'):
+                # check the kinds of corner-turner errors
+
+                cd_dict = status['coarse_delay']
+                # flags
+                if not cd_dict['hmc_init']:
+                    self.logger.warning(
+                        'fhost %s coarse delay has hmc init errors' %
+                        host.host)
+                    action['disable_output'] = True
+                if not cd_dict['hmc_post']:
+                    self.logger.warning('fhost %s coarse delay has hmc post '
+                                        'errors' %
+                                        host.host)
+                    action['disable_output'] = True
+
+                    # check error counters, first check if a previous status
+                    # dict exists
+                if self.f_eng_board_monitoring_dict_prev:
+                    cd_dict_prev = self.f_eng_board_monitoring_dict_prev[host][
+                        'coarse_delay']
+                    # check error counters
+                    if cd_dict['reord_jitter_err_cnt_pol0'] != cd_dict_prev[
+                        'reord_jitter_err_cnt_pol0'] or cd_dict[ \
+                            'reord_jitter_err_cnt_pol1'] != cd_dict_prev[
+                        'reord_jitter_err_cnt_pol1']:
+                        self.logger.warning(
+                            'fhost %s coarse delay has reorder jitter errors' %
+                            host.host)
+                        action['disable_output'] = True
+                    if cd_dict['hmc_overflow_err_cnt_pol0'] != cd_dict_prev[
+                        'hmc_overflow_err_cnt_pol0'] or cd_dict[
+                        'hmc_overflow_err_cnt_pol1'] != cd_dict_prev[
+                        'hmc_overflow_err_cnt_pol1']:
+                        self.logger.warning('fhost %s coarse delay has '
+                                            'overflow errors' % host.host)
+                        action['disable_output'] = True
+
+            f_eng_board_action_dict[host] = action
 
         # take actions, if necessary
 
+        action_taken = False
         if f_eng_board_action_dict:
             for host, action in f_eng_board_action_dict.iteritems():
-                if action['disable_output'] == 1:
+                if action['disable_output']:
+                    action_taken = True
                     host.tx_disable()
                     self.logger.warning('feng %s output disabled!' % host.host)
-        else:
-            self.logger.info('instrument monitor loop run ok')
+
+        if not action_taken:
+            self.logger.info('instrument monitor loop run ok - no errs')
+
+        # loop run complete, store latest status values
+        self.f_eng_board_monitoring_dict_prev = self.f_eng_board_monitoring_dict_current
 # end
