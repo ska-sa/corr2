@@ -120,7 +120,6 @@ class FxCorrelator(Instrument):
         self.instrument_monitoring_loop_enabled.clear()
         self.instrument_monitoring_loop_cb = None
         self.f_eng_board_monitoring_dict_prev = {}
-        self.f_eng_board_monitoring_dict_current = {}
 
 
     # @profile
@@ -766,7 +765,7 @@ class FxCorrelator(Instrument):
         """
 
         # check boards
-
+        f_eng_board_monitoring_dict_current = {}
         # f-engines
         for fhost in self.fhosts:
             status = {}
@@ -779,7 +778,11 @@ class FxCorrelator(Instrument):
                 cd_status = fhost.get_cd_status()
                 status['coarse_delay'] = cd_status
 
-            self.f_eng_board_monitoring_dict_current[fhost] = status
+            f_eng_board_monitoring_dict_current[fhost] = status
+
+        # self.logger.info(
+        #     "Current Monitoring Dict: %s " %
+        #    self.f_eng_board_monitoring_dict_current)
 
         #TODO: x-eng checks
         '''
@@ -799,7 +802,7 @@ class FxCorrelator(Instrument):
         # make decision based on status, determine which actions to take
 
         f_eng_board_action_dict = {}
-        for host, status in self.f_eng_board_monitoring_dict_current.iteritems():
+        for host, status in f_eng_board_monitoring_dict_current.iteritems():
             action = {'disable_output': 0}
 
             if status.has_key('corner_turner'):
@@ -904,5 +907,8 @@ class FxCorrelator(Instrument):
             self.logger.info('instrument monitor loop run ok - no errs')
 
         # loop run complete, store latest status values
-        self.f_eng_board_monitoring_dict_prev = self.f_eng_board_monitoring_dict_current
+        self.f_eng_board_monitoring_dict_prev = f_eng_board_monitoring_dict_current
+
+        # self.logger.info("Prev Monitoring Dict: %s " %
+        #               self.f_eng_board_monitoring_dict_prev)
 # end
