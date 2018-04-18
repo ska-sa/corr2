@@ -597,7 +597,7 @@ class FxCorrelator(Instrument):
             rv['xengine_firmware_' + fname] = (fver, '')
         return rv
 
-    def instrument_monitoring_loop_timer_start(self, check_time=5):
+    def instrument_monitoring_loop_timer_start(self, check_time=30):
         """
         Set up periodic check of various instrument elements
         :param check_time: the interval, in seconds, at which to check
@@ -661,6 +661,7 @@ class FxCorrelator(Instrument):
                 # perform coarse delay check
                 cd_status = fhost.get_cd_status()
                 status['coarse_delay'] = cd_status
+            time.sleep(0.2)
 
             f_eng_board_monitoring_dict_current[fhost] = status
 
