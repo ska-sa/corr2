@@ -24,9 +24,6 @@ class Beam(SPEADStream):
         self.index = index
         self.hosts = []
 
-        self.center_freq = None
-        self.bandwidth = None
-
         self.xeng_acc_len = None
         self.chans_total = None
         self.beng_per_host = None
@@ -84,8 +81,6 @@ class Beam(SPEADStream):
         #    for b in range(0, obj.partitions_total, obj.partitions_per_host)
         #]
 
-        obj.center_freq = float(beam_dict['center_freq'])
-        obj.bandwidth = float(beam_dict['bandwidth'])
         obj.outbits = int(beam_dict['beng_outbits'])
         obj.xeng_acc_len = int(config['xengine']['xeng_accumulation_len'])
         obj.chans_total = int(config['fengine']['n_chans'])

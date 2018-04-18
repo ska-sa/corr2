@@ -34,7 +34,7 @@ class FpgaXHost(FpgaHost):
             self.acc_len = int(xcfg['accumulation_len'])
             self.xeng_accumulation_len = int(xcfg['xeng_accumulation_len'])
             self.n_chans = int(fcfg['n_chans'])
-            self.n_ants = int(fcfg['n_antennas'])
+            self.n_ants = int(ccfg['n_ants'])
             self.sample_rate_hz = int(ccfg['sample_rate_hz'])
         self._vaccs_per_sec_last_readtime = None
         self._vaccs_per_sec_last_values = None

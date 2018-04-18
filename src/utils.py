@@ -314,7 +314,7 @@ def script_get_fpga(cmdline_args, host_name=None, host_index=-1,
     return fpga
 
 
-def sources_from_config(config_file=None, config=None):
+def get_default_sources(config_file=None, config=None):
     """
     Get a list of the sources given by the config
     :param config_file: a corr2 config file
@@ -322,59 +322,11 @@ def sources_from_config(config_file=None, config=None):
     :return:
     """
     config = config or parse_ini_file(config_file)
-    sources = config['fengine']['source_names'].split(',')
-    for ctr, src in enumerate(sources):
-        sources[ctr] = src.strip()
+    sources = []
+    for ctr in range(int(config['FxCorrelator']['n_ants'])):
+        sources.append('ant%ix'%ctr)
+        sources.append('ant%iy'%ctr)
     return sources
-
-
-def host_to_sources(hosts, config_file=None, config=None):
-    """
-    Get sources related to a host
-    :param hosts: a list of hosts
-    :param config_file: a corr2 config file
-    :param config: a corr2 config dictionary
-    :return:
-    """
-    config = config or parse_ini_file(config_file)
-    f_per_fpga = int(config['fengine']['f_per_fpga'])
-    cfg, host_detail = hosts_and_bitstreams_from_config(
-        config=config, section='fengine')
-    fhosts = host_detail[0][1]
-    sources = sources_from_config(config=config)
-    if len(sources) != len(fhosts) * f_per_fpga:
-        raise RuntimeError('%i hosts, %i per fpga_host, expected %i '
-                           'sources' % (len(fhosts), f_per_fpga, len(sources)))
-    ctr = 0
-    rv = {}
-    for host in fhosts:
-        rv[host] = (sources[ctr], sources[ctr+1])
-        ctr += 2
-    return rv
-
-
-def source_to_host(sources, config_file=None, config=None):
-    """
-    Get sources related to a host
-    :param sources: a list of sources
-    :param config_file: a corr2 config file
-    :param config: a corr2 config dictionary
-    :return:
-    """
-    config = config or parse_ini_file(config_file)
-    cfg, host_detail = hosts_and_bitstreams_from_config(
-        config=config, section='fengine')
-    fhosts = host_detail[0][1]
-    source_host_dict = host_to_sources(fhosts, config=config)
-    ctr = 0
-    rv = {}
-    for source in sources:
-        for host in source_host_dict:
-            if source in source_host_dict[host]:
-                rv[source] = host
-                break
-    return rv
-
 
 def baselines_from_source_list(source_list):
     """
@@ -411,51 +363,6 @@ def baselines_from_source_list(source_list):
                    source_names[baseline[1] * 2]))
     return rv
 
-
-def baselines_from_config(config_file=None, config=None):
-    """
-    Get a list of the baselines from a config file.
-    :param config_file: a corr2 config file
-    :param config: a corr2 config dictionary
-    :return:
-    """
-    config = config or parse_ini_file(config_file)
-    sources = sources_from_config(config=config)
-    cfg, host_detail = hosts_and_bitstreams_from_config(
-        config=config, section='fengine')
-    fhosts = host_detail[0][1]
-    n_antennas = len(fhosts)
-    if len(sources) / 2 != n_antennas:
-        raise ValueError('Found {} sources, but {} antennas?'.format(
-            len(sources), n_antennas))
-    return baselines_from_source_list(sources)
-    # order1 = []
-    # order2 = []
-    # for ant_ctr in range(n_antennas):
-    #     # print('ant_ctr(%d)' % ant_ctr
-    #     for ctr2 in range(int(n_antennas / 2), -1, -1):
-    #         temp = (ant_ctr - ctr2) % n_antennas
-    #         # print('\tctr2(%d) temp(%d)' % (ctr2, temp)
-    #         if ant_ctr >= temp:
-    #             order1.append((temp, ant_ctr))
-    #         else:
-    #             order2.append((ant_ctr, temp))
-    # order2 = [order_ for order_ in order2 if order_ not in order1]
-    # baseline_order = order1 + order2
-    # source_names = []
-    # for source in sources:
-    #     source_names.append(source)
-    # rv = []
-    # for baseline in baseline_order:
-    #     rv.append((source_names[baseline[0] * 2],
-    #                source_names[baseline[1] * 2]))
-    #     rv.append((source_names[baseline[0] * 2 + 1],
-    #                source_names[baseline[1] * 2 + 1]))
-    #     rv.append((source_names[baseline[0] * 2],
-    #                source_names[baseline[1] * 2 + 1]))
-    #     rv.append((source_names[baseline[0] * 2 + 1],
-    #                source_names[baseline[1] * 2]))
-    # return rv
 
 
 def process_new_eq(eq):

@@ -35,8 +35,6 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 LOGGER = logging.getLogger(__name__)
 
-MAX_QDR_ATTEMPTS = 5
-
 
 def _disable_write(*args, **kwargs):
     """
@@ -104,16 +102,13 @@ class FxCorrelator(Instrument):
         self.x_per_fpga = None
         self.accumulation_len = None
         self.xeng_accumulation_len = None
-        self.baselines = None
+        self.timeout= None
 
         # parent constructor - this invokes reading the config file already
         Instrument.__init__(self, descriptor, identifier, config_source, logger)
 
         # create the host objects
         self._create_hosts()
-
-        # update the list of baselines on this system
-        self.baselines = utils.baselines_from_config(config=self.configd)
 
         # for periodic instrument engine monitoring
         self.instrument_monitoring_loop_enabled = IOLoopEvent()
@@ -157,7 +152,7 @@ class FxCorrelator(Instrument):
                 raise e
 
         # connect to the other hosts that make up this correlator
-        THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=5,
+        THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=self.timeout,
                            target_function='connect')
 
         # if we need to program the FPGAs, do so
@@ -176,10 +171,10 @@ class FxCorrelator(Instrument):
         if (not program) or fisskarab or xisskarab:
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(
-                self.fhosts, timeout=5,
+                self.fhosts, timeout=self.timeout,
                 target_function=('get_system_information', [fbof], {}))
             THREADED_FPGA_FUNC(
-                self.xhosts, timeout=5,
+                self.xhosts, timeout=self.timeout,
                 target_function=('get_system_information', [xbof], {}))
 
         # remove test hardware from designs
@@ -204,19 +199,13 @@ class FxCorrelator(Instrument):
 
     def _gbe_setup(self):
         """
-        Set up the 10gbe ports on the hosts
+        Set up the Ethernet ports on the hosts
         :return:
         """
-        feng_port = int(self.configd['fengine']['10gbe_port'])
-        xeng_port = int(self.configd['xengine']['10gbe_port'])
-        info_dict = {host.host: (feng_port, 'fhost') for host in self.fhosts}
-        info_dict.update(
-            {host.host: (xeng_port, 'xhost') for host in self.xhosts})
-        timeout = len(self.fhosts[0].gbes) * 30 * 1.1
         THREADED_FPGA_FUNC(
-                self.fhosts + self.xhosts, timeout=timeout,
+                self.fhosts + self.xhosts, timeout=self.timeout,
                 target_function=('setup_host_gbes',
-                                 (self.logger, info_dict), {}))
+                                 (), {}))
 
     def _post_program_initialise(self):
         """
@@ -225,22 +214,8 @@ class FxCorrelator(Instrument):
         :return:
         """
         # init the engines
-        self.fops.initialise_pre_gbe()
-        self.xops.initialise_pre_gbe()
-
-        # set up the gbe ports in parallel
-        self._gbe_setup()
-
-        # set up f-engine RX registers
-        self.fops.setup_rx_ip_masks()
-
-        # subscribe all the engines to the multicast groups
-        self.fops.subscribe_to_multicast()
-        self.xops.subscribe_to_multicast()
-
-        # continue with init
-        self.fops.initialise_post_gbe()
-        self.xops.initialise_post_gbe()
+        self.fops.initialise()
+        self.xops.initialise()
         if self.found_beamformer:
             self.bops.initialise()
 
@@ -333,70 +308,6 @@ class FxCorrelator(Instrument):
         _tmp = 2**self.timestamp_bits
         return time_diff_in_samples % _tmp
 
-    def qdr_calibrate(self, timeout=120 * MAX_QDR_ATTEMPTS):
-        """
-        Run a software calibration routine on all the FPGA hosts.
-        Do it on F- and X-hosts in parallel.
-        :param timeout: how many seconds to wait for it to complete
-        :return:
-        """
-        def _qdr_cal(_fpga):
-            """
-            Calibrate the QDRs found on a given FPGA.
-            :param _fpga:
-            :return:
-            """
-            _tic = time.time()
-            attempts = 0
-            _results = {_qdr.name: False for _qdr in _fpga.qdrs}
-            while True:
-                all_passed = True
-                for _qdr in _fpga.qdrs:
-                    if not _results[_qdr.name]:
-                        try:
-                            _res = _qdr.qdr_cal(fail_hard=False)
-                        except RuntimeError:
-                            _res = False
-                        try:
-                            _resval = _res[0]
-                        except TypeError:
-                            _resval = _res
-                        if not _resval:
-                            all_passed = False
-                        _results[_qdr.name] = _resval
-                attempts += 1
-                if all_passed or (attempts >= MAX_QDR_ATTEMPTS):
-                    break
-            _toc = time.time()
-            return {'results': _results, 'tic': _tic, 'toc': _toc,
-                    'attempts': attempts}
-
-        self.logger.info('Calibrating QDR on F- and X-engines, this may '
-                         'take a while.')
-        qdr_calfail = False
-        results = THREADED_FPGA_OP(
-            self.fhosts + self.xhosts, timeout, (_qdr_cal,))
-        for fpga, result in results.items():
-            _time_taken = result['toc'] - result['tic']
-            self.logger.info('FPGA %s QDR cal: %.3fs, %i attempts' %
-                             (fpga, _time_taken, result['attempts']))
-            for qdr, qdrres in result['results'].items():
-                if not qdrres:
-                    qdr_calfail = True
-                    break
-                self.logger.info('\t%s: cal okay: %s' %
-                                 (qdr, 'True' if qdrres else 'False'))
-        if qdr_calfail:
-            raise RuntimeError('QDR calibration failure.')
-        # for host in self.fhosts:
-        #     for qdr in host.qdrs:
-        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111,
-        # -1)
-        # for host in self.xhosts:
-        #     for qdr in host.qdrs:
-        #         qdr.qdr_delay_in_step(0b111111111111111111111111111111111111,
-        # -1)
-
     def set_input_labels(self, new_labels):
         """
         Apply new source labels to the configured fengine sources.
@@ -422,9 +333,6 @@ class FxCorrelator(Instrument):
         # match old labels to input streams
         for ctr, old_label in enumerate(old_labels):
             self.get_data_stream(old_label).name = new_labels[ctr]
-
-        # update the list of baselines
-        self.baselines = utils.baselines_from_source_list(new_labels)
 
         if self.sensor_manager:
             self.sensor_manager.sensors_input_labels()
@@ -514,10 +422,6 @@ class FxCorrelator(Instrument):
                     self.logger.error('Host %s is assigned to '
                                       'both X- and F-engines' % _fh.host)
                     raise RuntimeError
-        # # reset the data port on skarabs?
-        # for host in self.hosts:
-        #     if hasattr(host.transport, '_forty_gbe_set_port'):
-        #         host.transport._forty_gbe_set_port(7148)
 
     def _read_config(self):
         """
@@ -549,17 +453,15 @@ class FxCorrelator(Instrument):
         # TODO: Load config values from the bitstream meta
         # information - f per fpga, x per fpga, etc
         _fxcorr_d = self.configd['FxCorrelator']
-        self.arp_wait_time = int(_fxcorr_d['arp_wait_time'])
         self.sensor_poll_time = int(_fxcorr_d['sensor_poll_time'])
         self.katcp_port = int(_fxcorr_d['katcp_port'])
         self.sample_rate_hz = float(_fxcorr_d['sample_rate_hz'])
         self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
-        self.time_jitter_allowed_ms = int(_fxcorr_d['time_jitter_allowed_ms'])
-        self.time_offset_allowed_s = int(_fxcorr_d['time_offset_allowed_s'])
-        try:
-            self.post_switch_delay = int(_fxcorr_d['switch_delay'])
-        except KeyError:
-            self.post_switch_delay = 10
+        self.time_jitter_allowed = float(_fxcorr_d['time_jitter_allowed'])
+        self.time_offset_allowed = float(_fxcorr_d['time_offset_allowed'])
+        self.timeout = int(_fxcorr_d['default_timeout'])
+        self.post_switch_delay = int(_fxcorr_d['switch_delay'])
+        self.n_antennas = int(_fxcorr_d['n_ants'])
         if 'spead_metapacket_ttl' in _fxcorr_d:
             import data_stream
             data_stream.SPEAD_PKT_TTL = int(_fxcorr_d['spead_metapacket_ttl'])
@@ -570,14 +472,11 @@ class FxCorrelator(Instrument):
             self.ct_readgap = int(_feng_d['ct_readgap'])
         except KeyError:
             self.ct_readgap = 45
-        self.adc_demux_factor = int(_feng_d['adc_demux_factor'])
         self.n_chans = int(_feng_d['n_chans'])
-        self.n_antennas = int(_feng_d['n_antennas'])
         self.min_load_time = float(_feng_d['min_load_time'])
         self.f_per_fpga = int(_feng_d['f_per_fpga'])
-        self.ports_per_fengine = int(_feng_d['ports_per_fengine'])
-        self.analogue_bandwidth = int(_feng_d['bandwidth'])
-        self.true_cf = float(_feng_d['true_cf'])
+        self.n_input_streams_per_fengine = int(_feng_d['n_input_streams_per_fengine'])
+        self.analogue_bandwidth = float(_fxcorr_d['sample_rate_hz'])/2
         self.quant_format = _feng_d['quant_format']
         self.adc_bitwidth = int(_feng_d['sample_bits'])
         self.fft_shift = int(_feng_d['fft_shift'])
@@ -586,27 +485,12 @@ class FxCorrelator(Instrument):
         except KeyError:
             self.pfb_group_delay = -1
 
-        try:
-            self.qdr_ct_error_threshold = int(_feng_d['qdr_ct_error_threshold'])
-        except KeyError:
-            self.qdr_ct_error_threshold = 100
-        try:
-            self.qdr_cd_error_threshold = int(_feng_d['qdr_cd_error_threshold'])
-        except KeyError:
-            self.qdr_cd_error_threshold = 100
-
         _xeng_d = self.configd['xengine']
         self.x_per_fpga = int(_xeng_d['x_per_fpga'])
         self.accumulation_len = int(_xeng_d['accumulation_len'])
         self.xeng_accumulation_len = int(_xeng_d['xeng_accumulation_len'])
-        try:
-            self.qdr_vacc_error_threshold = int(
-                _xeng_d['qdr_vacc_error_threshold'])
-        except KeyError:
-            self.qdr_vacc_error_threshold = 100
 
         # TODO - get this from the running x-engines?
-        self.xeng_clk = int(_xeng_d['x_fpga_clock'])
         self.xeng_outbits = int(_xeng_d['xeng_outbits'])
 
         # TODO - get this from the config file
@@ -622,7 +506,7 @@ class FxCorrelator(Instrument):
         :return:
         """
         _fengd = self.configd['fengine']
-        source_names = utils.sources_from_config(config=self.configd)
+        source_names = utils.get_default_sources(config=self.configd)
         source_mcast = _fengd['source_mcast_ips'].strip().split(',')
         for ctr, src in enumerate(source_mcast):
             source_mcast[ctr] = src.strip()

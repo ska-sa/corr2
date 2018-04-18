@@ -404,7 +404,7 @@ class Corr2SensorManager(SensorManager):
                 'A string showing the output ordering of baseline data '
                 'produced by the X-engines in this instrument, as a list '
                 'of correlation pairs given by input label.')
-            sensor.set_value(self.instrument.baselines)
+            sensor.set_value(self.instrument.xops.get_baseline_ordering())
 
     def sensors_xeng_acc_time(self):
         """
@@ -483,15 +483,10 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(self.instrument.xeng_outbits)
 
             sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-clock-rate'.format(strmnm),
-                'Target clock rate of X-engines.', unit='Hz')
-            sensor.set_value(self.instrument.xeng_clk)
-
-            sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-bls'.format(strmnm),
                 'The number of baselines produced by this correlator '
                 'instrument.')
-            sensor.set_value(len(self.instrument.baselines))
+            sensor.set_value(len(self.instrument.xops.get_baseline_ordering()))
 
             # TODO - this might not be correct
             sensor = self.do_sensor(

@@ -123,14 +123,7 @@ class FEngineOperations(object):
         self.fengines = []
         self.data_stream = None
 
-    def initialise_post_gbe(self):
-        """
-        Perform post-gbe setup initialisation steps.
-        :return:
-        """
-        return
-
-    def initialise_pre_gbe(self):
+    def initialise(self):
         """
         Set up F-engines on this device. This is done after programming the
         devices in the instrument.
@@ -216,6 +209,15 @@ class FEngineOperations(object):
         self.eq_write_all()
         self.set_fft_shift_all()
 
+        #configure the ethernet cores.
+        THREADED_FPGA_FUNC(
+                self.hosts, timeout=5,
+                target_function=('setup_host_gbes',
+                                 (), {}))
+
+        #subscribe to multicast groups
+        self.subscribe_to_multicast()
+
     def configure(self):
         """
         Configure the fengine operations - this is done whenever a correlator
@@ -237,7 +239,7 @@ class FEngineOperations(object):
         for dig_stream in dig_streams:
             stream_name = dig_stream[0]
             eq_polys[stream_name] = utils.process_new_eq(
-                _fengd['eq_poly_%s' % stream_name])
+                _fengd['default_eq_poly'])
         assert len(eq_polys) == len(dig_streams), (
             'Digitiser input names (%d) must be paired with EQ polynomials '
             '(%d).' % (len(dig_streams), len(eq_polys)))
@@ -252,9 +254,9 @@ class FEngineOperations(object):
             new_feng.eq_poly = eq_polys[new_feng.name]
             new_feng.eq_bram_name = 'eq%i' % new_feng.offset
             dest_ip_range = new_feng.input.destination.ip_range
-            assert dest_ip_range == self.corr.ports_per_fengine, (
+            assert dest_ip_range == self.corr.n_input_streams_per_fengine, (
                 'F-engines should be receiving from %d streams.' %
-                self.corr.ports_per_fengine)
+                self.corr.n_input_streams_per_fengine)
             _feng_temp.append(new_feng)
 
         # check that the inputs all have the same IP ranges
@@ -263,7 +265,7 @@ class FEngineOperations(object):
             _ip_range = _feng.input.destination.ip_range
             assert _ip_range == _ip_range0, (
                 'All F-engines should be receiving from %d streams.' %
-                self.corr.ports_per_fengine)
+                self.corr.n_input_streams_per_fengine)
 
         # assign inputs to fhosts
         self.logger.info('Assigning Fengines to f-hosts')
@@ -324,10 +326,12 @@ class FEngineOperations(object):
         their unix representations)
         """
         self.logger.info('Checking timestamps on F hosts...')
+        start_time=time.time()
         results = THREADED_FPGA_FUNC(
             self.hosts, timeout=5,
             target_function=('get_local_time',[src],{}))
         read_time = time.time()
+        elapsed_time=read_time-start_time
         feng_mcnts = {}
         feng_times = {}
         rv=True
@@ -347,14 +351,14 @@ class FEngineOperations(object):
                 self.logger.error(errmsg)
                 rv=False
             # is the time in the future?
-            if feng_time > (read_time+(self.corr.time_jitter_allowed_ms/1000)):
+            if feng_time > (read_time+(self.corr.time_jitter_allowed)):
                 errmsg = '%s, %s: F-engine time cannot be in the future? ' \
                        'now(%.3f) feng_time(%.3f)' % (host.host,
                           host.fengines[0].input.name,read_time,feng_time)
                 self.logger.error(errmsg)
                 rv=False
             # is the time close enough to local time?
-            if abs(read_time - feng_time) > self.corr.time_offset_allowed_s:
+            if abs(read_time - feng_time) > self.corr.time_offset_allowed:
                 errmsg = '%s, %s: time calculated from board cannot be so ' \
                          'far from local time: now(%.3f) feng_time(%.3f) ' \
                          'diff(%.3f)' % (host.host, host.fengines[0].input.name,
@@ -363,9 +367,8 @@ class FEngineOperations(object):
                 rv=False
         # are they all within 500ms of one another?
         diff = max(feng_times.values()) - min(feng_times.values())
-        diff_ms = diff * 1000.0
-        if diff_ms > self.corr.time_jitter_allowed_ms:
-            errmsg = 'F-engine timestamps are too far apart: %.3fms' % diff_ms
+        if diff > (self.corr.time_jitter_allowed+elapsed_time):
+            errmsg = 'F-engine timestamps are too far apart: %.3fs. Took %.3fs. to read all boards.' %(diff,elapsed_time)
             self.logger.error(errmsg)
             rv=False
         self.logger.info('\tdone.')
@@ -470,25 +473,6 @@ class FEngineOperations(object):
         loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
         return loadtime_mcnt
 
-
-    def resync_and_check(self):
-        """
-        Resynchronise all the f-engines and then check if they still have RX
-        or TX errors.
-        :return:
-        """
-        attempts = 5
-        self.logger.info('Attempting to resync the f-engines.')
-        while attempts > 0:
-            logstr = '\tattempt 1: '
-            self.sys_reset()
-            if self.check_rx():
-                if self.check_tx():
-                    self.logger.info(logstr + 'succeeded')
-                    return True
-            self.logger.info(logstr + 'failed')
-            attempts -= 1
-        return False
 
     def tx_enable(self,force_enable=False):
         """
@@ -661,34 +645,6 @@ class FEngineOperations(object):
         :return:
         """
         THREADED_FPGA_FUNC(self.hosts, 10, 'clear_status')
-
-    def setup_rx_ip_masks(self):
-        """
-        Configure software registers on F-engines to accept a range of source IP addresses.
-        :return:
-        """
-        self.logger.info('Setting Feng RX IP mask software registers.')
-
-        def range_mask(iprange):
-            if iprange%2 !=0:
-                self.logger.error("Multicast range is not a multiple of 2!")
-            return (2**32)-1-iprange
-
-        for fhost in self.hosts:
-            # andrew's ar1.5 changes
-            if 'rx_dest_ip_mask0' in fhost.registers.names():
-                destination = fhost.fengines[0].input.destination
-                base = int(destination.ip_address)
-                fhost.registers.rx_dest_ip0.write_int(base)
-                mask = range_mask(destination.ip_range)
-                fhost.registers.rx_dest_ip_mask0.write_int(mask)
-
-            if 'rx_dest_ip_mask1' in fhost.registers.names():
-                destination = fhost.fengines[1].input.destination
-                base = int(destination.ip_address)
-                fhost.registers.rx_dest_ip1.write_int(base)
-                mask = range_mask(destination.ip_range)
-                fhost.registers.rx_dest_ip_mask1.write_int(mask)
 
     def subscribe_to_multicast(self):
         """

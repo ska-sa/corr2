@@ -408,19 +408,14 @@ class FpgaFHost(DigitiserStreamReceiver):
 
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
-            self.ports_per_fengine = int(config['ports_per_fengine'])
             self.fft_shift = int(config['fft_shift'])
             self.n_chans = int(config['n_chans'])
             self.min_load_time = float(config['min_load_time'])
-            self.network_latency_adjust = \
-                float(config['network_latency_adjust'])
         else:
             self.num_fengines = None
-            self.ports_per_fengine = None
             self.fft_shift = None
             self.n_chans = None
             self.min_load_time = None
-            self.network_latency_adjust = None
 
         self.rx_data_sample_rate_hz = -1
 
