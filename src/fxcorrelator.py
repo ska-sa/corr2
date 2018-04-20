@@ -597,7 +597,7 @@ class FxCorrelator(Instrument):
             rv['xengine_firmware_' + fname] = (fver, '')
         return rv
 
-    def instrument_monitoring_loop_timer_start(self, check_time=30):
+    def instrument_monitoring_loop_timer_start(self, check_time=None):
         """
         Set up periodic check of various instrument elements
         :param check_time: the interval, in seconds, at which to check
@@ -606,6 +606,9 @@ class FxCorrelator(Instrument):
 
         if not IOLoop.current()._running:
             raise RuntimeError('IOLoop not running, this will not work')
+
+        if not check_time:
+            check_time=float(self.configd['FxCorrelator']['monitor_loop_time'])
 
         self.logger.info('instrument_monitoring_loop for instrument %s '
                          'set up with a period '
@@ -661,7 +664,7 @@ class FxCorrelator(Instrument):
                 # perform coarse delay check
                 cd_status = fhost.get_cd_status()
                 status['coarse_delay'] = cd_status
-            time.sleep(0.2)
+            time.sleep(0.1)
 
             f_eng_board_monitoring_dict_current[fhost] = status
 
@@ -688,6 +691,7 @@ class FxCorrelator(Instrument):
 
         f_eng_board_action_dict = {}
         for host, status in f_eng_board_monitoring_dict_current.iteritems():
+            time.sleep(0.01)
             action = {'disable_output': 0}
 
             if status.has_key('corner_turner'):
@@ -783,6 +787,7 @@ class FxCorrelator(Instrument):
         action_taken = False
         if f_eng_board_action_dict:
             for host, action in f_eng_board_action_dict.iteritems():
+                time.sleep(0.01)
                 if action['disable_output']:
                     action_taken = True
                     host.tx_disable()
