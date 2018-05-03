@@ -656,13 +656,10 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
             beam = self.instrument.bops.beams[strmnm]
-            for feng in beam.source_streams:
-                pref = '{strm}-input{npt}'.format(strm=strmnm,
-                                                  npt=feng.input_number)
-                sensor = self.do_sensor(
-                    Corr2Sensor.float, '{}-weight'.format(pref),
-                    'The summing weight applied to this input on this beam.')
-                sensor.set_value(beam.source_streams[feng]['weight'])
+            sensor = self.do_sensor(
+                    Corr2Sensor.float, '{strm}-weight'.format(strm=strmnm),
+                    'The summing weights applied to the inputs of this beam.')
+            sensor.set_value(self.instrument.bops.get_beam_weights(strmnm))
 
     def sensors_beng_gains(self):
         """
@@ -678,31 +675,31 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.float, '{}-quantiser-gain'.format(strmnm),
                 'The non-complex post-summation quantiser gain applied to '
                 'this beam.')
-            sensor.set_value(beam.quant_gain)
+            sensor.set_value(self.instrument.bops.get_beam_quant_gain(strmnm))
 
-    def sensors_beng_passband(self):
-        """
-
-        :return:
-        """
-        streams = self.instrument.get_data_streams_by_type(
-            data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
-        for stream in streams:
-            strmnm = stream.name
-            beam = self.instrument.bops.beams[strmnm]
-            # beam_bw, beam_cf = beam.get_beam_bandwidth()
-            # sensor = self.do_sensor(
-            #     Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
-            #     'Bandwidth of selected beam passband.')
-            # sensor.set_value(beam_bw)
-            # sensor = self.do_sensor(
-            #     Corr2Sensor.float, '{}-center-freq'.format(strmnm),
-            #     'Center frequency of selected beam passband.')
-            # sensor.set_value(beam_cf)
-            sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
-                'Number of channels in selected beam passband.')
-            sensor.set_value(self.instrument.n_chans)
+#    def sensors_beng_passband(self):
+#        """
+#
+#        :return:
+#        """
+#        streams = self.instrument.get_data_streams_by_type(
+#            data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
+#        for stream in streams:
+#            strmnm = stream.name
+#            beam = self.instrument.bops.beams[strmnm]
+#            # beam_bw, beam_cf = beam.get_beam_bandwidth()
+#            # sensor = self.do_sensor(
+#            #     Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
+#            #     'Bandwidth of selected beam passband.')
+#            # sensor.set_value(beam_bw)
+#            # sensor = self.do_sensor(
+#            #     Corr2Sensor.float, '{}-center-freq'.format(strmnm),
+#            #     'Center frequency of selected beam passband.')
+#            # sensor.set_value(beam_cf)
+#            sensor = self.do_sensor(
+#                Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
+#                'Number of channels in selected beam passband.')
+#            sensor.set_value(self.instrument.n_chans)
 
     def sensors_beng_streams(self):
         """
@@ -732,17 +729,17 @@ class Corr2SensorManager(SensorManager):
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
-                'Number of spectrum chunks per heap.')
+                'Number of consecutive spectra in each heap.')
             sensor.set_value(self.instrument.xeng_accumulation_len)
 
-            sensor = self.do_sensor(
-                Corr2Sensor.string, '{}-source-indices'.format(strmnm),
-                'The global input indices of the sources summed in this beam.')
-            tmp = [instrument_inputs.index(nm) for nm in beam.source_names]
-            tmp.sort()
-            sensor.set_value(tmp)
+#            sensor = self.do_sensor(
+#                Corr2Sensor.string, '{}-source-indices'.format(strmnm),
+#                'The global input indices of the sources summed in this beam.')
+#            tmp = [instrument_inputs.index(nm) for nm in beam.source_names]
+#            tmp.sort()
+#            sensor.set_value(tmp)
 
-        self.sensors_beng_passband()
+#        self.sensors_beng_passband()
         self.sensors_beng_weights()
         self.sensors_beng_gains()
 
