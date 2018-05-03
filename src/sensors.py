@@ -657,9 +657,9 @@ class Corr2SensorManager(SensorManager):
             strmnm = stream.name
             beam = self.instrument.bops.beams[strmnm]
             sensor = self.do_sensor(
-                    Corr2Sensor.float, '{strm}-weight'.format(strm=strmnm),
+                    Corr2Sensor.string, '{strm}-weight'.format(strm=strmnm),
                     'The summing weights applied to the inputs of this beam.')
-            sensor.set_value(self.instrument.bops.get_beam_weights(strmnm))
+            sensor.set_value(str(self.instrument.bops.get_beam_weights(strmnm)))
 
     def sensors_beng_gains(self):
         """
