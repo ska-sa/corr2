@@ -8,8 +8,7 @@ import casperfpga.memory as caspermem
 import delay as delayops
 from utils import parse_slx_params
 from digitiser_receiver import DigitiserStreamReceiver
-
-LOGGER = logging.getLogger(__name__)
+from casperfpga.CasperLogHandlers import CasperConsoleHandler
 
 
 class InputNotFoundError(ValueError):
@@ -47,7 +46,7 @@ class Fengine(object):
     An F-engine, acting on a source DataStream
     """
     def __init__(self, input_stream,
-                 host=None, offset=-1):
+                 host=None, offset=-1, **kwargs):
         """
 
         :param input_stream: the DigitiserStream input for this F-engine
@@ -55,6 +54,27 @@ class Fengine(object):
         :param offset: which input on that host is this?
         :return:
         """
+        # Just to make sure it doesn't break when logging
+        try:
+            # Get the counter corresponding to _create_hosts in fxcorrelator.py
+            self.feng_id = kwargs['feng_id']
+        except KeyError:
+            # Couldn't find it in the list of params
+            self.feng_id = 0
+        try:
+            descriptor = kwargs['descriptor']
+        except KeyError:
+            descriptor = 'InstrumentName'
+        
+        logger_name = '{}_feng-{}-{}'.format(descriptor, str(self.feng_id), host)
+        self.logger = logging.getLogger(logger_name)
+        console_handler_name = '{}_console'.format(logger_name)
+        console_handler = CasperConsoleHandler(name=console_handler_name)
+        self.logger.addHandler(console_handler)
+        self.logger.setLevel(logging.ERROR)
+        infomsg = 'Successfully created logger for {}'.format(logger_name)
+        self.logger.info(infomsg)
+
         self.input = input_stream
         self.host = host
         self.offset = offset
@@ -135,42 +155,42 @@ class Fengine(object):
         # was the system already armed?
         arm_error = False
         if cd_before['armed']:
-            LOGGER.error('%s coarse delay timed latch was already armed. '
+            self.logger.error('%s coarse delay timed latch was already armed. '
                          'Previous load failed.' % infostr)
             arm_error = True
         if fd_before['armed']:
-            LOGGER.error('%s phase correction timed latch was already '
+            self.logger.error('%s phase correction timed latch was already '
                          'armed. Previous load failed.' % infostr)
             arm_error = True
         # did the system arm correctly
         if (not cd_before['armed']) and \
                 (cd_before['arm_count'] == cd_after['arm_count']):
-            LOGGER.error('%s coarse delay arm count did not '
+            self.logger.error('%s coarse delay arm count did not '
                          'change.' % infostr)
-            LOGGER.error('%s BEFORE: coarse arm_count(%i) ld_count(%i)' % (
+            self.logger.error('%s BEFORE: coarse arm_count(%i) ld_count(%i)' % (
                 infostr, cd_before['arm_count'], cd_before['load_count']))
-            LOGGER.error('%s AFTER:  coarse arm_count(%i) ld_count(%i)' % (
+            self.logger.error('%s AFTER:  coarse arm_count(%i) ld_count(%i)' % (
                 infostr, cd_after['arm_count'], cd_after['load_count']))
             arm_error = True
         if (not fd_before['armed']) and \
                 (fd_before['arm_count'] == fd_after['arm_count']):
-            LOGGER.error('%s phase correction arm count did not change.' %
+            self.logger.error('%s phase correction arm count did not change.' %
                          infostr)
-            LOGGER.error('%s BEFORE: phase correction arm_count(%i) '
+            self.logger.error('%s BEFORE: phase correction arm_count(%i) '
                          'ld_count(%i)' % (infostr, fd_before['arm_count'],
                                            fd_before['load_count']))
-            LOGGER.error('%s AFTER:  phase correction arm_count(%i) '
+            self.logger.error('%s AFTER:  phase correction arm_count(%i) '
                          'ld_count(%i)' % (infostr, fd_after['arm_count'],
                                            fd_after['load_count']))
             arm_error = True
         # did the system load?
         if load_check:
             if cd_before['load_count'] == cd_after['load_count']:
-                LOGGER.error('%s coarse delay load count did not change. '
+                self.logger.error('%s coarse delay load count did not change. '
                              'Load failed.' % infostr)
                 arm_error = True
             if fd_before['load_count'] == fd_after['load_count']:
-                LOGGER.error('%s phase correction load count did not '
+                self.logger.error('%s phase correction load count did not '
                              'change. Load failed.' % infostr)
                 arm_error = True
         return arm_error
@@ -241,7 +261,7 @@ class Fengine(object):
         delta_delay_shifted = float(delay_rate) * bitshift
         dds = delta_delay_shifted
         dd = dds / bitshift
-        LOGGER.debug('%s attempting delay delta to %e (%e after shift)' %
+        self.logger.debug('%s attempting delay delta to %e (%e after shift)' %
                      (infostr, delay_rate, delta_delay_shifted))
         reg_info = delay_delta_reg.block_info
         reg_bp = int(parse_slx_params(reg_info['bin_pts'])[0])
@@ -250,26 +270,26 @@ class Fengine(object):
         if delta_delay_shifted > max_positive_delta_delay:
             dds = max_positive_delta_delay
             dd = dds / bitshift
-            LOGGER.warn('%s largest possible positive delay delta '
+            self.logger.warn('%s largest possible positive delay delta '
                         'is %e data samples/sample' % (infostr, dd))
-            LOGGER.warn('%s setting delay delta to %e data '
+            self.logger.warn('%s setting delay delta to %e data '
                         'samples/sample (%e after shift)' %
                         (infostr, dd, dds))
         elif delta_delay_shifted < max_negative_delta_delay:
             dds = max_negative_delta_delay
             dd = dds / bitshift
-            LOGGER.warn('%s largest possible negative delay delta is %e '
+            self.logger.warn('%s largest possible negative delay delta is %e '
                         'data samples/sample' % (infostr, dd))
-            LOGGER.warn('%s setting delay delta to %e data samples/sample '
+            self.logger.warn('%s setting delay delta to %e data samples/sample '
                         '(%e after shift)' % (infostr, dd, dds))
-            LOGGER.debug('%s writing delay delta to %e (%e after shift)' %
+            self.logger.debug('%s writing delay delta to %e (%e after shift)' %
                          (infostr, dd, dds))
         try:
             delay_delta_reg.write(delta=dds)
         except ValueError as e:
             errmsg = '%s writing delay delta (%.8e), error - %s' % \
                      (infostr, dds, e.message)
-            LOGGER.error(errmsg)
+            self.logger.error(errmsg)
             raise ValueError(errmsg)
 
     def _delay_write_delay(self, delay, loadcnt):
@@ -282,22 +302,22 @@ class Fengine(object):
         reg_bw = int(parse_slx_params(reg_info['bitwidths'])[0])
         reg_bp = int(parse_slx_params(reg_info['bin_pts'])[0])
         max_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
-        LOGGER.debug('%s attempting initial delay of %f samples.' %
+        self.logger.debug('%s attempting initial delay of %f samples.' %
                      (infostr, delay))
         if delay < 0:
-            LOGGER.warn('%s smallest delay is 0, setting to zero' % infostr)
+            self.logger.warn('%s smallest delay is 0, setting to zero' % infostr)
             delay = 0
         elif delay > max_delay:
-            LOGGER.warn('%s largest possible delay is %f data samples' % (
+            self.logger.warn('%s largest possible delay is %f data samples' % (
                 infostr, max_delay))
             delay = max_delay
-        LOGGER.debug('%s setting delay to %f data samples' % (infostr, delay))
+        self.logger.debug('%s setting delay to %f data samples' % (infostr, delay))
         try:
             delay_reg.write(initial=delay)
         except ValueError as e:
             errmsg = '%s writing initial delay range delay(%.8e), error - ' \
                      '%s' % (infostr, delay, e.message)
-            LOGGER.error(errmsg)
+            self.logger.error(errmsg)
             raise ValueError(errmsg)
 
     def _delay_write_phase(self, phase, loadcnt):
@@ -307,7 +327,7 @@ class Fengine(object):
         infostr = '%s:%i:%i:' % (self.host.host, self.offset, loadcnt)
         bitshift = delay_get_bitshift()
         phase_reg = self.host.registers['phase%i' % self.offset]
-        LOGGER.debug('%s attempting to set initial phase to %f' % (
+        self.logger.debug('%s attempting to set initial phase to %f' % (
             infostr, phase))
         # setup the phase offset
         reg_info = phase_reg.block_info
@@ -318,24 +338,24 @@ class Fengine(object):
         limited = False
         if phase > max_positive_phase:
             phase = max_positive_phase
-            LOGGER.warn('%s largest possible positive phase is '
+            self.logger.warn('%s largest possible positive phase is '
                         '%e pi' % (infostr, phase))
             limited = True
         elif phase < max_negative_phase:
             phase = max_negative_phase
-            LOGGER.warn('%s largest possible negative phase is '
+            self.logger.warn('%s largest possible negative phase is '
                         '%e pi' % (infostr, phase))
             limited = True
         if limited:
-            LOGGER.warn('%s setting phase to %e pi' % (infostr, phase))
+            self.logger.warn('%s setting phase to %e pi' % (infostr, phase))
         # actually write the values to the register
-        LOGGER.debug('%s writing initial phase to %f' % (infostr, phase))
+        self.logger.debug('%s writing initial phase to %f' % (infostr, phase))
         try:
             phase_reg.write(initial=phase)
         except ValueError as e:
             errmsg = '%s writing phase(%.8e), error - %s' % (
                 infostr, phase, e.message)
-            LOGGER.error(errmsg)
+            self.logger.error(errmsg)
             raise ValueError(errmsg)
 
     def _delay_write_phase_rate(self, phase_rate, loadcnt):
@@ -347,7 +367,7 @@ class Fengine(object):
         phase_reg = self.host.registers['phase%i' % self.offset]
         # multiply by amount shifted down by on FPGA
         delta_phase_offset_shifted = float(phase_rate) * bitshift
-        LOGGER.debug('%s attempting to set phase delta to %e' % (
+        self.logger.debug('%s attempting to set phase delta to %e' % (
             infostr, delta_phase_offset_shifted))
         # phase delta
         reg_info = phase_reg.block_info
@@ -361,26 +381,26 @@ class Fengine(object):
         if dpos > max_positive_delta_phase:
             dpos = max_positive_delta_phase
             dp = dpos / bitshift
-            LOGGER.warn('%s largest possible positive phase delta is '
+            self.logger.warn('%s largest possible positive phase delta is '
                         '%e x pi radians/sample' % (infostr, dp))
             limited = True
         elif dpos < max_negative_delta_phase:
             dpos = max_negative_delta_phase
             dp = dpos / bitshift
-            LOGGER.warn('%s largest possible negative phase delta is '
+            self.logger.warn('%s largest possible negative phase delta is '
                         '%e x pi radians/sample' % (infostr, dp))
             limited = True
         if limited:
-            LOGGER.warn('%s setting phase delta to %e x pi radians/sample '
+            self.logger.warn('%s setting phase delta to %e x pi radians/sample '
                         '(%e after shift)' % (infostr, dp, dpos))
         # actually write the values to the register
-        LOGGER.debug('%s writing phase delta to %e' % (infostr, dpos))
+        self.logger.debug('%s writing phase delta to %e' % (infostr, dpos))
         try:
             phase_reg.write(delta=dpos)
         except ValueError as e:
             errmsg = '%s writing dpos(%.8e), error - %s' % (
                 infostr, dpos, e.message)
-            LOGGER.error(errmsg)
+            self.logger.error(errmsg)
             raise ValueError(errmsg)
 
     def __repr__(self):
@@ -397,11 +417,31 @@ class FpgaFHost(DigitiserStreamReceiver):
     A Host, that hosts Fengines, that is a CASPER KATCP FPGA.
     """
     def __init__(self, host, katcp_port=7147, bitstream=None,
-                 connect=True, config=None):
+                 connect=True, config=None, **kwargs):
         super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port,
                                         bitstream=bitstream, connect=connect)
 
         self._config = config
+
+        try:
+            # Get the counter corresponding to _create_hosts in fxcorrelator.py
+            self.fhost_index = kwargs['host_id']
+        except KeyError:
+            # Couldn't find it in the list of params
+            self.fhost_index = 0
+        try:
+            descriptor = kwargs['descriptor']
+        except KeyError:
+            descriptor = 'InstrumentName'
+        
+        logger_name = '{}_fhost-{}-{}'.format(descriptor, str(self.fhost_index), host)
+        self.logger = logging.getLogger(logger_name)
+        console_handler_name = '{}_console'.format(logger_name)
+        console_handler = CasperConsoleHandler(name=console_handler_name)
+        self.logger.addHandler(console_handler)
+        self.logger.setLevel(logging.ERROR)
+        infomsg = 'Successfully created logger for {}'.format(logger_name)
+        self.logger.info(infomsg)
 
         # list of Fengines received by this F-engine host
         self.fengines = []
@@ -420,10 +460,10 @@ class FpgaFHost(DigitiserStreamReceiver):
         self.rx_data_sample_rate_hz = -1
 
     @classmethod
-    def from_config_source(cls, hostname, katcp_port, config_source):
+    def from_config_source(cls, hostname, katcp_port, config_source, **kwargs):
         bitstream = config_source['bitstream']
         return cls(hostname, katcp_port, bitstream=bitstream,
-                   connect=True, config=config_source)
+                   connect=True, config=config_source, **kwargs)
 
     def get_local_time(self,src=0):
         """
@@ -498,7 +538,7 @@ class FpgaFHost(DigitiserStreamReceiver):
         :return:
         """
         for feng in self.fengines:
-            LOGGER.debug('%s: writing EQ %s' % (self.host, feng.name))
+            self.logger.debug('%s: writing EQ %s' % (self.host, feng.name))
             self.write_eq(input_name=feng.name)
 
     def write_eq(self, input_name=None, eq_tuple=None):
@@ -539,7 +579,7 @@ class FpgaFHost(DigitiserStreamReceiver):
         coeffs[1::2] = cimag
         ss = struct.pack('>%ih' % (self.n_chans * 2), *coeffs)
         self.write(eq_bram, ss, 0)
-        LOGGER.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
+        self.logger.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
         return len(ss)
 
     def _delay_arm_all_latches(self, loadmcnt, load_check=False):
@@ -791,7 +831,7 @@ class FpgaFHost(DigitiserStreamReceiver):
         if input_name != None: 
             fengine = self.get_fengine(input_name)
         if loadcnt>0:
-            LOGGER.info("Triggering ADC snapshot at %i"%loadcnt)
+            self.logger.info("Triggering ADC snapshot at %i"%loadcnt)
             ltime_msw = (loadcnt >> 32) & (2**16 - 1)
             ltime_lsw = loadcnt & ((2**32) - 1)
             self.registers.trig_time_msw.write_int(ltime_msw)
@@ -921,7 +961,7 @@ class FpgaFHost(DigitiserStreamReceiver):
             logstr += self._skarab_subscribe_to_multicast()
         else:
             logstr += self._roach2_subscribe_to_multicast(f_per_fpga)
-        LOGGER.info(logstr)
+        self.logger.info(logstr)
 
 '''
     def _get_fengine_fpga_config(self):
@@ -1025,7 +1065,7 @@ class FpgaFHost(DigitiserStreamReceiver):
         eq_coeffs = numpy.array(eq_coeffs, dtype=complex)
 
         if len(eq_coeffs) != n_coeffs:
-            log_runtime_error(LOGGER, "Something's wrong. I have %i eq coefficients when I should have %i."  % (len(eq_coeffs), n_coeffs))
+            log_runtime_error(self.logger, "Something's wrong. I have %i eq coefficients when I should have %i."  % (len(eq_coeffs), n_coeffs))
         return eq_coeffs
 
     def set_equalisation(self, pol_index, init_coeffs=None, init_poly=None, issue_spead=True):
@@ -1043,9 +1083,9 @@ class FpgaFHost(DigitiserStreamReceiver):
             coeffs = init_coeffs
         elif len(init_coeffs) == n_chans:
             coeffs = init_coeffs[0::decimation]
-            LOGGER.warn("You specified %i EQ coefficients but your system only supports %i actual values. Only writing every %ith value." % (n_chans ,n_coeffs, decimation))
+            self.logger.warn("You specified %i EQ coefficients but your system only supports %i actual values. Only writing every %ith value." % (n_chans ,n_coeffs, decimation))
         elif len(init_coeffs) > 0:
-            log_runtime_error(LOGGER, 'You specified %i coefficients, but there are %i EQ coefficients required for this engine' % (len(init_coeffs), n_coeffs))
+            log_runtime_error(self.logger, 'You specified %i coefficients, but there are %i EQ coefficients required for this engine' % (len(init_coeffs), n_coeffs))
         else:
             coeffs = numpy.polyval(init_poly, range(n_chans))[decimation/2::decimation]
             coeffs = numpy.array(coeffs, dtype=complex)

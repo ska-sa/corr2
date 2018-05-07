@@ -2,6 +2,7 @@ import numpy
 import time
 
 from casperfpga import utils as fpgautils
+from casperfpga.CasperLogHandlers import CasperConsoleHandler
 
 from data_stream import SPEADStream, FENGINE_CHANNELISED_DATA, \
     DIGITISER_ADC_SAMPLES
@@ -9,6 +10,8 @@ import utils
 import fhost_fpga
 import fxcorrelator_speadops as speadops
 import delay as delayops
+
+import logging
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -119,10 +122,22 @@ class FEngineOperations(object):
         """
         self.corr = corr_obj
         self.hosts = corr_obj.fhosts
-        self.logger = corr_obj.logger
+        # self.logger = corr_obj.logger
+
         self.fengines = []
         self.data_stream = None
-
+        
+        # Now creating separate instances of loggers as needed
+        logger_name = '{}_FEngOps'.format(corr_obj.descriptor)
+        self.logger = logging.getLogger(logger_name)
+        # - Give logger some default config
+        console_handler_name = '{}_stream'.format(corr_obj.descriptor)
+        console_handler = CasperConsoleHandler(name=console_handler_name)
+        self.logger.addHandler(console_handler)
+        self.logger.setLevel(logging.DEBUG)
+        infomsg = 'Successfully created logger for {}'.format(console_handler_name)
+        self.logger.info(infomsg)
+        
     def initialise(self):
         """
         Set up F-engines on this device. This is done after programming the
@@ -246,11 +261,12 @@ class FEngineOperations(object):
 
         # assemble the inputs given into a list
         _feng_temp = []
-        for stream in dig_streams:
+        for stream_index, stream_value in enumerate(dig_streams):
             new_feng = fhost_fpga.Fengine(
-                input_stream=self.corr.get_data_stream(stream[0]),
+                input_stream=self.corr.get_data_stream(stream_value[0]),
                 host=None,
-                offset=stream[1] % self.corr.f_per_fpga)
+                offset=stream_value[1] % self.corr.f_per_fpga,
+                feng_id=stream_index, descriptor=self.corr.descriptor)
             new_feng.eq_poly = eq_polys[new_feng.name]
             new_feng.eq_bram_name = 'eq%i' % new_feng.offset
             dest_ip_range = new_feng.input.destination.ip_range

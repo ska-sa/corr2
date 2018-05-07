@@ -2,11 +2,10 @@ import logging
 from casperfpga import utils as fpgautils
 
 from beam import Beam
+from casperfpga.CasperLogHandlers import CasperConsoleHandler
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
-
-LOGGER = logging.getLogger(__name__)
 
 
 class BEngineOperations(object):
@@ -17,9 +16,19 @@ class BEngineOperations(object):
         """
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
-        self.logger = corr_obj.logger
+        # self.logger = corr_obj.logger
         self.beams = {}
         self.beng_per_host = corr_obj.x_per_fpga
+
+        # Now creating separate instances of loggers as needed
+        self.logger = logging.getLogger(__name__)
+        # - Give logger some default config
+        console_handler_name = '{}_BEngOps'.format(corr_obj.descriptor)
+        console_handler = CasperConsoleHandler(name=console_handler_name)
+        self.logger.addHandler(console_handler)
+        self.logger.setLevel(logging.DEBUG)
+        infomsg = 'Successfully created logger for {}'.format(console_handler_name)
+        self.logger.info(infomsg)
 
     def initialise(self):
         """
