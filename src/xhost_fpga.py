@@ -1,13 +1,11 @@
 import logging
 import time
-import casperfpga
 import struct
 
 from host_fpga import FpgaHost
 from host_fpga import FpgaHost
 from casperfpga.transport_skarab import SkarabTransport
-
-LOGGER = logging.getLogger(__name__)
+from casperfpga.CasperLogHandlers import CasperConsoleHandler
 
 
 class FpgaXHost(FpgaHost):
@@ -15,9 +13,23 @@ class FpgaXHost(FpgaHost):
     A Host, that hosts Xengines, that is a CASPER KATCP FPGA.
     """
     def __init__(self, host, index, katcp_port=7147, bitstream=None,
-                 connect=True, config=None):
+                 connect=True, config=None, **kwargs):
         FpgaHost.__init__(self, host=host, katcp_port=katcp_port,
                           bitstream=bitstream, connect=connect, transport=SkarabTransport)
+        try:
+            descriptor = kwargs['descriptor']
+        except KeyError:
+            descriptor = 'InstrumentName'
+
+        logger_name = '{}_xhost-{}-{}'.format(descriptor, str(index), host)
+        self.logger = logging.getLogger(logger_name)
+        console_handler_name = '{}_console'.format(logger_name)
+        console_handler = CasperConsoleHandler(name=console_handler_name)
+        self.logger.addHandler(console_handler)
+        self.logger.setLevel(logging.ERROR)
+        infomsg = 'Successfully created logger for {}'.format(logger_name)
+        self.logger.info(infomsg)
+
         self.config = config
         self.index = index
         self.acc_len = None
@@ -55,7 +67,7 @@ class FpgaXHost(FpgaHost):
 
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port,
-                           config_source):
+                           config_source, **kwargs):
         """
 
         :param hostname: the hostname of this host
@@ -66,7 +78,7 @@ class FpgaXHost(FpgaHost):
         """
         bitstream = config_source['xengine']['bitstream']
         obj = cls(hostname, index, katcp_port=katcp_port, bitstream=bitstream,
-                  connect=True, config=config_source)
+                  connect=True, config=config_source, **kwargs)
         return obj
 
     def _determine_x_per_fpga(self):

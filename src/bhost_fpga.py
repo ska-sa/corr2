@@ -9,16 +9,30 @@ import logging
 import time
 
 from xhost_fpga import FpgaXHost
+from casperfpga.CasperLogHandlers import CasperConsoleHandler
 
 LOGGER = logging.getLogger(__name__)
 
 
 class FpgaBHost(FpgaXHost):
     def __init__(self, host, index, katcp_port=7147, bitstream=None,
-                 connect=True, config=None):
+                 connect=True, config=None, **kwargs):
         # parent constructor
         FpgaXHost.__init__(self, host, index, katcp_port=katcp_port,
-                           bitstream=bitstream, connect=connect, config=config)
+                           bitstream=bitstream, connect=connect, config=config, **kwargs)
+        try:
+            descriptor = kwargs['descriptor']
+        except KeyError:
+            descriptor = 'InstrumentName'
+        logger_name = '{}_bhost-{}-{}'.format(descriptor, str(index), host)
+        self.logger = logging.getLogger(logger_name)
+        console_handler_name = '{}_stream'.format(logger_name)
+        console_handler = CasperConsoleHandler(name=console_handler_name)
+        self.logger.addHandler(console_handler)
+        self.logger.setLevel(logging.ERROR)
+        infomsg = 'Successfully created logger for {}'.format(logger_name)
+        self.logger.info(infomsg)
+
         self.beng_per_host = self.x_per_fpga
 
     # @classmethod

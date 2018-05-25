@@ -33,7 +33,7 @@ from tornado.locks import Event as IOLoopEvent
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
-LOGGER = logging.getLogger(__name__)
+# LOGGER = logging.getLogger(__name__)
 
 
 def _disable_write(*args, **kwargs):
@@ -70,7 +70,7 @@ class FxCorrelator(Instrument):
 
     # @profile
     def __init__(self, descriptor, identifier=-1, config_source=None,
-                 logger=LOGGER):
+                 logger=None):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
@@ -82,7 +82,18 @@ class FxCorrelator(Instrument):
         :return: <nothing>
 
         """
-        self.logger = logger
+        
+        self.descriptor = descriptor.strip().replace(' ', '_').upper()
+        if logger is None:
+            # Create one
+            self.logger = logging.getLogger(descriptor)
+            console_handler_name = '{}'.format(descriptor)
+            console_handler = casperfpga.CasperLogHandlers.CasperConsoleHandler(name=console_handler_name)
+            self.logger.addHandler(console_handler)
+            # All 'Instrument-level' objects will log at level DEBUG
+            self.logger.setLevel(logging.DEBUG)
+        else:
+            self.logger = logger
 
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
@@ -116,6 +127,7 @@ class FxCorrelator(Instrument):
         self.instrument_monitoring_loop_cb = None
         self.f_eng_board_monitoring_dict_prev = {}
 
+        infomsg = 'Successfully created Instrument: {}'.format(descriptor)
 
     # @profile
     def initialise(self, program=True, configure=True,
@@ -387,11 +399,13 @@ class FxCorrelator(Instrument):
         _feng_d = self.configd['fengine']
         _target_class = fhost_fpga.FpgaFHost
         self.fhosts = []
-        for host in _feng_d['hosts'].split(','):
+        
+        fhostlist = _feng_d['hosts'].split(',')
+        for hostindex, host in enumerate(fhostlist):
             host = host.strip()
             try:
-                fpgahost = _target_class.from_config_source(
-                    host, self.katcp_port, config_source=_feng_d)
+                fpgahost = _target_class.from_config_source(host, self.katcp_port,
+                    config_source=_feng_d, host_id=hostindex, descriptor=self.descriptor)
             except Exception as exc:
                 errmsg = 'Could not create fhost %s: %s' % (host, exc.message)
                 self.logger.error(errmsg)
@@ -404,12 +418,12 @@ class FxCorrelator(Instrument):
             _target_class = xhost_fpga.FpgaXHost
         self.xhosts = []
         _xeng_d = self.configd['xengine']
-        hostlist = _xeng_d['hosts'].split(',')
-        for hostindex, host in enumerate(hostlist):
+        xhostlist = _xeng_d['hosts'].split(',')
+        for hostindex, host in enumerate(xhostlist):
             host = host.strip()
             try:
-                fpgahost = _target_class.from_config_source(
-                    host, hostindex, self.katcp_port, self.configd)
+                fpgahost = _target_class.from_config_source(host, hostindex,
+                    self.katcp_port, self.configd, descriptor=self.descriptor)
             except Exception as exc:
                 errmsg = 'Could not create xhost {}: {}'.format(host, exc)
                 self.logger.error(errmsg)

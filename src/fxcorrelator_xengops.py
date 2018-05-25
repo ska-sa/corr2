@@ -10,6 +10,9 @@ from casperfpga import utils as fpgautils
 import data_stream
 import fxcorrelator_speadops as speadops
 
+import logging
+from casperfpga.CasperLogHandlers import CasperConsoleHandler
+
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
@@ -127,10 +130,21 @@ class XEngineOperations(object):
         """
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
-        self.logger = corr_obj.logger
+        # self.logger = corr_obj.logger
         self.data_stream = None
 
         self._board_ids = {}
+
+        # Now creating separate instances of loggers as needed
+        logger_name = '{}_XEngOps'.format(corr_obj.descriptor)
+        self.logger = logging.getLogger(logger_name)
+        # - Give logger some default config
+        stream_handler_name = '{}_stream'.format(corr_obj.descriptor)
+        stream_handler = CasperConsoleHandler(name=stream_handler_name)
+        self.logger.addHandler(stream_handler)
+        self.logger.setLevel(logging.DEBUG)
+        infomsg = 'Successfully created logger for {}'.format(stream_handler_name)
+        self.logger.info(infomsg)
 
     @staticmethod
     def _gberst(hosts, state):
