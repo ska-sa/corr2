@@ -2,7 +2,7 @@ import logging
 import numpy
 from casperfpga import utils as fpgautils
 from beam import Beam
-from casperfpga.CasperLogHandlers import CasperConsoleHandler
+from casperfpga import CasperLogHandlers
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -24,11 +24,14 @@ class BEngineOperations(object):
         self.logger = logging.getLogger(__name__)
         # - Give logger some default config
         console_handler_name = '{}_BEngOps'.format(corr_obj.descriptor)
-        console_handler = CasperConsoleHandler(name=console_handler_name)
-        self.logger.addHandler(console_handler)
+        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
+            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
+            # How are we going to log it anyway!
+            self.logger.error(errmsg)
+
         self.logger.setLevel(logging.DEBUG)
-        infomsg = 'Successfully created logger for {}'.format(console_handler_name)
-        self.logger.info(infomsg)
+        debugmsg = 'Successfully created logger for {}'.format(console_handler_name)
+        self.logger.debug(debugmsg)
 
     def initialise(self):
         """

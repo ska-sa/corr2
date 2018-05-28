@@ -2,12 +2,24 @@ import logging
 import termcolors
 from casperfpga import CasperLogHandlers
 
+'''
+Please note the following:
+1. StreamHandler's in the context of logging refers to a log-handler that handles
+   log messages printed to the screen
+   -> NOT handling streams of data!
+   -> I've since renamed logging StreamHandlers to ConsoleHandlers wherever possible
+      and necessary to avoid confusion
+
+'''
+
+
 # region --- Logger configuration methods ---
 
 LOGGER = logging.getLogger(__name__)
 console_handler = CasperLogHandlers.CasperConsoleHandler(name=__name__)
 LOGGER.addHandler(console_handler)
 LOGGER.setLevel(logging.ERROR)
+
 
 def get_logger_group(logger_dict=None, group_name=None):
     """
@@ -120,6 +132,86 @@ def _add_handler_to_logger(logger, log_handler):
 
     debugmsg = 'Successfully added log_handler to logger-{}'.format(logger.name)
     LOGGER.debug(debugmsg)
+    return True
+
+
+def get_log_handler_by_name(log_handler_name, logger_dict=None):
+    """
+
+    :param log_handler_name:
+    :param logger_dict:
+    :return: log_handler_return - Should be of type logging.Handler (at least parent)
+    """
+
+    # Sanity check on log_handler_name
+    if log_handler_name is None or log_handler_name is '':
+        # Problem
+        errmsg = 'No log-handler name specified'
+        LOGGER.error(errmsg)
+        return False
+
+    for logger_key, logger_value in logger_dict:
+        if type(logger_value) is not logging.Logger:
+            # Don't need it
+            continue
+        else:
+            for handler in logger_value.handlers:
+                # We stop when we find the first instance of this handler
+                if handler.name.find(log_handler_name) >= 0:
+                    # Found it
+                    return handler
+
+
+def create_stream_handler(handler_name):
+    """
+    """
+
+    return True
+
+def create_file_handler(handler_name, filename, file_dir):
+    """
+    Conveniently wrapped function for creating a file-handler for an intended logger(s)
+    :param handler_name:
+    """
+
+    return True
+
+def _remove_handler_from_logger(logger, log_handler_name):
+    """
+    Removes handler from logging entity
+    - Just easier to do it by name, rather than type
+    :return:
+    """
+    # Because we can't act on the list we need to scroll through
+    log_handlers = logger.handlers
+
+    for handler in log_handlers:
+        if handler.name.find(log_handler_name) > 0:
+            # Nice
+            logger.removeHandler(handler)
+
+    return True
+
+
+def remove_all_loggers(logger_dict=None):
+    """
+
+    :param logger_dict: Dictionary of loggers and their corresponding
+                        logging entities
+    :return: Boolean - Success/Fail - True/False
+    """
+
+    if logger_dict is None:
+        logger_dict = logging.Logger.manager.loggerDict
+
+    num_handlers = 0
+    for logger_key, logger_value in logger_dict.items():
+        num_handlers = len(logger_value.handlers)
+        logger_value.handlers = []
+        debugmsg = 'Successfully removed {} Handlers from ' \
+                   'logger-{}'.format(num_handlers, logger_key)
+        LOGGER.debug(debugmsg)
+
     return True
 
 # endregion

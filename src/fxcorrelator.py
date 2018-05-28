@@ -13,7 +13,8 @@ import katcp
 # from memory_profiler import profile
 
 from casperfpga import utils as fpgautils
-import casperfpga
+from casperfpga import skarab_fileops as skfops
+from casperfpga import CasperLogHandlers
 import utils
 import xhost_fpga
 import fhost_fpga
@@ -87,9 +88,13 @@ class FxCorrelator(Instrument):
         if logger is None:
             # Create one
             self.logger = logging.getLogger(descriptor)
-            console_handler_name = '{}'.format(descriptor)
-            console_handler = casperfpga.CasperLogHandlers.CasperConsoleHandler(name=console_handler_name)
-            self.logger.addHandler(console_handler)
+            
+            console_handler_name = '{}_console'.format(descriptor)
+            if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
+                errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(descriptor)
+                # How are we going to log it anyway!
+                self.logger.error(errmsg)
+
             # All 'Instrument-level' objects will log at level DEBUG
             self.logger.setLevel(logging.DEBUG)
         else:
@@ -171,7 +176,7 @@ class FxCorrelator(Instrument):
         xbof = self.xhosts[0].bitstream
         fbof = self.fhosts[0].bitstream
         if program:
-            skfops = casperfpga.skarab_fileops
+            # skfops = casperfpga.skarab_fileops
             # force the new programming method
             skfops.upload_to_ram_progska(fbof, self.fhosts)
             skfops.reboot_skarabs_from_sdram(self.fhosts)

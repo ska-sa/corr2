@@ -2,7 +2,7 @@ import numpy
 import time
 
 from casperfpga import utils as fpgautils
-from casperfpga.CasperLogHandlers import CasperConsoleHandler
+from casperfpga import CasperLogHandlers
 
 from data_stream import SPEADStream, FENGINE_CHANNELISED_DATA, \
     DIGITISER_ADC_SAMPLES
@@ -131,12 +131,15 @@ class FEngineOperations(object):
         logger_name = '{}_FEngOps'.format(corr_obj.descriptor)
         self.logger = logging.getLogger(logger_name)
         # - Give logger some default config
-        console_handler_name = '{}_stream'.format(corr_obj.descriptor)
-        console_handler = CasperConsoleHandler(name=console_handler_name)
-        self.logger.addHandler(console_handler)
+        console_handler_name = '{}_console'.format(corr_obj.descriptor)
+        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
+            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
+            # How are we going to log it anyway!
+            self.logger.error(errmsg)
+
         self.logger.setLevel(logging.DEBUG)
-        infomsg = 'Successfully created logger for {}'.format(console_handler_name)
-        self.logger.info(infomsg)
+        debugmsg = 'Successfully created logger for {}'.format(console_handler_name)
+        self.logger.debug(debugmsg)
         
     def initialise(self):
         """

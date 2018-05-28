@@ -5,7 +5,7 @@ import struct
 from host_fpga import FpgaHost
 from host_fpga import FpgaHost
 from casperfpga.transport_skarab import SkarabTransport
-from casperfpga.CasperLogHandlers import CasperConsoleHandler
+from casperfpga import CasperLogHandlers
 
 
 class FpgaXHost(FpgaHost):
@@ -24,11 +24,14 @@ class FpgaXHost(FpgaHost):
         logger_name = '{}_xhost-{}-{}'.format(descriptor, str(index), host)
         self.logger = logging.getLogger(logger_name)
         console_handler_name = '{}_console'.format(logger_name)
-        console_handler = CasperConsoleHandler(name=console_handler_name)
-        self.logger.addHandler(console_handler)
+        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
+            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
+            # How are we going to log it anyway!
+            self.logger.error(errmsg)
+
         self.logger.setLevel(logging.ERROR)
-        infomsg = 'Successfully created logger for {}'.format(logger_name)
-        self.logger.info(infomsg)
+        debugmsg = 'Successfully created logger for {}'.format(logger_name)
+        self.logger.debug(debugmsg)
 
         self.config = config
         self.index = index

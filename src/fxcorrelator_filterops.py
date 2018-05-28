@@ -7,7 +7,7 @@ import filthost_fpga
 from data_stream import StreamAddress
 
 import logging
-from casperfpga.CasperLogHandlers import CasperConsoleHandler
+from casperfpga import CasperLogHandlers
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -56,12 +56,15 @@ class FilterOperations(object):
         logger_name = '{}_FilterOps'.format(corr_obj.descriptor)
         self.logger = logging.getLogger(logger_name)
         # - Give logger some default config
-        stream_handler_name = '{}_stream'.format(corr_obj.descriptor)
-        stream_handler = CasperConsoleHandler(name=stream_handler_name)
-        self.logger.addHandler(stream_handler)
+        console_handler_name = '{}_console'.format(corr_obj.descriptor)
+        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
+            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
+            # How are we going to log it anyway!
+            self.logger.error(errmsg)
+        
         self.logger.setLevel(logging.DEBUG)
-        infomsg = 'Successfully created logger for {}'.format(logger_name)
-        self.logger.info(infomsg)
+        debugmsg = 'Successfully created logger for {}'.format(logger_name)
+        self.logger.info(debugmsg)
 
     def initialise(self, program=True):
         """

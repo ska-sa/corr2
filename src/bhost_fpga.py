@@ -9,9 +9,7 @@ import logging
 import time
 
 from xhost_fpga import FpgaXHost
-from casperfpga.CasperLogHandlers import CasperConsoleHandler
-
-LOGGER = logging.getLogger(__name__)
+from casperfpga import CasperLogHandlers
 
 
 class FpgaBHost(FpgaXHost):
@@ -24,14 +22,18 @@ class FpgaBHost(FpgaXHost):
             descriptor = kwargs['descriptor']
         except KeyError:
             descriptor = 'InstrumentName'
+
         logger_name = '{}_bhost-{}-{}'.format(descriptor, str(index), host)
         self.logger = logging.getLogger(logger_name)
-        console_handler_name = '{}_stream'.format(logger_name)
-        console_handler = CasperConsoleHandler(name=console_handler_name)
-        self.logger.addHandler(console_handler)
+        console_handler_name = '{}_console'.format(logger_name)
+        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
+            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
+            # How are we going to log it anyway!
+            self.logger.error(errmsg)
+
         self.logger.setLevel(logging.ERROR)
-        infomsg = 'Successfully created logger for {}'.format(logger_name)
-        self.logger.info(infomsg)
+        debugmsg = 'Successfully created logger for {}'.format(logger_name)
+        self.logger.debug(debugmsg)
 
         self.beng_per_host = self.x_per_fpga
 
@@ -51,7 +53,7 @@ class FpgaBHost(FpgaXHost):
         
         self.registers['bf%i_config' % beam.index].write(port=beam.destination.port)
         self.registers['bf%i_ip' % beam.index].write(ip=int(beam.destination.ip_address))
-        LOGGER.debug('%s:%i: Beam %i:%s destination set to %s' % (
+        self.logger.debug('%s:%i: Beam %i:%s destination set to %s' % (
             self.host, self.index, beam.index, beam.name,
             beam.destination))
 
@@ -65,7 +67,7 @@ class FpgaBHost(FpgaXHost):
         for source_index,source_weight in enumerate(weights):
             self.registers.bf_weight.write(weight=source_weight,
                     stream=beam_index, antenna=source_index, load_now='pulse')
-            LOGGER.debug(
+            self.logger.debug(
                     '%s:%i: Beam %i: set antenna(%i) weight(%.5f)'
                     '' % (self.host, self.index, beam_index,
                           source_index, source_weight))
@@ -91,7 +93,7 @@ class FpgaBHost(FpgaXHost):
         """
         reg = self.registers['bf{}_config'.format(beam_index)]
         reg.write(quant_gain=new_gain)
-        LOGGER.debug(
+        self.logger.debug(
                     '%s:%i: Beam %i: set quant_gain(%.5f)' % (
                         self.host, self.index,
                         beam_index, new_gain))
@@ -109,11 +111,11 @@ class FpgaBHost(FpgaXHost):
     def tx_disable(self,beam_index):
         reg = self.registers['bf{}_config'.format(beam_index)]
         reg.write(txen=False)
-        LOGGER.debug('%s:%i: Beam %i: Output disabled' % (
+        self.logger.debug('%s:%i: Beam %i: Output disabled' % (
                         self.host, self.index, beam_index))
 
     def tx_enable(self,beam_index):
         reg = self.registers['bf{}_config'.format(beam_index)]
         reg.write(txen=True)
-        LOGGER.debug('%s:%i: Beam %i: Output enabled' % (
+        self.logger.debug('%s:%i: Beam %i: Output enabled' % (
                         self.host, self.index, beam_index))
