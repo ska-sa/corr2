@@ -758,8 +758,8 @@ if __name__ == '__main__':
         n_accs = c.xeng_accumulation_len * c.accumulation_len
         n_ants = c.n_antennas
         NUM_XENG = n_xeng
-        NUM_BASELINES = len(c.baselines)
-        BASELINES = c.baselines
+        BASELINES = c.xops.get_baseline_ordering()
+        NUM_BASELINES = len(BASELINES)
         LEGEND = args.legend
         output={}
 #        destination=c.get_data_stream('baseline-correlation-products').destination
@@ -860,7 +860,7 @@ if __name__ == '__main__':
     if args.printdata:
         printsumer = PrintConsumer()
 
-    # a quite event to stop the thread if needed
+    # a quit event to stop the thread if needed
     quit_event = threading.Event()
 
     data_port = output['address'].port
