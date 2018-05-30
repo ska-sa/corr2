@@ -34,10 +34,7 @@ def process_list(delay_list, sample_rate_hz):
                 delaytup = process_string(delay)
             else:
                 delaytup = delay
-            converted = prepare_delay_vals(delaytup, sample_rate_hz)
-            to_add = ((converted.delay, converted.delay_delta),
-                      (converted.phase_offset, converted.phase_offset_delta))
-            rv.append(to_add)
+            rv.append(prepare_delay_vals(delaytup, sample_rate_hz))
         except:
             errmsg = 'delay.process_list(): given delay \'%s\' at position %i' \
                      ' is not a valid delay setting' % (delay, ctr)
@@ -54,7 +51,7 @@ def prepare_delay_vals(coefficients, sample_rate):
     :return:
     """
     if len(coefficients) != 2:
-        errmsg = 'Incorrectly supplied coefficient tuple: %s' % coefficients
+        errmsg = 'Incorrectly supplied coefficient tuple: %s. Expecting ((delay,rate),(phase,rate)).' % coefficients
         LOGGER.error(errmsg)
         raise ValueError(errmsg)
     delay_coeff = coefficients[0]
@@ -72,13 +69,13 @@ def prepare_delay_vals(coefficients, sample_rate):
 class Delay(object):
     def __init__(self, delay=0.0, delay_delta=0.0,
                  phase_offset=0.0, phase_offset_delta=0.0,
-                 load_time=None, load_wait=None, load_check=True):
+                 load_mcnt=None, load_wait=None, load_check=True):
         """
         :param delay is in samples
         :param delay_delta is in samples per sample
         :param phase_offset is in fractions of a sample
         :param phase_offset_delta is in samples per sample
-        :param load_time is in samples since epoch
+        :param load_mcnt is in samples since epoch
         :param load_wait is seconds to wait for delay values to load
         :param load_check whether to check if load happened
         """
@@ -86,7 +83,7 @@ class Delay(object):
         self.delay_delta = delay_delta
         self.phase_offset = phase_offset
         self.phase_offset_delta = phase_offset_delta
-        self.load_time = load_time
+        self.load_mcnt = load_mcnt
         self.load_wait = load_wait
         self.load_check = load_check
         self.load_count = -1

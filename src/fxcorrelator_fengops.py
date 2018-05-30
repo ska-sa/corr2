@@ -1,5 +1,7 @@
 import numpy
 import time
+import Queue
+import threading
 
 from casperfpga import utils as fpgautils
 from casperfpga import CasperLogHandlers
@@ -15,6 +17,7 @@ import logging
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
+CHECK_TARGET_FUNC = fpgautils._check_target_func
 
 
 class FengineStream(SPEADStream):
@@ -393,11 +396,60 @@ class FEngineOperations(object):
         self.logger.info('\tdone.')
         return rv, feng_mcnts, feng_times
 
+    def threaded_feng_operation(self, timeout, target_function):
+        """
+        Thread any operation against many FPGA objects
+        :param fpga_list: list of KatcpClientFpga objects
+        :param timeout: how long to wait before timing out
+        :param target_function: a tuple with three parts:
+                                1. reference, the function object that must be
+                                   run - MUST take FPGA object as first argument
+                                2. tuple, the arguments to the function
+                                3. dict, the keyword arguments to the function
+                                e.g. (func_name, (1,2,), {'another_arg': 3})
+        :return: a dictionary of the results, keyed on hostname
+        """
+        target_function = CHECK_TARGET_FUNC(target_function)
+
+        def jobfunc(resultq, feng):
+            rv = target_function[0](feng, *target_function[1], **target_function[2])
+            resultq.put_nowait((feng.input_number, rv))
+
+        num_fengs = len(self.fengines)
+        result_queue = Queue.Queue(maxsize=num_fengs)
+        thread_list = []
+        for feng_ in self.fengines:
+            thread = threading.Thread(target=jobfunc, args=(result_queue, feng_))
+            thread.setDaemon(True)
+            thread.start()
+            thread_list.append(thread)
+        for thread_ in thread_list:
+            thread_.join(timeout)
+            if thread_.isAlive():
+                break
+        returnval = {}
+        hosts_missing = [feng.input_number for feng in self.fengines]
+        while True:
+            try:
+                result = result_queue.get_nowait()
+                returnval[result[0]] = result[1]
+                hosts_missing.pop(hosts_missing.index(result[0]))
+            except Queue.Empty:
+                break
+        if hosts_missing:
+            errmsg = 'Ran \'%s\' on fengines. Did not complete: ' \
+                     '%s.' % (target_function[0].__name__, hosts_missing)
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
+        return returnval
+
     def delay_set_all(self, loadtime, delay_list):
         """
         Set the delays for all inputs in the system
         :param loadtime: the UNIX time at which to effect the changes
-        :param delay_list: a list of ICD strings, one for each input
+        :param delay_list: a list of ICD strings, one for each input. 
+                            A list of strings (delay,rate:phase,rate) or
+                             delay tuples ((delay,rate),(phase,rate))
         :return: an in-order list of fengine delay results
         """
         if loadtime <= 0:
@@ -412,25 +464,30 @@ class FEngineOperations(object):
         if len(delays) != len(self.fengines):
             raise ValueError('Have %i F-engines, received %i delay coefficient '
                              'sets.' % (len(self.fengines), len(delays)))
-        # collect delay coefficient sets and fhosts
-        delays_by_host = {host.host: [] for host in self.hosts}
-        for feng in self.fengines:
-            delays_by_host[feng.host.host].append(delays[feng.input_number])
-        actual_vals = THREADED_FPGA_FUNC(
-            self.corr.fhosts, timeout=0.5,
-            target_function=('delay_set_all', [loadmcnt, delays_by_host], {}))
-        rv = {}
-        for val in actual_vals.values():
-            rv.update(
-                {fengkey: fengvalue for fengkey, fengvalue in val.items()})
-        if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_feng_delays()
-        actual_vals = rv
-        rv = []
-        for feng in self.fengines:
-            rv.append(actual_vals[feng.name])
-        return rv
+        print delays
 
+        self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
+        
+
+#        # collect delay coefficient sets and fhosts
+#        delays_by_host = {host.host: [] for host in self.hosts}
+#        for feng in self.fengines:
+#            delays_by_host[feng.host.host].append(delays[feng.input_number])
+#        actual_vals = THREADED_FPGA_FUNC(
+#            self.corr.fhosts, timeout=0.5,
+#            target_function=('delay_set_all', [loadmcnt, delays_by_host], {}))
+#        rv = {}
+#        for val in actual_vals.values():
+#            rv.update(
+#                {fengkey: fengvalue for fengkey, fengvalue in val.items()})
+#        if self.corr.sensor_manager:
+#            self.corr.sensor_manager.sensors_feng_delays()
+#        actual_vals = rv
+#        rv = []
+#        for feng in self.fengines:
+#            rv.append(actual_vals[feng.name])
+#        return rv
+#
     def delays_set(self, input_name, loadtime=None,
                    delay=None, delay_rate=None,
                    phase=None, phase_rate=None):
