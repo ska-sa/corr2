@@ -83,12 +83,12 @@ class FxCorrelator(Instrument):
         :return: <nothing>
 
         """
-        
+
         self.descriptor = descriptor.strip().replace(' ', '_').upper()
         if logger is None:
             # Create one
             self.logger = logging.getLogger(descriptor)
-            
+
             console_handler_name = '{}_console'.format(descriptor)
             if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
                 errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(descriptor)
@@ -165,8 +165,10 @@ class FxCorrelator(Instrument):
         if 'filter' in self.configd:
             try:
                 self.filtops.initialise(program=program)
-            except Exception as e:
-                raise e
+            except Exception as err:
+                errmsg = 'Failed to initialise filter boards: %s' % str(err)
+                self.logger.error(errmsg)
+                raise RuntimeError(errmsg)
 
         # connect to the other hosts that make up this correlator
         THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=self.timeout,
@@ -404,7 +406,7 @@ class FxCorrelator(Instrument):
         _feng_d = self.configd['fengine']
         _target_class = fhost_fpga.FpgaFHost
         self.fhosts = []
-        
+
         fhostlist = _feng_d['hosts'].split(',')
         for hostindex, host in enumerate(fhostlist):
             host = host.strip()
@@ -412,9 +414,9 @@ class FxCorrelator(Instrument):
                 fpgahost = _target_class.from_config_source(host, self.katcp_port,
                     config_source=_feng_d, host_id=hostindex, descriptor=self.descriptor)
             except Exception as exc:
-                errmsg = 'Could not create fhost %s: %s' % (host, exc.message)
+                errmsg = 'Could not create fhost %s: %s' % (host, str(exc))
                 self.logger.error(errmsg)
-                raise exc
+                raise RuntimeError(errmsg)
             self.fhosts.append(fpgahost)
         # choose class (b-engine inherits x-engine functionality)
         if self.found_beamformer:
@@ -430,7 +432,7 @@ class FxCorrelator(Instrument):
                 fpgahost = _target_class.from_config_source(host, hostindex,
                     self.katcp_port, self.configd, descriptor=self.descriptor)
             except Exception as exc:
-                errmsg = 'Could not create xhost {}: {}'.format(host, exc)
+                errmsg = 'Could not create xhost {}: {}'.format(host, str(exc))
                 self.logger.error(errmsg)
                 raise RuntimeError(errmsg)
             self.xhosts.append(fpgahost)
@@ -438,9 +440,9 @@ class FxCorrelator(Instrument):
         for _fh in self.fhosts:
             for _xh in self.xhosts:
                 if _fh.host == _xh.host:
-                    self.logger.error('Host %s is assigned to '
-                                      'both X- and F-engines' % _fh.host)
-                    raise RuntimeError
+                    errmsg = 'Host %s is assigned to both X- and F-engines' % _fh.host
+                    self.logger.error(errmsg)
+                    raise RuntimeError(errmsg)
 
     def _read_config(self):
         """
