@@ -66,7 +66,11 @@ class Fengine(object):
         except KeyError:
             descriptor = 'InstrumentName'
         
-        logger_name = '{}_feng-{}-{}'.format(descriptor, str(self.feng_id), host)
+        if host is None:
+            logger_name = '{}_feng-{}-{}'.format(descriptor, str(self.feng_id), host)
+        else:
+            logger_name = '{}_feng-{}'.format(descriptor, str(self.feng_id))
+        
         self.logger = logging.getLogger(logger_name)
         console_handler_name = '{}_console'.format(logger_name)
         if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
@@ -74,7 +78,7 @@ class Fengine(object):
             # How are we going to log it anyway!
             self.logger.error(errmsg)
 
-        self.logger.setLevel(logging.ERROR)
+        self.logger.setLevel(logging.INFO)
         debugmsg = 'Successfully created logger for {}'.format(logger_name)
         self.logger.debug(debugmsg)
 
@@ -332,7 +336,8 @@ class FpgaFHost(DigitiserStreamReceiver):
         logger_name = '{}_fhost-{}-{}'.format(descriptor, str(self.fhost_index), host)
         self.logger = logging.getLogger(logger_name)
         console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
+        self.logger, result = CasperLogHandlers.configure_console_logging(self.logger, console_handler_name)
+        if not result:
             errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(descriptor)
             # How are we going to log it anyway!
             self.logger.error(errmsg)

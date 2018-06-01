@@ -95,11 +95,13 @@ class FxCorrelator(Instrument):
                 # How are we going to log it anyway!
                 self.logger.error(errmsg)
 
-            # All 'Instrument-level' objects will log at level DEBUG
-            self.logger.setLevel(logging.DEBUG)
+            
         else:
             self.logger = logger
 
+        # All 'Instrument-level' objects will log at level DEBUG
+        self.logger.setLevel(logging.INFO)
+        
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
         self.xhosts = []

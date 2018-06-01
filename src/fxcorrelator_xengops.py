@@ -139,13 +139,13 @@ class XEngineOperations(object):
         logger_name = '{}_XEngOps'.format(corr_obj.descriptor)
         self.logger = logging.getLogger(logger_name)
         # - Give logger some default config
-        console_handler_name = '{}_console'.format(corr_obj.descriptor)
+        console_handler_name = '{}_console'.format(logger_name)
         if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
             errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
             # How are we going to log it anyway!
             self.logger.error(errmsg)
 
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
         debugmsg = 'Successfully created logger for {}'.format(console_handler_name)
         self.logger.debug(debugmsg)
 

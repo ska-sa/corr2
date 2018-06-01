@@ -29,7 +29,7 @@ class FpgaXHost(FpgaHost):
             # How are we going to log it anyway!
             self.logger.error(errmsg)
 
-        self.logger.setLevel(logging.ERROR)
+        self.logger.setLevel(logging.INFO)
         debugmsg = 'Successfully created logger for {}'.format(logger_name)
         self.logger.debug(debugmsg)
 

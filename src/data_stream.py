@@ -8,7 +8,6 @@ from casperfpga.network import IpAddress
 
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
 
-LOGGER = logging.getLogger(__name__)
 
 DIGITISER_ADC_SAMPLES = 0  # baseband-voltage
 FENGINE_CHANNELISED_DATA = 1  # antenna-channelised-voltage
@@ -138,6 +137,20 @@ class SPEADStream(object):
         :param destination: where is it going?
         :return:
         """
+
+        logger_name = '{}_SPEADStream'.format(name)
+        self.logger = logging.getLogger(logger_name)
+        # - Give logger some default config
+        console_handler_name = '{}_console'.format(logger_name)
+        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
+            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
+            # How are we going to log it anyway!
+            self.logger.error(errmsg)
+
+        self.logger.setLevel(logging.INFO)
+        debugmsg = 'Successfully created logger for {}'.format(console_handler_name)
+        self.logger.debug(debugmsg)
+
         self.name = name
         self.category = category
         self.destination = None
@@ -180,7 +193,7 @@ class SPEADStream(object):
         :return:
         """
         if new_dest is None:
-            LOGGER.warning('%s: stream destination not set' % self.name)
+            self.logger.warning('%s: stream destination not set' % self.name)
             return
         if not hasattr(new_dest, 'ip_address'):
             new_dest = StreamAddress.from_address_string(new_dest)
@@ -198,18 +211,18 @@ class SPEADStream(object):
         :return:
         """
         if (not self.descr_ig) or (not self.destination):
-            LOGGER.debug('%s: descriptors have not been set up for '
+            self.logger.debug('%s: descriptors have not been set up for '
                          'stream yet.' % self.name)
             return
         if (not self.tx_sockets):
-            LOGGER.debug('%s: tx sockets have not been set up for '
+            self.logger.debug('%s: tx sockets have not been set up for '
                          'stream yet.' % self.name)
             return
     
         for dest_ctr in range(self.destination.ip_range):
             self.tx_sockets[dest_ctr].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
 
-        LOGGER.debug('SPEADStream %s: sent descriptors to %i destinations'%(self.name, dest_ctr))
+        self.logger.debug('SPEADStream %s: sent descriptors to %i destinations'%(self.name, dest_ctr))
 
     def tx_enable(self):
         """

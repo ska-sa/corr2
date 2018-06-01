@@ -162,11 +162,30 @@ def get_log_handler_by_name(log_handler_name, logger_dict=None):
                     return handler
 
 
-def create_stream_handler(handler_name):
+def configure_console_log_feng(feng_list, console_handler_name):
     """
+    Packaged function to handle creating Console Handlers for
+    F-Engine loggers
+    :param feng_list: List of Feng objects
+                      - Assumed to already have logging entities
+    :
     """
 
-    return True
+    
+
+
+    raise NotImplementedError
+
+
+def create_console_handler(handler_name, logger_entity=None):
+    """
+    'Wrapper method' to allow the user to create a ConsoleHandler (StreamHandler)
+    to print debug messages to screen
+
+    """
+
+
+    raise NotImplementedError
 
 def create_file_handler(handler_name, filename, file_dir):
     """
@@ -174,7 +193,7 @@ def create_file_handler(handler_name, filename, file_dir):
     :param handler_name:
     """
 
-    return True
+    raise NotImplementedError
 
 def _remove_handler_from_logger(logger, log_handler_name):
     """
