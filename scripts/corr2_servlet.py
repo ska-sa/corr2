@@ -392,33 +392,6 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(None).values()[0]
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
-    @request(Str(), Float(default=-1.0), Str(default=''))
-    @return_reply(Str())
-    def request_delay_input(self, sock, input_name, loadtime, delay_string):
-        """
-        Set delay for an input on the instrument.
-        :param sock:
-        :param input_name: the name of the source for which to set delays
-        :param loadtime: the load time, in seconds
-        :param delay_string: the coefficients, a string, described in ICD.
-        :return:
-        """
-        if input_name.strip() == '':
-            return self._log_excep(None, 'No source name given.')
-        try:
-            if loadtime > -1:
-                import corr2.delay as delayops
-                sample_rate_hz = self.instrument.get_scale_factor()
-                delay = delayops.process_list([delay_string], sample_rate_hz)
-                delay = delay[0]
-                actual = self.instrument.fops.delays_set(
-                    input_name, loadtime, delay[0][0], delay[0][1],
-                    delay[1][0], delay[1][1])
-            else:
-                actual = self.instrument.fops.delays_get(input_name)
-            return 'ok', str(actual)
-        except Exception as ex:
-            return self._log_excep(ex, 'Failed setting delays.')
 
     @request(Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -431,12 +404,19 @@ class Corr2Server(katcp.DeviceServer):
             described in ICD.
         :return:
         """
-        try:
-            actual = self.instrument.fops.delay_set_all(loadtime, delay_strings)
-            rv = [str(val) for val in actual]
-            return tuple(['ok'] + rv)
-        except Exception as ex:
-            return self._log_excep(ex, 'Failed setting delays.')
+        if loadtime>0:
+            try:
+                self.instrument.fops.delay_set_all(loadtime, delay_strings)
+                return 'ok'
+            except Exception as ex:
+                return self._log_excep(ex, 'Failed setting delays.')
+        else:
+            try:
+                av=self.instrument.fops.delays_get_all()
+                return tuple(['ok']+av)
+            except Exception as ex:
+                return self._log_excep(ex, 'Failed getting delays.')
+
 
     @request(Float(default=-1.0))
     @return_reply(Float())

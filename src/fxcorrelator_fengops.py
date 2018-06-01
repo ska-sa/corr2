@@ -464,7 +464,6 @@ class FEngineOperations(object):
         if len(delays) != len(self.fengines):
             raise ValueError('Have %i F-engines, received %i delay coefficient '
                              'sets.' % (len(self.fengines), len(delays)))
-        print delays
 
         self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
         
@@ -488,51 +487,26 @@ class FEngineOperations(object):
 #            rv.append(actual_vals[feng.name])
 #        return rv
 #
-    def delays_set(self, input_name, loadtime=None,
-                   delay=None, delay_rate=None,
-                   phase=None, phase_rate=None):
-        """
-        Set the delay for a given input.
-        :param input_name: the name of the input to which we should
-            apply the delays
-        :param loadtime: the UNIX time to effect the changes
-        :param delay:
-        :param delay_rate:
-        :param phase:
-        :param phase_rate:
-        :return:
-        """
-        fengine = self.get_fengine(input_name)
-        if loadtime is None:
-            loadtime = time.time() + 25
-            self.logger.debug('input %s delay setting: no loadtime given, '
-                              'setting to 25s in the future.' % input_name)
-        if loadtime > 0:
-            loadmcnt = self._delays_check_loadtime(loadtime)
-            fengine.delay_set(loadmcnt, delay, delay_rate, phase, phase_rate)
-            if self.corr.sensor_manager:
-                self.corr.sensor_manager.sensors_feng_delays()
-        return fengine.delay_get()
 
-    def delays_get(self, input_name=None):
-        """
-        Get the delays for a given source name or index.
-        :param input_name: a source name or index. If None, get all the
-            fengine delay data.
-        :return:
-        """
-        if input_name is None:
-            actual_vals = THREADED_FPGA_FUNC(
-                self.corr.fhosts, timeout=0.5,
-                target_function=('delays_get', [], {}))
-            rv = {}
-            for val in actual_vals.values():
-                rv.update(
-                    {fengkey: fengvalue for fengkey, fengvalue in val.items()})
-            return rv
-        feng = self.get_fengine(input_name)
-        return feng.delay_get()
-
+#    def delays_get(self, input_name=None):
+#        """
+#        Get the delays for a given source name or index.
+#        :param input_name: a source name or index. If None, get all the
+#            fengine delay data.
+#        :return:
+#        """
+#        if input_name is None:
+#            actual_vals = THREADED_FPGA_FUNC(
+#                self.corr.fhosts, timeout=0.5,
+#                target_function=('delays_get', [], {}))
+#            rv = {}
+#            for val in actual_vals.values():
+#                rv.update(
+#                    {fengkey: fengvalue for fengkey, fengvalue in val.items()})
+#            return rv
+#        feng = self.get_fengine(input_name)
+#        return feng.delay_get()
+#
     def _delays_check_loadtime(self, loadtime):
         """
         Check a given delay load time.
