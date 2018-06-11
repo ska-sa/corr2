@@ -144,7 +144,8 @@ class SPEADStream(object):
         console_handler_name = '{}_console'.format(logger_name)
         if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
             errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            raise RuntimeError(errmsg)
+            self.logger.error(errmsg)
+            # raise RuntimeError(errmsg)
         self.logger.setLevel(logging.INFO)
         self.logger.debug('Successfully created logger for {}'.format(console_handler_name))
 

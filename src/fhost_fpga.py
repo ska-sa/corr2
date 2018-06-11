@@ -338,7 +338,8 @@ class FpgaFHost(DigitiserStreamReceiver):
         console_handler_name = '{}_console'.format(logger_name)
         if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
             errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(descriptor)
-            raise RuntimeError(errmsg)
+            self.logger.error(errmsg)
+            # raise RuntimeError(errmsg)
         self.logger.setLevel(logging.INFO)
         debugmsg = 'Successfully created logger for {}'.format(logger_name)
         self.logger.debug(debugmsg)
