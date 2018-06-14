@@ -471,8 +471,6 @@ class FxCorrelator(Instrument):
         # do the bitstreams exist?
         self._check_bitstreams()
 
-        # TODO: Load config values from the bitstream meta
-        # information - f per fpga, x per fpga, etc
         _fxcorr_d = self.configd['FxCorrelator']
         self.sensor_poll_time = int(_fxcorr_d['sensor_poll_time'])
         self.katcp_port = int(_fxcorr_d['katcp_port'])
@@ -510,11 +508,8 @@ class FxCorrelator(Instrument):
         self.x_per_fpga = int(_xeng_d['x_per_fpga'])
         self.accumulation_len = int(_xeng_d['accumulation_len'])
         self.xeng_accumulation_len = int(_xeng_d['xeng_accumulation_len'])
-
-        # TODO - get this from the running x-engines?
         self.xeng_outbits = int(_xeng_d['xeng_outbits'])
 
-        # TODO - get this from the config file
         # check if beamformer exists with x-engines
         self.found_beamformer = False
         if 'beam0' in self.configd.keys():

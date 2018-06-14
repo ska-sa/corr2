@@ -69,22 +69,21 @@ def prepare_delay_vals(coefficients, sample_rate):
 class Delay(object):
     def __init__(self, delay=0.0, delay_delta=0.0,
                  phase_offset=0.0, phase_offset_delta=0.0,
-                 load_mcnt=None, load_count=-1, load_check=False):
+                 load_mcnt=None, load_count=-1, last_load_success=True):
         """
         :param delay is in samples
         :param delay_delta is in samples per sample
         :param phase_offset is in fractions of a sample
         :param phase_offset_delta is in samples per sample
         :param load_mcnt is in samples since epoch
-        :param load_wait is seconds to wait for delay values to load
-        :param load_check whether to check if load happened
+        :param last_load_success: boolean, did the last delay load succeed?
         """
         self.delay = delay
         self.delay_delta = delay_delta
         self.phase_offset = phase_offset
         self.phase_offset_delta = phase_offset_delta
         self.load_mcnt = load_mcnt
-        self.load_check = load_check
+        self.last_load_success = last_load_success
         self.load_count = load_count
         self.error = Event()
 

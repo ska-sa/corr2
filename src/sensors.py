@@ -562,6 +562,12 @@ class Corr2SensorManager(SensorManager):
                     Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
                     'Delays for this input are functioning correctly.')
                 if feng.last_delay is not None:
+#TODO: fix delay scaling of last_delay object:
+#        # horrible, but change units of stored delays:
+#        self.last_delay.delay /= self.host.rx_data_sample_rate_hz
+#        self.last_delay.phase_offset *= numpy.pi
+#        self.last_delay.phase_offset_delta *= (numpy.pi * self.host.rx_data_sample_rate_hz)
+
                     _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
                         feng.last_delay.load_time,
                         feng.last_delay.delay,
