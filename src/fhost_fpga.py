@@ -10,6 +10,10 @@ from utils import parse_slx_params
 from digitiser_receiver import DigitiserStreamReceiver
 from casperfpga import CasperLogHandlers
 
+#TODO: move snapshots from fhost obj to feng obj?
+#   -> not sensible while trig_time registers are shared for adc snapshots.    
+
+
 
 class InputNotFoundError(ValueError):
     pass
@@ -85,9 +89,9 @@ class Fengine(object):
         self.input = input_stream
         self.host = host
         self.offset = offset
-        self.eq_poly = None
         self.eq_bram_name = 'eq%i' % offset
         self.last_delay = None
+        self.last_eq = None
 
     @property
     def name(self):
@@ -117,22 +121,27 @@ class Fengine(object):
         This function will also update this feng object's self.last_delay, but note that the units are different.
         :return: nothing!
         """
-
-        # set up the delays
-        act_delay = self._delay_write_delay(delay_obj.delay)
-        act_delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
-        act_phase, act_phase_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset_delta)
-
-        # arm the timed load latches
-        cd_tl_name = 'tl_cd%i' % self.offset
-        self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
-
-        # update the stored value
-        self.last_delay = delayops.Delay(act_delay,act_delay_delta,act_phase,
-                            act_phase_delta,load_mcnt=delay_obj.load_mcnt)
+        rv=True
+        # set up the delays and update the stored values
+        self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
+        self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
+        self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset_delta)
+        # horrible, but change units of stored delays:
         self.last_delay.delay /= self.host.rx_data_sample_rate_hz
         self.last_delay.phase_offset *= numpy.pi
         self.last_delay.phase_offset_delta *= (numpy.pi * self.host.rx_data_sample_rate_hz)
+        # arm the timed load latches
+        cd_tl_name = 'tl_cd%i' % self.offset
+        load_count=self.host.registers['%s_status'%cd_tl_name].read()['load_count']
+        if load_count == self.last_delay.load_count+1:
+            self.last_delay.load_check=True
+            self.logger.debug('Last delay loaded successfully.')
+        else:
+            self.logger.error('Failed to load last delay model; load_cnt did not increment by one!')
+            self.last_delay.load_check=False
+        self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
+        self.last_delay.load_count = load_count
+        return self.last_delay.load_check
 
     def _arm_timed_latch(self, name, mcnt=None):
         """
@@ -156,24 +165,24 @@ class Fengine(object):
             control0_reg.write_int((1<<ao)+(load_time_msw))
             control0_reg.write_int((0<<ao)+(load_time_msw))
 
-    def delay_get(self):
-        """
-        Store in local variables (and return) the values that were 
-        written into the various FPGA load registers.
-        :return:
-        """
-#TODO fix this function!        
-#TODO: Only return useful values if they actually loaded!
-        
-        bitshift = delay_get_bitshift()
-        delay_reg = self.host.registers['delay%i' % self.offset]
-        delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
-        phase_reg = self.host.registers['phase%i' % self.offset]
-        act_delay = delay_reg.read()['data']['initial']
-        act_delay_delta = delay_delta_reg.read()['data']['delta'] / bitshift
-        act_phase_offset = phase_reg.read()['data']['initial']
-        act_phase_offset_delta = phase_reg.read()['data']['delta'] / bitshift
-
+##TODO fix this function!        
+##TODO: Only return useful values if they actually loaded?
+#    def delay_get(self):
+#        """
+#        Store in local variables (and return) the values that were 
+#        written into the various FPGA load registers.
+#        :return:
+#        """
+#        
+#        bitshift = delay_get_bitshift()
+#        delay_reg = self.host.registers['delay%i' % self.offset]
+#        delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
+#        phase_reg = self.host.registers['phase%i' % self.offset]
+#        act_delay = delay_reg.read()['data']['initial']
+#        act_delay_delta = delay_delta_reg.read()['data']['delta'] / bitshift
+#        act_phase_offset = phase_reg.read()['data']['initial']
+#        act_phase_offset_delta = phase_reg.read()['data']['delta'] / bitshift
+#
     def _delay_write_delay(self, delay):
         """
         delay is in samples.
@@ -302,13 +311,54 @@ class Fengine(object):
         phase_reg.write_int(prep_int)
         return act_value_initial,act_value_delta
 
+    def eq_get(self):
+        """
+        Read a given EQ BRAM.
+        :return: a list of the complex EQ values from RAM
+        """
+        # eq vals are packed as 32-bit complex (16 real, 16 imag)
+        eqvals = self.host.read(self.eq_bram_name, self.host.n_chans*4)
+        eqvals = struct.unpack('>%ih' % (self.host.n_chans*2), eqvals)
+        eqcomplex = []
+        for ctr in range(0, len(eqvals), 2):
+            eqcomplex.append(eqvals[ctr] + (1j * eqvals[ctr+1]))
+        self.last_eq=eqcomplex
+        return self.last_eq
+
+    def eq_set(self, eq_poly=None):
+        """
+        Write a given complex eq to the given SBRAM.
+        WARN: hardcoded for 16b values!
+
+        :param eq_poly: a polynomial (or list of float values) to write to bram.
+        :return:
+        """
+        if len(eq_poly) == 1:
+            # single complex
+            creal = self.host.n_chans * [int(eq_poly[0].real)]
+            cimag = self.host.n_chans * [int(eq_poly[0].imag)]
+        elif len(eq_poly) == self.host.n_chans:
+            # list - one for each channel
+            creal = [num.real for num in eq_poly]
+            cimag = [num.imag for num in eq_poly]
+        else:
+            # polynomial
+            raise NotImplementedError('Polynomials are not yet complete.')
+        coeffs = (self.n_chans * 2) * [0]
+        coeffs[0::2] = creal
+        coeffs[1::2] = cimag
+        ss = struct.pack('>%ih' % (self.host.n_chans * 2), *coeffs)
+        self.host.write(self.eq_bram_name, ss, 0)
+        self.logger.debug('Updated EQ.')
+        self.last_eq=[complex(creal[i],cimag[i]) for i in range(len(creal))]
+        return self.last_eq
+
     def __repr__(self):
         return self.__str__()
 
     def __str__(self):
-        return 'Fengine @ input(%s:%i:%i) @ %s -> %s' % (
-            self.name, self.input_number, self.offset, self.host,
-            self.input)
+        return "%s: Fengine %i on %s offset %i, with input %s." % (
+            self.name, self.input_number, self.host, self.offset,self.input)
 
 
 class FpgaFHost(DigitiserStreamReceiver):
@@ -413,75 +463,6 @@ class FpgaFHost(DigitiserStreamReceiver):
         raise InputNotFoundError('{host}: Fengine {feng} not found on this '
                                  'host.'.format(host=self.host, feng=feng_name))
 
-    def read_eq(self, input_name=None, eq_bram=None):
-        """
-        Read a given EQ BRAM.
-        :param input_name: the input name
-        :param eq_bram: the name of the EQ BRAM to read
-        :return: a list of the complex EQ values from RAM
-        """
-        if eq_bram is None and input_name is None:
-            raise RuntimeError('Cannot have both tuple and name None')
-        if input_name is not None:
-            eq_bram = self.get_fengine(input_name).eq_bram_name
-        # eq vals are packed as 32-bit complex (16 real, 16 imag)
-        eqvals = self.read(eq_bram, self.n_chans*4)
-        eqvals = struct.unpack('>%ih' % (self.n_chans*2), eqvals)
-        eqcomplex = []
-        for ctr in range(0, len(eqvals), 2):
-            eqcomplex.append(eqvals[ctr] + (1j * eqvals[ctr+1]))
-        return eqcomplex
-
-    def write_eq_all(self):
-        """
-        Write the EQ variables to the device SBRAMs
-        :return:
-        """
-        for feng in self.fengines:
-            self.logger.debug('%s: writing EQ %s' % (self.host, feng.name))
-            self.write_eq(input_name=feng.name)
-
-    def write_eq(self, input_name=None, eq_tuple=None):
-        """
-        Write a given complex eq to the given SBRAM.
-
-        Specify either eq_tuple, a combination of sbram_name and value(s),
-        OR input_name, but not both. If input_name is specified, the
-        sbram_name and eq value(s) are read from the inputs.
-
-        :param input_name: the name of the input that has the EQ to write
-        :param eq_tuple: a tuple of an integer, complex number or list or
-        integers or complex numbers and a sbram name
-        :return:
-        """
-        if eq_tuple is None and input_name is None:
-            raise RuntimeError('Cannot have both tuple and name None')
-        if input_name is not None:
-            feng = self.get_fengine(input_name)
-            eq_bram = feng.eq_bram_name
-            eq_poly = feng.eq_poly
-        else:
-            eq_poly = eq_tuple[0]
-            eq_bram = eq_tuple[1]
-        if len(eq_poly) == 1:
-            # single complex
-            creal = self.n_chans * [int(eq_poly[0].real)]
-            cimag = self.n_chans * [int(eq_poly[0].imag)]
-        elif len(eq_poly) == self.n_chans:
-            # list - one for each channel
-            creal = [num.real for num in eq_poly]
-            cimag = [num.imag for num in eq_poly]
-        else:
-            # polynomial
-            raise NotImplementedError('Polynomials are not yet complete.')
-        coeffs = (self.n_chans * 2) * [0]
-        coeffs[0::2] = creal
-        coeffs[1::2] = cimag
-        ss = struct.pack('>%ih' % (self.n_chans * 2), *coeffs)
-        self.write(eq_bram, ss, 0)
-        self.logger.debug('%s: wrote EQ to sbram %s' % (self.host, eq_bram))
-        return len(ss)
-
 
     def set_fft_shift(self, shift_schedule=None, issue_meta=True):
         """
@@ -522,6 +503,8 @@ class FpgaFHost(DigitiserStreamReceiver):
         snapshot data.
         :return:
         """
+#TODO: grab multiple snapshots to assemble a full spectrum, if needed.
+#TODO: only grab as much data as needed to assemble one spectrum.
         feng = self.get_fengine(input_name)
         if feng.offset == 0:
             snapshot = self.snapshots.snap_quant0_ss
@@ -535,35 +518,6 @@ class FpgaFHost(DigitiserStreamReceiver):
             compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
             compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
         return compl
-
-    def get_pfb_snapshot(self, pol=0):
-        """
-
-        :param pol:
-        :return:
-        """
-        # select the pol
-        self.registers.control.write(snappfb_dsel=pol)
-
-        # arm the snaps
-        self.snapshots.snappfb_0_ss.arm()
-        self.snapshots.snappfb_1_ss.arm()
-
-        # allow them to trigger
-        self.registers.control.write(snappfb_arm='pulse')
-
-        # read the data
-        r0_to_r3 = self.snapshots.snappfb_0_ss.read(arm=False)['data']
-        i3 = self.snapshots.snappfb_1_ss.read(arm=False)['data']
-
-        # reorder the data
-        p_data = []
-        for ctr in range(0, len(i3['i3'])):
-            p_data.append(complex(r0_to_r3['r0'][ctr], r0_to_r3['i0'][ctr]))
-            p_data.append(complex(r0_to_r3['r1'][ctr], r0_to_r3['i1'][ctr]))
-            p_data.append(complex(r0_to_r3['r2'][ctr], r0_to_r3['i2'][ctr]))
-            p_data.append(complex(r0_to_r3['r3'][ctr], i3['i3'][ctr]))
-        return p_data
 
     def tx_disable(self):
         self.registers.control.write(gbe_txen=False)
@@ -590,33 +544,12 @@ class FpgaFHost(DigitiserStreamReceiver):
             rv.update(self.registers['hmc_ct_status%i' %i].read()['data'])
         return rv
         
-        #rv = self.registers.ct_status0.read()['data']
-        #for ctr in range(1, 7):
-        #    try:
-        #        rv.update(self.registers['ct_status%i' % ctr].read()['data'])
-        #    except (AttributeError, KeyError):
-        #        pass
-        #try:
-        #    reg = self.registers.ct_out_dv_rate
-        #    rv['out_dv_rate'] = reg.read()['data']['reg']
-        #    reg = self.registers.ct_in_dv_rate
-        #    rv['in_dv_rate'] = reg.read()['data']['reg']
-        #except (AttributeError, KeyError):
-        #    pass
-        #try:
-
-        #    rv.update(self.registers.ct_dv_err.read()['data'])
-        #except (AttributeError, KeyError):
-        #    pass
-        #return rv
-
     def get_pfb_status(self):
         """
         Returns the pfb counters on f-eng
         :return: dict
         """
         return self.registers.pfb_status.read()['data']
-
 
     def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10):
         """
@@ -638,14 +571,12 @@ class FpgaFHost(DigitiserStreamReceiver):
         else:
             self.snapshots.snap_adc0_ss.arm(man_trig=True)
             self.snapshots.snap_adc1_ss.arm(man_trig=True)
-
         d0 = self.snapshots.snap_adc0_ss.read(arm=False, timeout=timeout)
         d1 = self.snapshots.snap_adc1_ss.read(arm=False, timeout=timeout)
         time48_0 = d0['extra_value']['timestamp']
         time48_1 = d1['extra_value']['timestamp']
         d = d0['data']
         d.update(d1['data'])
-
         # pack the data into simple lists
         rvp0 = []
         rvp1 = []
@@ -659,7 +590,6 @@ class FpgaFHost(DigitiserStreamReceiver):
             return rv['p%i' % fengine.offset]
         else:
             return rv
-
 
     def get_pack_status(self):
         """
@@ -689,12 +619,13 @@ class FpgaFHost(DigitiserStreamReceiver):
             rv.update(self.registers.reorder_status1.read()['data'])
         return rv
 
-    def _skarab_subscribe_to_multicast(self):
+    def subscribe_to_multicast(self):
         """
-
-        :return:
+        Subscribe a skarab to its multicast input addresses.
+        Assumes first 40G interface on SKARAB. 
+        :return: 
         """
-        logstr = ''
+        gbe0_name = self.gbes.names()[0]
         first_ip = self.fengines[0].input.destination.ip_address
         ip_str = str(first_ip)
         ip_range = 0
@@ -707,192 +638,6 @@ class FpgaFHost(DigitiserStreamReceiver):
             ip_range += this_ip.ip_range
         gbename = self.gbes.names()[0]
         gbe = self.gbes[gbename]
-        logstr += ' %s(%s+%i)' % (gbe.name, ip_str, ip_range - 1)
+        logstr += 'Subscribing %s to (%s+%i)' % (gbe.name, ip_str, ip_range - 1)
         gbe.multicast_receive(ip_str, ip_range)
-        return logstr
-
-    def _roach2_subscribe_to_multicast(self, f_per_fpga):
-        """
-
-        :param f_per_fpga:
-        :return:
-        """
-        logstr = ''
-        gbe_ctr = 0
-        feng_ctr = 0
-        for feng in self.fengines:
-            input_addr = feng.input.destination
-            if not input_addr.is_multicast():
-                logstr += ' feng%i[source address %s is not ' \
-                          'multicast?]' % (feng_ctr, input_addr.ip_address)
-                continue
-            rxaddr = str(input_addr.ip_address)
-            rxaddr_bits = rxaddr.split('.')
-            rxaddr_base = int(rxaddr_bits[3])
-            rxaddr_prefix = '%s.%s.%s.' % (
-                rxaddr_bits[0], rxaddr_bits[1], rxaddr_bits[2])
-            if (len(self.gbes) / f_per_fpga) != input_addr.ip_range:
-                raise RuntimeError(
-                    '10Gbe ports (%d) do not match sources IPs (%d)' %
-                    (len(self.gbes), input_addr.ip_range))
-            logstr += ' feng%i[' % feng_ctr
-            for ctr in range(0, input_addr.ip_range):
-                gbename = self.gbes.names()[gbe_ctr]
-                gbe = self.gbes[gbename]
-                rxaddress = '%s%d' % (rxaddr_prefix, rxaddr_base + ctr)
-                logstr += ' %s(%s)' % (gbe.name, rxaddress)
-                gbe.multicast_receive(rxaddress, 0)
-                gbe_ctr += 1
-            logstr += ']'
-            feng_ctr += 1
-        return logstr
-
-    def subscribe_to_multicast(self, f_per_fpga):
-        """
-        
-        :return: 
-        """
-        logstr = '\t%s:' % self.host
-        gbe0_name = self.gbes.names()[0]
-        if self.gbes[gbe0_name].block_info['tag'] == 'xps:forty_gbe':
-            logstr += self._skarab_subscribe_to_multicast()
-        else:
-            logstr += self._roach2_subscribe_to_multicast(f_per_fpga)
         self.logger.info(logstr)
-
-'''
-    def _get_fengine_fpga_config(self):
-
-        # constants for accessing polarisation specific registers 'x' even, 'y' odd
-        self.pol0_offset =  '%s' % (str(self.id*2))
-        self.pol1_offset =  '%s' % (str(self.id*2+1))
-
-        # default fft shift schedule
-        self.config['fft_shift']                        = self.config_portal.get_int([ '%s '%self.descriptor, 'fft_shift'])
-
-        # output data resolution after requantisation
-        self.config['n_bits_output']                    = self.config_portal.get_int([ '%s '%self.descriptor, 'n_bits_output'])
-        self.config['bin_pt_output']                    = self.config_portal.get_int([ '%s '%self.descriptor, 'bin_pt_output'])
-
-        # equalisation (only necessary in FPGA based fengines)
-        self.config['equalisation'] = {}
-        # TODO this may not be constant across fengines (?)
-        self.config['equalisation']['decimation']       = self.config_portal.get_int(['equalisation', 'decimation'])
-        # TODO what is this?
-        self.config['equalisation']['tolerance']        = self.config_portal.get_float(['equalisation', 'tolerance'])
-        # coeffs
-        self.config['equalisation']['n_bytes_coeffs']   = self.config_portal.get_int(['equalisation', 'n_bytes_coeffs'])
-        self.config['equalisation']['bin_pt_coeffs']    = self.config_portal.get_int(['equalisation', 'bin_pt_coeffs'])
-        # default equalisation polynomials for polarisations
-        self.config['equalisation']['poly0']            = self.config_portal.get_int_list([ '%s '%self.descriptor, 'poly0'])
-        self.config['equalisation']['poly1']            = self.config_portal.get_int_list([ '%s '%self.descriptor, 'poly1'])
-
-    def __getattribute__(self, name):
-        """Overload __getattribute__ to make shortcuts for getting object data.
-        """
-
-        # fft_shift is same for all fengine_fpgas of this type on device
-        # (overload in child class if this changes)
-        if name == 'fft_shift':
-            return self.host.device_by_name( '%sfft_shift' % self.tag)
-        # we can't access Shared BRAMs in the same way as we access registers
-        # at the moment, so we access the name and use read/write
-        elif name == 'eq0_name':
-            return  '%seq  %s' %' (self.tag, self.pol0_offset)
-        elif name == 'eq1_name':
-            return  '%seq  %s' %' (self.tag, self.pol1_offset)
-        # fengines transmit to multiple xengines. Each xengine processes a continuous band of
-        # frequencies with the lowest numbered band from all antennas being processed by the first xengine
-        # and so on. The xengines have IP addresses starting a txip_base and increasing linearly. Some xengines
-        # may share IP addresses
-        elif name == 'txip_base':
-            return self.host.device_by_name( '%stxip_base  %s' %' (self.tag, self.offset))
-        elif name == 'txport':
-            return self.host.device_by_name( '%stxport  %s' %' (self.tag, self.offset))
-        # two polarisations
-        elif name == 'snap_adc0':
-            return self.host.device_by_name( '%ssnap_adc  %s_ss' % (self.tag, self.pol0_offset))
-        elif name == 'snap_adc1':
-            return self.host.device_by_name( '%ssnap_adc  %s_ss' % (self.tag, self.pol1_offset))
-        elif name == 'snap_quant0':
-            return self.host.device_by_name( '%sadc_quant  %s_ss' % (self.tag, self.pol0_offset))
-        elif name == 'snap_quant1':
-            return self.host.device_by_name( '%sadc_quant  %s_ss' % (self.tag, self.pol1_offset))
-
-        # if attribute name not here try parent class
-        return EngineFpga.__getattribute__(self, name)
-
-    ##############################################
-    # Equalisation before re-quantisation stuff  #
-    ##############################################
-
-    def get_equalisation(self, pol_index):
-        """ Get current equalisation values applied pre-quantisation
-        """
-
-        reg_name = getattr(self, 'eq  %s_name' % pol_index)
-        n_chans = self.config['n_chans']
-        decimation = self.config['equalisation']['decimation']
-        n_coeffs = n_chans/decimation * 2
-
-        n_bytes = self.config['equalisation']['n_bytes_coeffs']
-        bin_pt = self.config['equalisation']['bin_pt_coeffs']
-
-        #read raw bytes
-        # we cant access brams like registers, so use old style read
-        coeffs_raw = self.host.read(reg_name, n_coeffs*n_bytes)
-
-        coeffs = self.str2float(coeffs_raw, n_bytes*8, bin_pt)
-
-        #pad coeffs out by decimation factor
-        coeffs_padded = numpy.reshape(numpy.tile(coeffs, [decimation, 1]), [1, n_chans], 'F')
-
-        return coeffs_padded[0]
-
-    def get_default_equalisation(self, pol_index):
-        """ Get default equalisation settings
-        """
-
-        decimation = self.config['equalisation']['decimation']
-        n_chans = self.config['n_chans']
-        n_coeffs = n_chans/decimation
-
-        poly = self.config['equalisation']['poly  %s' %' pol_index]
-        eq_coeffs = numpy.polyval(poly, range(n_chans))[decimation/2::decimation]
-        eq_coeffs = numpy.array(eq_coeffs, dtype=complex)
-
-        if len(eq_coeffs) != n_coeffs:
-            log_runtime_error(self.logger, "Something's wrong. I have %i eq coefficients when I should have %i."  % (len(eq_coeffs), n_coeffs))
-        return eq_coeffs
-
-    def set_equalisation(self, pol_index, init_coeffs=None, init_poly=None, issue_spead=True):
-        """ Set equalisation values to be applied pre-requantisation
-        """
-
-        reg_name = getattr(self, 'eq  %s_name' % pol_index)
-        n_chans = self.config['n_chans']
-        decimation = self.config['equalisation']['decimation']
-        n_coeffs = n_chans / decimation
-
-        if init_coeffs is None and init_poly is None:
-            coeffs = self.get_default_equalisation(pol_index)
-        elif len(init_coeffs) == n_coeffs:
-            coeffs = init_coeffs
-        elif len(init_coeffs) == n_chans:
-            coeffs = init_coeffs[0::decimation]
-            self.logger.warn("You specified %i EQ coefficients but your system only supports %i actual values. Only writing every %ith value." % (n_chans ,n_coeffs, decimation))
-        elif len(init_coeffs) > 0:
-            log_runtime_error(self.logger, 'You specified %i coefficients, but there are %i EQ coefficients required for this engine' % (len(init_coeffs), n_coeffs))
-        else:
-            coeffs = numpy.polyval(init_poly, range(n_chans))[decimation/2::decimation]
-            coeffs = numpy.array(coeffs, dtype=complex)
-
-        n_bytes = self.config['equalisation']['n_bytes_coeffs']
-        bin_pt = self.config['equalisation']['bin_pt_coeffs']
-
-        coeffs_str = self.float2str(coeffs, n_bytes*8, bin_pt)
-
-        # finally write to the bram
-        self.host.write(reg_name, coeffs_str)
-
-'''

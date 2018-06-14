@@ -404,7 +404,7 @@ class FEngineOperations(object):
                                 2. tuple, the arguments to the function
                                 3. dict, the keyword arguments to the function
                                 e.g. (func_name, (1,2,), {'another_arg': 3})
-        :return: a dictionary of the results, keyed on hostname
+        :return: a dictionary of the results, keyed on feng index
         """
         target_function = CHECK_TARGET_FUNC(target_function)
 
@@ -440,6 +440,26 @@ class FEngineOperations(object):
             raise RuntimeError(errmsg)
         return returnval
 
+    def delay_set(self, input_name, loadtime=None, delay=0, delay_delta=0, phase=0, phase_delta=0):
+        """
+        Set the delay and phase coefficients for a single input.
+        :param loadtime: the UNIX time at which to effect the changes. Default: immediately.
+        :param delay: delay in seconds
+        :param delay_delta: delay change in seconds per second
+        :param phase: phase offset in radians
+        :param phase_delta: phase rate of change in radians/second.
+        :return: True/False 
+        """
+        if loadtime==None:
+            loadtime=time.time()+self.corr.min_load_time
+        sample_rate_hz = self.corr.get_scale_factor()
+        delay=delayops.prepare_delay_vals(((delay,delay_delta),(phase,phase_delta)),sample_rate_hz)
+        feng=self.get_fengine(input_name)
+        rv=feng.delay_set(delay)
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_feng_delays()
+        return rv
+
     def delay_set_all(self, loadtime, delay_list):
         """
         Set the delays for all inputs in the system
@@ -447,14 +467,8 @@ class FEngineOperations(object):
         :param delay_list: a list of ICD strings, one for each input. 
                             A list of strings (delay,rate:phase,rate) or
                              delay tuples ((delay,rate),(phase,rate))
-        :return: an in-order list of fengine delay results
+        :return: True if all success, False otherwise.
         """
-        if loadtime <= 0:
-            actual_vals = self.delays_get()
-            rv = []
-            for feng in self.fengines:
-                rv.append(actual_vals[feng.name])
-            return rv
         loadmcnt = self._delays_check_loadtime(loadtime)
         sample_rate_hz = self.corr.get_scale_factor()
         delays = delayops.process_list(delay_list, sample_rate_hz)
@@ -462,29 +476,20 @@ class FEngineOperations(object):
             raise ValueError('Have %i F-engines, received %i delay coefficient '
                              'sets.' % (len(self.fengines), len(delays)))
 
-        self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
-        
+        rv=self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
+        print rv
 
-#        # collect delay coefficient sets and fhosts
-#        delays_by_host = {host.host: [] for host in self.hosts}
-#        for feng in self.fengines:
-#            delays_by_host[feng.host.host].append(delays[feng.input_number])
-#        actual_vals = THREADED_FPGA_FUNC(
-#            self.corr.fhosts, timeout=0.5,
-#            target_function=('delay_set_all', [loadmcnt, delays_by_host], {}))
-#        rv = {}
-#        for val in actual_vals.values():
-#            rv.update(
-#                {fengkey: fengvalue for fengkey, fengvalue in val.items()})
-#        if self.corr.sensor_manager:
-#            self.corr.sensor_manager.sensors_feng_delays()
-#        actual_vals = rv
-#        rv = []
-#        for feng in self.fengines:
-#            rv.append(actual_vals[feng.name])
-#        return rv
-#
+        if len(rv)!=len(self.fengines):
+            rv=False
+        else:
+            for feng,stat in rv.items():
+                if stat!=True: rv=False
 
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_feng_delays()
+        return rv
+
+##TODO: fix this function!
 #    def delays_get(self, input_name=None):
 #        """
 #        Get the delays for a given source name or index.
@@ -493,6 +498,7 @@ class FEngineOperations(object):
 #        :return:
 #        """
 #        if input_name is None:
+#            self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
 #            actual_vals = THREADED_FPGA_FUNC(
 #                self.corr.fhosts, timeout=0.5,
 #                target_function=('delays_get', [], {}))
@@ -513,13 +519,12 @@ class FEngineOperations(object):
         # check that load time is not too soon or in the past
         time_now = time.time()
         if loadtime < (time_now + self.corr.min_load_time):
-            errmsg = 'Time given is in the past or does not allow for ' \
-                     'enough time to set values'
+            errmsg = 'Delay model update leadtime error. ' \
+            'tnow: %f, tload: %f.'%(time_now,loadtime)
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
         loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
         return loadtime_mcnt
-
 
     def tx_enable(self,force_enable=False):
         """
@@ -581,6 +586,8 @@ class FEngineOperations(object):
         :param input_name: if this is given, return only this input's eq
         :return:
         """
+#todo fix this!
+#TODO update the sensors if this function is called.
         if input_name is not None:
             return {input_name: self.get_fengine(input_name).eq_poly}
         return {
@@ -595,6 +602,7 @@ class FEngineOperations(object):
         :param new_eq: an eq list or value or poly
         :return:
         """
+#TODO: update this function
         if new_eq is None:
             raise ValueError('New EQ of nothing makes no sense.')
         # if no input is given, apply the new eq to all inputs
@@ -757,7 +765,7 @@ class FEngineOperations(object):
             timeout = unix_time-time.time()
             if timeout < 0:
                 raise RuntimeError("Cannot trigger at a time in the past!")
-
+            timeout+=1
 
         if input_name is None:
             # get data for all F-engines triggered at the same time
