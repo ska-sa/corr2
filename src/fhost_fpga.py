@@ -70,10 +70,10 @@ class Fengine(object):
         except KeyError:
             descriptor = 'InstrumentName'
         
-        if host is None:
-            logger_name = '{}_feng-{}-{}'.format(descriptor, str(self.feng_id), host)
+        if input_stream is None:
+            logger_name = '{}_feng{}'.format(descriptor, str(self.feng_id))
         else:
-            logger_name = '{}_feng-{}'.format(descriptor, str(self.feng_id))
+            logger_name = '{}_feng{}-{}'.format(descriptor, str(self.feng_id), input_stream.name)
         
         self.logger = logging.getLogger(logger_name)
         console_handler_name = '{}_console'.format(logger_name)
@@ -90,7 +90,7 @@ class Fengine(object):
         self.host = host
         self.offset = offset
         self.eq_bram_name = 'eq%i' % offset
-        self.last_delay = None
+        self.last_delay = delayops.Delay()
         self.last_eq = None
 
     @property
@@ -132,7 +132,7 @@ class Fengine(object):
         self.last_delay.phase_offset_delta *= (numpy.pi * self.host.rx_data_sample_rate_hz)
         # arm the timed load latches
         cd_tl_name = 'tl_cd%i' % self.offset
-        load_count=self.host.registers['%s_status'%cd_tl_name].read()['load_count']
+        load_count=self.host.registers['%s_status'%cd_tl_name].read()['data']['load_count']
         if load_count == self.last_delay.load_count+1:
             self.last_delay.load_check=True
             self.logger.debug('Last delay loaded successfully.')
@@ -325,28 +325,32 @@ class Fengine(object):
         self.last_eq=eqcomplex
         return self.last_eq
 
-    def eq_set(self, eq_poly=None):
+    def eq_set(self, eq_poly):
         """
         Write a given complex eq to the given SBRAM.
         WARN: hardcoded for 16b values!
 
-        :param eq_poly: a polynomial (or list of float values) to write to bram.
+        :param eq_poly: a list of polynomial coefficients, or list of float values (must be n_chans long) to write to bram.
         :return:
         """
-        if len(eq_poly) == 1:
-            # single complex
-            creal = self.host.n_chans * [int(eq_poly[0].real)]
-            cimag = self.host.n_chans * [int(eq_poly[0].imag)]
-        elif len(eq_poly) == self.host.n_chans:
-            # list - one for each channel
-            creal = [num.real for num in eq_poly]
-            cimag = [num.imag for num in eq_poly]
-        else:
-            # polynomial
-            raise NotImplementedError('Polynomials are not yet complete.')
-        coeffs = (self.n_chans * 2) * [0]
-        coeffs[0::2] = creal
-        coeffs[1::2] = cimag
+        coeffs = (self.host.n_chans * 2) * [0]
+        try:
+            if len(eq_poly) == self.host.n_chans:
+                # list - one for each channel
+                coeffs[0::2] = [coeff.real for coeff in eq_poly]
+                coeffs[1::2] = [coeff.imag for coeff in eq_poly]
+            elif len(eq_poly)<self.host.n_chans:
+                # polynomial
+                poly_coeffs=numpy.polyval(eq_poly, range(self.host.n_chans))
+                coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
+                coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]
+        except TypeError:
+                #single value?
+                coeffs = (self.host.n_chans * 2) * [0]
+                coeffs[0::2] = [eq_poly.real for coeff in range(self.host.n_chans)]
+                coeffs[1::2] = [eq_poly.imag for coeff in range(self.host.n_chans)]
+        creal = coeffs[0::2]
+        cimag = coeffs[1::2]
         ss = struct.pack('>%ih' % (self.host.n_chans * 2), *coeffs)
         self.host.write(self.eq_bram_name, ss, 0)
         self.logger.debug('Updated EQ.')
@@ -429,6 +433,24 @@ class FpgaFHost(DigitiserStreamReceiver):
         rv = (msw << 32) | lsw
         return rv
 
+    def get_pipeline_latency(self):
+        """
+        Get the difference in timestamps from the output to the input of the pipeline.
+        """
+        return self.registers.time_difference.read()['data']['time_difference']
+
+    def set_max_pipeline_latency(self,max_latency,autoresync=True):
+        """
+        Set the maximum difference (in ADC samples) allowed from the input to the
+        output of the DSP pipeline before the hardware will automatically issue a reset.
+        Optionally enable the automatic hardware check (and reset).
+        This catches some HMC errors (where it doesn't return data for all read requests).
+        """
+        self.registers.time_check.write(max_difference=max_latency)
+        if autoresync:
+            self.registers.control.write(time_diff_check_en=True)
+        return
+        
 
     def add_fengine(self, fengine):
         """

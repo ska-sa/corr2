@@ -392,7 +392,7 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(None).values()[0]
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
-
+#TODO: add function to ignore delay updates
     @request(Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):
@@ -411,11 +411,12 @@ class Corr2Server(katcp.DeviceServer):
             except Exception as ex:
                 return self._log_excep(ex, 'Failed setting delays.')
         else:
-            try:
-                av=self.instrument.fops.delays_get_all()
-                return tuple(['ok']+av)
-            except Exception as ex:
-                return self._log_excep(ex, 'Failed getting delays.')
+            return('fail','Please specify a load time.')
+            #try:
+            #    av=self.instrument.fops.delays_get_all()
+            #    return tuple(['ok']+av)
+            #except Exception as ex:
+            #    return self._log_excep(ex, 'Failed getting delays.')
 
 
     @request(Float(default=-1.0))

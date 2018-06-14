@@ -714,6 +714,7 @@ class FxCorrelator(Instrument):
         for host, status in f_eng_board_monitoring_dict_current.iteritems():
             time.sleep(0.01)
             action = {'disable_output': 0}
+            time.sleep(0.01)
 
             if status.has_key('corner_turner'):
                 # check the kinds of corner-turner errors
