@@ -87,15 +87,13 @@ class FxCorrelator(Instrument):
         self.descriptor = descriptor.strip().replace(' ', '_').upper()
         if logger is None:
             # Create one
-            self.logger = logging.getLogger(descriptor)
+            self.logger = logging.getLogger(self.descriptor)
 
             console_handler_name = '{}_console'.format(descriptor)
             if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
                 errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(descriptor)
                 # How are we going to log it anyway!
                 self.logger.error(errmsg)
-
-            
         else:
             self.logger = logger
 

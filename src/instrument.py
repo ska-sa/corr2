@@ -35,7 +35,7 @@ class Instrument(object):
         self.identifier = identifier
         self.config_source = config_source
         self.configd = None
-        self.logger = logger or LOGGER
+        # self.logger = logger or LOGGER
 
         # The instrument might well have a sensor manager
         self.sensor_manager = None
