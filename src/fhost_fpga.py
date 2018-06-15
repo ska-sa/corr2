@@ -344,8 +344,8 @@ class Fengine(object):
         cimag = coeffs[1::2]
         ss = struct.pack('>%ih' % (self.host.n_chans * 2), *coeffs)
         self.host.write(self.eq_bram_name, ss, 0)
-        self.logger.debug('Updated EQ.')
         self.last_eq=[complex(creal[i],cimag[i]) for i in range(len(creal))]
+        self.logger.info('Updated EQ: %s...'%self.last_eq[0:10])
         return self.last_eq
 
     def __repr__(self):

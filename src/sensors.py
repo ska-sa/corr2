@@ -523,22 +523,17 @@ class Corr2SensorManager(SensorManager):
                     'n=0 is first in the RF chain (closest to source).')
                 sensor.set_value(self.instrument.fft_shift)
 
-    def sensors_feng_eq(self):
+    def sensors_feng_eq(self,feng):
         streams = self.instrument.get_data_streams_by_type(
             data_stream.FENGINE_CHANNELISED_DATA)
         assert len(streams) == 1
-        for stream in streams:
-            strmnm = stream.name
-            for feng in self.instrument.fops.fengines:
-                pref = '{strm}-input{npt}'.format(strm=strmnm,
-                                                  npt=feng.input_number)
-                sensor = self.do_sensor(
+        strmnm = streamis[0].name
+        pref = '{strm}-input{npt}'.format(strm=strmnm,npt=feng.input_number)
+        sensor = self.do_sensor(
                         Corr2Sensor.string, '{}-eq'.format(pref),
                         'The unitless, per-channel digital scaling factors '
-                        'implemented prior to requantisation. Complex. If one '
-                        'value has been applied to all channels, only one is '
-                        'shown by the sensor.')
-                sensor.set_value(str(feng.eq_poly))
+                        'implemented prior to requantisation. Complex.')
+        sensor.set_value(str(feng.last_eq))
 
     def sensors_feng_delays(self):
         """

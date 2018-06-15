@@ -88,8 +88,6 @@ class FengineStream(SPEADStream):
             self.tx_enabled = True
             self.fops.logger.info('F-engine output enabled')
 
-        
-
     def tx_disable(self):
         """
         Disable TX for this data stream
@@ -585,71 +583,36 @@ class FEngineOperations(object):
         """
         Return the EQ arrays in a dictionary, arranged by input name.
         :param input_name: if this is given, return only this input's eq
-        :return:
+        :return: a dictionary, indexed by input_name
         """
-#todo fix this!
-#TODO update the sensors if this function is called.
         if input_name is not None:
-            return {input_name: self.get_fengine(input_name).eq_poly}
-        return {
-            feng.name: feng.eq_poly for feng in self.fengines
-        }
+            rv= {input_name: self.get_fengine(input_name).eq_get()}
+        else:
+            rv = {feng.name: feng.eq_get() for feng in self.fengines}
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_feng_eq()
 
-    def eq_set(self, write=True, input_name=None, new_eq=None):
+    def eq_set(self,input_name=None, new_eq=None):
         """
-        Set the EQ for a specific input
-        :param write: should the value be written to BRAM on the device?
-        :param input_name: the input name
+        Set the EQ for a specific input, or all inputs.
+        :param input_name: the input name. None for all fengines.
         :param new_eq: an eq list or value or poly
         :return:
         """
-#TODO: update this function
         if new_eq is None:
-            raise ValueError('New EQ of nothing makes no sense.')
+            self.logger.info('Setting default eq')
+            new_eq=self.corr.configd['fengine']['default_eq_poly']
+        neweq = utils.process_new_eq(new_eq)
         # if no input is given, apply the new eq to all inputs
         if input_name is None:
             self.logger.info('Setting EQ on all inputs to new given EQ.')
-            for fhost in self.hosts:
-                for feng in fhost.fengines:
-                    self.eq_set(write=False, input_name=feng.name,
-                                new_eq=new_eq)
-            if write:
-                self.eq_write_all()
+            fengs=self.fengines
         else:
-            feng = self.get_fengine(input_name)
-            old_eq = feng.eq_poly[:]
-            try:
-                neweq = utils.process_new_eq(new_eq)
-                feng.eq_poly = neweq
-                self.logger.info(
-                    'Updated EQ value for input %s: %s...' % (
-                        input_name, neweq[0:min(10, len(neweq))]))
-                if write:
-                    feng.host.write_eq(input_name=input_name)
-            except Exception as e:
-                feng.eq_poly = old_eq[:]
-                self.logger.error('New EQ error - REVERTED to '
-                                  'old value! - %s' % e.message)
-                raise ValueError('New EQ error - REVERTED to '
-                                 'old value! - %s' % e.message)
-        if write:
+            fengs=[self.get_fengine(input_name)]
+        for feng in fengs:
+            feng.eq_set(eq_poly=neweq)
             if self.corr.sensor_manager:
-                self.corr.sensor_manager.sensors_feng_eq()
-
-    def eq_write_all(self, new_eq_dict=None):
-        """
-        Set the EQ gain for given inputs and write the changes to memory.
-        :param new_eq_dict: a dictionary of new eq values to store
-        :return:
-        """
-        if new_eq_dict is not None:
-            self.logger.info('Updating some EQ values before writing.')
-            for feng, new_eq in new_eq_dict.items():
-                self.eq_set(write=False, input_name=feng, new_eq=new_eq)
-        self.logger.info('Writing EQ on all fhosts based on stored '
-                         'per-input EQ values...')
-        THREADED_FPGA_FUNC(self.hosts, 10, 'write_eq_all')
-        self.logger.info('done.')
+                self.corr.sensor_manager.sensors_feng_eq(feng)
 
     def set_fft_shift_all(self, shift_value=None):
         """
