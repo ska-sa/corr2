@@ -223,7 +223,7 @@ class FEngineOperations(object):
             self.corr.sensor_manager.sensors_stream_destinations()
 
         # set eq and shift
-        self.eq_write_all()
+        self.eq_set()
         self.set_fft_shift_all()
 
         #configure the ethernet cores.
@@ -452,7 +452,9 @@ class FEngineOperations(object):
         if loadtime==None:
             loadtime=time.time()+self.corr.min_load_time
         sample_rate_hz = self.corr.get_scale_factor()
+        loadmcnt = self._delays_check_loadtime(loadtime)
         delay=delayops.prepare_delay_vals(((delay,delay_delta),(phase,phase_delta)),sample_rate_hz)
+        delay.load_mcnt=loadmcnt
         feng=self.get_fengine(input_name)
         rv=feng.delay_set(delay)
         if self.corr.sensor_manager:
@@ -488,27 +490,20 @@ class FEngineOperations(object):
             self.corr.sensor_manager.sensors_feng_delays()
         return rv
 
-##TODO: fix this function!
 #    def delays_get(self, input_name=None):
 #        """
-#        Get the delays for a given source name or index.
-#        :param input_name: a source name or index. If None, get all the
+#        Get the delays for a given source name.
+#        :param input_name: a source name. If None, get all the
 #            fengine delay data.
 #        :return:
 #        """
 #        if input_name is None:
-#            self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
-#            actual_vals = THREADED_FPGA_FUNC(
-#                self.corr.fhosts, timeout=0.5,
-#                target_function=('delays_get', [], {}))
-#            rv = {}
-#            for val in actual_vals.values():
-#                rv.update(
-#                    {fengkey: fengvalue for fengkey, fengvalue in val.items()})
-#            return rv
-#        feng = self.get_fengine(input_name)
+#            rv=self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.delay_get(),))
+#        else:
+#            feng=self.get_fengine(input_name)
+#            rv={input_name: feng.delay_get()}
 #        return feng.delay_get()
-#
+
     def _delays_check_loadtime(self, loadtime):
         """
         Check a given delay load time.
@@ -585,12 +580,17 @@ class FEngineOperations(object):
         :param input_name: if this is given, return only this input's eq
         :return: a dictionary, indexed by input_name
         """
-        if input_name is not None:
-            rv= {input_name: self.get_fengine(input_name).eq_get()}
+        if input_name is None:
+            fengs=self.fengines
+            rv=self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.eq_get(),))
         else:
-            rv = {feng.name: feng.eq_get() for feng in self.fengines}
-        if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_feng_eq()
+            fengs=[self.get_fengine(input_name)]
+            rv={input_name:fengs[0].eq_get()}
+        #update the sensors, if they're being used:
+        for feng in fengs:
+            if self.corr.sensor_manager:
+                self.corr.sensor_manager.sensors_feng_eq(feng)
+        return rv
 
     def eq_set(self,input_name=None, new_eq=None):
         """
@@ -607,10 +607,11 @@ class FEngineOperations(object):
         if input_name is None:
             self.logger.info('Setting EQ on all inputs to new given EQ.')
             fengs=self.fengines
+            rv=self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.eq_set(neweq),))
         else:
             fengs=[self.get_fengine(input_name)]
+            fengs[0].eq_set(eq_poly=neweq)
         for feng in fengs:
-            feng.eq_set(eq_poly=neweq)
             if self.corr.sensor_manager:
                 self.corr.sensor_manager.sensors_feng_eq(feng)
 
@@ -671,8 +672,9 @@ class FEngineOperations(object):
         :return:
         """
         self.logger.info('Subscribing F-engine inputs:')
+        #don't do this in parallel. Ease the load on the switch?
         for fhost in self.hosts:
-            fhost.subscribe_to_multicast(self.corr.f_per_fpga)
+            fhost.subscribe_to_multicast()
         # res = THREADED_FPGA_FUNC(self.hosts, timeout=10,
         #                          target_function=('subscribe_to_multicast',
         #                                           [self.corr.f_per_fpga], {}))

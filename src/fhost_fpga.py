@@ -131,7 +131,8 @@ class Fengine(object):
             self.last_delay.last_load_success=True
             self.logger.debug('Last delay loaded successfully.')
         else:
-            self.logger.error('Failed to load last delay model; load_cnt did not increment by one!')
+            self.logger.error('Failed to load last delay model;' \
+                ' load_cnt before: %i, after: %i.'%(self.last_delay.load_count,load_count))
             self.last_delay.last_load_success=False
         self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
         self.last_delay.load_count = load_count
@@ -352,7 +353,7 @@ class Fengine(object):
         return self.__str__()
 
     def __str__(self):
-        return "%s: Fengine %i on %s offset %i, with input %s." % (
+        return "%s: Fengine %i, on %s:%i, processing %s." % (
             self.name, self.input_number, self.host, self.offset,self.input)
 
 
@@ -652,6 +653,5 @@ class FpgaFHost(DigitiserStreamReceiver):
             ip_range += this_ip.ip_range
         gbename = self.gbes.names()[0]
         gbe = self.gbes[gbename]
-        logstr += 'Subscribing %s to (%s+%i)' % (gbe.name, ip_str, ip_range - 1)
+        self.logger.info('Subscribing %s to (%s+%i)' % (gbe.name, ip_str, ip_range - 1))
         gbe.multicast_receive(ip_str, ip_range)
-        self.logger.info(logstr)
