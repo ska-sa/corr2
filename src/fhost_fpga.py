@@ -134,8 +134,9 @@ class Fengine(object):
             self.logger.error('Failed to load last delay model;' \
                 ' load_cnt before: %i, after: %i.'%(self.last_delay.load_count,load_count))
             self.last_delay.last_load_success=False
-        self.last_delay.load_mcnt=self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
         self.last_delay.load_count = load_count
+        self.last_delay.load_mcnt=self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
+        #self.logger.info("loaded at %i"%self.last_delay.load_mcnt)
         return self.last_delay.last_load_success
 
     def _arm_timed_latch(self, name, mcnt=None):
@@ -150,6 +151,7 @@ class Fengine(object):
         control0_reg = self.host.registers['%s_control0' % name]
         ao=control0_reg._fields['arm'].offset
         if mcnt is None:
+            self.logger.info('Loadtime not specified; loading immediately.')
             lio=control0_reg._fields['load_immediate'].offset
             control0_reg.write_int((1<<ao)+(1<<lio))
             control0_reg.write_int(0)

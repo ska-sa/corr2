@@ -547,23 +547,25 @@ class Corr2SensorManager(SensorManager):
         pref = '{strm}-input{npt}'.format(strm=strmnm,npt=feng.input_number)
         sensor = self.do_sensor(
             Corr2Sensor.string, '{}-delay'.format(pref),
-            'The delay settings for this input: (loadtime, delay, '
-            'delay-rate, phase, phase-rate). loadtime is sample count.')
-        err_sensor = self.do_sensor(
-            Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
-            'Delays for this input are functioning correctly.')
-
+            'The delay settings for this input: (load_mcnt <ADC sample count when model was loaded>, delay <in seconds>, '
+            'delay-rate <unit-less, or, seconds-per-second>, phase <radians>, phase-rate <radians per second>).')
+#        err_sensor = self.do_sensor(
+#            Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
+#            'Delays for this input are functioning correctly.')
+#
         if feng.last_delay is not None:
             delay = feng.last_delay.delay/self.instrument.sample_rate_hz
             delay_delta = feng.last_delay.delay_delta
             phase_offset = feng.last_delay.phase_offset*numpy.pi
             phase_offset_delta = feng.last_delay.phase_offset_delta*(numpy.pi * self.instrument.sample_rate_hz)
-            load_time=feng.last_delay.load_mcnt
+            load_mcnt=feng.last_delay.load_mcnt
             #load_time=self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
             _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
-                            load_time,delay,delay_delta,phase_offset,phase_offset_delta)
-            sensor.set_value(_val)
-            err_sensor.set_value(feng.last_delay.last_load_success)
+                            load_mcnt,delay,delay_delta,phase_offset,phase_offset_delta)
+            _timestamp = self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
+            _status = Sensor.NOMINAL if feng.last_delay.last_load_success else Sensor.ERROR
+            sensor.set_value(value=_val,status=_status,timestamp=_timestamp)
+#            err_sensor.set_value(feng.last_delay.last_load_success)
 
     def sensors_feng_streams(self):
         """
@@ -816,37 +818,6 @@ class Corr2SensorManager(SensorManager):
         sensor.set_value(len(self.instrument.fops.fengines))
 
         self.sensors_input_labels()
-
-        # # DEPRECATED AND MOVED TO FENGINE STREAMS
-        # sensor = Corr2Sensor.integer(
-        #     name='n-samples-between-spectra',
-        #     description='Number of samples between spectra.',
-        #     initial_status=Sensor.UNKNOWN, manager=self)
-        # self.sensor_create(sensor)
-        # sensor.set_value(self.instrument.n_chans * 2)
-
-        # DEPRECATED
-        # sensor = Corr2Sensor.integer(
-        #     name='f-per-fpga', description='The number of F-engines per host.',
-        #     initial_status=Sensor.UNKNOWN, manager=self)
-        # self.sensor_create(sensor)
-        # sensor.set_value(self.instrument.f_per_fpga)
-
-        # DEPRECATED
-        # sensor = Corr2Sensor.integer(
-        #     name='x-per-fpga', description='The number of X-engines per host.',
-        #     initial_status=Sensor.UNKNOWN, manager=self)
-        # self.sensor_create(sensor)
-        # sensor.set_value(self.instrument.x_per_fpga)
-
-        # DEPRECATED
-        # sensor = Corr2Sensor.integer(
-        #     name='b-per-fpga', description='The number of B-engines per host.',
-        #     initial_status=Sensor.UNKNOWN, manager=self)
-        # if self.instrument.found_beamformer:
-        #     sensor.set_value(self.instrument.bops.beng_per_host)
-        # else:
-        #     sensor.set_value(-1)
 
         sensor = Corr2Sensor.integer(
             name='n-fengs',

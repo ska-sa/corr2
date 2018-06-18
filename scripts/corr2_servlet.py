@@ -409,19 +409,11 @@ class Corr2Server(katcp.DeviceServer):
         """
         if self.delays_disabled: return ('fail','delays disabled')
 
-        if loadtime>0:
-            try:
-                self.instrument.fops.delay_set_all(loadtime, delay_strings)
-                return 'ok',
-            except Exception as ex:
-                return self._log_excep(ex, 'Failed setting delays.')
-        else:
-            return('fail','Please specify a load time.')
-            #try:
-            #    av=self.instrument.fops.delays_get_all()
-            #    return tuple(['ok']+av)
-            #except Exception as ex:
-            #    return self._log_excep(ex, 'Failed getting delays.')
+        try:
+            self.instrument.fops.delay_set_all(loadtime, delay_strings)
+            return tuple(['ok',' Model updated. Check sensors after next update to confirm application'])
+        except Exception as ex:
+            return self._log_excep(ex, 'Failed setting delays.')
 
 
     @request(Float(default=-1.0))

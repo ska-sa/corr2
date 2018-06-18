@@ -470,15 +470,20 @@ class FEngineOperations(object):
                              delay tuples ((delay,rate),(phase,rate))
         :return: True if all success, False otherwise.
         """
-        loadmcnt = self._delays_check_loadtime(loadtime)
+        self.logger.debug("Delay model update at %i for loadtime %i."%(loadtime,time.time()))
+        if loadtime > 0:
+            loadmcnt = self._delays_check_loadtime(loadtime)
+        else:
+            loadmcnt = -1
         sample_rate_hz = self.corr.get_scale_factor()
         delays = delayops.process_list(delay_list, sample_rate_hz)
         if len(delays) != len(self.fengines):
             raise ValueError('Have %i F-engines, received %i delay coefficient '
                              'sets.' % (len(self.fengines), len(delays)))
+        for delay in delays:
+            delay.load_mcnt=loadmcnt
 
         rv=self.threaded_feng_operation(timeout=5, target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
-        print rv
 
         if len(rv)!=len(self.fengines):
             rv=False
@@ -519,6 +524,7 @@ class FEngineOperations(object):
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
         loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
+        #self.logger.info("calc'd loadtime: %i."%loadtime_mcnt)
         return loadtime_mcnt
 
     def tx_enable(self,force_enable=False):
