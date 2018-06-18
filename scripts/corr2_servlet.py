@@ -37,6 +37,7 @@ class Corr2Server(katcp.DeviceServer):
         self.executor = futures.ThreadPoolExecutor(max_workers=1)
         self._created = False
         self._initialised = False
+        self.delays_disabled=False
 
     def _log_excep(self, excep, msg=''):
         """
@@ -53,6 +54,7 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.logger.error(message)
         else:
             logging.error(message)
+        raise
         return 'fail', message
 
     @request()
@@ -366,13 +368,15 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(None, 'No source name given.')
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.fops.eq_set(True, source_name, list(eq_vals))
+                self.instrument.fops.eq_set(source_name, list(eq_vals))
+                return ('ok','gain set for input %s.'%source_name)
             except Exception as ex:
                 failmsg = 'Failed setting eq for source ' \
                           '{0}.'.format(source_name)
                 return self._log_excep(ex, failmsg)
-        _src = self.instrument.fops.eq_get(source_name)
-        return tuple(['ok'] +
+        else:
+            _src = self.instrument.fops.eq_get(source_name)
+            return tuple(['ok'] +
                      Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Str(default='', multiple=True))
@@ -392,7 +396,6 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(None).values()[0]
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
-#TODO: add function to ignore delay updates
     @request(Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
     def request_delays(self, sock, loadtime, *delay_strings):
@@ -404,10 +407,12 @@ class Corr2Server(katcp.DeviceServer):
             described in ICD.
         :return:
         """
+        if self.delays_disabled: return ('fail','delays disabled')
+
         if loadtime>0:
             try:
                 self.instrument.fops.delay_set_all(loadtime, delay_strings)
-                return 'ok'
+                return 'ok',
             except Exception as ex:
                 return self._log_excep(ex, 'Failed setting delays.')
         else:
@@ -482,6 +487,26 @@ class Corr2Server(katcp.DeviceServer):
             return 'ok', snaptime
         except ValueError as ex:
             return self._log_excep(ex, ex.message)
+
+    @request(Bool())
+    @return_reply()
+    def request_delay_updates_disable(self, sock, disable_delays):
+        """
+        Disable the delays. If set, this will ignore any incoming delay model updates.
+        :param : disable_delays
+        :return:
+        """
+        try:
+            self.delays_disabled=disable_delays
+            if disable_delays:
+                message="Delay model updates disabled."
+            else:
+                message="Delay model updates re-enabled."
+            if self.instrument: self.instrument.logger.info(message)
+            else: logging.info(message)
+            return 'ok',
+        except ValueError as ex:
+            return self._log_excep(ex, 'Failed to configure delay disable.')
 
     @request()
     @return_reply(Int())
@@ -593,7 +618,7 @@ class Corr2Server(katcp.DeviceServer):
             current_shift_value = self.instrument.fops.get_fft_shift_all()
             current_shift_value = current_shift_value[
                 current_shift_value.keys()[0]]
-        return 'ok', current_shift_value
+        return ('ok', current_shift_value)
 
     @request()
     @return_reply(Int(min=0))
@@ -629,7 +654,7 @@ class Corr2Server(katcp.DeviceServer):
         else:
             logger = logging.getLogger()
         logger.setLevel(log_level_int)
-        return 'ok', '%s' % str(log_level_int)
+        return ('ok', '%s' % str(log_level_int))
 
     @request()
     @return_reply()

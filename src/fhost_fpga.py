@@ -134,7 +134,7 @@ class Fengine(object):
             self.logger.error('Failed to load last delay model;' \
                 ' load_cnt before: %i, after: %i.'%(self.last_delay.load_count,load_count))
             self.last_delay.last_load_success=False
-        self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
+        self.last_delay.load_mcnt=self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
         self.last_delay.load_count = load_count
         return self.last_delay.last_load_success
 
@@ -153,14 +153,17 @@ class Fengine(object):
             lio=control0_reg._fields['load_immediate'].offset
             control0_reg.write_int((1<<ao)+(1<<lio))
             control0_reg.write_int(0)
+            return -1
         else:
             load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
             load_time_msw = int(mcnt/(2**32))
             control_reg.write_int(load_time_lsw)
             control0_reg.write_int((1<<ao)+(load_time_msw))
             control0_reg.write_int((0<<ao)+(load_time_msw))
+            return mcnt
 
-##TODO fix this function!        
+##TODO reimplement this function.
+## Won't do for now; doesn't seem like anyone needs it. CAM/SDP use the sensors instead.
 ##TODO: Only return useful values if they actually loaded?
 #    def delay_get(self):
 #        """

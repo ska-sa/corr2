@@ -458,7 +458,7 @@ class FEngineOperations(object):
         feng=self.get_fengine(input_name)
         rv=feng.delay_set(delay)
         if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_feng_delays()
+            self.corr.sensor_manager.sensors_feng_delays(feng)
         return rv
 
     def delay_set_all(self, loadtime, delay_list):
@@ -487,7 +487,8 @@ class FEngineOperations(object):
                 if stat!=True: rv=False
 
         if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_feng_delays()
+            for feng in self.fengines:
+                self.corr.sensor_manager.sensors_feng_delays(feng)
         return rv
 
 #    def delays_get(self, input_name=None):

@@ -1,5 +1,6 @@
 import logging
 import time
+import numpy
 
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
@@ -488,7 +489,6 @@ class Corr2SensorManager(SensorManager):
                 'instrument.')
             sensor.set_value(len(self.instrument.xops.get_baseline_ordering()))
 
-            # TODO - this might not be correct
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in the integration.')
@@ -516,7 +516,6 @@ class Corr2SensorManager(SensorManager):
             for feng in self.instrument.fops.fengines:
                 pref = '{strm}-input{npt}'.format(strm=strmnm,
                                                   npt=feng.input_number)
-                # TODO - this must be per-input, not system-wide
                 sensor = self.do_sensor(
                     Corr2Sensor.integer, '{}-fft0-shift'.format(pref),
                     'The FFT bitshift pattern for the <n>th FFT in the design. '
@@ -527,7 +526,7 @@ class Corr2SensorManager(SensorManager):
         streams = self.instrument.get_data_streams_by_type(
             data_stream.FENGINE_CHANNELISED_DATA)
         assert len(streams) == 1
-        strmnm = streamis[0].name
+        strmnm = streams[0].name
         pref = '{strm}-input{npt}'.format(strm=strmnm,npt=feng.input_number)
         sensor = self.do_sensor(
                         Corr2Sensor.string, '{}-eq'.format(pref),
@@ -535,7 +534,7 @@ class Corr2SensorManager(SensorManager):
                         'implemented prior to requantisation. Complex.')
         sensor.set_value(str(feng.last_eq))
 
-    def sensors_feng_delays(self):
+    def sensors_feng_delays(self,feng):
         """
         F-engine delay sensors
         :return:
@@ -543,36 +542,28 @@ class Corr2SensorManager(SensorManager):
         streams = self.instrument.get_data_streams_by_type(
             data_stream.FENGINE_CHANNELISED_DATA)
         if len(streams) != 1:
-            raise RuntimeError('Expecting one stream, got %i?' % (len(streams)))
-        for stream in streams:
-            strmnm = stream.name
-            for feng in self.instrument.fops.fengines:
-                pref = '{strm}-input{npt}'.format(strm=strmnm,
-                                                  npt=feng.input_number)
-                sensor = self.do_sensor(
-                    Corr2Sensor.string, '{}-delay'.format(pref),
-                    'The delay settings for this input: (loadtime, delay, '
-                    'delay-rate, phase, phase-rate)')
-                err_sensor = self.do_sensor(
-                    Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
-                    'Delays for this input are functioning correctly.')
-                if feng.last_delay is not None:
-#TODO: fix delay scaling of last_delay object:
-#        # horrible, but change units of stored delays:
-#        self.last_delay.delay /= self.host.rx_data_sample_rate_hz
-#        self.last_delay.phase_offset *= numpy.pi
-#        self.last_delay.phase_offset_delta *= (numpy.pi * self.host.rx_data_sample_rate_hz)
+            raise RuntimeError('Expecting one Feng stream, got %i?' % (len(streams)))
+        strmnm = streams[0].name
+        pref = '{strm}-input{npt}'.format(strm=strmnm,npt=feng.input_number)
+        sensor = self.do_sensor(
+            Corr2Sensor.string, '{}-delay'.format(pref),
+            'The delay settings for this input: (loadtime, delay, '
+            'delay-rate, phase, phase-rate). loadtime is sample count.')
+        err_sensor = self.do_sensor(
+            Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
+            'Delays for this input are functioning correctly.')
 
-                    _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
-                        feng.last_delay.load_time,
-                        feng.last_delay.delay,
-                        feng.last_delay.delay_delta,
-                        feng.last_delay.phase_offset,
-                        feng.last_delay.phase_offset_delta
-                    )
-                    sensor.set_value(_val)
-                    err = False if feng.last_delay.error.is_set() else True
-                    err_sensor.set_value(err)
+        if feng.last_delay is not None:
+            delay = feng.last_delay.delay/self.instrument.sample_rate_hz
+            delay_delta = feng.last_delay.delay_delta
+            phase_offset = feng.last_delay.phase_offset*numpy.pi
+            phase_offset_delta = feng.last_delay.phase_offset_delta*(numpy.pi * self.instrument.sample_rate_hz)
+            load_time=feng.last_delay.load_mcnt
+            #load_time=self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
+            _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
+                            load_time,delay,delay_delta,phase_offset,phase_offset_delta)
+            sensor.set_value(_val)
+            err_sensor.set_value(feng.last_delay.last_load_success)
 
     def sensors_feng_streams(self):
         """
@@ -587,7 +578,6 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
 
-            # TODO - per engine, not just hardcoded
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
                 '{}-feng-out-bits-per-sample'.format(strmnm),
@@ -595,13 +585,11 @@ class Corr2SensorManager(SensorManager):
             bits = int(self.instrument.quant_format.split('.')[0])
             sensor.set_value(bits)
 
-            # TODO - per engine, not just hardcoded
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-center-freq'.format(strmnm),
                 'The CBF center frequency of the digitised band.')
             sensor.set_value(self.instrument.analogue_bandwidth / 2.0)
 
-            # TODO - per engine, not just hardcoded
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in the output spectrum.')
@@ -644,8 +632,9 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(self.instrument.pfb_group_delay)
 
         self.sensors_feng_fft_shift()
-        self.sensors_feng_eq()
-        self.sensors_feng_delays()
+        for feng in self.instrument.fops.fengines:
+            self.sensors_feng_eq(feng)
+            self.sensors_feng_delays(feng)
 
     def sensors_beng_weights(self):
         """

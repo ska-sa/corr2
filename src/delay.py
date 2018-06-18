@@ -69,7 +69,7 @@ def prepare_delay_vals(coefficients, sample_rate):
 class Delay(object):
     def __init__(self, delay=0.0, delay_delta=0.0,
                  phase_offset=0.0, phase_offset_delta=0.0,
-                 load_mcnt=None, load_count=-1, last_load_success=True):
+                 load_mcnt=-1, load_count=-1, last_load_success=True):
         """
         :param delay is in samples
         :param delay_delta is in samples per sample
