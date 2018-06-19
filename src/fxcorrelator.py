@@ -532,6 +532,7 @@ class FxCorrelator(Instrument):
         for ctr, source in enumerate(source_names):
             addr = StreamAddress.from_address_string(source_mcast[ctr])
             dig_src = DigitiserStream(source, addr, ctr, self)
+            dig_src.tx_enabled = True
             self.add_data_stream(dig_src)
 
     def _read_config_file(self):

@@ -236,7 +236,8 @@ class Corr2Server(katcp.DeviceServer):
                           ' {1}'.format(strm, self.instrument.data_streams)
                 return self._log_excep(None, failmsg)
             dstrm = self.instrument.get_data_stream(strm)
-            sock.inform(strm, '{0}'.format(str(dstrm.destination)))
+            _enabled = 'up' if dstrm.tx_enabled else 'down'
+            sock.inform(strm, '{0} {1}'.format(str(dstrm.destination),_enabled))
         return 'ok',
 
     @request(Str(default=''))

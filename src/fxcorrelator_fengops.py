@@ -63,8 +63,11 @@ class FengineStream(SPEADStream):
         :return:
         """
         self.descriptors_issue()
-        self.fops.logger.warn(
-            '{}: Ignoring command to start F-engine stream.'.format(self.name))
+        if self.tx_enabled:
+            self.fops.logger.warn(
+            '{}: F-engine stream already running. Ignoring tx_enable command.'.format(self.name))
+        else:
+            self._tx_enable(n_retries)
 
     def _tx_enable(self, n_retries=5):
         """
@@ -73,20 +76,19 @@ class FengineStream(SPEADStream):
         done = False
         while n_retries > 0:
             try:
-                THREADED_FPGA_OP(
-                    self.fops.hosts, 5,
+                THREADED_FPGA_OP(self.fops.hosts, 5,
                     (lambda fpga_: fpga_.tx_enable(),))
-                n_retries = -1
+                n_retries=-1
             except RuntimeError:
-                if n_retries == 0:
-                    raise
-                else:
-                    n_retries -= 1
-                    self.fops.logger.warning('Failed to start F-engine output; %i retries remaining.'%n_retries)
-                    time.sleep(2)
-        if n_retries == -1:
+                n_retries -= 1
+                self.fops.logger.warning('Failed to start F-engine output; %i retries remaining.'%n_retries)
+                time.sleep(2)
+        #if zero, then we tried n_retries times and failed. If less than zero, we succeeded.
+        if n_retries < 0:
             self.tx_enabled = True
             self.fops.logger.info('F-engine output enabled')
+        else:
+            self.fops.logger.error('Failed to start F-engine output.')
 
     def tx_disable(self):
         """
@@ -106,6 +108,7 @@ class FengineStream(SPEADStream):
             self.fops.hosts, 5,
             (lambda fpga_: fpga_.tx_disable(),))
         self.fops.logger.info('F-engine output disabled')
+        self.tx_enabled = False
 
 
     def __str__(self):
@@ -257,9 +260,6 @@ class FEngineOperations(object):
             stream_name = dig_stream[0]
             eq_polys[stream_name] = utils.process_new_eq(
                 _fengd['default_eq_poly'])
-        assert len(eq_polys) == len(dig_streams), (
-            'Digitiser input names (%d) must be paired with EQ polynomials '
-            '(%d).' % (len(dig_streams), len(eq_polys)))
 
         # assemble the inputs given into a list
         _feng_temp = []
