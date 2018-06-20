@@ -708,14 +708,8 @@ class FEngineOperations(object):
         :param input_name:
         :return:
         """
-        for host in self.hosts:
-            try:
-                return host.get_quant_snapshot(input_name)
-            except ValueError:
-                pass
-        raise ValueError(
-            'Could not find input %s anywhere. Available inputs: %s' % (
-                input_name, self.corr.get_input_labels()))
+        feng=self.get_fengine(input_name)
+        return feng.get_quant_snapshot()
 
     def get_adc_snapshot(self, input_name=None, unix_time=-1):
         """

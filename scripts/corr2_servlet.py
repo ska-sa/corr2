@@ -449,12 +449,8 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(None, 'No source name given.')
         try:
             snapdata = self.instrument.fops.get_quant_snap(source_name)
-        except ValueError as ex:
+        except Exception as ex:
             return self._log_excep(ex, ex.message)
-        # quant_string = ''
-        # for complex_word in snapdata:
-        #     quant_string += ' %s' % str(complex_word)
-        # return tuple(['ok'] + Corr2Server.rv_to_liststr(quant_string))
         sock.inform(source_name, str(snapdata))
         return 'ok',
 
