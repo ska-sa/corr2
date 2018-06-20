@@ -111,6 +111,27 @@ class Fengine(object):
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
+    def get_quant_snapshot(self):
+        """
+        Read the post-quantisation snapshot for this fengine.
+        snapshot data.
+        :return:
+        """
+        snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
+        #calculate number of snapshot reads required:
+        n_reads=float(self.host.n_chans)/(2**snapshot.block_info['snap_nsamples'])/4
+        compl = []
+        for read_n in range(int(numpy.ceil(n_reads))):
+            offset = read_n * (2**snapshot.block_info['snap_nsamples'])
+            sdata = snapshot.read(offset=offset)['data']
+            for ctr in range(0, len(sdata['real0'])):
+                compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
+                compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
+                compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
+                compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
+        return compl[0:self.host.n_chans]
+
+
     def delay_set(self, delay_obj):
         """
         Configures a given stream to a delay, defined by a delay.Delay object.
@@ -512,32 +533,9 @@ class FpgaFHost(DigitiserStreamReceiver):
         :return:
         """
         return {
-            feng.name: self.get_quant_snapshot(feng.name)
+            feng.name: feng.get_quant_snapshot()
             for feng in self.fengines
         }
-
-    def get_quant_snapshot(self, input_name):
-        """
-        Read the post-quantisation snapshot for a given input
-        :param input_name: the input name for which to read the quantiser
-        snapshot data.
-        :return:
-        """
-#TODO: grab multiple snapshots to assemble a full spectrum, if needed.
-#TODO: only grab as much data as needed to assemble one spectrum.
-        feng = self.get_fengine(input_name)
-        if feng.offset == 0:
-            snapshot = self.snapshots.snap_quant0_ss
-        else:
-            snapshot = self.snapshots.snap_quant1_ss
-        sdata = snapshot.read()['data']
-        compl = []
-        for ctr in range(0, len(sdata['real0'])):
-            compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
-            compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
-            compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
-            compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
-        return compl
 
     def tx_disable(self):
         self.registers.control.write(gbe_txen=False)
