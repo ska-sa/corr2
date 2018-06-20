@@ -391,7 +391,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.fops.eq_set(True, None, list(eq_vals))
+                self.instrument.fops.eq_set(None, list(eq_vals))
             except Exception as ex:
                 return self._log_excep(ex, 'Failed setting eq for all sources')
         _src = self.instrument.fops.eq_get(None).values()[0]
