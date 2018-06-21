@@ -119,10 +119,10 @@ class Fengine(object):
         """
         snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
         #calculate number of snapshot reads required:
-        n_reads=float(self.host.n_chans)/(2**snapshot.block_info['snap_nsamples'])/4
+        n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
         compl = []
         for read_n in range(int(numpy.ceil(n_reads))):
-            offset = read_n * (2**snapshot.block_info['snap_nsamples'])
+            offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
             sdata = snapshot.read(offset=offset)['data']
             for ctr in range(0, len(sdata['real0'])):
                 compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
