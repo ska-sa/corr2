@@ -3,7 +3,7 @@
 # pylint: disable-msg=C0103
 # pylint: disable-msg=C0301
 """
-Plot the spectrum using the output snapshots on the F-engine
+Plot the spectrum using the 40G core's TX snapshots on the F-engine
 """
 import argparse
 
@@ -58,12 +58,12 @@ spectrum_count = [[0] * NUM_FREQ, [0] * NUM_FREQ]
 
 
 def print_ips():
+    print 'Unique frequencies received for each destination IP address:'
     for ipint in ips_and_freqs:
         numfreqs = len(ips_and_freqs[ipint])
         print('{ip}: {numfreq}'.format(ip=str(IpAddress(ipint)),
                                        numfreq=numfreqs))
-    print('********** - press ctrl-c to quit or wait for %i '
-          'fchans' % FREQS_PER_X)
+    print("********** - press ctrl-c to quit and plot what we've received so far, or wait for %i fchans on each IP address." % FREQS_PER_X)
 
 
 def b2fp(dword):
@@ -75,13 +75,14 @@ def b2fp(dword):
 
 
 allfreqs = {}
+gbe = fpga.gbes.keys()[0]
+gbe = fpga.gbes[gbe]
 
 while True:
     try:
-        gbe = fpga.gbes.keys()[0]
-        gbe = fpga.gbes[gbe]
         coredata = gbe.read_txsnap()
-
+        #for n in range(10):
+        #    print '%016X'%coredata['data'][n]
         spead_processor = casperspead.SpeadProcessor(None, None, None, None)
         gbe_packets = caspersnap.Snap.packetise_snapdata(coredata, 'eof')
         gbe_data = []
@@ -114,7 +115,13 @@ while True:
         for pkt in spead_processor.packets:
             if pkt.ip not in ips_and_freqs:
                 ips_and_freqs[pkt.ip] = []
-            freq = pkt.headers[0x4103]
+            freq_base = pkt.headers[0x4103]
+            freq_offset = pkt.headers[0x0003]>>(8-1+3)
+            timestamp = pkt.headers[0x1600]
+            freq = freq_base + freq_offset
+            #print 'Got freq %i.'%freq
+            #print 'offset: ',freq_offset
+            #print 'time %i, freq: %i '%(timestamp,freq)
             if freq not in ips_and_freqs[pkt.ip]:
                 ips_and_freqs[pkt.ip].append(freq)
             ips_and_freqs[pkt.ip].sort()
@@ -124,10 +131,10 @@ while True:
                        b2fp((data >> 32) & 0xffff),
                        b2fp((data >> 16) & 0xffff),
                        b2fp((data >> 0)  & 0xffff)]
-                print('freq({})'.format(freq))
-                for p in pwr:
-                    print('\t{}'.format(p))
-                print('')
+                #print('freq({})'.format(freq))
+                #for p in pwr:
+                #    print('\t{}'.format(p))
+                #print('')
                 # if (pwr1 != 0) or (pwr3 != 0):
                 #     raise RuntimeError('pol1 isnt zero?')
                 spectrum_total[0][freq] += (pwr[0] + pwr[2])
@@ -138,8 +145,6 @@ while True:
             if pkt_words != 256:
                 print('WARNING: packet for freq(%i) had %i words?' %
                       (freq, pkt_words))
-        # import IPython
-        # IPython.embed()
         print_ips()
         all_freqs = True
         for ipint in ips_and_freqs:
@@ -160,6 +165,9 @@ for pol in [0, 1]:
         else:
             val = 0
         avg_spectrum[pol][freq] = val
+
+#import IPython
+#IPython.embed()
 
 pyplot.subplot(2, 1, 1)
 if args.linear:

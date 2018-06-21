@@ -391,7 +391,7 @@ class Corr2Server(katcp.DeviceServer):
         """
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.fops.eq_set(True, None, list(eq_vals))
+                self.instrument.fops.eq_set(None, list(eq_vals))
             except Exception as ex:
                 return self._log_excep(ex, 'Failed setting eq for all sources')
         _src = self.instrument.fops.eq_get(None).values()[0]
@@ -449,12 +449,8 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(None, 'No source name given.')
         try:
             snapdata = self.instrument.fops.get_quant_snap(source_name)
-        except ValueError as ex:
+        except Exception as ex:
             return self._log_excep(ex, ex.message)
-        # quant_string = ''
-        # for complex_word in snapdata:
-        #     quant_string += ' %s' % str(complex_word)
-        # return tuple(['ok'] + Corr2Server.rv_to_liststr(quant_string))
         sock.inform(source_name, str(snapdata))
         return 'ok',
 
