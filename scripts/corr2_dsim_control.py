@@ -136,10 +136,14 @@ if args.start:
 if args.status:
     # start tx
     sys.stdout.flush()
-    if dfpga.check_tx_raw():
-        print('Digitiser tx raw data success.')
-    else:
+    assert hasattr(dfpga.registers, 'forty_gbe_txctr'), "function is broken! Missing register: forty_gbe_txctr"
+    before = dfpga.registers.forty_gbe_txctr.read()['data']['reg']
+    time.sleep(0.5)
+    after = dfpga.registers.forty_gbe_txctr.read()['data']['reg']
+    if before == after:
         print('Digitiser tx raw data failed.')
+    else:
+        print('Digitiser tx raw data success.')
     sys.stdout.flush()
     something_happened = True
 
