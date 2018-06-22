@@ -1,6 +1,8 @@
 import time
 import numpy
 import utils
+from logging import INFO
+
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
@@ -10,8 +12,7 @@ from casperfpga import utils as fpgautils
 import data_stream
 import fxcorrelator_speadops as speadops
 
-import logging
-from casperfpga import CasperLogHandlers
+# from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -22,7 +23,7 @@ class XengineStream(data_stream.SPEADStream):
     """
     An x-engine SPEAD stream
     """
-    def __init__(self, name, destination, xops):
+    def __init__(self, name, destination, xops, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -30,8 +31,9 @@ class XengineStream(data_stream.SPEADStream):
         :return:
         """
         self.xops = xops
-        super(XengineStream, self).__init__(
-            name, data_stream.XENGINE_CROSS_PRODUCTS, destination)
+        super(XengineStream, self).__init__(name,
+            data_stream.XENGINE_CROSS_PRODUCTS, destination,
+            *args, **kwargs)
 
     def descriptors_setup(self):
         """
@@ -121,7 +123,7 @@ class VaccSynchAttemptsMaxedOut(RuntimeError):
 
 class XEngineOperations(object):
 
-    def __init__(self, corr_obj):
+    def __init__(self, corr_obj, *args, **kwargs):
         """
         A collection of x-engine operations that act on/with a correlator
         instance.
@@ -130,24 +132,21 @@ class XEngineOperations(object):
         """
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
-        # self.logger = corr_obj.logger
         self.data_stream = None
 
         self._board_ids = {}
 
         # Now creating separate instances of loggers as needed
         logger_name = '{}_XEngOps'.format(corr_obj.descriptor)
-        self.logger = logging.getLogger(logger_name)
-        # - Give logger some default config
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            self.logger.error(errmsg)
-            # raise RuntimeError(errmsg)
-        self.logger.setLevel(logging.INFO)
+        # All 'Instrument-level' objects will log at level INFO
+        result, self.logger = corr_obj.getLogger(logger_name=logger_name,
+                                                 log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
         self.logger.debug('Successfully created logger for {}'.format(logger_name))
-
-
 
     @staticmethod
     def _gberst(hosts, state):
@@ -166,7 +165,7 @@ class XEngineOperations(object):
             }
         return self._board_ids
 
-    def initialise(self):
+    def initialise(self, *args, **kwargs):
         """
         Set up x-engines on this device.
         :return:
@@ -216,14 +215,14 @@ class XEngineOperations(object):
         # set up accumulation length
         self.set_acc_len(vacc_resync=False)
 
-    def configure(self):
+    def configure(self, *args, **kwargs):
         """
         Configure the xengine operations - this is done whenever a correlator
         is instantiated.
         :return:
         """
         # set up the xengine data stream
-        self._setup_data_stream()
+        self._setup_data_stream(*args, **kwargs)
 
     def xengine_to_host_mapping(self):
         """
@@ -238,7 +237,7 @@ class XEngineOperations(object):
             mapping[host.host] = rv
         return mapping
 
-    def _setup_data_stream(self):
+    def _setup_data_stream(self, *args, **kwargs):
         """
         Set up the data stream for the xengine output
         :return:
@@ -256,7 +255,8 @@ class XEngineOperations(object):
                 'The x-engine\'s given address range (%s) must be one, a '
                 'starting base.' % output_address)
         output_address.ip_range = num_xeng
-        xeng_stream = XengineStream(output_name, output_address, self)
+        xeng_stream = XengineStream(output_name, output_address, self,
+                                    *args, **kwargs)
         self.data_stream = xeng_stream
         self.data_stream.set_source(self.corr.fops.data_stream.destination)
         self.corr.add_data_stream(xeng_stream)

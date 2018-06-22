@@ -1,18 +1,18 @@
 import numpy
-import logging
+from logging import INFO
 from casperfpga import utils as fpgautils
 
 import fxcorrelator_speadops as speadops
 from data_stream import SPEADStream, BEAMFORMER_FREQUENCY_DOMAIN
 from utils import parse_output_products
+# from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 
-
 class Beam(SPEADStream):
-    def __init__(self, name, index, destination):
+    def __init__(self, name, index, destination, *args, **kwargs):
         """
         A frequency-domain tied-array beam
         :param name - a string for the beam name
@@ -28,15 +28,25 @@ class Beam(SPEADStream):
         self.chans_per_partition = None
         self.speadops = None
         self.polarisation = None
-        self.logger = logging.getLogger(name)
 
-        super(Beam, self).__init__(
-            name, BEAMFORMER_FREQUENCY_DOMAIN, destination)
+        # This will always be a kwarg
+        self.getLogger = kwargs['getLogger']
+
+        result, self.logger = self.getLogger(logger_name=name,
+                                        log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+        
+        super(Beam, self).__init__(name, BEAMFORMER_FREQUENCY_DOMAIN,
+                                   destination, **kwargs)
 
         self.logger.info('created okay')
 
     @classmethod
-    def from_config(cls, beam_key, bhosts, config, fengops, speadops):
+    def from_config(cls, beam_key, bhosts, config, fengops, speadops,
+                    *args, **kwargs):
         """
 
         :param beam_key:
@@ -63,7 +73,8 @@ class Beam(SPEADStream):
                 'base address.' % beam_address)
         beam_address.ip_range = num_beng
 
-        obj = cls(beam_name, int(beam_dict['stream_index']), beam_address)
+        obj = cls(beam_name, int(beam_dict['stream_index']), beam_address,
+                  *args, **kwargs)
         obj.config = beam_dict
         obj.hosts = bhosts
         obj.speadops = speadops

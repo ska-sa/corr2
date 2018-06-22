@@ -1,35 +1,34 @@
-import logging
 import numpy
+from logging import INFO
 from casperfpga import utils as fpgautils
 from beam import Beam
-from casperfpga import CasperLogHandlers
+# from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 
 class BEngineOperations(object):
-    def __init__(self, corr_obj):
+    def __init__(self, corr_obj, **kwargs):
         """
         :param corr_obj: the FxCorrelator object with which we interact
         :return:
         """
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
-        # self.logger = corr_obj.logger
         self.beams = {}
         self.beng_per_host = corr_obj.x_per_fpga
 
         # Now creating separate instances of loggers as needed
         logger_name = '{}_BengOps'.format(corr_obj.descriptor)
-        self.logger = logging.getLogger(logger_name)
-        # - Give logger some default config
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            self.logger.error(errmsg)
-            # raise RuntimeError(errmsg)
-        self.logger.setLevel(logging.INFO)
+        # All 'Instrument-level' objects will log at level INFO
+        result, self.logger = corr_obj.getLogger(logger_name=logger_name,
+                                                 log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
         self.logger.debug('Successfully created logger for {}'.format(logger_name))
 
     def initialise(self):
@@ -51,7 +50,7 @@ class BEngineOperations(object):
         #self.set_beam_quant_gain() 
         self.logger.info('Beamformer initialised.')
 
-    def configure(self):
+    def configure(self, *args, **kwargs):
         """
         Configure the beams from the config source. This is done whenever
         an instrument is instantiated.
@@ -68,7 +67,8 @@ class BEngineOperations(object):
                 beam = Beam.from_config(section_name, self.hosts,
                                         self.corr.configd,
                                         self.corr.fops,
-                                        self.corr.speadops,)
+                                        self.corr.speadops,
+                                        *args, **kwargs)
                 if beam.name in beam_names:
                     raise ValueError('Cannot have more than one beam with '
                                      'the name %s. Please check the '

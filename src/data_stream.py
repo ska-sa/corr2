@@ -1,4 +1,4 @@
-import logging
+from logging import INFO
 import spead2
 import spead2.send
 import struct
@@ -7,7 +7,7 @@ import socket
 from casperfpga.network import IpAddress
 
 from fxcorrelator_speadops import SPEAD_ADDRSIZE
-from casperfpga import CasperLogHandlers
+# from corr2LogHandlers import getLogger
 
 DIGITISER_ADC_SAMPLES = 0  # baseband-voltage
 FENGINE_CHANNELISED_DATA = 1  # antenna-channelised-voltage
@@ -129,7 +129,7 @@ class SPEADStream(object):
     A DataStream that is also a SPEAD stream.
     Sends SPEAD data descriptors on tx_enable.
     """
-    def __init__(self, name, category, destination):
+    def __init__(self, name, category, destination, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -137,17 +137,18 @@ class SPEADStream(object):
         :param destination: where is it going?
         :return:
         """
+        # This will always be a kwarg
+        self.getLogger = kwargs['getLogger']
 
         logger_name = '{}_SPEADStream'.format(name)
-        self.logger = logging.getLogger(logger_name)
-        # - Give logger some default config
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            self.logger.error(errmsg)
-            # raise RuntimeError(errmsg)
-        self.logger.setLevel(logging.INFO)
-        self.logger.debug('Successfully created logger for {}'.format(console_handler_name))
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                        log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+            
+        self.logger.debug('Successfully created logger for {}'.format(logger_name))
 
         self.name = name
         self.category = category

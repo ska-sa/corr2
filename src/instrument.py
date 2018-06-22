@@ -8,8 +8,6 @@ Created on Feb 28, 2013
 import logging
 import time
 
-LOGGER = logging.getLogger(__name__)
-
 
 class Instrument(object):
     """

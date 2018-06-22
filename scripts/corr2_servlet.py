@@ -15,6 +15,7 @@ from concurrent import futures
 
 from corr2 import fxcorrelator, sensors
 from corr2.utils import KatcpStreamHandler
+from corr2.corr2LogHandlers import getKatcpLogger
 
 
 class Corr2Server(katcp.DeviceServer):
@@ -90,8 +91,10 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', 'Cannot run ?create twice.'
         try:
             iname = instrument_name or 'corr_%s' % str(time.time())
-            self.instrument = fxcorrelator.FxCorrelator(
-                iname, config_source=config_file)
+            
+            # Changing the getLogger function to add Katcp and File Handlers
+            self.instrument = fxcorrelator.FxCorrelator(iname, config_source=config_file,
+                              getLogger=getKatcpLogger, sock=sock)
             self._created = True
             return 'ok',
         except Exception as ex:
@@ -122,8 +125,22 @@ class Corr2Server(katcp.DeviceServer):
         if self._initialised:
             return 'fail', 'Cannot run ?initialise twice.'
         try:
+            
+            # Need to check where getLogger is pointing
+            # import IPython
+            # IPython.embed()
+
             self.instrument.initialise(program=program,configure=configure,
-                                       require_epoch=require_epoch)
+                                       require_epoch=require_epoch, sock=sock,
+                                       getLogger=getKatcpLogger)
+            
+            # Grab all loggers that include self.instrument.name
+            # for logger_name, logger_entity in loggers.iter():
+            #     if self.instrument.name in logger_name:
+            #         # Add handlers to this logger
+            #         katcp_handler_name = '{}_katcp_handler'.format(self.instrument.name)
+            #         newKatcpHandler = corr2LogHandlers.KatcpHandler(sock, name=katcp_handler_name)
+
             # update the servlet's version list with version information
             # from the running firmware
             self.extra_versions.update(self.instrument.get_version_info())

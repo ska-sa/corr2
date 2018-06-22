@@ -5,11 +5,11 @@ to set up and control one or more beamformers.
 Author: Jason Manley, Andrew Martens, Ruby van Rooyen, Monika Obrocka
 """
 
-import logging
+from logging import INFO
 import time
 
 from xhost_fpga import FpgaXHost
-from casperfpga import CasperLogHandlers
+# from corr2LogHandlers import getLogger
 
 
 class FpgaBHost(FpgaXHost):
@@ -22,16 +22,19 @@ class FpgaBHost(FpgaXHost):
             descriptor = kwargs['descriptor']
         except KeyError:
             descriptor = 'InstrumentName'
+        
+        # This will always be a kwarg
+        self.getLogger = kwargs['getLogger']
 
         logger_name = '{}_bhost-{}-{}'.format(descriptor, str(index), host)
-        self.logger = logging.getLogger(logger_name)
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            self.logger.error(errmsg)
-            # raise RuntimeError(errmsg)
-        self.logger.setLevel(logging.INFO)
-        self.logger.debug('Successfully created logger for {}'.format(console_handler_name))
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                             log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
+        self.logger.debug('Successfully created logger for {}'.format(logger_name))
 
         self.beng_per_host = self.x_per_fpga
 

@@ -6,15 +6,15 @@ Created on Feb 28, 2013
 
 # things all fxcorrelators Instruments do
 
-import logging
 import time
 import katcp
+# Yes, I know it's just an integer value
+from logging import INFO
 
 # from memory_profiler import profile
 
 from casperfpga import utils as fpgautils
 from casperfpga import skarab_fileops as skfops
-from casperfpga import CasperLogHandlers
 import utils
 import xhost_fpga
 import fhost_fpga
@@ -27,6 +27,8 @@ from fxcorrelator_filterops import FilterOperations
 from data_stream import StreamAddress
 from digitiser import DigitiserStream
 
+from corr2LogHandlers import getLogger
+
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.locks import Event as IOLoopEvent
@@ -34,7 +36,6 @@ from tornado.locks import Event as IOLoopEvent
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
-# LOGGER = logging.getLogger(__name__)
 
 
 def _disable_write(*args, **kwargs):
@@ -71,34 +72,31 @@ class FxCorrelator(Instrument):
 
     # @profile
     def __init__(self, descriptor, identifier=-1, config_source=None,
-                 logger=None):
+                 *args, **kwargs):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
         :param identifier: An optional integer identifier.
         :param config_source: The instrument configuration source. Can be a
-        text file, hostname, whatever.
-        :param logger: Use the module logger by default, unless something else
-        is given.
+                              text file, hostname, whatever.
         :return: <nothing>
-
         """
 
         self.descriptor = descriptor.strip().replace(' ', '_').upper()
-        if logger is None:
-            # Create one
-            self.logger = logging.getLogger(self.descriptor)
 
-            console_handler_name = '{}_console'.format(descriptor)
-            if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-                errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(descriptor)
-                # How are we going to log it anyway!
-                self.logger.error(errmsg)
-        else:
-            self.logger = logger
-
-        # All 'Instrument-level' objects will log at level DEBUG
-        self.logger.setLevel(logging.INFO)
+        # To make sure the given getLogger propagates all the way through
+        try:
+            self.getLogger = kwargs['getLogger']
+        except KeyError:
+            self.getLogger = getLogger
+            kwargs['getLogger'] = self.getLogger
+        # All 'Instrument-level' objects will log at level INFO
+        result, self.logger = self.getLogger(logger_name=self.descriptor,
+                                             log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(self.descriptor)
+            raise ValueError(errmsg)
         
         # we know about f and x hosts and engines, not just engines and hosts
         self.fhosts = []
@@ -121,10 +119,10 @@ class FxCorrelator(Instrument):
         self.timeout= None
 
         # parent constructor - this invokes reading the config file already
-        Instrument.__init__(self, descriptor, identifier, config_source, logger)
+        Instrument.__init__(self, descriptor, identifier, config_source)
 
         # create the host objects
-        self._create_hosts()
+        self._create_hosts(*args, **kwargs)
 
         # for periodic instrument engine monitoring
         self.instrument_monitoring_loop_enabled = IOLoopEvent()
@@ -133,10 +131,11 @@ class FxCorrelator(Instrument):
         self.f_eng_board_monitoring_dict_prev = {}
 
         infomsg = 'Successfully created Instrument: {}'.format(descriptor)
+        self.logger.info(infomsg)
 
     # @profile
     def initialise(self, program=True, configure=True,
-                   require_epoch=False,):
+                   require_epoch=False, *args, **kwargs):
         """
         Set up the correlator using the information in the config file.
         :param program: program the FPGA boards, implies configure
@@ -153,18 +152,18 @@ class FxCorrelator(Instrument):
         #clear the data streams. These will be re-added during configuration.
         self.data_streams = []
         # what digitiser data streams have we been allocated?
-        self._create_digitiser_streams()
+        self._create_digitiser_streams(**kwargs)
 
         # set up the F, X, B and filter handlers
-        self.fops = FEngineOperations(self)
-        self.xops = XEngineOperations(self)
-        self.bops = BEngineOperations(self)
-        self.filtops = FilterOperations(self)
+        self.fops = FEngineOperations(self, **kwargs)
+        self.xops = XEngineOperations(self, **kwargs)
+        self.bops = BEngineOperations(self, **kwargs)
+        self.filtops = FilterOperations(self, **kwargs)
 
         # set up the filter boards if we need to
         if 'filter' in self.configd:
             try:
-                self.filtops.initialise(program=program)
+                self.filtops.initialise(program=program, *args, **kwargs)
             except Exception as err:
                 errmsg = 'Failed to initialise filter boards: %s' % str(err)
                 self.logger.error(errmsg)
@@ -208,11 +207,13 @@ class FxCorrelator(Instrument):
 
         # run configuration on the parts of the instrument
         # this is independant of programming!
-        self.configure()
+        # - Passing args and kwargs through here, for completeness
+        self.configure(*args, **kwargs)
 
         # run post-programming initialisation
         if program or configure:
-            self._post_program_initialise()
+            # Passing args and kwargs through here, for completeness
+            self._post_program_initialise(*args, **kwargs)
 
         # set an initialised flag
         self._initialised = True
@@ -227,17 +228,17 @@ class FxCorrelator(Instrument):
                 target_function=('setup_host_gbes',
                                  (), {}))
 
-    def _post_program_initialise(self):
+    def _post_program_initialise(self, *args, **kwargs):
         """
         Run this if boards in the system have been programmed. Basic setup
         of devices.
         :return:
         """
         # init the engines
-        self.fops.initialise()
-        self.xops.initialise()
+        self.fops.initialise(*args, **kwargs)
+        self.xops.initialise(*args, **kwargs)
         if self.found_beamformer:
-            self.bops.initialise()
+            self.bops.initialise(*args, **kwargs)
 
         # start F-engine TX
         self.logger.info('Starting F-engine datastream')
@@ -258,16 +259,16 @@ class FxCorrelator(Instrument):
             self.xops.clear_status_all()
 
 
-    def configure(self):
+    def configure(self, *args, **kwargs):
         """
         Operations to run to configure the instrument, after programming.
         :return:
         """
         self.configure_digitiser_streams()
-        self.fops.configure()
-        self.xops.configure()
+        self.fops.configure(*args, **kwargs)
+        self.xops.configure(*args, **kwargs)
         if self.found_beamformer:
-            self.bops.configure()
+            self.bops.configure(*args, **kwargs)
 
     @staticmethod
     def configure_digitiser_streams():
@@ -399,7 +400,7 @@ class FxCorrelator(Instrument):
             self.logger.error('One or more bitstream files not found.')
             raise IOError('One or more bitstream files not found.')
 
-    def _create_hosts(self):
+    def _create_hosts(self, *args, **kwargs):
         """
         Set up the different kind of hosts that make up this correlator.
         :return:
@@ -412,8 +413,8 @@ class FxCorrelator(Instrument):
         for hostindex, host in enumerate(fhostlist):
             host = host.strip()
             try:
-                fpgahost = _target_class.from_config_source(host, self.katcp_port,
-                    config_source=_feng_d, host_id=hostindex, descriptor=self.descriptor)
+                fpgahost = _target_class.from_config_source(host, self.katcp_port, config_source=_feng_d,
+                            host_id=hostindex, descriptor=self.descriptor, **kwargs)
             except Exception as exc:
                 errmsg = 'Could not create fhost %s: %s' % (host, str(exc))
                 self.logger.error(errmsg)
@@ -430,8 +431,8 @@ class FxCorrelator(Instrument):
         for hostindex, host in enumerate(xhostlist):
             host = host.strip()
             try:
-                fpgahost = _target_class.from_config_source(host, hostindex,
-                    self.katcp_port, self.configd, descriptor=self.descriptor)
+                fpgahost = _target_class.from_config_source(host, hostindex, self.katcp_port,
+                            self.configd, descriptor=self.descriptor, **kwargs)
             except Exception as exc:
                 errmsg = 'Could not create xhost {}: {}'.format(host, str(exc))
                 self.logger.error(errmsg)
@@ -517,7 +518,7 @@ class FxCorrelator(Instrument):
             self.found_beamformer = True
             self.beng_outbits = int(self.configd['beam0']['beng_outbits'])
 
-    def _create_digitiser_streams(self):
+    def _create_digitiser_streams(self, *args, **kwargs):
         """
         Parse the config of the given digitiser streams.
         :return:
@@ -532,7 +533,8 @@ class FxCorrelator(Instrument):
             'addresses (%d)' % (len(source_names), len(source_mcast)))
         for ctr, source in enumerate(source_names):
             addr = StreamAddress.from_address_string(source_mcast[ctr])
-            dig_src = DigitiserStream(source, addr, ctr, self)
+            dig_src = DigitiserStream(source, addr, ctr, self,
+                                      *args, **kwargs)
             dig_src.tx_enabled = True
             self.add_data_stream(dig_src)
 
