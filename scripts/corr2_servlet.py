@@ -15,6 +15,7 @@ from concurrent import futures
 
 from corr2 import fxcorrelator, sensors
 from corr2.utils import KatcpStreamHandler
+from corr2 import corr_monitoring_loop as corr_mon_loop
 
 
 class Corr2Server(katcp.DeviceServer):
@@ -39,6 +40,9 @@ class Corr2Server(katcp.DeviceServer):
         self._initialised = False
         self.delays_disabled=False
 
+        self.mon_loop = None
+        self.mon_loop_running = None
+
     def _log_excep(self, excep, msg=''):
         """
         Log an error and return fail
@@ -54,7 +58,6 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.logger.error(message)
         else:
             logging.error(message)
-        raise
         return 'fail', message
 
     @request()
@@ -115,7 +118,6 @@ class Corr2Server(katcp.DeviceServer):
         :param program: program the FPGA boards if True
         :param configure: setup the FPGA registers if True
         :param require_epoch: the synch epoch MUST be set before init if True
-        :param monitor_vacc: start the VACC monitoring ioloop
         :param monitor_instrument: start the instrument monitoring ioloop
         :return:
         """
@@ -136,7 +138,13 @@ class Corr2Server(katcp.DeviceServer):
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
             if monitor_instrument:
-                self.instrument.instrument_monitoring_loop_timer_start()
+                # create the monitoring loop object
+                self.mon_loop = corr_mon_loop.MonitoringLoop(check_time=None,
+                                                             fx_correlator_object=self.instrument)
+                # start the monitoring loop
+                self.mon_loop.start()
+                self.mon_loop_running = True
+                # enable auto reset / resync for the f-engines (in hardware)
                 self.instrument.fops.auto_rst_enable()
             self._initialised = True
             return 'ok',
@@ -612,6 +620,87 @@ class Corr2Server(katcp.DeviceServer):
             current_shift_value = current_shift_value[
                 current_shift_value.keys()[0]]
         return ('ok', current_shift_value)
+
+    @request(Int(default=-1))
+    @return_reply()
+    def request_enable_monitoring_loop(self, sock, check_time):
+        """
+        enable the monitoring loop if it wasn't enabled at initialisation
+        :return:
+        """
+
+        if self.mon_loop is None:
+            # create the monitoring loop object
+            self.mon_loop = corr_mon_loop.MonitoringLoop(check_time=check_time,
+                                                         fx_correlator_object=self.instrument)
+            # start the monitoring loop
+            self.mon_loop.start()
+            self.mon_loop_running = True
+            # enable auto reset / resync for the f-engines (in hardware)
+            self.instrument.fops.auto_rst_enable()
+            return 'ok',
+        elif not self.mon_loop_running:
+            return 'fail', 'monitoring loop already enabled and waiting to be started'
+        else:
+            return 'fail', 'monitoring loop already enabled and running'
+
+    @request()
+    @return_reply()
+    def request_start_monitoring_loop(self, sock):
+        """
+        start the monitoring loop
+        :return:
+        """
+
+        if self.mon_loop is None:
+            return 'fail', 'monitoring loop not enabled'
+        else:
+            if not self.mon_loop_running:
+                self.mon_loop.start()
+                self.mon_loop_running = True
+                return 'ok',
+            else:
+                return 'fail', 'monitoring loop already running'
+
+    @request()
+    @return_reply()
+    def request_stop_monitoring_loop(self, sock):
+        """
+        stop the monitoring loop
+        :return:
+        """
+
+        if self.mon_loop_running:
+            self.mon_loop.stop()
+            self.mon_loop_running = False
+            return 'ok',
+        else:
+            return 'fail', 'monitoring loop is not currently running'
+
+    @request(Int(default=-1))
+    @return_reply(Int())
+    def request_set_monitoring_loop_time(self, sock, check_time):
+        """
+        set the cadence for the monitoring loop. note that this stops and
+        restarts the loop
+        :return:
+        """
+        if self.mon_loop is None:
+            return 'fail', 'monitoring loop is not enabled'
+
+        if check_time <= 0:
+            return 'fail', 'invalid check time for monitoring loop'
+        else:
+            if self.mon_loop_running:
+                self.mon_loop.stop()
+                self.mon_loop_running = False
+                self.mon_loop.check_time = check_time
+                self.mon_loop.start()
+                self.mon_loop_running = True
+            else:
+                self.mon_loop.check_time = check_time
+
+            return 'ok', check_time
 
     @request()
     @return_reply(Int(min=0))
