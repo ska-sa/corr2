@@ -1,7 +1,6 @@
 from logging import INFO
 
 from host_fpga import FpgaHost
-from digitiser_receiver import DigitiserStreamReceiver
 from casperfpga.transport_skarab import SkarabTransport
 from corr2LogHandlers import getLogger
 
