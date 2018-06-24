@@ -1,6 +1,7 @@
 import logging
 import termcolors
 import datetime
+import os
 
 from katcp import Message as KatcpMessage
 from casperfpga import CasperLogHandlers
@@ -100,12 +101,25 @@ def getKatcpLogger(logger_name, sock, log_level=logging.DEBUG, *args, **kwargs):
     :return: Tuple - Boolean Success/Fail, True/False
                    - Logger entity with Katcp and File Handlers added as default
     """
-    # try:
-    #     sock = kwargs['sock']
-    #     filename = kwargs['filename']
-    #     file_dir = kwargs['file_dir']
-    # except KeyError:
-    #     return False, None
+    try:
+        # Doing it this way for now
+        filename = kwargs['log_filename']
+    except KeyError:
+        filename = '{}.log'.format(logger_name)
+    try:
+        file_dir = kwargs['log_file_dir']
+        # Check if the log_file_dir specified exists
+        if not os.path.exists(file_dir):
+            # Problem
+            warningmsg = 'Problem with the file-directory specified: {}' \
+                    '\nMake sure you have write access to the path.' \
+                    '\nDefaulting to current working directory...'.format(file_dir)
+            LOGGER.warning(warningmsg)
+    except KeyError:
+        file_dir = '.'
+
+    abs_path = os.path.abspath(file_dir)
+    full_log_file_path = '{}/{}'.format(abs_path, filename)
 
     logger = logging.getLogger(logger_name)
 
@@ -120,10 +134,22 @@ def getKatcpLogger(logger_name, sock, log_level=logging.DEBUG, *args, **kwargs):
         logger.handlers = [handler for handler in logger.handlers if type(handler) != CasperLogHandlers.CasperConsoleHandler]
 
     katcp_handler_name = '{}_katcp'.format(logger_name)
-    newKatcpHandler = KatcpHandler(name=katcp_handler_name, sock=sock)
-    logger.addHandler(newKatcpHandler)
+    new_katcp_handler = KatcpHandler(name=katcp_handler_name, sock=sock)
+    logger.addHandler(new_katcp_handler)
 
     # Now add the FileHandler
+    # - Better practice to keep FileHandler and KatcpHandler separate
+    # - All instances of the FileHandler will need to point towards the same file
+    # - Filename follows the format: instrument_name.log
+    corr2_file_handler = logging.FileHandler(filename=full_log_file_path)
+    corr2_file_handler.name = '{}_file'.format(logger_name)
+
+    formatted_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]
+    format_string = formatted_datetime + ' - %(levelname)s - %(name)s %(filename)s:%(lineno)s - %(msg)s'
+    file_handler_formatter = logging.Formatter(format_string)
+    corr2_file_handler.setFormatter(file_handler_formatter)
+
+    logger.addHandler(corr2_file_handler)
 
     # Set the log-level before returning
     logger.setLevel(log_level)
@@ -222,6 +248,9 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
                                                         record.filename, str(record.lineno), record.msg)
         
         return formatted_string
+
+
+
 
 # endregion
 

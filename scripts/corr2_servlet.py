@@ -14,7 +14,7 @@ import time
 from concurrent import futures
 
 from corr2 import fxcorrelator, sensors
-from corr2.utils import KatcpStreamHandler
+from corr2.utils import KatcpStreamHandler, parse_ini_file
 
 from corr2.corr2LogHandlers import getKatcpLogger
 
@@ -98,8 +98,17 @@ class Corr2Server(katcp.DeviceServer):
             iname = instrument_name or 'corr_%s' % str(time.time())
             
             # Changing the getLogger function to add Katcp and File Handlers
+            self.log_filename = '{}.log'.format(iname.strip().replace(' ','_'))
+            # Parse ini file to check for log_file_dir
+            config_file_dict = parse_ini_file(config_file)
+            try:
+                self.log_file_dir = config_file_dict['FxCorrelator']['log_file_dir']
+            except KeyError:
+                self.log_file_dir = '.'
+
             self.instrument = fxcorrelator.FxCorrelator(iname, config_source=config_file,
-                              getLogger=getKatcpLogger, sock=sock)
+                              getLogger=getKatcpLogger, sock=sock,
+                              log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
             return 'ok',
         except Exception as ex:
@@ -129,14 +138,11 @@ class Corr2Server(katcp.DeviceServer):
         if self._initialised:
             return 'fail', 'Cannot run ?initialise twice.'
         try:
-            
-            # Need to check where getLogger is pointing
-            # import IPython
-            # IPython.embed()
-
             self.instrument.initialise(program=program,configure=configure,
                                        require_epoch=require_epoch, sock=sock,
-                                       getLogger=getKatcpLogger)
+                                       getLogger=getKatcpLogger,
+                                       log_filename=self.log_filename,
+                                       log_file_dir=self.log_file_dir)
             
             # Grab all loggers that include self.instrument.name
             # for logger_name, logger_entity in loggers.iter():

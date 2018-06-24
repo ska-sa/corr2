@@ -86,6 +86,7 @@ class FxCorrelator(Instrument):
         except KeyError:
             self.getLogger = getLogger
             kwargs['getLogger'] = self.getLogger
+        
         # All 'Instrument-level' objects will log at level INFO
         result, self.logger = self.getLogger(logger_name=self.descriptor,
                                              log_level=INFO, **kwargs)
@@ -120,7 +121,9 @@ class FxCorrelator(Instrument):
         # create the host objects
         self._create_hosts(*args, **kwargs)
 
-        infomsg = 'Successfully created Instrument: {}'.format(descriptor)
+        new_connection_string = '\n==========================================\n'
+        infomsg = '{0}Successfully created Instrument: {1}' \
+                  '{0}'.format(new_connection_string, descriptor)
         self.logger.info(infomsg)
 
     # @profile
