@@ -115,6 +115,7 @@ def getKatcpLogger(logger_name, sock, log_level=logging.DEBUG, *args, **kwargs):
                     '\nMake sure you have write access to the path.' \
                     '\nDefaulting to current working directory...'.format(file_dir)
             LOGGER.warning(warningmsg)
+            file_dir = '.'
     except KeyError:
         file_dir = '.'
 
