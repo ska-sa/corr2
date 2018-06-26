@@ -201,7 +201,11 @@ class FxCorrelator(Instrument):
         # run configuration on the parts of the instrument
         # this is independant of programming!
         # - Passing args and kwargs through here, for completeness
-        self.configure(getLogger=self.getLogger, *args, **kwargs)
+        if kwargs.has_key('getLogger'):
+            self.configure(*args, **kwargs)
+        else:
+            self.configure(getLogger=self.getLogger, *args, **kwargs)
+        
 
         # run post-programming initialisation
         if program or configure:

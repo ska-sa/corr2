@@ -12,7 +12,6 @@ class DigitiserStream(SPEADStream):
         self.correlator = correlator
         super(DigitiserStream, self).__init__(name,
             DIGITISER_ADC_SAMPLES, destination,
-            getLogger=correlator.getLogger,
             *args, **kwargs)
 
     def __str__(self):
