@@ -164,7 +164,7 @@ class Corr2Server(katcp.DeviceServer):
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
             if monitor_instrument:
                 # create the monitoring loop object
-                self.mon_loop = corr_mon_loop.MonitoringLoop(check_time=None,
+                self.mon_loop = corr_mon_loop.MonitoringLoop(check_time=-1,
                                                              fx_correlator_object=self.instrument)
                 # start the monitoring loop
                 self.mon_loop.start()
