@@ -107,7 +107,7 @@ class Corr2Server(katcp.DeviceServer):
                 self.log_file_dir = '.'
 
             self.instrument = fxcorrelator.FxCorrelator(iname, config_source=config_file,
-                              getLogger=getKatcpLogger, sock=sock,
+                              getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
             return 'ok',
@@ -139,7 +139,8 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', 'Cannot run ?initialise twice.'
         try:
             self.instrument.initialise(program=program,configure=configure,
-                                       require_epoch=require_epoch, sock=sock,
+                                       require_epoch=require_epoch, # sock=sock,
+                                       mass_inform_func=self.mass_inform,
                                        getLogger=getKatcpLogger,
                                        log_filename=self.log_filename,
                                        log_file_dir=self.log_file_dir)

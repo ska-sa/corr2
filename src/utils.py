@@ -10,6 +10,7 @@ from casperfpga.memory import bin2fp
 import casperfpga.utils as fpgautils
 
 from data_stream import StreamAddress
+from corr2LogHandlers import getLogger
 from casperfpga import CasperFpga
 
 LOGGER = logging.getLogger(__name__)
@@ -220,27 +221,30 @@ def _script_get_hosts(cmdline_args, host_type=None):
 
 def feng_script_get_fpgas(cmdline_args):
     from fhost_fpga import FpgaFHost
-    return script_get_fpgas(cmdline_args, 'fengine', FpgaFHost)
+    return script_get_fpgas(cmdline_args, 'fengine', FpgaFHost,
+                            getLogger=getLogger)
 
 
 def feng_script_get_fpga(cmdline_args):
     from fhost_fpga import FpgaFHost
     return script_get_fpga(cmdline_args, host_type='fengine',
-                           fpga_class=FpgaFHost)
+                           fpga_class=FpgaFHost, getLogger=getLogger)
 
 
 def xeng_script_get_fpgas(cmdline_args):
     from xhost_fpga import FpgaXHost
-    return script_get_fpgas(cmdline_args, 'xengine', FpgaXHost)
+    return script_get_fpgas(cmdline_args, 'xengine', FpgaXHost,
+                            getLogger=getLogger)
 
 
 def xeng_script_get_fpga(cmdline_args):
     from xhost_fpga import FpgaXHost
     return script_get_fpga(cmdline_args, host_type='xengine',
-                           fpga_class=FpgaXHost)
+                           fpga_class=FpgaXHost, getLogger=getLogger)
 
 
-def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga):
+def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga,
+                     *args, **kwargs):
     """
     Given command line arguments, return CASPER FPGA objects
     :param cmdline_args: the parsed args object from the script
@@ -251,7 +255,8 @@ def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga):
     config, host_details = _script_get_hosts(cmdline_args, host_type)
     fpgas = []
     for val in host_details:
-        fhosts = fpgautils.threaded_create_fpgas_from_hosts(val[1], fpga_class)
+        fhosts = fpgautils.threaded_create_fpgas_from_hosts(val[1], fpga_class,
+                                                            *args, **kwargs)
         if hasattr(fhosts[0].transport, 'katcprequest'):
             gsi_args = []
         else:
@@ -264,7 +269,8 @@ def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga):
 
 
 def script_get_fpga(cmdline_args, host_name=None, host_index=-1,
-                    host_type=None, fpga_class=CasperFpga):
+                    host_type=None, fpga_class=CasperFpga,
+                    *args, **kwargs):
     """
     Given command line arguments, return a CasperFpga object specified by the
     argument 'host'
@@ -306,7 +312,7 @@ def script_get_fpga(cmdline_args, host_name=None, host_index=-1,
     if host_fpga is None:
         raise RuntimeError('Could not find host: \'%s,%s\'' % (
             str(host_name), str(host_index)))
-    fpga = fpga_class(host_fpga)
+    fpga = fpga_class(host_fpga, *args, **kwargs)
     if hasattr(fpga.transport, 'katcprequest'):
         fpga.get_system_information()
     else:

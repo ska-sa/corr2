@@ -145,7 +145,12 @@ class FxCorrelator(Instrument):
         #clear the data streams. These will be re-added during configuration.
         self.data_streams = []
         # what digitiser data streams have we been allocated?
-        self._create_digitiser_streams(**kwargs)
+
+        if kwargs.has_key('getLogger'):
+            self._create_digitiser_streams(**kwargs)
+        else:
+            self._create_digitiser_streams(getLogger=self.getLogger, *args, **kwargs)
+        
 
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self, **kwargs)

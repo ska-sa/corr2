@@ -93,7 +93,8 @@ def getConsoleLogger(logger_name, log_level=logging.DEBUG, *args, **kwargs):
     return True, logger
 
 
-def getKatcpLogger(logger_name, sock, log_level=logging.DEBUG, *args, **kwargs):
+# def getKatcpLogger(logger_name, sock, log_level=logging.DEBUG, *args, **kwargs):
+def getKatcpLogger(logger_name, mass_inform_func, log_level=logging.DEBUG, *args, **kwargs):
     """
     Custom method allowing us to add default handlers to a logger
     :param logger_name:
@@ -135,7 +136,7 @@ def getKatcpLogger(logger_name, sock, log_level=logging.DEBUG, *args, **kwargs):
         logger.handlers = [handler for handler in logger.handlers if type(handler) != CasperLogHandlers.CasperConsoleHandler]
 
     katcp_handler_name = '{}_katcp'.format(logger_name)
-    new_katcp_handler = KatcpHandler(name=katcp_handler_name, sock=sock)
+    new_katcp_handler = KatcpHandler(name=katcp_handler_name, mass_inform_func=mass_inform_func) #sock=sock)
     logger.addHandler(new_katcp_handler)
 
     # Now add the FileHandler
@@ -196,7 +197,7 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
         - The message itself 
     """
 
-    def __init__(self, name, sock, *args, **kwargs):
+    def __init__(self, name, mass_inform_func, *args, **kwargs):
         """
         Initialise the KatcpHandler with the intended comms socket
         :param sock: KatcpHandler always needs a socket to log to!
@@ -207,7 +208,8 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
 
         # These always need to be present
         self.name = name
-        self.sock = sock
+        # self.sock = sock
+        self.mass_inform_func = mass_inform_func
 
         try:
             self._max_len = kwargs['max_len']
@@ -225,6 +227,9 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
         if len(self._records) >= self._max_len:
             self._records.pop(0)
 
+        # Might as well check here for the initial 'Successfully created instrument'
+        # message here and remove any fancy formatting
+
         self._records.append(message)
         # import IPython
         # IPython.embed()
@@ -236,8 +241,9 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
         
         log_message = KatcpMessage(message_type, message_name, message_data)
         
-        self.sock.mass_inform(log_message)
-
+        # self.sock.mass_inform(log_message)
+        self.mass_inform_func(log_message)
+        
     def format(self, record):
         """
         :param record: Log message as a dictionary, of type logging.LogRecord

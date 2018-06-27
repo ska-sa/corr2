@@ -31,7 +31,7 @@ class BEngineOperations(object):
 
         self.logger.debug('Successfully created logger for {}'.format(logger_name))
 
-    def initialise(self):
+    def initialise(self, *args, **kwargs):
         """
         Initialises the b-engines and checks for errors. This is run after
         programming devices in the instrument.
