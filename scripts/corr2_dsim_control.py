@@ -9,10 +9,9 @@ import time
 from corr2 import utils
 from corr2.dsimhost_fpga import FpgaDsimHost
 
-parser = argparse.ArgumentParser(
-    description='Control the dsim-engine (fake digitiser.)',
+parser = argparse.ArgumentParser(description='Control the dsim-engine (fake digitiser.)',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--config', dest='config', type=str, action='store',
+parser.add_argument('-c', '--config', dest='config', type=str, action='store',
                     help='corr2 config file. (default: Use CORR2INI env var)')
 parser.add_argument('--program', dest='program', action='store_true',
                     default=False, help='(re)program the fake digitiser')
@@ -23,12 +22,12 @@ parser.add_argument('--start', dest='start', action='store_true', default=False,
 parser.add_argument('--status', dest='status', action='store_true',
                     default=False,
                     help='Checks the status of digitiser transmission')
-parser.add_argument('--pulse', action='store_true', default=False, help=
+parser.add_argument('--pulse', action='store_true', default=False, help=(
                     'Send a pulse of fake packets. Does nothing if digitiser '
                     'is already transmitting, use --stop first. It will only '
                     'work once until the dsim-engine is reset, e.g using '
                     '--resync which can be used with --pulse (--resync will '
-                    'be applied first).')
+                    'be applied first).'))
 parser.add_argument('--pulse-packets', action='store', default=100, type=int,
                     help='Send out out this many data packets per polarisation'
                          ' if --pulse is specified (default: %(default)d.')
@@ -73,22 +72,24 @@ if args.log_level != '':
     import logging
     log_level = args.log_level.strip()
     try:
-        logging.basicConfig(level=eval('logging.%s' % log_level))
+        logging.basicConfig(level=eval('logging.{}'.format(log_level)))
     except AttributeError:
-        raise RuntimeError('No such log level: %s' % log_level)
+        raise RuntimeError('No such log level: {}'.format(log_level))
 
 # make the fpga
 # dfpga = utils.script_get_fpga(args, host_index=0, host_type='dsimengine',
 #                               fpga_class=FpgaDsimHost)
-if 'CORR2INI' in os.environ.keys() and \
-        (args.config == '' or args.config is None):
+if 'CORR2INI' in os.environ.keys() and (args.config == '' or args.config is None):
     args.config = os.environ['CORR2INI']
-config, host_detail = utils.hosts_and_bitstreams_from_config(
-    config_file=args.config, section='dsimengine')
-section, host_list, bitstream = host_detail[0]
-dfpga = FpgaDsimHost(host_list[0], bitstream=bitstream,
-                     config=config['dsimengine'])
-print('Connected to %s.' % dfpga.host)
+try:
+    config, host_detail = utils.hosts_and_bitstreams_from_config(
+        config_file=args.config, section='dsimengine')
+    section, host_list, bitstream = host_detail[0]
+    dfpga = FpgaDsimHost(host_list[0], bitstream=bitstream,
+                         config=config['dsimengine'])
+    print('Connected to {}.'.format(dfpga.host))
+except TypeError:
+    raise RuntimeError('Config template was not parsed!!!')
 
 if args.start and args.stop:
     raise RuntimeError('Start and stop? You must be crazy!')
@@ -115,17 +116,17 @@ if 'cwg0_en' in dfpga.registers.names():
 if args.deprogram:
     dfpga.deprogram()
     something_happened = True
-    print('Deprogrammed %s.' % dfpga.host)
+    print('Deprogrammed {}.'.format(dfpga.host))
 
 if args.resync:
     dfpga.data_resync()
-    sync_epoch =  time.time()
+    sync_epoch = time.time()
     something_happened = True
-    print('Reset digitiser timer and sync timer: %s' % sync_epoch)
+    print('Reset digitiser timer and sync timer: {}'.format(sync_epoch))
 
 if args.start:
     # start tx
-    print('Starting TX on %s' % dfpga.host, end='')
+    print('Starting TX on {}'.format(dfpga.host))
     sys.stdout.flush()
     dfpga.enable_data_output(enabled=True)
     dfpga.registers.control.write(gbe_txen=True)
@@ -136,10 +137,20 @@ if args.start:
 if args.status:
     # start tx
     sys.stdout.flush()
-    assert hasattr(dfpga.registers, 'forty_gbe_txctr'), "function is broken! Missing register: forty_gbe_txctr"
-    before = dfpga.registers.forty_gbe_txctr.read()['data']['reg']
-    time.sleep(0.5)
-    after = dfpga.registers.forty_gbe_txctr.read()['data']['reg']
+    if dfpga.host.startswith("skarab"):
+        errmsg = "function is broken! Missing register: forty_gbe_txctr"
+        assert hasattr(dfpga.registers, 'forty_gbe_txctr'), errmsg
+        before = dfpga.registers.forty_gbe_txctr.read()['data']['reg']
+        time.sleep(0.5)
+        after = dfpga.registers.forty_gbe_txctr.read()['data']['reg']
+    else:
+        for cnt, _ in enumerate(dfpga.registers.gbecontrol.read()['data']):
+            errmsg = "function is broken! Missing register: gbe{}_txctr".format(cnt)
+            assert hasattr(dfpga.registers, "gbe{}_txctr".format(cnt)), errmsg
+        before = dfpga.registers.gbe0_txctr.read()['data']['reg']
+        time.sleep(0.5)
+        after = dfpga.registers.gbe0_txctr.read()['data']['reg']
+
     if before == after:
         print('Digitiser tx raw data failed.')
     else:
@@ -149,7 +160,7 @@ if args.status:
 
 if args.stop:
     dfpga.enable_data_output(enabled=False)
-    print('Stopped transmission on %s.' % dfpga.host)
+    print('Stopped transmission on {}.'.format(dfpga.host))
     something_happened = True
 
 if args.pulse:
@@ -171,15 +182,14 @@ if args.sine_source:
         try:
             sine_source.set(scale=xscale, frequency=yfreq)
         except ValueError:
-            print('\nError, verify your inputs for sin_%s' % sine_source.name)
-            print('Max Frequency should be {}MHz'.format(
-                sine_source.max_freq/1e6))
+            print('\nError, verify your inputs for sin_{}'.format(sine_source.name))
+            print('Max Frequency should be {}MHz'.format(sine_source.max_freq / 1e6))
             print('Scale should be between 0 and 1')
             sys.exit(1)
         print('')
-        print('sine source: %s' % sine_source.name)
-        print('scale: %s' % sine_source.scale)
-        print('frequency: %s' % sine_source.frequency)
+        print('sine source: {}'.format(sine_source.name))
+        print('scale: {}'.format(sine_source.scale))
+        print('frequency: {}'.format(sine_source.frequency))
     something_happened = True
 
 if args.zeros_sine:
@@ -194,7 +204,7 @@ if args.zeros_sine:
             print('sine source {}, set to {}.'.format(sine_source.name,
                                                       sine_source.scale))
         except Exception as exc:
-            print('An error occured: %s' % exc.message)
+            print('An error occured: {}'.format(exc.message))
             sys.exit(1)
     something_happened = True
 
@@ -206,7 +216,7 @@ if args.noise_source:
                 noise_sources))
         except AttributeError:
             print('You can only select between noise sources:'
-                  ' %s' % dfpga.noise_sources.names())
+                  ' {}'.format(dfpga.noise_sources.names)())
             sys.exit(1)
         try:
             source_from.set(scale=noise_scale)
@@ -214,8 +224,8 @@ if args.noise_source:
             print('Valid scale input is between 0 - 1.')
             sys.exit(1)
         print('')
-        print('noise source: %s' % source_from.name)
-        print('noise scale: %s' % source_from.scale)
+        print('noise source: {}'.format(source_from.name))
+        print('noise scale: {}'.format(source_from.scale))
     something_happened = True
 
 if args.zeros_noise:
@@ -229,9 +239,8 @@ if args.zeros_noise:
             noise_source.set(0)
             print('noise source {}, set to {}.'.format(noise_source.name,
                                                        noise_source.scale))
-        except:
-            print('An error occured.')
-            sys.exit(1)
+        except Exception as exc:
+            raise RuntimeError('An error occurred: {}'.format(str(exc)))
     something_happened = True
 
 if args.pulsar_source:
@@ -239,8 +248,7 @@ if args.pulsar_source:
         xscale = float(xscale_s)
         yfreq = float(yfreq_s)
         try:
-            pulsar_sources = getattr(dfpga.pulsar_sources, 'pulsar_{}'.format(
-                pulsar_source))
+            pulsar_sources = getattr(dfpga.pulsar_sources, 'pulsar_{}'.format(pulsar_source))
         except AttributeError:
             print('You can only select between pulsar sources: {}'.format([
                 ss.name for ss in dfpga.pulsar_sources]))
@@ -248,16 +256,13 @@ if args.pulsar_source:
         try:
             pulsar_sources.set(scale=xscale, frequency=yfreq)
         except ValueError:
-            print('\nError, verify your inputs for pulsar_{}'.format(
-                str(pulsar_sources.name)))
-            print('Max Frequency should be {}MHz'.format(
-                pulsar_sources.max_freq/1e6))
+            print('\nError, verify your inputs for pulsar_{}'.format(pulsar_sources.name))
+            print('Max Frequency should be {}MHz'.format(pulsar_sources.max_freq / 1e6))
             print('Scale should be between 0 and 1')
             sys.exit(1)
-        print('')
-        print('pulsar source: %s' % pulsar_sources.name)
-        print('scale: %s' % pulsar_sources.scale)
-        print('frequency: %s' % pulsar_sources.frequency)
+        print('\npulsar source: {}'.format(pulsar_sources.name))
+        print('scale: {}'.format(pulsar_sources.scale))
+        print('frequency: {}'.format(pulsar_sources.frequency))
         # print('Initialising data '
         # pulsar_sources.initialise_data()
         # print('Add pulsar (this takes time)'
@@ -278,9 +283,8 @@ if args.output_type:
         except ValueError:
             print('Valid output_type values: \'test_vectors\' and \'signal\'')
             sys.exit(1)
-        print('')
-        print('output selected: %s' % type_from.name)
-        print('output type: %s' % type_from.output_type)
+        print('\noutput selected: {}'.format(type_from.name))
+        print('output type: {}'.format(type_from.output_type))
     something_happened = True
 # ---------------------------------------------
 if args.output_scale:
@@ -289,7 +293,7 @@ if args.output_scale:
         try:
             scale_from = getattr(dfpga.outputs, 'out_{}'.format(output_scale))
         except AttributeError:
-            print('You can only select between, %s' % dfpga.outputs.names())
+            print('You can only select between, {}'.format(dfpga.outputs.names()))
             sys.exit(1)
         try:
             scale_from.scale_output(scale_value)
@@ -300,8 +304,8 @@ if args.output_scale:
         Check if it can read what was written to it!
         """
         print('')
-        print('output selected: %s' % scale_from.name)
-        print('output scale: %s' % scale_from.scale_register.read()['data']['scale'])
+        print('output selected: {}'.format(scale_from.name))
+        print('output scale: {}'.format(scale_from.scale_register.read()['data']['scale']))
     something_happened = True
 
 if args.repeat_sine:
@@ -316,8 +320,7 @@ if args.repeat_sine:
         try:
             sine.set(repeatN=int(repeat))
         except NotImplementedError:
-            print(("Source repeat not implemented for source '{sine_name}'."
-                   .format(**locals())))
+            print(("Source repeat not implemented for source '{sine_name}'.".format(**locals())))
             sys.exit(1)
 
 # f = dfpga
