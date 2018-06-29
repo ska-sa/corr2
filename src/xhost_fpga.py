@@ -1,11 +1,11 @@
-import logging
+from logging import INFO
 import time
 import struct
 
 from host_fpga import FpgaHost
 from host_fpga import FpgaHost
 from casperfpga.transport_skarab import SkarabTransport
-from casperfpga import CasperLogHandlers
+# from corr2LogHandlers import getLogger
 
 
 class FpgaXHost(FpgaHost):
@@ -21,14 +21,17 @@ class FpgaXHost(FpgaHost):
         except KeyError:
             descriptor = 'InstrumentName'
 
+        # This will always be a kwarg
+        self.getLogger = kwargs['getLogger']
+
         logger_name = '{}_xhost-{}-{}'.format(descriptor, str(index), host)
-        self.logger = logging.getLogger(logger_name)
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            self.logger.error(errmsg)
-            # raise RuntimeError(errmsg)
-        self.logger.setLevel(logging.INFO)
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                             log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
         self.logger.debug('Successfully created logger for {}'.format(logger_name))
 
         self.config = config

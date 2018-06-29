@@ -6,11 +6,13 @@ class DigitiserStream(SPEADStream):
     A SPEADStream from a Digitiser.
     It has an input number associated with it.
     """
-    def __init__(self, name, destination, input_number, correlator):
+    def __init__(self, name, destination, input_number, correlator,
+                 *args, **kwargs):
         self.input_number = input_number
         self.correlator = correlator
-        super(DigitiserStream, self).__init__(
-            name, DIGITISER_ADC_SAMPLES, destination)
+        super(DigitiserStream, self).__init__(name,
+            DIGITISER_ADC_SAMPLES, destination,
+            *args, **kwargs)
 
     def __str__(self):
         return 'DigitiserStream(%s:%i:%i) -> %s' % (

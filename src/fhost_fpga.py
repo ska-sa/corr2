@@ -1,14 +1,16 @@
 import time
-import logging
+from logging import INFO
 import struct
 import numpy
 
 import casperfpga.memory as caspermem
+from casperfpga.transport_skarab import SkarabTransport
 
 import delay as delayops
 from utils import parse_slx_params
-from digitiser_receiver import DigitiserStreamReceiver
-from casperfpga import CasperLogHandlers
+from host_fpga import FpgaHost
+# from digitiser_receiver import DigitiserStreamReceiver
+# from corr2LogHandlers import getLogger
 
 #TODO: move snapshots from fhost obj to feng obj?
 #   -> not sensible while trig_time registers are shared for adc snapshots.    
@@ -49,8 +51,8 @@ class Fengine(object):
     """
     An F-engine, acting on a source DataStream
     """
-    def __init__(self, input_stream,
-                 host=None, offset=-1, **kwargs):
+    def __init__(self, input_stream, host=None,
+                 offset=-1, *args, **kwargs):
         """
 
         :param input_stream: the DigitiserStream input for this F-engine
@@ -70,16 +72,17 @@ class Fengine(object):
         except KeyError:
             descriptor = 'InstrumentName'
         
-        logger_name = '{}_feng{}-{}-{}'.format(descriptor, str(self.feng_id), input_stream.name, host)
+        # This will always be a kwarg
+        self.getLogger = kwargs['getLogger']
         
-        self.logger = logging.getLogger(logger_name)
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            # How are we going to log it anyway!
-            self.logger.error(errmsg)
+        logger_name = '{}_feng{}-{}'.format(descriptor, str(self.feng_id), input_stream.name)
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                             log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
 
-        self.logger.setLevel(logging.INFO)
         debugmsg = 'Successfully created logger for {}'.format(logger_name)
         self.logger.debug(debugmsg)
 
@@ -119,10 +122,10 @@ class Fengine(object):
         """
         snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
         #calculate number of snapshot reads required:
-        n_reads=float(self.host.n_chans)/(2**snapshot.block_info['snap_nsamples'])/4
+        n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
         compl = []
         for read_n in range(int(numpy.ceil(n_reads))):
-            offset = read_n * (2**snapshot.block_info['snap_nsamples'])
+            offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
             sdata = snapshot.read(offset=offset)['data']
             for ctr in range(0, len(sdata['real0'])):
                 compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
@@ -383,14 +386,16 @@ class Fengine(object):
             self.name, self.input_number, self.host, self.offset,self.input)
 
 
-class FpgaFHost(DigitiserStreamReceiver):
+class FpgaFHost(FpgaHost):
     """
     A Host, that hosts Fengines, that is a CASPER KATCP FPGA.
     """
     def __init__(self, host, katcp_port=7147, bitstream=None,
                  connect=True, config=None, **kwargs):
-        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port,
-                                        bitstream=bitstream, connect=connect)
+        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port, 
+                                        bitstream=bitstream,
+                                        transport=SkarabTransport,
+                                        connect=connect)
 
         self._config = config
 
@@ -404,15 +409,18 @@ class FpgaFHost(DigitiserStreamReceiver):
             descriptor = kwargs['descriptor']
         except KeyError:
             descriptor = 'InstrumentName'
+
+        # This will always be a kwarg
+        self.getLogger = kwargs['getLogger']
         
         logger_name = '{}_fhost-{}-{}'.format(descriptor, str(self.fhost_index), host)
-        self.logger = logging.getLogger(logger_name)
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(descriptor)
-            self.logger.error(errmsg)
-            # raise RuntimeError(errmsg)
-        self.logger.setLevel(logging.INFO)
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                             log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
         debugmsg = 'Successfully created logger for {}'.format(logger_name)
         self.logger.debug(debugmsg)
 
@@ -450,6 +458,16 @@ class FpgaFHost(DigitiserStreamReceiver):
         msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
         rv = (msw << 32) | lsw
         return rv
+    
+    def clear_status(self):
+        """
+        Clear the status registers and counters on this host
+        :return:
+        """
+        self.registers.control.write(status_clr='pulse', gbe_cnt_rst='pulse',
+                                     cnt_rst='pulse')
+        # self.registers.control.write(gbe_cnt_rst='pulse')
+        self.logger.debug('{}: status cleared.'.format(self.host))
 
     def get_pipeline_latency(self):
         """

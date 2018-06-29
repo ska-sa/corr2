@@ -2,6 +2,7 @@ import numpy
 import time
 import Queue
 import threading
+from logging import INFO
 
 from casperfpga import utils as fpgautils
 from casperfpga import CasperLogHandlers
@@ -12,8 +13,7 @@ import utils
 import fhost_fpga
 import fxcorrelator_speadops as speadops
 import delay as delayops
-
-import logging
+# from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -24,7 +24,7 @@ class FengineStream(SPEADStream):
     """
     An f-engine SPEAD stream
     """
-    def __init__(self, name, destination, fops):
+    def __init__(self, name, destination, fops, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -32,8 +32,8 @@ class FengineStream(SPEADStream):
         :return:
         """
         self.fops = fops
-        super(FengineStream, self).__init__(
-            name, FENGINE_CHANNELISED_DATA, destination)
+        super(FengineStream, self).__init__(name, FENGINE_CHANNELISED_DATA,
+            destination, **kwargs)
 
     def descriptors_setup(self):
         """
@@ -117,7 +117,7 @@ class FengineStream(SPEADStream):
 
 class FEngineOperations(object):
 
-    def __init__(self, corr_obj):
+    def __init__(self, corr_obj, **kwargs):
         """
         A collection of F-engine operations that act on/with a
         correlator instance.
@@ -126,24 +126,24 @@ class FEngineOperations(object):
         """
         self.corr = corr_obj
         self.hosts = corr_obj.fhosts
-        # self.logger = corr_obj.logger
-
+        
         self.fengines = []
         self.data_stream = None
         
         # Now creating separate instances of loggers as needed
         logger_name = '{}_FEngOps'.format(corr_obj.descriptor)
-        self.logger = logging.getLogger(logger_name)
-        # - Give logger some default config
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            self.logger.error(errmsg)
-            # raise RuntimeError(errmsg)
-        self.logger.setLevel(logging.INFO)
+        # All 'Instrument-level' objects will log at level INFO
+        # - corr_obj already has it, might as well use it
+        result, self.logger = corr_obj.getLogger(logger_name=logger_name,
+                                                 log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
         self.logger.debug('Successfully created logger for {}'.format(logger_name))
         
-    def initialise(self):
+    def initialise(self, *args, **kwargs):
         """
         Set up F-engines on this device. This is done after programming the
         devices in the instrument.
@@ -238,7 +238,7 @@ class FEngineOperations(object):
         #subscribe to multicast groups
         self.subscribe_to_multicast()
 
-    def configure(self):
+    def configure(self, *args, **kwargs):
         """
         Configure the fengine operations - this is done whenever a correlator
         is instantiated.
@@ -268,7 +268,8 @@ class FEngineOperations(object):
                 input_stream=self.corr.get_data_stream(stream_value[0]),
                 host=None,
                 offset=stream_value[1] % self.corr.f_per_fpga,
-                feng_id=stream_index, descriptor=self.corr.descriptor)
+                feng_id=stream_index, descriptor=self.corr.descriptor,
+                *args, **kwargs)
             new_feng.eq_poly = eq_polys[new_feng.name]
             new_feng.eq_bram_name = 'eq%i' % new_feng.offset
             dest_ip_range = new_feng.input.destination.ip_range
@@ -315,7 +316,8 @@ class FEngineOperations(object):
                 ' starting base address.' % output_address)
         num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
         output_address.ip_range = num_xeng
-        self.data_stream = FengineStream(output_name, output_address, self)
+        self.data_stream = FengineStream(output_name, output_address, self,
+                                         *args, **kwargs)
         self.data_stream.set_source(
             [feng.input.destination for feng in self.fengines]
         )

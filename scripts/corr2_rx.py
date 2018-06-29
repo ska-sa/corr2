@@ -438,7 +438,7 @@ class CorrReceiver(threading.Thread):
     """
     def __init__(self, port, base_ip, quit_event, track_list, h5_filename,
                  baselines, channels, acc_scale,
-                 log_handler=None, log_level=logging.INFO,
+                 log_handler=None, warmup_capture=False, log_level=logging.INFO,
                  spead_log_level=logging.INFO,):
         """
 
@@ -493,6 +493,12 @@ class CorrReceiver(threading.Thread):
         self.need_plot_data = None
         self.plot_queue = None
 
+        # This runs a capture once with only one substream.
+        # It seems to be needed to get larger captures to work.
+        # Must be investigated
+        # After the warmup loop the normal loop runs
+        self.warmup_capture = warmup_capture
+
         threading.Thread.__init__(self)
 
     def set_print_queue(self, queue, flag):
@@ -516,7 +522,7 @@ class CorrReceiver(threading.Thread):
         # It seems to be needed to get larger captures to work.
         # Must be investigated
         # After the warmup loop the normal loop runs
-        warmup_cap = True
+        # self.warmup_capture = True
         for double_loop in range (2):
             logger = self.logger
             logger.info('RXing data with base IP addres: %s+%i, port %i.' % (self.base_ip,NUM_XENG, self.port))
@@ -524,7 +530,7 @@ class CorrReceiver(threading.Thread):
             # make a SPEAD2 receiver stream
             self.interface_address = ''.join([ethx for ethx in network_interfaces()
                                              if ethx.startswith(interface_prefix)])
-            if warmup_cap:
+            if self.warmup_capture:
                 channels = (0,15)
             else:
                 channels = self.channels
@@ -566,7 +572,6 @@ class CorrReceiver(threading.Thread):
 
             # process received heaps
             for heap in strm:
-                #import IPython;IPython.embed()
                 ig.update(heap)
                 cnt_diff = heap.cnt - last_cnt
                 last_cnt = heap.cnt
@@ -615,7 +620,7 @@ class CorrReceiver(threading.Thread):
                             except Queue.Full:
                                 self.plot_queue.get()
                                 self.plot_queue.put(data[datatime])
-                    if warmup_cap:
+                    if self.warmup_capture:
                         break
                 # should we quit?
                 if self.quit_event.is_set():
@@ -623,8 +628,8 @@ class CorrReceiver(threading.Thread):
                     break
                 # count processed heaps
                 idx += 1
-            if warmup_cap:
-                warmup_cap = False
+            if self.warmup_capture:
+                self.warmup_capture = False
 # TODO file
 #        for (name,idx) in datasets_index.iteritems():
 #            if idx == 1:
@@ -709,6 +714,11 @@ if __name__ == '__main__':
     parser.add_argument(
         '--channels', dest='channels', action='store', default='-1,-1',
         type=str, help='a (start,end) tuple, -1 means 0, n_chans respectively')
+    parser.add_argument(
+        '--warmup_cap', dest='warmup_capture', action='store_true', default=False,
+        help=('This runs a capture once with only one substream.'
+              'It seems to be needed to get larger captures to work.'
+              'After the warm-up loop the normal loop runs'))
     parser.add_argument(
         '--items', dest='items', action='store', default='',
         help='SPEAD items to track, in comma-separated list - will output '
@@ -879,7 +889,9 @@ if __name__ == '__main__':
         baselines=baselines,
         channels=channels,
         acc_scale=args.scale,
-        quit_event=quit_event,)
+        quit_event=quit_event,
+        warmup_capture=args.warmup_capture,
+        )
 
     if printsumer:
         corr_rx.set_print_queue(printsumer.data_queue,

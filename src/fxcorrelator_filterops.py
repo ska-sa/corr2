@@ -1,4 +1,5 @@
 import time
+from logging import INFO
 
 from casperfpga import utils as fpgautils
 from casperfpga.network import Mac, IpAddress
@@ -6,8 +7,7 @@ from casperfpga.network import Mac, IpAddress
 import filthost_fpga
 from data_stream import StreamAddress
 
-import logging
-from casperfpga import CasperLogHandlers
+# from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -41,7 +41,7 @@ def parse_sources(name_string, ip_string):
 
 class FilterOperations(object):
 
-    def __init__(self, corr_obj):
+    def __init__(self, corr_obj, *args, **kwargs):
         """
         A collection of filter operations that act on/with a correlator instance.
         :param corr_obj:
@@ -54,17 +54,17 @@ class FilterOperations(object):
         
         # Now creating separate instances of loggers as needed
         logger_name = '{}_FilterOps'.format(corr_obj.descriptor)
-        self.logger = logging.getLogger(logger_name)
-        # - Give logger some default config
-        console_handler_name = '{}_console'.format(logger_name)
-        if not CasperLogHandlers.configure_console_logging(self.logger, console_handler_name):
-            errmsg = 'Unable to create ConsoleHandler for logger: {}'.format(logger_name)
-            self.logger.error(errmsg)
-            # raise RuntimeError(errmsg)
-        self.logger.setLevel(logging.INFO)
+        # All 'Instrument-level' objects will log at level INFO
+        result, self.logger = corr_obj.getLogger(logger_name=logger_name,
+                                        log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
         self.logger.debug('Successfully created logger for {}'.format(logger_name))
 
-    def initialise(self, program=True):
+    def initialise(self, program=True, *args, **kwargs):
         """
         Set up filter engines
         :return:
@@ -73,7 +73,8 @@ class FilterOperations(object):
         _filthosts = self.corr.configd['filter']['hosts'].strip().split(',')
         self.logger.info('Adding filter boards:')
         for ctr, _ in enumerate(_filthosts):
-            _fpga = filthost_fpga.FpgaFilterHost(ctr, self.corr.configd)
+            _fpga = filthost_fpga.FpgaFilterHost(ctr, self.corr.configd
+                                                 *args, **kwargs)
             self.hosts.append(_fpga)
             self.logger.info('\t{} added to filters'.format(_fpga.host))
         self.logger.info('done.')
