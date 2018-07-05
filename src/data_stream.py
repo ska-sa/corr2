@@ -156,11 +156,11 @@ class SPEADStream(object):
         self.source = None
         self.tx_enabled = False
         self.tx_sockets=None
+        self.threadpool=spead2.ThreadPool()
         self.descr_ig = spead2.send.ItemGroup(
             flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
         self.descriptors_setup()
         self.set_destination(destination)
-        self.threadpool=spead2.ThreadPool()
 
     def descriptors_setup(self):
         """
