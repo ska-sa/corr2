@@ -48,6 +48,8 @@ logging.getLogger("casperfpga").setLevel(logging.FATAL)
 logging.getLogger("casperfpga.register").setLevel(logging.FATAL)
 logging.getLogger("casperfpga.bitfield").setLevel(logging.FATAL)
 
+ri=True
+
 class PrintConsumer(object):
     def __init__(self):
         self.data_queue = Queue.Queue(maxsize=128)
@@ -72,8 +74,12 @@ class PrintConsumer(object):
                 bls = powerdata[blsctr][0]
                 pwr = powerdata[blsctr][1]
                 phs = phasedata[blsctr][1]
-                print('%i-%s:\n\tpwr: %s\n\tphs: %s' % (
-                    bls, BASELINES[bls], pwr[0:100], phs[0:100]))
+                if args.ri:
+                    print('%i-%s:\n\treal: %s\n\timag: %s' % (
+                        bls, BASELINES[bls], pwr[0:100], phs[0:100]))
+                else:
+                    print('%i-%s:\n\tpwr: %s\n\tphs: %s' % (
+                        bls, BASELINES[bls], pwr[0:100], phs[0:100]))
         self.need_data_flag.set()
 
 
@@ -115,11 +121,18 @@ class PlotConsumer(object):
 
         sbplt = self.figure.axes
         sbplt[0].cla()
-        sbplt[0].set_title('power - %i' % self.plot_counter)
-        sbplt[0].grid(True)
-        sbplt[1].cla()
-        sbplt[1].set_title('phase - %i' % self.plot_counter)
-        sbplt[1].grid(True)
+        if args.ri:
+            sbplt[0].set_title('power - %i' % self.plot_counter)
+            sbplt[0].grid(True)
+            sbplt[1].cla()
+            sbplt[1].set_title('phase - %i' % self.plot_counter)
+            sbplt[1].grid(True)
+        else:
+            sbplt[0].set_title('real - %i' % self.plot_counter)
+            sbplt[0].grid(True)
+            sbplt[1].cla()
+            sbplt[1].set_title('imag - %i' % self.plot_counter)
+            sbplt[1].grid(True)
         powerdata = plotdata[0]
         phasedata = plotdata[1]
         lines = []
@@ -373,13 +386,20 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
             powerdata = []
             phasedata = []
             chan_range = range(channels[0]-chan_offset, channels[1]-chan_offset)
-            for ctr in chan_range:
-                complex_tuple = bdata[ctr]
-                pwr = np.sqrt(complex_tuple[0] ** 2 + complex_tuple[1] ** 2)
-                powerdata.append(pwr)
-                cplx = complex(complex_tuple[0], complex_tuple[1])
-                phase = np.angle(cplx)
-                phasedata.append(phase)
+            if not args.ri:
+                for ctr in chan_range:
+                    complex_tuple = bdata[ctr]
+                    pwr = np.sqrt(complex_tuple[0] ** 2 + complex_tuple[1] ** 2)
+                    powerdata.append(pwr)
+                    cplx = complex(complex_tuple[0], complex_tuple[1])
+                    phase = np.angle(cplx)
+                    phasedata.append(phase)
+            else:
+                for ctr in chan_range:
+                    complex_tuple = bdata[ctr]
+                    powerdata.append(complex_tuple[0])
+                    phasedata.append(complex_tuple[1])
+
             # TODO scaling
             # ?!broken?!
             # bdata = bdata[channels[0]:channels[1], :]
@@ -742,6 +762,9 @@ if __name__ == '__main__':
         '--speadloglevel', dest='spead_log_level', action='store',
         default='ERROR', help='log level to use in spead receiver, default '
                               'ERROR, options INFO, DEBUG, ERROR')
+    parser.add_argument(
+        '--ri', dest='ri', action='store_true',
+        default=False, help='plot/print real and imag rather than pwr and phs.')
     args = parser.parse_args()
 
     log_level = None
