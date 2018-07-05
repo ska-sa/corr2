@@ -102,7 +102,7 @@ class StreamAddress(object):
         return '%s+%i:%i' % (self.ip_address, self.ip_range-1, self.port)
 
 
-def _setup_spead_tx(ip_string, port):
+def _setup_spead_tx(threadpool,ip_string, port):
     """
     Set up a SPEAD transmitter.
     :param ip_string: where are messages on this socket sent?
@@ -119,8 +119,8 @@ def _setup_spead_tx(ip_string, port):
         socket.IP_MULTICAST_TTL,
         ttl_bin)
     tx = spead2.send.UdpStream(
-        spead2.ThreadPool(), ip_string, port,
-        streamconfig, 64 * 1024, streamsocket)
+        threadpool, ip_string, port,
+        streamconfig, 8192, streamsocket)
     return tx
 
 
@@ -160,6 +160,7 @@ class SPEADStream(object):
             flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
         self.descriptors_setup()
         self.set_destination(destination)
+        self.threadpool=spead2.ThreadPool()
 
     def descriptors_setup(self):
         """
@@ -201,7 +202,7 @@ class SPEADStream(object):
         ctr = 0
         for dest_ctr in range(self.destination.ip_range):
             ip = IpAddress.ip2str(int(self.destination.ip_address) + dest_ctr)
-            self.tx_sockets.append(_setup_spead_tx(ip, self.destination.port))
+            self.tx_sockets.append(_setup_spead_tx(self.threadpool,ip, self.destination.port))
             ctr += 1
 
     def descriptors_issue(self):

@@ -19,6 +19,7 @@ import utils
 import xhost_fpga
 import fhost_fpga
 import bhost_fpga
+import resource
 from instrument import Instrument
 from fxcorrelator_fengops import FEngineOperations
 from fxcorrelator_xengops import XEngineOperations
@@ -118,6 +119,13 @@ class FxCorrelator(Instrument):
         # parent constructor - this invokes reading the config file already
         Instrument.__init__(self, descriptor, identifier, config_source)
 
+        #up the filedescriptors so we can handle bigger arrays. 
+        # 64A needs ~1100, mainly for spead descriptor sockets, 
+        # since spead2 needs a separate socket per destination 
+        # (it uses send rather than sendto).
+        fd_limit=int(self.configd['FxCorrelator']['max_fd'])
+        resource.setrlimit(resource.RLIMIT_NOFILE,(fd_limit,fd_limit))
+
         # create the host objects
         self._create_hosts(*args, **kwargs)
 
@@ -188,10 +196,10 @@ class FxCorrelator(Instrument):
         if (not program) or fisskarab or xisskarab:
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(
-                self.fhosts, timeout=self.timeout,
+                self.fhosts, timeout=self.timeout*10,
                 target_function=('get_system_information', [fbof], {}))
             THREADED_FPGA_FUNC(
-                self.xhosts, timeout=self.timeout,
+                self.xhosts, timeout=self.timeout*10,
                 target_function=('get_system_information', [xbof], {}))
 
         # remove test hardware from designs
