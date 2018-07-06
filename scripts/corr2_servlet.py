@@ -16,7 +16,10 @@ from concurrent import futures
 from corr2 import fxcorrelator, sensors
 from corr2.utils import KatcpStreamHandler, parse_ini_file
 
-from corr2.corr2LogHandlers import getKatcpLogger
+from corr2.corr2LogHandlers import getKatcpLogger, set_logger_group_level
+from corr2.corr2LogHandlers import get_instrument_loggers
+from corr2.corr2LogHandlers import check_logging_level, LOG_LEVELS
+from corr2.corr2LogHandlers import LOGGING_RATIO_CASPER_CORR as LOG_RATIO
 
 from corr2 import corr_monitoring_loop as corr_mon_loop
 
@@ -95,10 +98,12 @@ class Corr2Server(katcp.DeviceServer):
         if self._created:
             return 'fail', 'Cannot run ?create twice.'
         try:
-            iname = instrument_name or 'corr_%s' % str(time.time())
+            # For completeness
+            time_str = str(time.time())
+            iname = instrument_name or 'corr_{}'.format(time_str) 
             
             # Changing the getLogger function to add Katcp and File Handlers
-            self.log_filename = '{}.log'.format(iname.strip().replace(' ','_'))
+            self.log_filename = '{}_{}_servlet.log'.format(iname.strip().replace(' ','_'), time_str)
             # Parse ini file to check for log_file_dir
             config_file_dict = parse_ini_file(config_file)
             try:
@@ -145,13 +150,6 @@ class Corr2Server(katcp.DeviceServer):
                                        log_filename=self.log_filename,
                                        log_file_dir=self.log_file_dir)
             
-            # Grab all loggers that include self.instrument.name
-            # for logger_name, logger_entity in loggers.iter():
-            #     if self.instrument.name in logger_name:
-            #         # Add handlers to this logger
-            #         katcp_handler_name = '{}_katcp_handler'.format(self.instrument.name)
-            #         newKatcpHandler = corr2LogHandlers.KatcpHandler(sock, name=katcp_handler_name)
-
             # update the servlet's version list with version information
             # from the running firmware
             self.extra_versions.update(self.instrument.get_version_info())
@@ -761,6 +759,73 @@ class Corr2Server(katcp.DeviceServer):
         logger.setLevel(log_level_int)
         return ('ok', '%s' % str(log_level_int))
 
+    @request(Str(default='debug'), Str(default=''))
+    @return_reply()
+    def request_log_level(self, sock, log_level, logger_group_name):
+        """
+        Set the log-level of entities matching logger_group_name.
+        If logger_group_name is present, get all loggers matching that name
+        and update accordingly
+        :param log_level: Log-level at which to set loggers to
+                          -> This will be a string E {debug|info|warn|error}
+        :param logger_group_name: Optional parameter, string
+        :return: Boolean - Success/Fail - True/False
+        """
+        # For completeness
+        result, log_level_numeric = check_logging_level(log_level.strip().upper())
+        if not result:
+            # Problem with the log-level specified
+            # errmsg = 'Problem with log-level specified: {}'.format(log_level)
+            return 'fail',
+        # else: Continue
+
+        logger_group_list = ['instrument', 'feng', 'xeng', 'beng',
+                             'delaytracking', 'xfpgas', 'ffpgas']
+        # No such thing as switch-case in python, unfortunately
+        logger_group_name = logger_group_name.lower().strip()
+        if logger_group_name not in logger_group_list:
+            if logger_group_name != '':
+                # errmsg = 'Could not find group for group-name: {}'.format(group_name)
+                # self.logger.error(errmsg)
+                # self._log_excep(None, errmsg)
+                return 'fail',
+            # else: Empty string specified
+        # else: Continue!
+
+        logger_list, second_list = get_instrument_loggers(corr_obj=self.instrument,
+                                                          group_name=logger_group_name)
+        
+        if logger_list is None:
+            # Maybe no loggers found matching the string?
+            # warningmsg = 'No loggers found containing name: {}'.format(logger_group_name)
+            return 'fail',
+        # else: Continue
+
+        # Will need to keep the log-level ratio tracking here, instead of in the set-method
+        # - Only ever one case when we'd need to maintain ratios: instrument
+        if logger_list and second_list:
+            # Instrument case
+            if not set_logger_group_level(logger_group=logger_list, log_level=log_level_numeric):
+                # Problem
+                # errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
+                # self._log_excep(None, errmsg)
+                return 'fail',
+            
+            skarab_log_level = (log_level_numeric * LOG_RATIO) if (log_level_numeric * LOG_RATIO) in LOG_LEVELS else 0
+            if not set_logger_group_level(logger_group=second_list, log_level=skarab_log_level):
+                # Problem
+                # errmsg = 'Unable to set SKARAB log-levels...'
+                # self._log_excep(None, errmsg)
+                return 'fail',
+        else:
+            if not set_logger_group_level(logger_group=logger_list, log_level=log_level_numeric):
+                # Problem
+                # errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
+                # self._log_excep(None, errmsg)
+                return 'fail',
+            
+        return 'ok',
+    
     @request()
     @return_reply()
     def request_debug_deprogram_all(self, sock):

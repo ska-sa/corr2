@@ -6,6 +6,22 @@ import os
 from katcp import Message as KatcpMessage
 from casperfpga import CasperLogHandlers
 
+# Easier to re-declare constants than import them from data_stream
+DIGITISER_ADC_SAMPLES = 0  # baseband-voltage
+FENGINE_CHANNELISED_DATA = 1  # antenna-channelised-voltage
+XENGINE_CROSS_PRODUCTS = 2  # baseline-correlation-products
+BEAMFORMER_FREQUENCY_DOMAIN = 3  # tied-array-channelised-voltage
+BEAMFORMER_TIME_DOMAIN = 4  # tied-array-voltage
+BEAMFORMER_INCOHERENT = 5  # incoherent-beam-total-power
+FLYS_EYE = 6  # antenna-correlation-products
+ANTENNA_VOLTAGE_BUFFER = 7  # antenna-voltage-buffer
+
+# Define the log-level ratio between corr2 objects and casperfpga objects up here
+LOGGING_RATIO_CASPER_CORR = 2
+# This returns an xrange object that can be iterated over when needed
+# - It does not need to be re-initialised after iteration
+LOG_LEVELS = xrange(0,60,10)
+
 
 """
 Please note the following:
@@ -23,36 +39,6 @@ LOGGER.addHandler(console_handler)
 LOGGER.setLevel(logging.ERROR)
 
 # region --- Custom getLogger command(s) for corr2 ---
-
-def modify_getLogger(module_name, source_function_name, dest_function_name):
-    """
-    Used to dynamically switch between getLogger function-calls across an entire module
-
-    """
-
-    module_object_names = [value for value in dir(module) if not value.startswith('__')]
-    
-    for this_object_name in module_object_names:
-        # Get entities from this_object
-        
-        # Scroll through each entity for the object
-        object_entities = []
-
-
-def modify_getLogger_katcp():
-    """
-    Used to dynamically switch between getLogger function-calls across corr2
-
-    """
-
-    module_object_names = [value for value in dir(corr2) if not value.startswith('__')]
-    
-    for this_object_name in module_object_names:
-        # Get entities from this_object
-        
-        # Scroll through each entity for the object
-        object_entities = []
-
 
 def getLogger(logger_name, log_level=logging.DEBUG, *args, **kwargs):
     """
@@ -256,15 +242,50 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
         
         return formatted_string
 
-
-
-
 # endregion
 
 # ----------------------------------------------------------------------------------------------
 # ----------------------------------------------------------------------------------------------
 
 # region --- Logger configuration methods ---
+
+def get_all_loggers():
+    """
+    Packaging a logging library function call, for testing
+    :return: dictionary of logging objects
+    """
+    return logging.Logger.manager.loggerDict
+
+
+def check_logging_level(logging_level):
+    """
+    Generic function to carry out a sanity check on the logging_level
+    used to setup the logger
+    :param logging_level: String input defining the logging_level:
+                             Level      | Numeric Value
+                             --------------------------
+                             CRITICAL   | 50
+                             ERROR      | 40
+                             WARNING    | 30
+                             INFO       | 20
+                             DEBUG      | 10
+                             NOTSET     | 0
+
+    :return: Tuple - (Success/Fail, None/logging_level)
+    """
+    logging_level_numeric = getattr(logging, logging_level, None)
+    if not isinstance(logging_level_numeric, int):
+        return False, None
+    # else: Continue
+    return True, logging_level_numeric
+
+
+def increase_log_levels(logger_group=None, log_level_increment=10):
+    """
+    Neatly packaged function to increase log_levels of certain 
+    """
+
+    return NotImplementedError
 
 
 def get_logger_group(logger_dict=None, group_name=None):
@@ -285,9 +306,9 @@ def get_logger_group(logger_dict=None, group_name=None):
 
     logger_group = {}
 
-    for value in keys:
-        if value.find(group_name) >= 0:
-            logger_group[value] = logger_dict[value]
+    for key in keys:
+        if key.lower().find(group_name) >= 0:
+            logger_group[key] = logger_dict[key]
             # else: pass
 
     return logger_group
@@ -297,7 +318,7 @@ def set_logger_group_level(logger_group, log_level=logging.DEBUG):
     """
     ** Take in log_level as an INTEGER **
     Method to set the log-level of a group of loggers
-    :param logger_group: Dictionary of logger and logging entities
+    :param logger_group: List of logging entities
     :param log_level: Effectively of type integer E logging.{CRITICAL,ERROR,WARNING,DEBUG,INFO}
     :return: Boolean - Success/Fail - True/False
     """
@@ -311,7 +332,7 @@ def set_logger_group_level(logger_group, log_level=logging.DEBUG):
         LOGGER.error(errmsg)
         return False
 
-    for logger_key, logger_value in logger_group.items():
+    for logger_value in logger_group:
         # logger_value.setLevel(log_level_numeric)
         logger_value.setLevel(log_level)
 
@@ -408,69 +429,16 @@ def get_log_handler_by_name(log_handler_name, logger_dict=None):
                     return handler
 
 
-def configure_console_log_feng(feng_list, console_handler_name):
+def set_feng_loglevel(feng_logger_dict, log_level=logging.DEBUG):
     """
-    Packaged function to handle creating Console Handlers for
-    F-Engine loggers
-    :param feng_list: List of Feng objects
-                      - Assumed to already have logging entities
-    :
-    """
-
-    
-
-
-    raise NotImplementedError
-
-
-def configure_console_log_xeng(xeng_list, console_handler_name):
-    """
-    Packaged function to handle creating Console Handlers for
-    X-Engine loggers
-    :param feng_list: List of Feng objects
-                      - Assumed to already have logging entities
-    :
+    Neatly packaged function for setting all F-engine loggers to some log_level
+    :param feng_logger_dict: Dictionary of F-engines - {feng_name: feng_logger}
+    :param log_level: log-level required to set logger entities to
+    :return: Boolean - Success/Fail - True/False
     """
 
-    
-
-
-    raise NotImplementedError
-
-
-def configure_console_log_beng(beng_list, console_handler_name):
-    """
-    Packaged function to handle creating Console Handlers for
-    B-Engine loggers
-    :param feng_list: List of Feng objects
-                      - Assumed to already have logging entities
-    :
-    """
-
-    
-
-
-    raise NotImplementedError
-
-
-def create_console_handler(handler_name, logger_entity=None):
-    """
-    'Wrapper method' to allow the user to create a ConsoleHandler (StreamHandler)
-    to print debug messages to screen
-
-    """
-
-
-    raise NotImplementedError
-
-
-def create_file_handler(handler_name, filename, file_dir):
-    """
-    Conveniently wrapped function for creating a file-handler for an intended logger(s)
-    :param handler_name:
-    """
-
-    raise NotImplementedError
+    for feng_name, feng_logger in feng_logger_dict.iter():
+        feng_logger.setLevel(log_level)
 
 
 def _remove_handler_from_logger(logger, log_handler_name):
@@ -510,5 +478,139 @@ def remove_all_loggers(logger_dict=None):
         LOGGER.debug(debugmsg)
 
     return True
+
+# endregion
+
+
+# region --- Methods related to getting specific logger groups ---
+
+def get_instrument_loggers(corr_obj, group_name):
+        """
+        Separating concerns from corr2LogHandlers because the instrument object already exists here.
+        :param corr_obj: Correlator object to get all these loggers from!
+        :param group_name: Should correspond to names in logger_group_dict.keys() below
+        :return: tuple - (list, list) - (corr2-based loggers, casperfpga-based loggers)
+        """
+        # Silly dictionary doesn't keep order by default!
+        # logger_group_keys = logger_group_dict.keys()
+        
+        if group_name == '' or group_name == 'instrument':
+            # Need to get all loggers
+            instrument_loggers = []
+            for value in get_f_loggers(corr_obj):
+                instrument_loggers.append(value)
+            for value in get_x_loggers(corr_obj):
+                instrument_loggers.append(value)
+            for value in get_b_loggers(corr_obj):
+                instrument_loggers.append(value)
+
+            skarab_loggers = []
+            for value in get_ffpga_loggers(corr_obj):
+                skarab_loggers.append(value)
+            for value in get_xfpga_loggers(corr_obj):
+                skarab_loggers.append(value)
+            
+            # Just so I don't have to separate the list on the other side again
+            return instrument_loggers, skarab_loggers
+
+        elif group_name == 'feng':
+            # Get f-related loggers
+            return get_f_loggers(corr_obj), None
+            
+        elif group_name == 'xeng':
+            # Get x-related loggers
+            return get_x_loggers(corr_obj), None
+            
+        elif group_name == 'beng':
+            # Get b-related loggers
+            return get_b_loggers(corr_obj), None
+            
+        elif group_name == 'delaytracking':
+            # Get delaytracking loggers
+            return get_feng_stream_loggers(corr_obj), None
+            
+        elif group_name == 'ffpgas':
+            # Get fhost_fpga CasperFpga loggers
+            return get_ffpga_loggers(corr_obj), None
+
+        elif group_name == 'xfpgas':
+            # Get f-related loggers
+            return get_xfpga_loggers(corr_obj), None
+        else:
+            # Problem?
+            return None, None
+
+
+def get_f_loggers(corr_obj):
+    return_list = []
+    return_list.append(corr_obj.fops.logger)
+    for value in get_feng_loggers(corr_obj):
+        return_list.append(value)
+    for value in get_fhost_loggers(corr_obj):
+        return_list.append(value)
+    for value in get_feng_stream_loggers(corr_obj):
+        return_list.append(value)
+    return return_list
+
+
+def get_x_loggers(corr_obj):
+    return_list = []
+    return_list.append(corr_obj.xops.logger)
+    for value in get_xhost_loggers(corr_obj):
+        return_list.append(value)
+    for value in get_xeng_stream_loggers(corr_obj):
+        return_list.append(value)
+    return return_list
+
+
+def get_b_loggers(corr_obj):
+    return_list = []
+    return_list.append(corr_obj.bops.logger)
+    for value in get_bhost_loggers(corr_obj):
+        return_list.append(value)
+    for value in get_beng_stream_loggers(corr_obj):
+        return_list.append(value)
+    return return_list
+
+def get_feng_loggers(corr_obj):
+    return (feng.logger for feng in corr_obj.fops.fengines)
+
+def get_fhost_loggers(corr_obj):
+    return (fhost.logger for fhost in corr_obj.fhosts)
+
+def get_xhost_loggers(corr_obj):
+    return (xhost.logger for xhost in corr_obj.xhosts)
+
+def get_bhost_loggers(corr_obj):
+    return (bhost.logger for bhost in corr_obj.bops.hosts)
+
+def get_feng_stream_loggers(corr_obj):
+    return_list = []
+    for value in corr_obj.get_data_streams_by_type(FENGINE_CHANNELISED_DATA):
+        return_list.append(value.logger)
+    for value in corr_obj.get_data_streams_by_type(DIGITISER_ADC_SAMPLES):
+        return_list.append(value.logger)
+
+    return return_list
+
+def get_xeng_stream_loggers(corr_obj):
+    return (stream.logger for stream in corr_obj.get_data_streams_by_type(XENGINE_CROSS_PRODUCTS))
+
+def get_beng_stream_loggers(corr_obj):
+    return_list = []
+    for value in corr_obj.get_data_streams_by_type(BEAMFORMER_FREQUENCY_DOMAIN):
+        return_list.append(value.logger)
+    for value in corr_obj.get_data_streams_by_type(BEAMFORMER_TIME_DOMAIN):
+        return_list.append(value.logger)
+    for value in corr_obj.get_data_streams_by_type(BEAMFORMER_INCOHERENT):
+        return_list.append(value.logger)
+
+    return return_list
+    
+def get_ffpga_loggers(corr_obj):
+    return (fhost.transport.logger for fhost in corr_obj.fhosts)
+
+def get_xfpga_loggers(corr_obj):
+    return (xhost.transport.logger for xhost in corr_obj.xhosts)
 
 # endregion
