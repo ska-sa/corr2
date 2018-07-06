@@ -15,6 +15,7 @@ class MonitoringLoop(object):
 
         self.instrument = fx_correlator_object
         self.fhosts = self.instrument.fhosts
+        self.selected_fhost = None
         self.fhost_index = 0
         self.num_fhosts = len(self.fhosts)
 
@@ -105,18 +106,21 @@ class MonitoringLoop(object):
         '''
 
         # choose a new board
-        fhost = self.fhosts[self.fhost_index]
+        #self.instrument.logger.info("All fhosts: %s" % self.fhosts)
+        self.fhost = self.fhosts[self.fhost_index]
+        #self.instrument.logger.info("Selected fhost: %s" % self.fhost)
+        #self.instrument.logger.info("Fhost name: %s" % self.fhost.host)
         f_eng_board_monitoring_dict_current = {}
         status = {}
 
         # check ct & cd
         if corner_turner_check:
             # perform corner-turner check
-            ct_status = fhost.get_ct_status()
+            ct_status = self.fhost.get_ct_status()
             status['corner_turner'] = ct_status
         if coarse_delay_check:
             # perform coarse delay check
-            cd_status = fhost.get_cd_status()
+            cd_status = self.fhost.get_cd_status()
             status['coarse_delay'] = cd_status
 
         # perform vacc check
@@ -126,53 +130,58 @@ class MonitoringLoop(object):
                                       "implemented")
 
         # populate status dictionaries
-        f_eng_board_monitoring_dict_current[fhost] = status
+        f_eng_board_monitoring_dict_current[self.fhost] = status
         action = {'disable_output': 0,
                   'reenable_output': 0}
 
         # check error counters
         if len(self.f_eng_board_monitoring_dict_prev) == self.num_fhosts:
             coarse_delay_action = self._check_feng_coarse_delay_errs(
-                f_eng_board_monitoring_dict_current[fhost], fhost)
+                f_eng_board_monitoring_dict_current[self.fhost], self.fhost)
 
             corner_turner_action = self._check_feng_corner_turn_errs(
-                f_eng_board_monitoring_dict_current[fhost], fhost)
+                f_eng_board_monitoring_dict_current[self.fhost], self.fhost)
 
             # consolidate the action dictionary - only reenable if all
             # errors are cleared
             if coarse_delay_action['disable_output'] or corner_turner_action[
-                'disable_output']:
+               'disable_output']:
                 action['disable_output'] = True
             elif coarse_delay_action['reenable_output'] or \
                     corner_turner_action['reenable_output']:
                 action['reenable_output'] = True
+            else:
+                # no action required
+                pass
 
             # take appropriate action on board
             if action['disable_output']:
                 # keep track of which boards have been disabled
-                if fhost not in self.disabled_boards:
-                    self.disabled_boards.append(fhost)
-                    self._disable_feng_ouput(fhost=fhost)
+                if self.fhost not in self.disabled_boards:
+                    self.disabled_boards.append(self.fhost)
+                    self._disable_feng_ouput(fhost=self.fhost)
 
-            if action['reenable_output']:
+            elif action['reenable_output']:
                 # after checking, we already know that this board was
                 # disabled prior
-                self._renable_feng_output(fhost=fhost)
+                self._renable_feng_output(fhost=self.fhost)
                 # remove the board from the list of disabled boards
-                self.disabled_boards.remove(fhost)
+                self.disabled_boards.remove(self.fhost)
             else:
-                if self.disabled_boards:
-                    self.instrument.logger.warning('instrument monitor loop '
-                                                   'run ok - no new errs, '
-                                                   'some f-engines still '
-                                                   'disabled: %s' % [
-                                                    fhost.host for fhost in
-                                                    self.disabled_boards])
-                else:
-                    self.instrument.logger.info(
-                        'instrument monitor loop run ok - no errs')
-                    # self.instrument.logger.info(
-                    #    'checked board {}'.format(fhost.host))
+                # no action taken
+                pass
+
+            if self.disabled_boards:
+                self.instrument.logger.warning('instrument monitor loop '
+                                               'run. disabled '
+                                               'f-engines: %s' % [
+                                                disabled_fhost.host for disabled_fhost in
+                                                self.disabled_boards])
+            else:
+                self.instrument.logger.info(
+                    'instrument monitor loop run ok - no errs, all f-engines enabled')
+                # self.instrument.logger.info(
+                #    'checked board {}'.format(fhost.host))
 
         # increment board counter, move to the next board the next time loop runs
         if self.fhost_index == self.num_fhosts - 1:
@@ -180,9 +189,18 @@ class MonitoringLoop(object):
         else:
             self.fhost_index += 1
 
+        # debug
+        '''
+        self.instrument.logger.info('====== Begin Debug =====')
+        self.instrument.logger.info('Fhost checked: %s:%s' % (self.fhost, self.fhost.host))
+        self.instrument.logger.info('Prev dict keys: %s' % self.f_eng_board_monitoring_dict_prev.keys())
+        self.instrument.logger.info('Curren dict keys: %s' % f_eng_board_monitoring_dict_current.keys())
+        self.instrument.logger.info('====== End Debug =====')
+        '''
+
         # store the previous board status, used to check next time the board status is queries
-        self.f_eng_board_monitoring_dict_prev[fhost] = \
-            f_eng_board_monitoring_dict_current[fhost]
+        self.f_eng_board_monitoring_dict_prev[self.fhost] = \
+            f_eng_board_monitoring_dict_current[self.fhost]
 
     def _check_feng_coarse_delay_errs(self, f_eng_status_dict, fhost):
         """
