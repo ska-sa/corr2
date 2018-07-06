@@ -704,7 +704,8 @@ class Corr2Server(katcp.DeviceServer):
     def request_set_monitoring_loop_time(self, sock, check_time):
         """
         set the cadence for the monitoring loop. note that this stops and
-        restarts the loop
+        restarts the loop (in milliseconds)
+        :param check_time: the interval at which the loop runs, milliseconds
         :return:
         """
         if self.mon_loop is None:
