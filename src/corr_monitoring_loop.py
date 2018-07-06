@@ -49,7 +49,7 @@ class MonitoringLoop(object):
     def _instrument_monitoring_loop_timer_start(self, check_time=None):
         """
         Set up periodic check of various instrument elements
-        :param check_time: the interval, in milliseconds, at which to check
+        :param check_time: the interval, in seconds, at which to check
         :return:
         """
 
@@ -58,12 +58,12 @@ class MonitoringLoop(object):
 
         self.instrument.logger.info('instrument_monitoring_loop for instrument %s '
                                     'set up with a period '
-                                    'of %.2f seconds' % (self.instrument.descriptor, self.check_time/1000.0))
+                                    'of %.2f seconds' % (self.instrument.descriptor, self.check_time))
 
         if self.instrument_monitoring_loop_cb is not None:
             self.instrument_monitoring_loop_cb.stop()
         self.instrument_monitoring_loop_cb = PeriodicCallback(
-            self._instrument_monitoring_loop, check_time)
+            self._instrument_monitoring_loop, check_time * 1000)
 
         self.instrument_monitoring_loop_enabled.set()
         self.instrument_monitoring_loop_cb.start()

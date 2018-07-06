@@ -699,13 +699,13 @@ class Corr2Server(katcp.DeviceServer):
         else:
             return 'fail', 'monitoring loop is not currently running'
 
-    @request(Int(default=-1))
-    @return_reply(Int())
+    @request(Float(default=-1))
+    @return_reply(Float())
     def request_set_monitoring_loop_time(self, sock, check_time):
         """
         set the cadence for the monitoring loop. note that this stops and
-        restarts the loop (in milliseconds)
-        :param check_time: the interval at which the loop runs, milliseconds
+        restarts the loop (in seconds)
+        :param check_time: the interval at which the loop runs, seconds
         :return:
         """
         if self.mon_loop is None:
