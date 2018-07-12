@@ -189,7 +189,7 @@ class Corr2Server(katcp.DeviceServer):
 
     @request(Float(default=-1.0))
     @return_reply(Float())
-    def request_digitiser_synch_epoch(self, sock, synch_time):
+    def request_sync_epoch(self, sock, synch_time):
         """
         Set/Get the digitiser synch time, UNIX time.
         :param sock:
@@ -198,9 +198,9 @@ class Corr2Server(katcp.DeviceServer):
         """
         # if not self.instrument.initialised():
         #     logging.warn('request %s before initialised... refusing.' %
-        #                  'request_digitiser_synch_epoch')
+        #                  'request_sync_epoch')
         #     return 'fail', 'request %s before initialised... refusing.' % \
-        #            'request_digitiser_synch_epoch'
+        #            'request_sync_epoch'
         if synch_time > -1.0:
             try:
                 self.instrument.synchronisation_epoch = synch_time
@@ -208,6 +208,12 @@ class Corr2Server(katcp.DeviceServer):
                 return self._log_excep(
                     ex, 'Failed to set digitiser synch epoch.')
         return 'ok', self.instrument.synchronisation_epoch
+
+    # TODO: deprecate this once CBF-CAM ICD Rev6 is fully implemented
+    @request(Float(default=-1.0))
+    @return_reply(Float())
+    def request_digitiser_synch_epoch(self, sock, synch_time):
+        return self.request_sync_epoch(sock, synch_time)
 
     @request(Str(), Str())
     @return_reply()
