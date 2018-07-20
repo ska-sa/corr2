@@ -7,6 +7,7 @@ Created on Feb 28, 2013
 # things all fxcorrelators Instruments do
 
 import time
+import threading
 import katcp
 # Yes, I know it's just an integer value
 from logging import INFO
@@ -161,8 +162,23 @@ class FxCorrelator(Instrument):
         
 
         # set up the F, X, B and filter handlers
-        self.fops = FEngineOperations(self, **kwargs)
-        self.xops = XEngineOperations(self, **kwargs)
+
+        # Threading the Fops and Xops initialisation to shave a bit of time off.
+        # Probably not the prettiest, cleanest way to do this.
+        def fops_worker():
+            self.fops = FEngineOperations(self, **kwargs)
+
+        def xops_worker():
+            self.xops = XEngineOperations(self, **kwargs)
+
+        fops_thread = threading.Thread(target=fops_worker)
+        fops_thread.start()
+        xops_thread = threading.Thread(target=xops_worker)
+        xops_thread.start()
+
+        fops_thread.join()
+        xops_thread.join()
+
         self.bops = BEngineOperations(self, **kwargs)
         self.filtops = FilterOperations(self, **kwargs)
 
