@@ -315,10 +315,28 @@ class FxCorrelator(Instrument):
         :return:
         """
         self.configure_digitiser_streams()
-        self.fops.configure(*args, **kwargs)
-        self.xops.configure(*args, **kwargs)
-        if self.found_beamformer:
-            self.bops.configure(*args, **kwargs)
+
+        def fops_worker():
+            self.fops.configure(*args, **kwargs)
+
+        def xops_worker():
+            self.xops.configure(*args, **kwargs)
+
+        def bops_worker():
+            if self.found_beamformer:
+                self.bops.configure(*args, **kwargs)
+
+        fops_thread = threading.Thread(target=fops_worker)
+        xops_thread = threading.Thread(target=xops_worker)
+        bops_thread = threading.Thread(target=bops_worker)
+
+        fops_thread.start()
+        xops_thread.start()
+        bops_thread.start()
+
+        fops_thread.join()
+        xops_thread.join()
+        bops_thread.join()
 
     @staticmethod
     def configure_digitiser_streams():
