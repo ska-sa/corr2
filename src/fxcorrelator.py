@@ -7,6 +7,7 @@ Created on Feb 28, 2013
 # things all fxcorrelators Instruments do
 
 import time
+import threading
 import katcp
 # Yes, I know it's just an integer value
 from logging import INFO
@@ -161,9 +162,30 @@ class FxCorrelator(Instrument):
         
 
         # set up the F, X, B and filter handlers
-        self.fops = FEngineOperations(self, **kwargs)
-        self.xops = XEngineOperations(self, **kwargs)
-        self.bops = BEngineOperations(self, **kwargs)
+
+        # Threading the Fops and Xops instantiation to shave a bit of time off.
+        # Probably not the prettiest, cleanest way to do this.
+        def fops_worker():
+            self.fops = FEngineOperations(self, **kwargs)
+
+        def xops_worker():
+            self.xops = XEngineOperations(self, **kwargs)
+
+        def bops_worker():
+            self.bops = BEngineOperations(self, **kwargs)
+
+        fops_thread = threading.Thread(target=fops_worker)
+        xops_thread = threading.Thread(target=xops_worker)
+        bops_thread = threading.Thread(target=bops_worker)
+
+        fops_thread.start()
+        xops_thread.start()
+        bops_thread.start()
+
+        fops_thread.join()
+        xops_thread.join()
+        bops_thread.join()
+
         self.filtops = FilterOperations(self, **kwargs)
 
         # set up the filter boards if we need to
@@ -189,7 +211,7 @@ class FxCorrelator(Instrument):
             skfops.reboot_skarabs_from_sdram(self.fhosts)
             skfops.upload_to_ram_progska(xbof, self.xhosts)
             skfops.reboot_skarabs_from_sdram(self.xhosts)
-            skfops.wait_after_reboot(self.fhosts + self.xhosts, 
+            skfops.wait_after_reboot(self.fhosts + self.xhosts,
                 timeout=self.timeout*(len(self.fhosts)+len(self.xhosts)))
         fisskarab = True
         xisskarab = True
@@ -245,10 +267,28 @@ class FxCorrelator(Instrument):
         :return:
         """
         # init the engines
-        self.fops.initialise(*args, **kwargs)
-        self.xops.initialise(*args, **kwargs)
-        if self.found_beamformer:
-            self.bops.initialise(*args, **kwargs)
+        # Threaded to do it in parallel and save a bit of time.
+        def fops_worker():
+            self.fops.initialise(*args, **kwargs)
+
+        def xops_worker():
+            self.xops.initialise(*args, **kwargs)
+
+        def bops_worker():
+            if self.found_beamformer:
+                self.bops.initialise(*args, **kwargs)
+
+        fops_thread = threading.Thread(target=fops_worker)
+        xops_thread = threading.Thread(target=xops_worker)
+        bops_thread = threading.Thread(target=bops_worker)
+
+        fops_thread.start()
+        xops_thread.start()
+        bops_thread.start()
+
+        fops_thread.join()
+        xops_thread.join()
+        bops_thread.join()
 
         # start F-engine TX
         self.logger.info('Starting F-engine datastream')
@@ -275,10 +315,28 @@ class FxCorrelator(Instrument):
         :return:
         """
         self.configure_digitiser_streams()
-        self.fops.configure(*args, **kwargs)
-        self.xops.configure(*args, **kwargs)
-        if self.found_beamformer:
-            self.bops.configure(*args, **kwargs)
+
+        def fops_worker():
+            self.fops.configure(*args, **kwargs)
+
+        def xops_worker():
+            self.xops.configure(*args, **kwargs)
+
+        def bops_worker():
+            if self.found_beamformer:
+                self.bops.configure(*args, **kwargs)
+
+        fops_thread = threading.Thread(target=fops_worker)
+        xops_thread = threading.Thread(target=xops_worker)
+        bops_thread = threading.Thread(target=bops_worker)
+
+        fops_thread.start()
+        xops_thread.start()
+        bops_thread.start()
+
+        fops_thread.join()
+        xops_thread.join()
+        bops_thread.join()
 
     @staticmethod
     def configure_digitiser_streams():
