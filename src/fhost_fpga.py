@@ -150,17 +150,25 @@ class Fengine(object):
 
         # arm the timed load latches
         cd_tl_name = 'tl_cd%i' % self.offset
-        load_count=self.host.registers['%s_status'%cd_tl_name].read()['data']['load_count']
-        if load_count == self.last_delay.load_count+1:
+        status=self.host.registers['%s_status'%cd_tl_name].read()['data']
+        load_count=status['load_count']
+        arm_count=status['arm_count']
+        if load_count != self.last_delay.load_count:
             self.last_delay.last_load_success=True
             self.logger.debug('Last delay loaded successfully.')
         else:
             self.logger.error('Failed to load last delay model;' \
-                ' load_cnt before: %i, after: %i.'%(self.last_delay.load_count,load_count))
+                ' arm_cnt before: %i, after: %i.' \
+                ' load_cnt before: %i, after: %i.' \
+                ' Requested load mcnt %f, now %f.'%(
+                self.last_delay.arm_count,arm_count,
+                self.last_delay.load_count,load_count,
+                self.last_delay.load_mcnt,time.time()))
             self.last_delay.last_load_success=False
         self.last_delay.load_count = load_count
+        self.last_delay.arm_count = arm_count
         self.last_delay.load_mcnt=self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
-        #self.logger.info("loaded at %i"%self.last_delay.load_mcnt)
+        self.logger.debug("loaded at mcnt %i"%self.last_delay.load_mcnt)
         return self.last_delay.last_load_success
 
     def _arm_timed_latch(self, name, mcnt=None):
@@ -181,6 +189,7 @@ class Fengine(object):
             control0_reg.write_int(0)
             return -1
         else:
+            self.logger.debug('Requested load mcnt %i.'%mcnt)
             load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
             load_time_msw = int(mcnt/(2**32))
             control_reg.write_int(load_time_lsw)

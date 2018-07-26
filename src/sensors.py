@@ -52,7 +52,7 @@ class Corr2Sensor(Sensor):
                  params=None, default=None, initial_status=None,
                  manager=None, executor=None):
         if '_' in name:
-            LOGGER.warning('Sensor names cannot have underscores in them, '
+            LOGGER.debug('Sensor names cannot have underscores in them, '
                            'so {name} becomes {name_conv}'.format(
                             name=name, name_conv=name.replace('_', '-')))
             name = name.replace('_', '-')
@@ -559,13 +559,15 @@ class Corr2SensorManager(SensorManager):
             phase_offset = feng.last_delay.phase_offset*numpy.pi
             phase_offset_delta = feng.last_delay.phase_offset_delta*(numpy.pi * self.instrument.sample_rate_hz)
             load_mcnt=feng.last_delay.load_mcnt
-            #load_time=self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
             _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
                             load_mcnt,delay,delay_delta,phase_offset,phase_offset_delta)
             _timestamp = self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
             _status = Sensor.NOMINAL if feng.last_delay.last_load_success else Sensor.ERROR
             sensor.set_value(value=_val,status=_status,timestamp=_timestamp)
 #            err_sensor.set_value(feng.last_delay.last_load_success)
+            load_time=self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
+            LOGGER.debug('{} Delay update @mcnt {:d} ({:d}), {:.10e}, {:.10e}, {:.10e}, {:.10e}'.format(
+                          feng.name,load_mcnt,load_time,delay,delay_delta,phase_offset,phase_offset_delta))
 
     def sensors_feng_streams(self):
         """
