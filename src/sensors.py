@@ -588,7 +588,7 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.integer,
                 '{}-feng-out-bits-per-sample'.format(strmnm),
                 'F-engine output bits per sample.')
-            bits = int(self.instrument.quant_format.split('.')[0])
+            bits = int(numpy.floor(self.instrument.quant_format))
             sensor.set_value(bits)
 
             sensor = self.do_sensor(
