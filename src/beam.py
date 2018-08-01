@@ -119,7 +119,7 @@ class Beam(SPEADStream):
         :return:
         """
         self.descriptors_issue()
-        THREADED_FPGA_FUNC(self.hosts, 5, ('tx_disable',
+        THREADED_FPGA_FUNC(self.hosts, 5, ('tx_enable',
                                            [self.index], {}))
         self.tx_enabled = True
         self.logger.info('output enabled.')
