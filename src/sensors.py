@@ -534,7 +534,7 @@ class Corr2SensorManager(SensorManager):
                         'implemented prior to requantisation. Complex.')
         sensor.set_value(str(feng.last_eq))
 
-    def sensors_feng_delays(self,feng):
+    def sensors_feng_delays(self, feng):
         """
         F-engine delay sensors
         :return:
@@ -549,25 +549,27 @@ class Corr2SensorManager(SensorManager):
             Corr2Sensor.string, '{}-delay'.format(pref),
             'The delay settings for this input: (load_mcnt <ADC sample count when model was loaded>, delay <in seconds>, '
             'delay-rate <unit-less, or, seconds-per-second>, phase <radians>, phase-rate <radians per second>).')
-#        err_sensor = self.do_sensor(
-#            Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
-#            'Delays for this input are functioning correctly.')
-#
+       # err_sensor = self.do_sensor(
+       #     Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
+       #     'Delays for this input are functioning correctly.')
+
         if feng.last_delay is not None:
-            delay = feng.last_delay.delay/self.instrument.sample_rate_hz
+            delay = feng.last_delay.delay / self.instrument.sample_rate_hz
             delay_delta = feng.last_delay.delay_delta
             phase_offset = feng.last_delay.phase_offset*numpy.pi
-            phase_offset_delta = feng.last_delay.phase_offset_delta*(numpy.pi * self.instrument.sample_rate_hz)
-            load_mcnt=feng.last_delay.load_mcnt
+            phase_offset_delta = feng.last_delay.phase_offset_delta * (
+                numpy.pi * self.instrument.sample_rate_hz)
+            load_mcnt = feng.last_delay.load_mcnt
             _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
-                            load_mcnt,delay,delay_delta,phase_offset,phase_offset_delta)
+                            load_mcnt, delay, delay_delta, phase_offset, phase_offset_delta)
             _timestamp = self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
             _status = Sensor.NOMINAL if feng.last_delay.last_load_success else Sensor.ERROR
             sensor.set_value(value=_val,status=_status,timestamp=_timestamp)
 #            err_sensor.set_value(feng.last_delay.last_load_success)
-            load_time=self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
-            LOGGER.debug('{} Delay update @mcnt {:d} ({:d}), {:.10e}, {:.10e}, {:.10e}, {:.10e}'.format(
-                          feng.name,load_mcnt,load_time,delay,delay_delta,phase_offset,phase_offset_delta))
+            load_time = self.instrument.time_from_mcnt(feng.last_delay.load_mcnt)
+            LOGGER.debug('{}: Delay update @mcnt {} ({}), {:.10e}, {:.10e}, {:.10e}, {:.10e}'.format(
+                          feng.name, load_mcnt, load_time, delay, delay_delta, phase_offset,
+                          phase_offset_delta))
 
     def sensors_feng_streams(self):
         """
@@ -586,7 +588,7 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.integer,
                 '{}-feng-out-bits-per-sample'.format(strmnm),
                 'F-engine output bits per sample.')
-            bits = int(self.instrument.quant_format.split('.')[0])
+            bits = int(numpy.floor(self.instrument.quant_format))
             sensor.set_value(bits)
 
             sensor = self.do_sensor(
@@ -739,7 +741,7 @@ class Corr2SensorManager(SensorManager):
 
     def setup_mainloop_sensors(self):
         """
-        Set up compound sensors to be reported to CAM from the main 
+        Set up compound sensors to be reported to CAM from the main
             katcp servlet.
         :return:
         """

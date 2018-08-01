@@ -1,11 +1,11 @@
 from __future__ import division
 import logging
-import time
-import re
 import math
-import struct
-import os.path
 import numpy as np
+import os.path
+import re
+import struct
+import time
 import matplotlib.pyplot as plt
 
 from casperfpga.attribute_container import AttributeContainer
@@ -245,8 +245,7 @@ class FpgaDsimHost(FpgaHost):
             elif pulsar_name is not None:
                 scale_reg_postfix = ('_' + pulsar_name if reg.name.endswith(
                     '_' + pulsar_name) else pulsar_name)
-                scale_reg = getattr(self.registers, 'scale_pulsar' +
-                                    scale_reg_postfix)
+                scale_reg = getattr(self.registers, 'scale_pulsar' + scale_reg_postfix)
                 setattr(self.pulsar_sources, 'pulsar_' + pulsar_name,
                         PulsarSource(reg, scale_reg, pulsar_name))
             elif output_scale_name is not None:
@@ -266,11 +265,9 @@ class FpgaDsimHost(FpgaHost):
         if self.bitstream:
             self._program()
         else:
-            LOGGER.info('Not programming host {} since no bitstream is '
-                        'configured'.format(self.host))
+            LOGGER.info('Not programming host {} since no bitstream is configured'.format(self.host))
         if not self.is_running():
-            raise RuntimeError('D-engine {host} not '
-                               'running'.format(**self.__dict__))
+            raise RuntimeError('D-engine {host} not running'.format(**self.__dict__))
         self.get_system_information(self.bitstream)
         self.setup_gbes()
         # Set digitizer polarisation IDs, 0 - h, 1 - v
@@ -318,19 +315,16 @@ class FpgaDsimHost(FpgaHost):
         for r in num_regs:
             r.write(**{r.name: no_packets})
         reg_field_names = self.registers.pol_traffic_trigger.field_names()
-        self.registers.pol_traffic_trigger.write(
-            **{n: 'pulse' for n in reg_field_names})
+        self.registers.pol_traffic_trigger.write(**{n: 'pulse' for n in reg_field_names})
 
     def _program(self):
         """
         Program the bitstream to fpga and ensure 10GbE's are not transmitting
         """
-        LOGGER.info('Programming Dsim roach {host} with file {bitstream}'
-                    .format(**self.__dict__))
+        LOGGER.info('Programming Dsim roach {host} with file {bitstream}'.format(**self.__dict__))
         stime = time.time()
         self.upload_to_ram_and_program(self.bitstream)
-        LOGGER.info('Programmed %s in %.2f seconds.' % (
-            self.host, time.time() - stime))
+        LOGGER.info('Programmed {} in {:.2f} seconds.'.format(self.host, time.time() - stime))
         # Ensure data is not sent before the gbes are configured
         self.enable_data_output(False)
 
@@ -352,8 +346,7 @@ class FpgaDsimHost(FpgaHost):
             for polstream in [0, 1]:
                 txip = pol_base + polstream
                 txid = (pol * 2) + polstream
-                self.write_int('gbe_iptx%1i' % txid,
-                               IpAddress.str2ip('%s.%d' % (pol_prefix, txip)))
+                self.write_int('gbe_iptx%1i' % txid, IpAddress.str2ip('{}.{}'.format(pol_prefix, txip)))
         self.registers.control.write(gbe_rst=False)
 
     def setup_gbes(self):
@@ -366,14 +359,13 @@ class FpgaDsimHost(FpgaHost):
         port = int(self.config['10gbe_port'])
         num_gbes = len(self.gbes)
         if num_gbes < 1:
-            raise RuntimeError('D-engine with no 10gbe cores %s' % self.host)
+            raise RuntimeError('D-engine with no 10gbe cores {}'.format(self.host))
         gbes_per_pol = 2        # Hardcoded assumption
         num_pols = num_gbes // gbes_per_pol
         mac_ctr = 1
         for ctr in range(num_gbes):
             this_mac = Mac.from_roach_hostname(self.host, mac_ctr)
-            self.gbes['gbe%d' % ctr].setup(
-                mac=this_mac, ipaddress='0.0.0.0', port=port)
+            self.gbes['gbe{}'.format(ctr)].setup(mac=this_mac, ipaddress='0.0.0.0', port=port)
             mac_ctr += 1
         for gbe in self.gbes:
             gbe.dhcp_start()
@@ -392,11 +384,9 @@ class FpgaDsimHost(FpgaHost):
             addr_offset = 0
             for pol_gbe_ctr in range(0, gbes_per_pol):
                 txip = txaddr_base + addr_offset
-                LOGGER.info('%s sending to: %s.%d port %d' % (
-                    self.host, txaddr_prefix, txip, port))
-                self.write_int(
-                    'gbe_iptx%i' % gbe_ctr,
-                    IpAddress.str2ip('%s.%d' % (txaddr_prefix, txip)))
+                LOGGER.info('{} sending to: {}.{} port {}'.format(self.host, txaddr_prefix, txip, port))
+                self.write_int('gbe_iptx{}'.format(gbe_ctr), IpAddress.str2ip('{}.{}'.format(
+                    txaddr_prefix, txip)))
                 if not single_destination:
                     addr_offset += 1
                 gbe_ctr += 1
