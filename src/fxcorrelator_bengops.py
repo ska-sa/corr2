@@ -47,7 +47,9 @@ class BEngineOperations(object):
         # disable all beams
         #self.tx_disable()
         #self.set_beam_weights()
-        self.set_beam_quant_gain() 
+        for beam_name in self.beams:
+            beam=self.get_beam_by_name(beam_name)
+            self.set_beam_quant_gain(float(beam.config['quant_gain']),beam_name) 
         self.logger.info('Beamformer initialised.')
 
     def configure(self, *args, **kwargs):
