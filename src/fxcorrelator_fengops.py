@@ -472,11 +472,11 @@ class FEngineOperations(object):
                              delay tuples ((delay,rate),(phase,rate))
         :return: True if all success, False otherwise.
         """
-        self.logger.debug("Delay model update at %i for loadtime %i."%(loadtime,time.time()))
         if loadtime > 0:
             loadmcnt = self._delays_check_loadtime(loadtime)
         else:
             loadmcnt = -1
+        self.logger.debug("Received delay model update for %f (mcnt %i) at %f."%(loadtime,loadmcnt,time.time()))
         sample_rate_hz = self.corr.get_scale_factor()
         delays = delayops.process_list(delay_list, sample_rate_hz)
         if len(delays) != len(self.fengines):
@@ -489,13 +489,17 @@ class FEngineOperations(object):
 
         if len(rv)!=len(self.fengines):
             rv=False
+            self.logger.error("Only got %i delay responses."%len(rv))
         else:
             for feng,stat in rv.items():
                 if stat!=True: rv=False
+            for feng in self.fengines:
+                self.logger.debug("Set delay: %s."%feng.last_delay.__str__())
 
         if self.corr.sensor_manager:
             for feng in self.fengines:
                 self.corr.sensor_manager.sensors_feng_delays(feng)
+                
         return rv
 
 #    def delays_get(self, input_name=None):
@@ -521,12 +525,14 @@ class FEngineOperations(object):
         # check that load time is not too soon or in the past
         time_now = time.time()
         if loadtime < (time_now + self.corr.min_load_time):
-            errmsg = 'Delay model update leadtime error. ' \
-            'tnow: %f, tload: %f.'%(time_now,loadtime)
+            errmsg = 'Delay model update leadtime (%f s) error. ' \
+            'tnow: %f, tload: %f.'%(self.corr.min_load_time,time_now,loadtime)
             self.logger.error(errmsg)
-            raise RuntimeError(errmsg)
+
+        last_loadtime=self.corr.time_from_mcnt(self.fengines[0].last_delay.load_mcnt)
+        if time.time()<last_loadtime:
+            self.logger.warning("Received a delay update before the last one had a chance to load! Queing is not supported. The last load command (for time %f) will not be applied, and will be overwritten by this command at time %f."%(last_loadtime,time.time()))
         loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
-        #self.logger.info("calc'd loadtime: %i."%loadtime_mcnt)
         return loadtime_mcnt
 
     def tx_enable(self,force_enable=False):

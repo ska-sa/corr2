@@ -96,7 +96,7 @@ class Delay(object):
     #     return prepare_delay_vals(coeff_tuple, sample_rate)
 
     def __str__(self):
-        return '{},{}:{},{}'.format(self.delay, self.delay_delta,
-                                    self.phase_offset, self.phase_offset_delta)
+        return 'Delay@{}: {},{}:{},{}'.format(self.load_mcnt,self.delay, 
+            self.delay_delta,self.phase_offset, self.phase_offset_delta)
 
 # end

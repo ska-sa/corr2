@@ -143,6 +143,7 @@ class Fengine(object):
         :return: nothing!
         """
         rv=True
+        self.last_delay.last_load_success=False
         # set up the delays and update the stored values
         self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
         self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
@@ -160,7 +161,7 @@ class Fengine(object):
             self.logger.error('Failed to load last delay model;' \
                 ' arm_cnt before: %i, after: %i.' \
                 ' load_cnt before: %i, after: %i.' \
-                ' Requested load mcnt %f, now %f.'%(
+                ' Last requested load mcnt %i, time now %f.'%(
                 self.last_delay.arm_count,arm_count,
                 self.last_delay.load_count,load_count,
                 self.last_delay.load_mcnt,time.time()))
@@ -270,10 +271,8 @@ class Fengine(object):
                              'Requested: %e samples/sample, set %e.'%
                              (delay_rate,max_negative_delta_delay/bitshift))
 
-        #figure out the actual (rounded) register values:
-        prep_int=int(delta_delay_shifted*(2**reg_bp))&((2**reg_bw)-1)
+        prep_int=int(delta_delay_shifted*(2**reg_bp))
         act_value = (float(prep_int)/(2**reg_bp))/bitshift
-        if delta_delay_shifted<0: act_value-=(2**reg_bw)
         self.logger.debug('Setting delay delta to %e samples/sample (reg 0x%08X).' %(act_value, prep_int))
         delay_delta_reg.write_int(prep_int)
         return act_value
@@ -326,15 +325,15 @@ class Fengine(object):
                         'Requested %e*pi radians/sample, set %e.' % (phase_rate, dp))
             delta_phase_shifted = max_negative_delta_phase
 
-        prep_int_initial=int(phase*(2**initial_reg_bp))&((2**initial_reg_bw)-1)
-        prep_int_delta=int(delta_phase_shifted*(2**delta_reg_bp))&((2**delta_reg_bw)-1)
+        prep_int_initial=int(phase*(2**initial_reg_bp))
+        prep_int_delta=-int(delta_phase_shifted*(2**delta_reg_bp))
 
         act_value_initial = (float(prep_int_initial)/(2**initial_reg_bp))
         if phase<0: act_value_initial-=(2**initial_reg_bw)
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
         if delta_phase_shifted<0: act_value_delta-=(2**delta_reg_bw)
-        self.logger.debug('Writing initial phase to %e*pi radians.' % (act_value_initial))
-        self.logger.debug('Writing %e*pi radians/sample phase delta.' % (act_value_delta))
+        self.logger.debug('Writing initial phase to %e*pi radians (reg: %i).' % (act_value_initial,prep_int_initial))
+        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i).' % (act_value_delta,prep_int_delta))
 
         # actually write the values to the register
         prep_int = (prep_int_initial<<initial_reg_offset) + (prep_int_delta<<delta_reg_offset)
