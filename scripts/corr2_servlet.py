@@ -607,11 +607,11 @@ class Corr2Server(katcp.DeviceServer):
                                          'no beamformer')
         if new_gain != '':
             try:
-                self.instrument.bops.set_beam_quant_gains(new_gain, beam_name)
+                self.instrument.bops.set_beam_quant_gain(new_gain, beam_name)
             except Exception as ex:
                 return self._log_excep(ex, 'Failed setting beam gain for beam {0}.'.format(beam_name))
         try:
-            cur_gains = self.instrument.bops.get_beam_quant_gains(beam_name)
+            cur_gains = self.instrument.bops.get_beam_quant_gain(beam_name)
         except Exception as ex:
             return self._log_excep(ex, 'Failed reading beam gain for beam {0}.'.format(beam_name))
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))

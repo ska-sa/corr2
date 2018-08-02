@@ -305,7 +305,7 @@ class FxCorrelator(Instrument):
             self.logger.warning(errmsg)
         t_now = time.time()
         self.synchronisation_epoch = t_now - feng_mcnt / self.sample_rate_hz
-        self.logger.info('\tnew epoch: {.3f} ({})'.format(self.synchronisation_epoch,
+        self.logger.info('\tnew epoch: {} ({})'.format(self.synchronisation_epoch,
             time.ctime(self.synchronisation_epoch)))
 
     def time_from_mcnt(self, mcnt):

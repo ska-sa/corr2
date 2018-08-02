@@ -345,7 +345,7 @@ class FEngineOperations(object):
         :return: (a boolean, the F-engine times as 48-bit counts,
         their unix representations)
         """
-        self.logger.info('Checking timestamps on F hosts...')
+        self.logger.debug('Checking timestamps on F hosts...')
         start_time=time.time()
         results = THREADED_FPGA_FUNC(
             self.hosts, timeout=5,
@@ -391,7 +391,7 @@ class FEngineOperations(object):
             errmsg = 'F-engine timestamps are too far apart: %.3fs. Took %.3fs. to read all boards.' %(diff,elapsed_time)
             self.logger.error(errmsg)
             rv=False
-        self.logger.info('\tdone.')
+        self.logger.debug('\tdone.')
         return rv, feng_mcnts, feng_times
 
     def threaded_feng_operation(self, timeout, target_function):

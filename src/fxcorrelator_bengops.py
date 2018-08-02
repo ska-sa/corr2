@@ -47,7 +47,7 @@ class BEngineOperations(object):
         # disable all beams
         #self.tx_disable()
         #self.set_beam_weights()
-        #self.set_beam_quant_gain() 
+        self.set_beam_quant_gain() 
         self.logger.info('Beamformer initialised.')
 
     def configure(self, *args, **kwargs):
@@ -134,13 +134,13 @@ class BEngineOperations(object):
         """
         if beam_name is None:
             for beam in self.beams:
-                self.set_beam_quant_gains(new_gain, beam_name=beam.name)
+                self.set_beam_quant_gain(new_gain, beam_name=beam.name)
             return
         beam = self.get_beam_by_name(beam_name)
         # set the quantiser gains for this beam
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_quant_gains_set',
                                            [beam.index, new_gain], {}))
-        self.logger.info('%s quant gain set to %f.'%(beam_name),new_gain)
+        self.logger.info('%s quant gain set to %f.'%(beam_name,new_gain))
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_beng_gains()
 
