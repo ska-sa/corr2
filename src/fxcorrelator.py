@@ -6,6 +6,7 @@ Created on Feb 28, 2013
 
 # things all fxcorrelators Instruments do
 
+import re
 import time
 import katcp
 # Yes, I know it's just an integer value
@@ -121,8 +122,8 @@ class FxCorrelator(Instrument):
         # 64A needs ~1100, mainly for spead descriptor sockets,
         # since spead2 needs a separate socket per destination
         # (it uses send rather than sendto).
-        fd_limit=int(self.configd['FxCorrelator']['max_fd'])
-        resource.setrlimit(resource.RLIMIT_NOFILE,(fd_limit,fd_limit))
+        fd_limit = int(self.configd['FxCorrelator']['max_fd'])
+        resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
 
         # create the host objects
         self._create_hosts(*args, **kwargs)
@@ -150,7 +151,7 @@ class FxCorrelator(Instrument):
         self.data_streams = []
         # what digitiser data streams have we been allocated?
 
-        if kwargs.has_key('getLogger'):
+        if 'getLogger' in kwargs:
             self._create_digitiser_streams(**kwargs)
         else:
             self._create_digitiser_streams(getLogger=self.getLogger, *args, **kwargs)
@@ -210,7 +211,7 @@ class FxCorrelator(Instrument):
         # run configuration on the parts of the instrument
         # this is independant of programming!
         # - Passing args and kwargs through here, for completeness
-        if kwargs.has_key('getLogger'):
+        if 'getLogger' in kwargs:
             self.configure(*args, **kwargs)
         else:
             self.configure(getLogger=self.getLogger, *args, **kwargs)
@@ -559,7 +560,7 @@ class FxCorrelator(Instrument):
         assert isinstance(_fengd, dict)
         source_mcast = _fengd.get('source_mcast_ips', None)
         assert isinstance(source_mcast, str)
-        source_mcast = source_mcast.strip().split(',')
+        source_mcast = re.split(r'[,\s]+', source_mcast)
         assert isinstance(source_mcast, list)
         source_names = utils.get_default_sources(config=self.configd)
         for ctr, src in enumerate(source_mcast):
