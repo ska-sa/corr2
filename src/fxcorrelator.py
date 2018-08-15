@@ -122,7 +122,8 @@ class FxCorrelator(Instrument):
         # 64A needs ~1100, mainly for spead descriptor sockets,
         # since spead2 needs a separate socket per destination
         # (it uses send rather than sendto).
-        fd_limit = int(self.configd['FxCorrelator']['max_fd'])
+        fd_limit = int(self.configd['FxCorrelator'].get('max_fd', 4096))
+        assert isinstance(fd_limit, int)
         resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
 
         # create the host objects
@@ -412,7 +413,7 @@ class FxCorrelator(Instrument):
 
         _feng_d = self.configd.get('fengine')
         assert isinstance(_feng_d, dict)
-        fhostlist = _feng_d.get('hosts').split(',')
+        fhostlist = re.split(r'[,\s]+', _feng_d.get('hosts'))
         assert isinstance(fhostlist, list)
         self.fhosts = []
         for hostindex, host in enumerate(fhostlist):
@@ -431,7 +432,7 @@ class FxCorrelator(Instrument):
             _target_class = xhost_fpga.FpgaXHost
         _xeng_d = self.configd.get('xengine')
         assert isinstance(_xeng_d, dict)
-        xhostlist = _xeng_d.get('hosts').split(',')
+        xhostlist = re.split(r'[,\s]+', _xeng_d.get('hosts'))
         assert isinstance(xhostlist, list)
         self.xhosts = []
         for hostindex, host in enumerate(xhostlist):
