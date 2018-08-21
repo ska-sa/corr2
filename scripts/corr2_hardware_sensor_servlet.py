@@ -8,6 +8,8 @@ import os
 import katcp
 import signal
 import casperfpga
+import socket
+import math
 from tornado.ioloop import IOLoop
 import tornado.gen as gen
 
@@ -50,6 +52,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
         sensor_manager.sensors_clear()
 
         sensordict=self.host.transport.get_sensor_data()
+	sensordict['location'] = get_physical_location(socket.gethostbyname(self.host.transport.host));
         sensors={}
         for key,value in sensordict.iteritems():
             try:
@@ -71,6 +74,35 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
                 raise e
         ioloop.add_callback(_sensor_cb_hw, executor, sensors, self.host)
 
+def get_physical_location(ipAddress):
+    #print('###################################')
+    #ipAddress  = socket.gethostbyname(skarabBoard.transport.host);
+    #print(ipAddress)
+    octets = ipAddress.split('.');
+    #print(ipAddress,octets)
+    leafNo = int(octets[2]);
+    switchPort = int(octets[3])//4 + 1;
+
+    leafBaseRU = 0;
+    if(leafNo % 2 == 1):
+	leafBaseRU = 6;
+    else:
+	leafBaseRU = 24;
+
+    rackColumn = 'B';
+    rackRow = int(math.ceil(leafNo/2) - 1);
+    rackUnit = leafBaseRU + switchPort;
+    if(switchPort > 8): rackUnit+=1;
+
+    hardwareLocation = '{}{:02}:{:02}'.format(rackColumn,rackRow,rackUnit)
+
+    errorStatus = 'OK';
+    if(rackColumn != 'B' or rackRow < 2 or rackRow > 10  
+	or rackUnit < 7 or rackUnit > 41 
+	or rackUnit == 15 or rackUnit == 24 or rackUnit == 33): errorStatus = 'ERROR';
+	
+    #print('###################################')
+    return (hardwareLocation, 'string', errorStatus)
 
 @gen.coroutine
 def _sensor_cb_hw(executor, sensors, host):
@@ -88,6 +120,8 @@ def _sensor_cb_hw(executor, sensors, host):
         LOGGER.error('Error retrieving %s sensors - {}'.format(host.host,e.message))
         results={}
         set_failure()
+    
+    #Board Sensors
     for key,value in results.iteritems():
         try:
             status=Corr2Sensor.NOMINAL if value[2]=='OK' else Corr2Sensor.ERROR
@@ -95,6 +129,19 @@ def _sensor_cb_hw(executor, sensors, host):
         except Exception as e:
             LOGGER.error('Error updating {}-{} sensor '
                      '- {}'.format(host.host,key,e.message))
+
+    #Server Generated Sensors
+    server_sensors_dict = {}
+    server_sensors_dict['location'] = get_physical_location(socket.gethostbyname(host.host));
+
+    for key,value in server_sensors_dict.iteritems():
+        try:
+            status=Corr2Sensor.NOMINAL if value[2]=='OK' else Corr2Sensor.ERROR
+            sensors[key].set(value=value[0],status=status)
+        except Exception as e:
+            LOGGER.error('Error updating {}-{} sensor '
+                     '- {}'.format(host.host,key,e.message))
+
     LOGGER.debug('sensorloop ran')
     IOLoop.current().call_later(10, _sensor_cb_hw,
                                 executor,sensors,host)
