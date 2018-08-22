@@ -492,8 +492,6 @@ class FEngineOperations(object):
             for feng, stat in rv.items():
                 if not stat:
                     rv = False
-            for feng in self.fengines:
-                self.logger.debug("Set delay: {}.".format(feng.last_delay.__str__()))
 
         if self.corr.sensor_manager:
             for feng in self.fengines:

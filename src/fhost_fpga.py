@@ -142,6 +142,7 @@ class Fengine(object):
         This function will also update this feng object's self.last_delay.
         :return: nothing!
         """
+        self.logger.debug("Processing request for delay model: {}.".format(delay_obj.__str__()))
         rv=True
         self.last_delay.last_load_success=False
         # set up the delays and update the stored values
@@ -156,7 +157,7 @@ class Fengine(object):
         arm_count=status['arm_count']
         if load_count != self.last_delay.load_count:
             self.last_delay.last_load_success=True
-            self.logger.debug('Last delay loaded successfully.')
+            self.logger.debug("Last delay successfully loaded at mcnt %i"%self.last_delay.load_mcnt)
         else:
             self.logger.error('Failed to load last delay model;' \
                 ' arm_cnt before: %i, after: %i.' \
@@ -169,7 +170,7 @@ class Fengine(object):
         self.last_delay.load_count = load_count
         self.last_delay.arm_count = arm_count
         self.last_delay.load_mcnt=self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
-        self.logger.debug("loaded at mcnt %i"%self.last_delay.load_mcnt)
+        self.logger.debug("New delay model applied: {}".format(self.last_delay.__str__()))
         return self.last_delay.last_load_success
 
     def _arm_timed_latch(self, name, mcnt=None):
@@ -241,7 +242,7 @@ class Fengine(object):
         #prepare the register:
         prep_int=int(delay*(2**reg_bp))&((2**reg_bw)-1)
         act_value = (float(prep_int)/(2**reg_bp))
-        self.logger.debug('Setting delay to %f samples.' % (act_value))
+        self.logger.debug('Setting delay to %f samples, from request for %f samples.' % (act_value,delay))
         delay_reg.write_int(prep_int)
         return act_value
 
@@ -273,7 +274,7 @@ class Fengine(object):
 
         prep_int=int(delta_delay_shifted*(2**reg_bp))
         act_value = (float(prep_int)/(2**reg_bp))/bitshift
-        self.logger.debug('Setting delay delta to %e samples/sample (reg 0x%08X).' %(act_value, prep_int))
+        self.logger.debug('Setting delay delta to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value, prep_int,delay_rate))
         delay_delta_reg.write_int(prep_int)
         return act_value
 
@@ -332,8 +333,8 @@ class Fengine(object):
         if phase<0: act_value_initial-=(2**initial_reg_bw)
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
         if delta_phase_shifted<0: act_value_delta-=(2**delta_reg_bw)
-        self.logger.debug('Writing initial phase to %e*pi radians (reg: %i).' % (act_value_initial,prep_int_initial))
-        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i).' % (act_value_delta,prep_int_delta))
+        self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
+        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
 
         # actually write the values to the register
         prep_int = (prep_int_initial<<initial_reg_offset) + (prep_int_delta<<delta_reg_offset)

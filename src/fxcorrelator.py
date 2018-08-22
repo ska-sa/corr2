@@ -68,16 +68,17 @@ class FxCorrelator(Instrument):
     """
 
     # @profile
-    def __init__(self, descriptor, identifier=-1, config_source=None, *args, **kwargs):
+    def __init__(self, descriptor, config_source=None, identifier=-1, *args, **kwargs):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
-        :param identifier: An optional integer identifier.
         :param config_source: The instrument configuration source. Can be a
                               text file, hostname, whatever.
+        :param identifier: An optional integer identifier.
         :return: <nothing>
         """
-
+        assert isinstance(config_source, str), 'Missing instrument config file'
+        assert isinstance(descriptor, str), 'What do you want to call your instrument?'
         self.descriptor = descriptor.strip().replace(' ', '_').upper()
 
         # To make sure the given getLogger propagates all the way through
@@ -579,9 +580,9 @@ class FxCorrelator(Instrument):
         """
         Read the instrument configuration from self.config_source.
         """
-        tempdict = utils.parse_ini_file(self.config_source)
-        tempdict2 = ReadOnlyDict(tempdict)
-        self.configd = tempdict2
+        tempdict = ReadOnlyDict(utils.parse_ini_file(self.config_source))
+        assert isinstance(tempdict, dict)
+        self.configd = tempdict
 
     def _read_config_server(self):
         """
