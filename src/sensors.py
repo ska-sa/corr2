@@ -422,7 +422,7 @@ class Corr2SensorManager(SensorManager):
                 'output.')
             spec_acclen = (self.instrument.accumulation_len *
                            self.instrument.xeng_accumulation_len)
-            sensor.set_value(spec_acclen)
+            sensor.set_value(int(spec_acclen))
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-int-time'.format(strmnm),
                 'The time, in seconds, for which the X-engines accumulate.',
