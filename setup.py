@@ -1,5 +1,31 @@
-import glob
+from glob import glob
+from pip import _internal as pip
 from setuptools import setup
+from subprocess import check_output
+
+try:
+    branch = check_output(['git', 'symbolic-ref', '--short', 'HEAD'])
+    assert not (branch == 'HEAD')
+    branch = 'devel'
+except Exception:
+    branch = 'master'
+
+_dependencies = 'https://github.com/ska-sa/casperfpga/archive/{branch}.zip#egg=casperfpga'.format(
+    **locals())
+_install_requires = [
+    'casperfpga',
+    'h5py',
+    'iniparse',
+    'katcp>=0.6.2',
+    'matplotlib==2.0.2',
+    'numpy',
+    'spead2',
+    'tornado>=4.3']
+
+try:
+    pip.main(['install', _dependencies])
+except Exception:
+    pass
 
 setup(
     name='corr2',
@@ -17,14 +43,12 @@ setup(
         'Topic :: Scientific/Engineering :: Astronomy',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    install_requires=[
-        'casperfpga==3.1', 'katcp>=0.6.2', 'matplotlib==2.0.2', 'iniparse', 'numpy', 'spead2',
-        'h5py', 'tornado>=4.3'],
-    dependency_links=['git+https://github.com/ska-sa/casperfpga@master#egg=casperfpga==3.1'],
+    install_requires=_install_requires,
+    dependency_links=[_dependencies],
     provides=['corr2'],
     packages=['corr2'],
     package_dir={'corr2': 'src'},
-    scripts=glob.glob('scripts/*'),
+    scripts=glob('scripts/*'),
     setup_requires=['katversion'],
     use_katversion=True,
 )

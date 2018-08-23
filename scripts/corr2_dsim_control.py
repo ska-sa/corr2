@@ -13,6 +13,8 @@ parser = argparse.ArgumentParser(description='Control the dsim-engine (fake digi
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-c', '--config', dest='config', type=str, action='store',
                     help='corr2 config file. (default: Use CORR2INI env var)')
+parser.add_argument('-f', '--fpg', dest='bitstream', default=None, action='store',
+                    help='Bitstream file (Optional unless debugging)')
 parser.add_argument('--program', dest='program', action='store_true',
                     default=False, help='(re)program the fake digitiser')
 parser.add_argument('--deprogram', dest='deprogram', action='store_true',
@@ -81,10 +83,15 @@ if args.log_level != '':
 #                               fpga_class=FpgaDsimHost)
 if 'CORR2INI' in os.environ.keys() and (args.config == '' or args.config is None):
     args.config = os.environ['CORR2INI']
+
 try:
     config, host_detail = utils.hosts_and_bitstreams_from_config(
         config_file=args.config, section='dsimengine')
     section, host_list, bitstream = host_detail[0]
+    if args.bitstream:
+        bitstream = str(args.bitstream)
+        print ('Starting Digitiser with bitstream: {}'.format(bitstream))
+
     dfpga = FpgaDsimHost(host_list[0], bitstream=bitstream,
                          config=config['dsimengine'])
     print('Connected to {}.'.format(dfpga.host))
