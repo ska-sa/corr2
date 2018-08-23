@@ -472,8 +472,8 @@ class FEngineOperations(object):
             loadmcnt = self._delays_check_loadtime(loadtime)
         else:
             loadmcnt = -1
-        self.logger.debug("Received delay model update for {} (mcnt {}) at {}.".format(loadtime,
-            loadmcnt, time.time()))
+        self.logger.debug("Received delay model update for {} (mcnt {}) at {}: {}.".format(loadtime,
+            loadmcnt, time.time(),delay_list.__str__()))
         sample_rate_hz = self.corr.get_scale_factor()
         delays = delayops.process_list(delay_list, sample_rate_hz)
         if len(delays) != len(self.fengines):
