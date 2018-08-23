@@ -1,20 +1,21 @@
-CORR2
+# CORR2
 
-This package provides functions to control MeerKAT's packetised, FPGA-based correlator/beamformer (CBF). Analoguous to KAT-7's original corr package.
+This package provides interfaces and functions to configure MeerKAT packetised digital backend; FX correlators, beamformers and other real-time instrumentation.
 
-Installation:
+## Installation:
 Do the normal
-    sudo python setup.py install
+```$ sudo python setup.py install
+```
 
-Usage:
+### Usage
 
-Requires:
-    - iniparse, numpy, matplotlib (if plotting outputs), katcp, PySPEAD, construct
+```bash
+import corr2
+c = corr2.fxcorrelator.FxCorrelator('Corr', '/etc/corr/correlator_config.ini')
+c.initialise()
+```
 
-Recommended:
-    - katsdisp, the standalone KAT signal display package for visualising output.
-
-ToDo:
+## ToDo:
     - Make it work!
 
 Release Notes:
@@ -28,6 +29,6 @@ Release Notes:
 
     - 2015-05-29: Needs DEng version  r2_deng_tvg_2015_May_21_1535.fpg or later
       for dsimengine to work properly
-    
-    - 2015-06-10ish - new_transport_check branch created that breaks interface 
-      with earlier f-engines 
+
+    - 2015-06-10ish - new_transport_check branch created that breaks interface
+      with earlier f-engines
