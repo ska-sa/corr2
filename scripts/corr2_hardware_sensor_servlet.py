@@ -155,7 +155,7 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
         try:
             status = Corr2Sensor.NOMINAL if value[2] == 'OK' else Corr2Sensor.ERROR
             sensors[key].set(value=value[0], status=status)
-         except Exception as e:
+        except Exception as e:
             LOGGER.error('Error updating {}-{} sensor '
                          '- {}'.format(host.host, key, e.message))
 
@@ -167,7 +167,7 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
     serverSensorsOk=is_sensor_list_status_ok(server_sensors_dict);
 
     device_status = 'OK'
-    if(not onBoardSensorsOk and not serverSensorsOk):
+    if(not onBoardSensorsOk or not serverSensorsOk):
         device_status = 'ERROR'
 
     server_sensors_dict['device-status'] = (0, '', device_status)
