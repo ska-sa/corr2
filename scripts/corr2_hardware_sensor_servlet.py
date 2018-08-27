@@ -60,6 +60,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
 
         sensordict = self.host.transport.get_sensor_data()
         sensordict['location'] = self.rack_location_tuple
+        print('***********',self.rack_location_tuple,'************')
         device_status = 'OK' if (
             is_sensor_list_status_ok(sensordict)) else 'ERROR'
         sensordict['device-status'] = (0, '', device_status)
@@ -104,6 +105,7 @@ def get_physical_location(ipAddress):
 
     rackColumn = 'B'
     rackRow = int((leafNo-1) // 2)
+    print(rackRow)
     rackUnit = leafBaseRU + switchPort
     if(switchPort > 8):
         rackUnit += 1
@@ -146,12 +148,14 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
         results = {}
         set_failure()
 
+
+
     # Board Sensors
     for key, value in results.iteritems():
         try:
             status = Corr2Sensor.NOMINAL if value[2] == 'OK' else Corr2Sensor.ERROR
             sensors[key].set(value=value[0], status=status)
-        except Exception as e:
+         except Exception as e:
             LOGGER.error('Error updating {}-{} sensor '
                          '- {}'.format(host.host, key, e.message))
 
@@ -159,8 +163,13 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
     server_sensors_dict = {}
     server_sensors_dict['location'] = rack_location_tuple
 
-    device_status = 'OK' if (is_sensor_list_status_ok(
-        server_sensors_dict) and is_sensor_list_status_ok(sensors)) else 'ERROR'
+    onBoardSensorsOk=is_sensor_list_status_ok(results);
+    serverSensorsOk=is_sensor_list_status_ok(server_sensors_dict);
+
+    device_status = 'OK'
+    if(not onBoardSensorsOk and not serverSensorsOk):
+        device_status = 'ERROR'
+
     server_sensors_dict['device-status'] = (0, '', device_status)
 
     # Determine Device Status
@@ -242,3 +251,4 @@ if __name__ == '__main__':
     ioloop.start()
 
 # end
+
