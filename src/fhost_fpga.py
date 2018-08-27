@@ -330,15 +330,18 @@ class Fengine(object):
         prep_int_delta=-int(delta_phase_shifted*(2**delta_reg_bp))
 
         act_value_initial = (float(prep_int_initial)/(2**initial_reg_bp))
-        if phase<0: act_value_initial-=(2**initial_reg_bw)
+        #if phase<0: act_value_initial-=(2**initial_reg_bw)  # Seems to me as though this shouldn't be here. (JS)
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
         if delta_phase_shifted<0: act_value_delta-=(2**delta_reg_bw)
         self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
         self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
 
+        prep_array = numpy.array([prep_int_initial, prep_int_delta], dtype=numpy.int16)
+        prep_array = prep_array.view(dtype=numpy.uint16)
         # actually write the values to the register
-        prep_int = (prep_int_initial<<initial_reg_offset) + (prep_int_delta<<delta_reg_offset)
+        prep_int = (prep_array[0]<<initial_reg_offset) + (prep_array[1]<<delta_reg_offset)
         phase_reg.write_int(prep_int)
+
         return act_value_initial,act_value_delta
 
     def eq_get(self):
