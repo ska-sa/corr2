@@ -103,7 +103,7 @@ def get_physical_location(ipAddress):
         leafBaseRU = 24
 
     rackColumn = 'B'
-    rackRow = int(math.ceil(leafNo / 2) - 1)
+    rackRow = int((leafNo-1) // 2)
     rackUnit = leafBaseRU + switchPort
     if(switchPort > 8):
         rackUnit += 1
