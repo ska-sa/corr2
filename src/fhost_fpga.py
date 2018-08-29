@@ -327,12 +327,11 @@ class Fengine(object):
             delta_phase_shifted = max_negative_delta_phase
 
         prep_int_initial=int(phase*(2**initial_reg_bp))
-        prep_int_delta=-int(delta_phase_shifted*(2**delta_reg_bp))
+        prep_int_delta=int(delta_phase_shifted*(2**delta_reg_bp))
 
         act_value_initial = (float(prep_int_initial)/(2**initial_reg_bp))
         #if phase<0: act_value_initial-=(2**initial_reg_bw)  # Seems to me as though this shouldn't be here. (JS)
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
-        if delta_phase_shifted<0: act_value_delta-=(2**delta_reg_bw)
         self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
         self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
 
