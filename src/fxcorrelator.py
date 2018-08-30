@@ -268,6 +268,9 @@ class FxCorrelator(Instrument):
             'post mess-with-the-switch delay of {}s'.format(self.post_switch_delay))
         time.sleep(self.post_switch_delay)
 
+        #Forcefully resync the Fengines once the DIG data is flowing reliably:
+        self.fops.sys_reset()
+
         if self.synchronisation_epoch == -1:
             self.est_synch_epoch()
 
