@@ -67,7 +67,11 @@ class FpgaBHost(FpgaXHost):
         assert len(weights) == self.n_ants, ('Incorrect number of weights supplied (%i; need %i)'%(len(weights),self.n_ants))
         for source_index,source_weight in enumerate(weights):
             self.registers.bf_weight.write(weight=source_weight,
-                    stream=beam_index, antenna=source_index, load_now='pulse')
+                    stream=beam_index, antenna=source_index, load_now=0)
+            self.registers.bf_weight.write(weight=source_weight,
+                    stream=beam_index, antenna=source_index, load_now=1)
+            self.registers.bf_weight.write(weight=source_weight,
+                    stream=beam_index, antenna=source_index, load_now=0)
             self.logger.debug(
                     '%s:%i: Beam %i: set antenna(%i) weight(%.5f)' % (
                         self.host, self.index, beam_index,

@@ -172,7 +172,7 @@ class BEngineOperations(object):
                 self.set_beam_weights(weights, beam_name=beam_name)
             return
         if type(weights)==int or type(weights)==float:
-            new_weights=[weights for a in self.corr.n_antennas]
+            new_weights=[weights for a in range(self.corr.n_antennas)]
         else:
             new_weights=weights
         
