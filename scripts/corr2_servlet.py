@@ -559,37 +559,36 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(ex, 'Failed to read ADC voltage data from '
                                        'transient buffers.')
 
-    @request(Str(), Str(), Float(default='', multiple=True))
+    @request(Str(), Float(default='', multiple=True))
     @return_reply(Str(multiple=True))
-    def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
+    def request_beam_weights(self, sock, beam_name, *weight_list):
         """
         Set the weight for an input
         :param sock:
         :param beam_name: required beam stream
-        :param input_name: required input
         :param weight_list: list of weights to set, one per input
-        :return:
+        :return: a list of the weights set
         """
         if not self.instrument.found_beamformer:
             return self._log_excep(None, 'Cannot run beamformer commands with '
                                          'no beamformer')
-        if weight_list[0] != '':
+        if weight_list != '':
             try:
                 self.instrument.bops.set_beam_weights(
-                    weight_list[0], beam_name, input_name)
+                    weight_list, beam_name)
             except Exception as ex:
                 return self._log_excep(
                     ex,
-                    'Failed setting beamweights for beam {0}, input '
-                    '{1}.'.format(beam_name, input_name))
+                    'Failed setting beamweights for beam {0}.'.format(
+                        beam_name))
         try:
             cur_weights = self.instrument.bops.get_beam_weights(
-                beam_name, input_name)
+                beam_name)
         except Exception as ex:
             return self._log_excep(
                 ex,
-                'Failed reading beamweights for beam {0}, input {1}.'.format(
-                    beam_name, input_name))
+                'Failed reading beamweights for beam {0}.'.format(
+                    beam_name))
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_weights))
 
     @request(Str(), Float(default=''))
