@@ -18,7 +18,7 @@ from corr2 import fxcorrelator, sensors
 from corr2.utils import KatcpStreamHandler, parse_ini_file
 
 from corr2.corr2LogHandlers import getKatcpLogger, set_logger_group_level
-from corr2.corr2LogHandlers import get_instrument_loggers
+from corr2.corr2LogHandlers import get_instrument_loggers, check_logging_level
 from corr2.corr2LogHandlers import check_logging_level, LOG_LEVELS
 from corr2.corr2LogHandlers import LOGGING_RATIO_CASPER_CORR as LOG_RATIO
 
@@ -746,21 +746,44 @@ class Corr2Server(katcp.DeviceServer):
         #     sock.inform('log', logstring)
         # return 'ok', len(logstrings)
 
-    @request(Str(default=''), Int(default=-1))
+    @request(Str(default=''), Str(default='debug'))
     @return_reply(Str())
-    def request_set_loglevel_logger(self, logger_name, log_level_int, sock):
+    def request_set_loglevel_logger(self, sock, logger_name, log_level_str):
         """
         Set the log level of one of the internal loggers.
-        :param logger_name: the name of the logger to configure
-        :param log_level_int: the integer level to set (eg. INFO=20, DEBUG=10)
         :param sock: not sure...
+        :param logger_name: the name of the logger to configure
+        :param log_level_str: the log-level to set - log-level E {INFO, WARN, ERROR, FATAL}
         """
         if logger_name != '':
             logger = logging.getLogger(logger_name)
         else:
             logger = logging.getLogger()
-        logger.setLevel(log_level_int)
-        return ('ok', '{}'.format(str(log_level_int)))
+        result, log_level_numeric = check_logging_level(log_level_str.upper())
+        if not result:
+            # Problem
+            errmsg = 'Unable to set logger: {} to log-level: {}'.format(logger_name, log_level_str)
+            return 'fail', errmsg
+        # else: Continue
+        logger.setLevel(log_level_numeric)
+        return ('ok', 'Success: logger {} now logging at log-level {}'.format(logger_name, log_level_str))
+
+
+    @request()
+    @return_reply(Str())
+    def request_get_all_loggers(self, sock):
+        """
+        Get all loggers associated with self.instrument
+        :return: Printed list of logger names
+        """
+
+        instrument_loggers, skarab_loggers = get_instrument_loggers(corr_obj=self.instrument,
+                                                    group_name='instrument')
+        logger_names = [logger.name for logger in instrument_loggers]
+        logger_names += [logger.name for logger in skarab_loggers]
+
+        # return_string = '\n'.join(logger_names)
+        return 'ok', logger_names
 
     @request(Str(default='debug'), Str(default=''))
     @return_reply()
@@ -788,10 +811,10 @@ class Corr2Server(katcp.DeviceServer):
         logger_group_name = logger_group_name.lower().strip()
         if logger_group_name not in logger_group_list:
             if logger_group_name != '':
-                # errmsg = 'Could not find group for group-name: {}'.format(group_name)
+                errmsg = 'Could not find group for group-name: {}'.format(group_name)
                 # self.logger.error(errmsg)
                 # self._log_excep(None, errmsg)
-                return 'fail',
+                return 'fail', errmsg
             # else: Empty string specified
         # else: Continue!
 
@@ -800,8 +823,8 @@ class Corr2Server(katcp.DeviceServer):
 
         if logger_list is None:
             # Maybe no loggers found matching the string?
-            # warningmsg = 'No loggers found containing name: {}'.format(logger_group_name)
-            return 'fail',
+            warningmsg = 'No loggers found containing name: {}'.format(logger_group_name)
+            return 'fail', warningmsg
         # else: Continue
 
         # Will need to keep the log-level ratio tracking here, instead of in the set-method
@@ -810,26 +833,26 @@ class Corr2Server(katcp.DeviceServer):
             # Instrument case
             if not set_logger_group_level(logger_group=logger_list, log_level=log_level_numeric):
                 # Problem
-                # errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
+                errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
                 # self._log_excep(None, errmsg)
-                return 'fail',
+                return 'fail', errmsg
 
             skarab_log_level = (
                 log_level_numeric * LOG_RATIO) if (log_level_numeric * LOG_RATIO) in LOG_LEVELS else 0
             if not set_logger_group_level(logger_group=second_list, log_level=skarab_log_level):
                 # Problem
-                # errmsg = 'Unable to set SKARAB log-levels...'
+                errmsg = 'Unable to set SKARAB log-levels...'
                 # self._log_excep(None, errmsg)
-                return 'fail',
+                return 'fail', errmsg
         else:
             if not set_logger_group_level(logger_group=logger_list, log_level=log_level_numeric):
                 # Problem
-                # errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
+                errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
                 # self._log_excep(None, errmsg)
-                return 'fail',
+                return 'fail', errmsg
 
         return 'ok',
-
+    
     @request()
     @return_reply()
     def request_debug_deprogram_all(self, sock):
@@ -1103,8 +1126,9 @@ if __name__ == '__main__':
     # set up the logger
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
-    while len(root_logger.handlers) > 0:
-        root_logger.removeHandler(root_logger.handlers[0])
+    # while len(root_logger.handlers) > 0:
+    #     root_logger.removeHandler(root_logger.handlers[0])
+    root_logger.handlers = []
     if args.lfm or (not sys.stdout.isatty()):
         console_handler = KatcpStreamHandler(stream=sys.stdout)
         console_handler.setLevel(log_level)
