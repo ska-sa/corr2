@@ -653,6 +653,22 @@ class FpgaFHost(FpgaHost):
         rv.update(self.registers.unpack_status1.read()['data'])
         return rv
 
+    def get_sync_status(self):
+        """
+        Read the synchronisation counters
+        :return:
+        """
+        rv={}
+        if 'sync_status' in self.registers.names():
+            rv.update(self.registers.sync_status.read()['data'])
+        if 'sync_status0' in self.registers.names():
+            rv.update(self.registers.sync_status0.read()['data'])
+        if 'sync_status1' in self.registers.names():
+            rv.update(self.registers.sync_status1.read()['data'])
+        if 'sync_status2' in self.registers.names():
+            rv.update(self.registers.sync_status2.read()['data'])
+        return rv
+
     def get_rx_reorder_status(self):
         """
         Read the reorder block counters
