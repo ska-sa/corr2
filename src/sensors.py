@@ -88,18 +88,25 @@ class Corr2Sensor(Sensor):
         if (old_status == status) and (old_value == value):
             LOGGER.debug('Sensor values unchanged, ignoring')
             return
-        if errif == 'False':
-            LOGGER.error('Sensor error: {} is False'.format(self.name))
-            status = Sensor.ERROR
-        elif warnif == 'False':
-            LOGGER.warn('Sensor warning: {} is False'.format(self.name))
-            status = Sensor.WARN
-        if errif == 'True':
-            LOGGER.error('Sensor error: {} is True'.format(self.name))
-            status = Sensor.ERROR
-        elif warnif == 'True':
-            LOGGER.warn('Sensor warning: {} is True'.format(self.name))
-            status = Sensor.WARN
+
+        if (value==False):
+            if (errif == 'False'):
+                LOGGER.error('Sensor error: {} is False'.format(self.name))
+                status = Sensor.ERROR
+            elif (warnif == 'False'):
+                LOGGER.warn('Sensor warning: {} is False'.format(self.name))
+                status = Sensor.WARN
+            else:
+                status = Sensor.NOMINAL
+        elif (value==True):
+            if (errif == 'True'):
+                LOGGER.error('Sensor error: {} is True'.format(self.name))
+                status = Sensor.ERROR
+            elif warnif == 'True':
+                LOGGER.warn('Sensor warning: {} is True'.format(self.name))
+                status = Sensor.WARN
+            else:
+                status = Sensor.NOMINAL
 
         if old_value != value:
             if errif == 'changed':

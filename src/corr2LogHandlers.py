@@ -223,7 +223,11 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
         # - The pass it to a sock.mass_inform() to ensure it is #log'd
         message_type = KatcpMessage.INFORM
         message_name = 'log'
-        message_data = [self.format(message)]
+        # - LEVEL timestamp_ms name message
+        # - LEVEL E {INFO, WARN, ERROR, FATAL}
+        formatted_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]
+        message_data = [message.levelname, formatted_datetime, message.name, message.msg]
+        # message_data = [self.format(message)]
         
         log_message = KatcpMessage(message_type, message_name, message_data)
         
@@ -386,7 +390,7 @@ def _add_handler_to_logger(logger, log_handler):
         #     continue
         # else:
             # StreamHandler, probably
-        if handler.name.upper() == log_handler.name.upper():
+        if handler.name.lower() == log_handler.name.lower():
             # Problem
             errmsg = 'skarab "{}" have multiple log-handlers with ' \
                      'the same name: {}'.format(logger.name, log_handler.name)
@@ -497,6 +501,7 @@ def get_instrument_loggers(corr_obj, group_name):
         if group_name == '' or group_name == 'instrument':
             # Need to get all loggers
             instrument_loggers = []
+            instrument_loggers.append(corr_obj.logger)
             for value in get_f_loggers(corr_obj):
                 instrument_loggers.append(value)
             for value in get_x_loggers(corr_obj):

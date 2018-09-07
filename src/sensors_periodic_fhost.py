@@ -158,18 +158,17 @@ def _cb_feng_delays(sensors, f_host):
         sensors['pol1_err_cnt'].set(value=pol1_errs, errif='changed')
 
         sensors['reorder_missing_err_cnt_pol0'].set(
-            value=results['reord_missing_err_cnt_pol0'], warnif='changed')
+            value=results['reord_missing_err_cnt_pol0'], errif='changed')
         sensors['reorder_missing_err_cnt_pol1'].set(
-            value=results['reord_missing_err_cnt_pol1'], warnif='changed')
+            value=results['reord_missing_err_cnt_pol1'], errif='changed')
         if ((sensors['pol0_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol1_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol0_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol1_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
-                (sensors['hmc_post'].status() == Corr2Sensor.ERROR)):
+            (sensors['reorder_missing_err_cnt_pol0'].status() == Corr2Sensor.ERROR) or
+            (sensors['reorder_missing_err_cnt_pol1'].status() == Corr2Sensor.ERROR) or
+            (sensors['hmc_post'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
-        elif ((sensors['reorder_missing_err_cnt_pol0'].status() == Corr2Sensor.WARN) or
-              (sensors['reorder_missing_err_cnt_pol1'].status() == Corr2Sensor.WARN)):
-            device_status = Corr2Sensor.WARN
 
         device_status_value = True if device_status == Corr2Sensor.NOMINAL else False
         sensors['device-status'].set(value=device_status_value,
@@ -219,16 +218,15 @@ def _cb_feng_ct(sensors, f_host):
         sensors['pol1_crc_err_cnt'].set(
             value=results['hmc_crc_err_cnt_pol1'], errif='changed')
         sensors['reorder_missing_err_cnt'].set(
-            value=results['reorder_missing_err_cnt'], warnif='changed')
+            value=results['reorder_missing_err_cnt'], errif='changed')
         if ((sensors['pol0_err'].status() == Corr2Sensor.ERROR) or
             (sensors['pol1_err'].status() == Corr2Sensor.ERROR) or
             (sensors['pol0_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol1_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol0_post'].status() == Corr2Sensor.ERROR) or
-                (sensors['pol1_post'].status() == Corr2Sensor.ERROR)):
+            (sensors['reorder_missing_err_cnt'].status() != Corr2Sensor.NOMINAL) or
+            (sensors['pol1_post'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
-        elif (sensors['reorder_missing_err_cnt'].status() == Corr2Sensor.WARN):
-            device_status = Corr2Sensor.WARN
         else:
             device_status = Corr2Sensor.NOMINAL
         device_value = (device_status == Corr2Sensor.NOMINAL)
@@ -323,7 +321,7 @@ def _cb_fhost_check_network(sensors, f_host):
     try:
         result = yield executor.submit(f_host.gbes.gbe0.get_stats)
         tx_enabled = f_host.registers.control.read()['data']['gbe_txen']
-        sensors['tx-enabled'].set(errif='False', value=tx_enabled)
+        sensors['tx_enabled'].set(errif='False', value=tx_enabled)
         sensors['tx_err_cnt'].set(errif='changed', value=result['tx_over'])
         sensors['rx_err_cnt'].set(errif='changed', value=result['rx_bad_pkts'])
         sensors['tx_pps'].set(
