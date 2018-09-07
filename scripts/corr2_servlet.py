@@ -171,7 +171,7 @@ class Corr2Server(katcp.DeviceServer):
                 self.mon_loop.start()
                 self.mon_loop_running = True
                 # enable auto reset / resync for the f-engines (in hardware)
-                #self.instrument.fops.auto_rst_enable()
+                self.instrument.fops.auto_rst_enable()
             self._initialised = True
             return 'ok',
         except Exception as ex:
