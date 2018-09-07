@@ -24,8 +24,8 @@ alpha = 2.410e-16
 def get_prefixed_name(prefix, string):
     if not string.startswith(prefix):
         return None
-    if string.startswith(prefix+'_'):
-        return string[len(prefix)+1:]
+    if string.startswith(prefix + '_'):
+        return string[len(prefix) + 1:]
     else:
         return string[len(prefix):]
 
@@ -44,6 +44,7 @@ class SineSource(Source):
     """
 
     """
+
     def __init__(self, freq_register, scale_register, name,
                  repeat_en_register=None,
                  repeat_len_register=None, repeat_len_field_name=None):
@@ -140,6 +141,7 @@ class Output(object):
     """
 
     """
+
     def __init__(self, name, scale_register, control_register):
         """
 
@@ -184,6 +186,7 @@ class FpgaDsimHost(FpgaHost):
     """
     An FpgaHost that acts as a Digitiser unit.
     """
+
     def __init__(self, host, katcp_port=7147, bitstream=None,
                  connect=True, config=None, config_file=None):
         """
@@ -204,7 +207,7 @@ class FpgaDsimHost(FpgaHost):
         self.pulsar_sources = AttributeContainer()
         self.outputs = AttributeContainer()
 
-    def get_system_information(self, filename=None, fpg_info=None):
+    def get_system_information(self, filename=None, fpg_info=None, **kwargs):
         """
         Get system information and build D-engine sources
         :param filename:
@@ -212,7 +215,7 @@ class FpgaDsimHost(FpgaHost):
         :return:
         """
         FpgaHost.get_system_information(
-            self, filename=filename, fpg_info=fpg_info)
+            self, filename=filename, fpg_info=fpg_info, **kwargs)
         self.sine_sources.clear()
         self.noise_sources.clear()
         self.pulsar_sources.clear()
