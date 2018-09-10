@@ -1,4 +1,4 @@
-# #!/usr/bin/python
+#!/usr/bin/env python
 # # -*- coding: utf-8 -*-
 #
 # """
@@ -915,7 +915,7 @@ if __name__ == '__main__':
         quit_event=quit_event,
         warmup_capture=args.warmup_capture,
         )
-
+        
     if printsumer:
         corr_rx.set_print_queue(printsumer.data_queue,
                                 printsumer.need_data_flag)
