@@ -185,14 +185,13 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
             sensors['post_ok'].set(value=True, status=Corr2Sensor.NOMINAL)
         else:
             sensors['post_ok'].set(value=False, status=Corr2Sensor.ERROR)
-            device_status = Corr2Sensor.ERROR
         overflows = results['lnk2_nrdy_err_cnt'] + results['lnk3_nrdy_err_cnt']
         sensors['hmc_overflow_err_cnt'].set(value=overflows, errif='changed')
         errs = results['err_cnt_link3'] + results['err_cnt_link2']
         sensors['hmc_err_cnt'].set(value=errs, errif='changed')
 
         for key in ['miss_err_cnt']:
-            if sensors[key].status() == Corr2Sensor.WARN:
+            if sensors[key].status() != Corr2Sensor.NOMINAL:
                 device_status = Corr2Sensor.WARN
         for key in [
             'dest_err_cnt',
