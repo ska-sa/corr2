@@ -197,7 +197,11 @@ class FEngineOperations(object):
                 # the 8 and the 32 below are hardware limits.
                 # 8 packets in a row to one x-engine, and 32 256-bit
                 # words in an outgoing packet
-                f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (16 * 32)))
+                # TODO: MONKEY PATCH... all future ct will be 16.
+                if self.corr.n_chans == 1024:
+                    f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (16 * 32)))
+                else:
+                    f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (8 * 32)))
             except AttributeError:
                 reg_error = True
             host_ctr += 1
