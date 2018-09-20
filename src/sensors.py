@@ -78,11 +78,14 @@ class Corr2Sensor(Sensor):
         :param warnif: set status to WARNING if value 'changed' or 'notchanged'.
         :return:
         """
+	
+	status_none = 0
 	if value is None:
             raise ValueError('Cannot set a sensor to None')
         if timestamp is None:
             timestamp = time.time()
         if status is None:
+	    status_none = 1
             status = Sensor.NOMINAL
         (old_timestamp, old_status, old_value) = self.read()
         if (old_status == status) and (old_value == value):
@@ -92,47 +95,48 @@ class Corr2Sensor(Sensor):
         if (value==False):
             if (errif == 'False'):
                 LOGGER.error('Sensor error: {} is False'.format(self.name))
-                if(status is None): 
+		if(status_none == 1 ): 
 		    status = Sensor.ERROR
             elif (warnif == 'False'):
                 LOGGER.warn('Sensor warning: {} is False'.format(self.name))
-                if(status is None):
+                if(status_none == 1 ):
 		    status = Sensor.WARN
             else:
-		if(status is None):
+		if(status_none == 1):
                     status = Sensor.NOMINAL
+
         elif (value==True):
             if (errif == 'True'):
                 LOGGER.error('Sensor error: {} is True'.format(self.name))
-                if(status is None):
+                if(status_none == 1 ):
 		    status = Sensor.ERROR
             elif warnif == 'True':
                 LOGGER.warn('Sensor warning: {} is True'.format(self.name))
-                if(status is None):
+                if(status_none == 1 ):
 		    status = Sensor.WARN
             else:
-		if(status is None):
+		if(status_none == 1 ):
                     status = Sensor.NOMINAL
 
         if old_value != value:
             if errif == 'changed':
                 LOGGER.error(
                     'Sensor error: {} changed {} -> {}'.format(self.name, old_value, value))
-                if(status is None):
+                if(status_none == 1 ):
 		    status = Sensor.ERROR
             elif warnif == 'changed':
                 LOGGER.warn(
                     'Sensor warning: {} changed {} -> {}'.format(self.name, old_value, value))
-                if(status is None):
+                if(status_none == 1 ):
 		    status = Sensor.WARN
         else:
             if errif == 'notchanged':
-		if(status is None):
+		if(status_none == 1 ):
                     status = Sensor.ERROR
                 LOGGER.error(
                     'Sensor error: {} not changing {} -> {}'.format(self.name, old_value, value))
             elif warnif == 'notchanged':
-                if(status is None):
+                if(status_none == 1 ):
 		    status = Sensor.WARN
                 LOGGER.warn(
                     'Sensor warning: {} not changing {} -> {}'.format(self.name, old_value, value))
