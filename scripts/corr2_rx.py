@@ -48,7 +48,8 @@ logging.getLogger("casperfpga").setLevel(logging.FATAL)
 logging.getLogger("casperfpga.register").setLevel(logging.FATAL)
 logging.getLogger("casperfpga.bitfield").setLevel(logging.FATAL)
 
-ri=True
+ri = True
+
 
 class PrintConsumer(object):
     def __init__(self):
@@ -253,8 +254,8 @@ def do_h5_file(ig, logger, h5_file, datasets, dataset_indices):
                         name, [1] + ([] if list(shape) == [1] else list(shape)),
                         maxshape=[None] + ([] if list(shape) == [1] else list(shape)), dtype=dtype)
             else:
-                logger.debug('Adding %s to dataset. New size is %i.' % (name, dataset_indices[name]+1))
-                h5_file[name].resize(dataset_indices[name]+1, axis=0)
+                logger.debug('Adding %s to dataset. New size is %i.' % (name, dataset_indices[name] + 1))
+                h5_file[name].resize(dataset_indices[name] + 1, axis=0)
 
             # if name.startswith('xeng_raw'):
             #     sd_timestamp = ig['sync_time'] + (ig['timestamp'] / float(ig['scale_factor_timestamp']))
@@ -293,9 +294,10 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
 
     # Calculate the substreams that have been captured
     n_chans_per_substream = n_chans / NUM_XENG
-    strt_substream = int(channels[0]/n_chans_per_substream)
-    stop_substream = int(channels[1]/n_chans_per_substream)
-    if stop_substream == NUM_XENG: stop_substream = NUM_XENG-1
+    strt_substream = int(channels[0] / n_chans_per_substream)
+    stop_substream = int(channels[1] / n_chans_per_substream)
+    if stop_substream == NUM_XENG:
+        stop_substream = NUM_XENG - 1
     n_substreams = stop_substream - strt_substream + 1
     chan_offset = n_chans_per_substream * strt_substream
 
@@ -307,7 +309,7 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
     if xeng_raw is None:
         return None
     logger.debug('PROCESSING %i BASELINES, %i CHANNELS' % (
-        len(baselines), channels[1]-channels[0]))
+        len(baselines), channels[1] - channels[0]))
     this_time = ig['timestamp'].value
     this_freq = ig['frequency'].value
     # start a new heap for this timestamp if it's not in our data
@@ -333,9 +335,8 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
     # housekeeping - are there older heaps in the data?
     if len(heap_data) > 5:
         logger.info('Culling stale timestamps:')
-        heaptimes = heap_data.keys()
-        heaptimes.sort()
-        for ctr in range(0, len(heaptimes)-5):
+        heaptimes = sorted(heap_data.keys())
+        for ctr in range(0, len(heaptimes) - 5):
             heap_data.pop(heaptimes[ctr])
             logger.info('\ttime %i culled' % heaptimes[ctr])
 
@@ -349,8 +350,8 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
         freqs = hdata.keys()
         print ('freqs = {}'.format(freqs))
         freqs.sort()
-        check_range = range(n_chans_per_substream*strt_substream,
-                            n_chans_per_substream*stop_substream+1,
+        check_range = range(n_chans_per_substream * strt_substream,
+                            n_chans_per_substream * stop_substream + 1,
                             n_chans_per_substream)
         if freqs != check_range:
             logger.error('Did not get all frequencies from the x-engines for '
@@ -385,7 +386,7 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
             # /TODO scaling
             powerdata = []
             phasedata = []
-            chan_range = range(channels[0]-chan_offset, channels[1]-chan_offset)
+            chan_range = range(channels[0] - chan_offset, channels[1] - chan_offset)
             if not args.ri:
                 for ctr in chan_range:
                     complex_tuple = bdata[ctr]
@@ -434,19 +435,20 @@ def process_xeng_data(heap_data, ig, logger, baselines, channels, acc_scale=Fals
                 rvs[rv[0]] = (rv[1], rv[2])
     return rvs
 
+
 def network_interfaces():
     """
     Get system interfaces and IP list
     """
     def format_ip(addr):
-        return "%s.%s.%s.%s" %(ord(addr[0]), ord(addr[1]), ord(addr[2]), ord(addr[3]))
+        return "%s.%s.%s.%s" % (ord(addr[0]), ord(addr[1]), ord(addr[2]), ord(addr[3]))
 
     max_possible = 128  # arbitrary. raise if needed.
     bytes = max_possible * 32
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     names = array.array('B', '\0' * bytes)
     outbytes = struct.unpack('iL', fcntl.ioctl(s.fileno(), 0x8912,  # SIOCGIFCONF
-               struct.pack('iL', bytes, names.buffer_info()[0])))[0]
+                                               struct.pack('iL', bytes, names.buffer_info()[0])))[0]
     namestr = names.tostring()
     lst = [format_ip(namestr[i + 20:i + 24]) for i in range(0, outbytes, 40)]
     return lst
@@ -456,6 +458,7 @@ class CorrReceiver(threading.Thread):
     """
     Receive thread to process heaps received by a SPEAD2 stream.
     """
+
     def __init__(self, port, base_ip, quit_event, track_list, h5_filename,
                  baselines, channels, acc_scale,
                  log_handler=None, warmup_capture=False, log_level=logging.INFO,
@@ -543,37 +546,60 @@ class CorrReceiver(threading.Thread):
         # Must be investigated
         # After the warmup loop the normal loop runs
         # self.warmup_capture = True
-        for double_loop in range (2):
+        for double_loop in range(2):
             logger = self.logger
-            logger.info('RXing data with base IP addres: %s+%i, port %i.' % (self.base_ip,NUM_XENG, self.port))
+            logger.info('RXing data with base IP addres: %s+%i, port %i.' % (self.base_ip, NUM_XENG, self.port))
 
             # make a SPEAD2 receiver stream
             self.interface_address = ''.join([ethx for ethx in network_interfaces()
-                                             if ethx.startswith(interface_prefix)])
+                                              if ethx.startswith(interface_prefix)])
             if self.warmup_capture:
-                channels = (0,15)
+                channels = (0, 15)
             else:
                 channels = self.channels
 
             n_chans_per_substream = n_chans / NUM_XENG
-            strt_substream = int(channels[0]/n_chans_per_substream)
-            stop_substream = int(channels[1]/n_chans_per_substream)
-            if stop_substream == NUM_XENG: stop_substream = NUM_XENG - 1
+            strt_substream = int(channels[0] / n_chans_per_substream)
+            stop_substream = int(channels[1] / n_chans_per_substream)
+            if stop_substream == NUM_XENG:
+                stop_substream = NUM_XENG - 1
             n_substreams = stop_substream - strt_substream + 1
             start_ip = casperfpga.network.IpAddress(self.base_ip.ip_int + strt_substream).ip_str
             end_ip = casperfpga.network.IpAddress(self.base_ip.ip_int + stop_substream).ip_str
-            print('Subscribing to {} substream/s in the range {} to {}'
-                        .format(n_substreams, start_ip, end_ip))
-            strm = s2rx.Stream(spead2.ThreadPool(), bug_compat=0,
-                               #max_heaps=40, ring_heaps=40)
-                               max_heaps=n_substreams*3, ring_heaps=n_substreams*3)
+            print('Subscribing to {} substream/s in the range {} to {}'.format(n_substreams,
+                                                                               start_ip, end_ip))
+            heap_data_size = np.dtype(np.complex64).itemsize * n_chans_per_substream * NUM_BASELINES
+            stream_xengs = n_chans // n_chans_per_substream
+            # It's possible for a heap from each X engine and a descriptor heap
+            # per endpoint to all arrive at once. We assume that each xengine will
+            # not overlap packets between heaps, and that there is enough of a gap
+            # between heaps that reordering in the network is a non-issue.
+            ring_heaps = stream_xengs
+            max_heaps = stream_xengs + 2 * NUM_XENG
+            # We need space in the memory pool for:
+            # - live heaps (max_heaps, plus a newly incoming heap)
+            # - ringbuffer heaps
+            # - per X-engine:
+            #   - heap that has just been popped from the ringbuffer (1)
+            #   - active frames
+            #   - complete frames queue (1)
+            #   - frame being processed by ingest_session (which could be several, depending on
+            #     latency of the pipeline, but assume 3 to be on the safe side)
+            active_frames = 3
+            memory_pool_heaps = ring_heaps + max_heaps + stream_xengs * (active_frames + 5)
+            memory_pool = spead2.MemoryPool(16384, heap_data_size + 512,
+                                            memory_pool_heaps, memory_pool_heaps)
 
-            for ctr in range(strt_substream,stop_substream+1):
-                addr=casperfpga.network.IpAddress(self.base_ip.ip_int+ctr).ip_str
+            local_threadpool = spead2.ThreadPool()
+            strm = s2rx.Stream(local_threadpool, max_heaps=max_heaps, ring_heaps=ring_heaps)
+            del local_threadpool
+            strm.set_memory_allocator(memory_pool)
+            strm.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
+            for ctr in range(strt_substream, stop_substream + 1):
+                addr = casperfpga.network.IpAddress(self.base_ip.ip_int + ctr).ip_str
                 strm.add_udp_reader(multicast_group=addr,
                                     port=self.port,
                                     max_size=9200,
-                                    buffer_size=5120000,
                                     interface_address=self.interface_address
                                     )
 
@@ -783,23 +809,23 @@ if __name__ == '__main__':
 
     if args.config:
         configfile = args.config
-        c=corr2.fxcorrelator.FxCorrelator('bob',config_source=configfile)
-        c.initialise(configure=False,program=False,require_epoch=False)
+        c = corr2.fxcorrelator.FxCorrelator('bob', config_source=configfile)
+        c.initialise(configure=False, program=False, require_epoch=False)
         configd = c.configd
-        n_chans=int(configd['fengine']['n_chans'])
-        n_xeng=int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).split(','))
+        n_chans = int(configd['fengine']['n_chans'])
+        n_xeng = int(configd['xengine']['x_per_fpga']) * len((configd['xengine']['hosts']).split(','))
         n_accs = c.xeng_accumulation_len * c.accumulation_len
         n_ants = c.n_antennas
         NUM_XENG = n_xeng
         BASELINES = c.xops.get_baseline_ordering()
         NUM_BASELINES = len(BASELINES)
         LEGEND = args.legend
-        output={}
+        output = {}
 #        destination=c.get_data_stream('baseline-correlation-products').destination
         output = {
             'product': product_name,
             'address': c.get_data_stream('baseline-correlation-products').destination
-            #'address': corr2.data_stream.StreamAddress.from_address_string(
+            # 'address': corr2.data_stream.StreamAddress.from_address_string(
             #    destination)
         }
 
@@ -914,8 +940,8 @@ if __name__ == '__main__':
         acc_scale=args.scale,
         quit_event=quit_event,
         warmup_capture=args.warmup_capture,
-        )
-        
+    )
+
     if printsumer:
         corr_rx.set_print_queue(printsumer.data_queue,
                                 printsumer.need_data_flag)
