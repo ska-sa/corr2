@@ -188,7 +188,7 @@ class FpgaDsimHost(FpgaHost):
     """
 
     def __init__(self, host, katcp_port=7147, bitstream=None,
-                 connect=True, config=None, config_file=None):
+                 connect=True, config=None, config_file=None, **kwargs):
         """
 
         :param host:
@@ -197,7 +197,7 @@ class FpgaDsimHost(FpgaHost):
         :param connect:
         :param config:
         """
-        FpgaHost.__init__(self, host=host, katcp_port=katcp_port)
+        FpgaHost.__init__(self, host=host, katcp_port=katcp_port, **kwargs)
         if config is not None and config_file is not None:
             LOGGER.warn('config file and config supplied, defaulting to config')
         self.config = config or parse_ini_file(config_file)['dsimengine']
