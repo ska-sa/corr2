@@ -8,6 +8,8 @@ import time
 
 from corr2 import utils
 from corr2.dsimhost_fpga import FpgaDsimHost
+from casperfpga.transport_skarab import SkarabTransport
+
 
 parser = argparse.ArgumentParser(description='Control the dsim-engine (fake digitiser.)',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -91,9 +93,9 @@ try:
     if args.bitstream:
         bitstream = str(args.bitstream)
         print ('Starting Digitiser with bitstream: {}'.format(bitstream))
-
-    dfpga = FpgaDsimHost(host_list[0], bitstream=bitstream,
-                         config=config['dsimengine'])
+    # Note: We have hardcoded the transport to be SkarabTransport - Might change in the future!
+    dfpga = FpgaDsimHost(host_list[0], bitstream=bitstream, config=config.get('dsimengine'),
+        transport=SkarabTransport)
     print('Connected to {}.'.format(dfpga.host))
 except TypeError:
     raise RuntimeError('Config template was not parsed!!!')
