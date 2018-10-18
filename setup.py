@@ -20,6 +20,7 @@ _install_requires = [
     'matplotlib==2.0.2',
     'numpy',
     'spead2',
+    'coloredlogs',
     'tornado>=4.3']
 
 try:
