@@ -76,12 +76,13 @@ class DictObject(object):
     -------
     object: dictionary object
     """
+
     def __init__(self, _dict):
         for key, value in _dict.items():
             if isinstance(value, (list, tuple)):
-               setattr(self, key, [obj(x) if isinstance(x, dict) else x for x in value])
+                setattr(self, key, [obj(x) if isinstance(x, dict) else x for x in value])
             else:
-               setattr(self, key, obj(value) if isinstance(value, dict) else value)
+                setattr(self, key, obj(value) if isinstance(value, dict) else value)
 
 
 class LoggingClass(object):
@@ -228,7 +229,7 @@ class CorrReceiver(threading.Thread):
     def __init__(
         self, servlet="127.0.0.1:7601", config_file=None, channels=(0, 4095), baselines=None,
         h5_file=None, warmup_capture=False, realimag=True, log_level="INFO",
-        ):
+    ):
         """
 
         Parameters
@@ -262,7 +263,7 @@ class CorrReceiver(threading.Thread):
 
         try:
             self.logger = LoggingClass(log_level=log_level).logger
-        except  Exception:
+        except Exception:
             self.logger = LoggingClass(log_level=getattr(logging, log_level)).logger
 
         # This runs a capture once with only one substream.
@@ -420,7 +421,7 @@ class CorrReceiver(threading.Thread):
         base_ip = self.corrVars.baseline_correlation_products_destination
         n_chans_per_substream = self.corrVars.baseline_correlation_products_n_chans_per_substream
         self._interface_address = ''.join([ethx for ethx in self.network_interfaces()
-                                          if ethx.startswith(interface_prefix)])
+                                           if ethx.startswith(interface_prefix)])
         try:
             assert self.warmup_capture
             channels = (0, 15)
@@ -429,7 +430,7 @@ class CorrReceiver(threading.Thread):
 
         self.logger.info('RXing data with base IP address: %s' % (base_ip))
         self._strt_substream, self._stop_substream = map(
-            lambda chan: chan / n_chans_per_substream , channels)
+            lambda chan: chan / n_chans_per_substream, channels)
         if self._stop_substream == self.corrVars.n_xengs:
             self._stop_substream = self.corrVars.n_xengs - 1
         n_substreams = self._stop_substream - self._strt_substream + 1
@@ -454,7 +455,7 @@ class CorrReceiver(threading.Thread):
         """
         n_chans_per_substream = self.corrVars.baseline_correlation_products_n_chans_per_substream
         heap_data_size = (
-        np.dtype(np.complex64).itemsize * n_chans_per_substream * \
+            np.dtype(np.complex64).itemsize * n_chans_per_substream *
             self.corrVars.baseline_correlation_products_n_bls)
 
         # It's possible for a heap from each X engine and a descriptor heap
@@ -509,7 +510,7 @@ class CorrReceiver(threading.Thread):
             return None
 
         self.logger.info('PROCESSING %i BASELINES, %i CHANNELS' % (len(baselines),
-            channels[1] - channels[0]))
+                                                                   channels[1] - channels[0]))
         this_time = ig['timestamp'].value
         this_freq = ig['frequency'].value
         # start a new heap for this timestamp if it's not in our data
@@ -637,7 +638,7 @@ class CorrReceiver(threading.Thread):
 
     def _get_plot_limits(self, baselines, channels):
         if (not baselines) or (not channels):
-            self.loggger.error('Print or plot requested, but no baselines and/or channels specified.')
+            self.logger.error('Print or plot requested, but no baselines and/or channels specified.')
 
         if baselines != '':
             if baselines == 'all':
@@ -652,7 +653,7 @@ class CorrReceiver(threading.Thread):
             self.logger.warn("Randomly selected baselines %s to plot" % self.baselines)
 
         if channels:
-            plot_startchan , plot_endchan = [int(channel) for channel in channels.split(',')]
+            plot_startchan, plot_endchan = [int(channel) for channel in channels.split(',')]
             if plot_startchan == -1:
                 plot_startchan = 0
             if plot_endchan == -1:
@@ -716,7 +717,7 @@ class CorrReceiver(threading.Thread):
         config_info['{}-n-bls'.format(output_products)] = len(corr_instance.xops.get_baseline_ordering())
         config_info["{}-n-chans".format(output_products)] = int(fengine_conf.get('n_chans'))
         config_info["{}-n-chans-per-substream".format(output_products)] = int(int(
-                    fengine_conf.get('n_chans')) / config_info["n-xengs"])
+            fengine_conf.get('n_chans')) / config_info["n-xengs"])
         config_info['n-accs'] = corr_instance.xeng_accumulation_len * corr_instance.accumulation_len
         config_info['output_products'] = output_products
         config_info = {key.replace('-', '_'): value for key, value in config_info.items()}
@@ -724,8 +725,8 @@ class CorrReceiver(threading.Thread):
 
     @staticmethod
     def get_sensors(servlet_ip=None, servlet_port=None,
-        product_name='baseline-correlation-products'
-        ):
+                    product_name='baseline-correlation-products'
+                    ):
         """
         Retrieve running instruments sensors.
 
