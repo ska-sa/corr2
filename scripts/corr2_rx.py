@@ -168,7 +168,7 @@ class PlotConsumer(object):
             return
         if plotdata is None:
             raise RuntimeError('plot_data: got None data - this is wrong')
-        sys.stdout.flush()
+        # sys.stdout.flush()
 
         if not self.animated:
             self.figure = plt.figure()
