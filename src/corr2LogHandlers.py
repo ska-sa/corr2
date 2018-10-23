@@ -499,6 +499,9 @@ def get_instrument_loggers(corr_obj, group_name):
         # Silly dictionary doesn't keep order by default!
         # logger_group_keys = logger_group_dict.keys()
         
+        if corr_obj is None:  # i.e. if the instrument hasn't been initialised yet.
+            return None, None
+
         if group_name == '' or group_name == 'instrument':
             # Need to get all loggers
             instrument_loggers = []
