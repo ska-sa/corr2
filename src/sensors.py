@@ -785,14 +785,12 @@ class Corr2SensorManager(SensorManager):
                 'Number of consecutive spectra in each heap.')
             sensor.set_value(self.instrument.xeng_accumulation_len)
 
-#            sensor = self.do_sensor(
-#                Corr2Sensor.string, '{}-source-indices'.format(strmnm),
-#                'The global input indices of the sources summed in this beam.')
-#            tmp = [instrument_inputs.index(nm) for nm in beam.source_names]
-#            tmp.sort()
-#            sensor.set_value(tmp)
+            sensor = self.do_sensor(
+                Corr2Sensor.string, '{}-source-indices'.format(strmnm),
+                'The global input indices of the sources summed in this beam.')
+            tmp = beam.source_indices
+            sensor.set_value(str(tmp))
 
-#        self.sensors_beng_passband()
         self.sensors_beng_weights()
         self.sensors_beng_gains()
 
