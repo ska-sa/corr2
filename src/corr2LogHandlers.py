@@ -1,6 +1,7 @@
 import logging
 import termcolors
 import datetime
+import time
 import os
 
 from katcp import Message as KatcpMessage
@@ -225,11 +226,11 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
         message_name = 'log'
         # - LEVEL timestamp_ms name message
         # - LEVEL E {INFO, WARN, ERROR, FATAL}
-        formatted_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]
-        message_data = [message.levelname, formatted_datetime, message.name, message.msg]
-        # message_data = [self.format(message)]
-        
-        log_message = KatcpMessage(message_type, message_name, message_data)
+
+        time_now = str(time.time())
+        # "arguments" argument of KatcpMessage needs to be such a list.
+        message_data = [message.levelname, time_now, message.name, message.msg]
+        log_message = KatcpMessage(message_type, message_name, arguments=message_data)
         
         # self.sock.mass_inform(log_message)
         self.mass_inform_func(log_message)
