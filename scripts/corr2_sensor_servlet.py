@@ -9,6 +9,7 @@ import katcp
 import signal
 from tornado.ioloop import IOLoop
 import tornado.gen
+import time
 
 from corr2 import sensors, sensors_periodic, fxcorrelator
 from corr2.utils import KatcpStreamHandler
@@ -102,6 +103,16 @@ if __name__ == '__main__':
         args.config = os.environ['CORR2INI']
     if args.config == '':
         raise RuntimeError('No config file.')
+
+    # Always log to file.
+    iname = os.environ["CORR2INI"]
+    start_time = str(time.time())
+    log_filename = '{}_{}_sensor_servlet.log'.format(iname.strip().replace(' ', '_'), start_time)
+    file_handler = logging.FileHandler("{}".format(log_filename))  # /var/log/corr/
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    corr2_sensors_logger.addHandler(file_handler)
+
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
