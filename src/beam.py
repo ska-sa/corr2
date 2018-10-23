@@ -80,6 +80,8 @@ class Beam(SPEADStream):
         obj.speadops = speadops
         
         obj.polarisation = obj.index%2
+        n_ants=int(config['FxCorrelator']['n_ants'])
+        obj.source_indices = range(obj.polarisation,(n_ants*2)+(obj.polarisation),2)
         obj.outbits = int(beam_dict['beng_outbits'])
         obj.xeng_acc_len = int(config['xengine']['xeng_accumulation_len'])
         obj.chans_total = int(config['fengine']['n_chans'])
