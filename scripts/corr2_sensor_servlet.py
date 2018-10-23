@@ -68,7 +68,7 @@ if __name__ == '__main__':
                         default=1235, type=int,
                         help='bind to this port to receive KATCP messages')
     parser.add_argument('--log_level', dest='loglevel', action='store',
-                        default='FATAL', help='log level to set')
+                        default='DEBUG', help='log level to set')
     parser.add_argument('--log_format_katcp', dest='lfm', action='store_true',
                         default=False, help='format log messsages for katcp')
     parser.add_argument('--config', dest='config', type=str, action='store',
@@ -108,11 +108,10 @@ if __name__ == '__main__':
     iname = os.environ["CORR2INI"]
     start_time = str(time.time())
     log_filename = '{}_{}_sensor_servlet.log'.format(iname.strip().replace(' ', '_'), start_time)
-    file_handler = logging.FileHandler("{}".format(log_filename))  # /var/log/corr/
-    file_handler.setLevel(logging.DEBUG)
+    file_handler = logging.FileHandler("/var/log/corr/{}".format(log_filename))
+    file_handler.setLevel(logging.ERROR)
     file_handler.setFormatter(formatter)
     corr2_sensors_logger.addHandler(file_handler)
-
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
