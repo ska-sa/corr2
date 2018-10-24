@@ -133,8 +133,7 @@ def getKatcpLogger(logger_name, mass_inform_func, log_level=logging.DEBUG, *args
     corr2_file_handler = logging.FileHandler(filename=full_log_file_path)
     corr2_file_handler.name = '{}_file'.format(logger_name)
 
-    formatted_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]
-    format_string = formatted_datetime + ' - %(levelname)s - %(name)s %(filename)s:%(lineno)s - %(msg)s'
+    format_string = '%(asctime)s - %(levelname)s - %(name)s %(filename)s:%(lineno)s - %(msg)s'
     file_handler_formatter = logging.Formatter(format_string)
     corr2_file_handler.setFormatter(file_handler_formatter)
 
