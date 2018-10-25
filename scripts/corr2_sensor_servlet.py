@@ -113,6 +113,9 @@ if __name__ == '__main__':
     log_filename = '{}{}_{}_sensor_servlet.log'.format(cp.get('FxCorrelator', 'log_file_dir'), iname.strip().replace(' ', '_'), start_time)
     file_handler = logging.FileHandler("{}".format(log_filename))
     file_handler.setLevel(logging.ERROR)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - '
+                                '%(filename)s:%(lineno)s - '
+                                '%(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     corr2_sensors_logger.addHandler(file_handler)
 
