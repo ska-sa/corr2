@@ -105,10 +105,10 @@ if __name__ == '__main__':
         raise RuntimeError('No config file.')
 
     # Always log to file.
-    iname = os.environ["CORR2INI"]
+    iname = os.path.basename(os.environ["CORR2INI"])
     start_time = str(time.time())
     log_filename = '{}_{}_sensor_servlet.log'.format(iname.strip().replace(' ', '_'), start_time)
-    file_handler = logging.FileHandler("/var/log/corr/{}".format(log_filename))
+    file_handler = logging.FileHandler("{}".format(log_filename))
     file_handler.setLevel(logging.ERROR)
     file_handler.setFormatter(formatter)
     corr2_sensors_logger.addHandler(file_handler)
