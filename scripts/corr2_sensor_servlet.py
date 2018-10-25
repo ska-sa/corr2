@@ -107,8 +107,8 @@ if __name__ == '__main__':
 
     # Always log to file.
     cp = ConfigParser()
-    cp.read(os.environ['CORR2INI'])
-    iname = os.path.basename(os.environ["CORR2INI"])
+    cp.read(args.config)
+    iname = os.path.basename(args.config)
     start_time = str(time.time())
     log_filename = '{}{}_{}_sensor_servlet.log'.format(cp.get('FxCorrelator', 'log_file_dir'), iname.strip().replace(' ', '_'), start_time)
     file_handler = logging.FileHandler("{}".format(log_filename))
