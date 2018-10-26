@@ -451,6 +451,8 @@ class FpgaFHost(FpgaHost):
 
         self.rx_data_sample_rate_hz = -1
 
+        self.host_type = 'fhost'
+
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source, **kwargs):
         bitstream = config_source['bitstream']
