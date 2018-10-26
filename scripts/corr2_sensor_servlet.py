@@ -110,7 +110,10 @@ if __name__ == '__main__':
     cp.read(args.config)
     iname = os.path.basename(args.config)
     start_time = str(time.time())
-    log_filename = '{}{}_{}_sensor_servlet.log'.format(cp.get('FxCorrelator', 'log_file_dir'), iname.strip().replace(' ', '_'), start_time)
+    logfiles_path = cp.get('FxCorrelator', 'log_file_dir')
+    assert os.path.isdir(logfiles_path)
+    log_filename = '{}/{}_{}_sensor_servlet.log'.format(logfiles_path,
+        iname.strip().replace(' ', '_'), start_time)
     file_handler = logging.FileHandler("{}".format(log_filename))
     file_handler.setLevel(logging.ERROR)
     formatter = logging.Formatter('%(asctime)s - %(name)s - '
