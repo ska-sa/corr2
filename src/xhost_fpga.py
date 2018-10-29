@@ -55,6 +55,8 @@ class FpgaXHost(FpgaHost):
         self._vaccs_per_sec_last_readtime = None
         self._vaccs_per_sec_last_values = None
 
+        self.host_type = 'xhost'
+
     def get_system_information(self, filename=None, fpg_info=None):
         """
         Get information about the design running on the FPGA.

@@ -38,6 +38,8 @@ class FpgaBHost(FpgaXHost):
 
         self.beng_per_host = self.x_per_fpga
 
+        self.host_type = 'bhost'
+
     # @classmethod
     # def from_config_source(cls, hostname, index, katcp_port,
     #                        config_source, corr):
