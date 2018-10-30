@@ -156,7 +156,10 @@ class Corr2Server(katcp.DeviceServer):
             # from the running firmware
             self.extra_versions.update(self.instrument.get_version_info())
             # add a sensor manager
-            sensor_manager = sensors.Corr2SensorManager(self, self.instrument)
+            sensor_manager = sensors.Corr2SensorManager(self, self.instrument.
+                                        mass_inform_func=self.mass_inform, 
+                                        log_filename=self.log_filename, 
+                                        log_file_dir=self.log_file_dir)
             self.instrument.set_sensor_manager(sensor_manager)
             # set up the main loop sensors
             sensor_manager.sensors_clear()

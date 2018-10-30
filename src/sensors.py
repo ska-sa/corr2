@@ -2,6 +2,7 @@ import logging
 import time
 import numpy
 
+
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
 
@@ -9,50 +10,65 @@ from katcp import Sensor, Message
 
 import data_stream
 
-LOGGER = logging.getLogger(__name__)
+# LOGGER = logging.getLogger(__name__)
 
 
 class Corr2Sensor(Sensor):
     @classmethod
     def integer(cls, name, description=None, unit='', params=None,
                 default=None, initial_status=None,
-                manager=None, executor=None):
+                manager=None, executor=None,
+                *args, **kwargs):
         return cls(cls.INTEGER, name, description, unit, params,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     @classmethod
     def float(cls, name, description=None, unit='', params=None,
               default=None, initial_status=None,
-              manager=None, executor=None):
+              manager=None, executor=None,
+             *args, **kwargs):
         return cls(cls.FLOAT, name, description, unit, params,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     @classmethod
     def boolean(cls, name, description=None, unit='',
                 default=None, initial_status=None,
-                manager=None, executor=None):
+                manager=None, executor=None,
+                *args, **kwargs):
         return cls(cls.BOOLEAN, name, description, unit, None,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     @classmethod
     def lru(cls, name, description=None, unit='',
             default=None, initial_status=None,
-            manager=None, executor=None):
+            manager=None, executor=None,
+            *args, **kwargs):
         return cls(cls.LRU, name, description, unit, None,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     @classmethod
     def string(cls, name, description=None, unit='',
                default=None, initial_status=None,
-               manager=None, executor=None):
+               manager=None, executor=None,
+               *args, **kwargs):
         return cls(cls.STRING, name, description, unit, None,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     def __init__(self, sensor_type, name, description=None, units='',
                  params=None, default=None, initial_status=None,
-                 manager=None, executor=None):
+                 manager=None, executor=None,
+                 *args, **kwargs):
+        
+        # Log to the parent SensorManager.logger for now
+        self.logger = manager.logger
+        
         if '_' in name:
-            LOGGER.debug('Sensor names cannot have underscores in them, '
+            self.logger.debug('Sensor names cannot have underscores in them, '
                          'so {name} becomes {name_conv}'.format(
                              name=name, name_conv=name.replace('_', '-')))
             name = name.replace('_', '-')
@@ -79,8 +95,8 @@ class Corr2Sensor(Sensor):
         :return:
         """
 	
-	status_none = 0
-	if value is None:
+        status_none = 0
+        if value is None:
             raise ValueError('Cannot set a sensor to None')
         if timestamp is None:
             timestamp = time.time()
@@ -89,16 +105,16 @@ class Corr2Sensor(Sensor):
             status = Sensor.NOMINAL
         (old_timestamp, old_status, old_value) = self.read()
         if (old_status == status) and (old_value == value):
-            LOGGER.debug('Sensor values unchanged, ignoring')
+            self.logger.debug('Sensor values unchanged, ignoring')
             return
 
         if (value==False):
             if (errif == 'False'):
-                LOGGER.error('Sensor error: {} is False'.format(self.name))
+                self.logger.error('Sensor error: {} is False'.format(self.name))
 		if(status_none == 1 ): 
 		    status = Sensor.ERROR
             elif (warnif == 'False'):
-                LOGGER.warn('Sensor warning: {} is False'.format(self.name))
+                self.logger.warn('Sensor warning: {} is False'.format(self.name))
                 if(status_none == 1 ):
 		    status = Sensor.WARN
             else:
@@ -107,11 +123,11 @@ class Corr2Sensor(Sensor):
 
         elif (value==True):
             if (errif == 'True'):
-                LOGGER.error('Sensor error: {} is True'.format(self.name))
+                self.logger.error('Sensor error: {} is True'.format(self.name))
                 if(status_none == 1 ):
 		    status = Sensor.ERROR
             elif warnif == 'True':
-                LOGGER.warn('Sensor warning: {} is True'.format(self.name))
+                self.logger.warn('Sensor warning: {} is True'.format(self.name))
                 if(status_none == 1 ):
 		    status = Sensor.WARN
             else:
@@ -120,12 +136,12 @@ class Corr2Sensor(Sensor):
 
         if old_value != value:
             if errif == 'changed':
-                LOGGER.error(
+                self.logger.error(
                     'Sensor error: {} changed {} -> {}'.format(self.name, old_value, value))
                 if(status_none == 1 ):
 		    status = Sensor.ERROR
             elif warnif == 'changed':
-                LOGGER.warn(
+                self.logger.warn(
                     'Sensor warning: {} changed {} -> {}'.format(self.name, old_value, value))
                 if(status_none == 1 ):
 		    status = Sensor.WARN
@@ -133,12 +149,12 @@ class Corr2Sensor(Sensor):
             if errif == 'notchanged':
 		if(status_none == 1 ):
                     status = Sensor.ERROR
-                LOGGER.error(
+                self.logger.error(
                     'Sensor error: {} not changing {} -> {}'.format(self.name, old_value, value))
             elif warnif == 'notchanged':
                 if(status_none == 1 ):
 		    status = Sensor.WARN
-                LOGGER.warn(
+                self.logger.warn(
                     'Sensor warning: {} not changing {} -> {}'.format(self.name, old_value, value))
         super(Corr2Sensor, self).set(timestamp, status, value)
         if self.manager:
@@ -158,7 +174,8 @@ class SensorManager(object):
     """
 
     def __init__(self, katcp_server, instrument,
-                 katcp_sensors=True, kcs_sensors=True):
+                 katcp_sensors=True, kcs_sensors=True,
+                 *args, **kwargs):
         """
         Start a Sensor Manager
         :param katcp_server: a KATCP server instance
@@ -169,6 +186,17 @@ class SensorManager(object):
         """
         self.katcp_server = katcp_server
         self.instrument = instrument
+
+        # The instrument already has a .getLogger attribute
+        self.getLogger = instrument.getLogger
+        logger_name = '{}_sensor_manager'.format(self.descriptor)
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                             log_level=INFO, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format()
+            raise ValueError(errmsg)
+
         self.katcp_sensors = katcp_sensors
         self.kcs_sensors = kcs_sensors
         self._sensors = {}
@@ -261,7 +289,7 @@ class SensorManager(object):
         :return:
         """
         if self._debug_mode:
-            LOGGER.info('SENSOR_DEBUG: sensor-status ' + str(time.time()) +
+            self.logger.info('SENSOR_DEBUG: sensor-status ' + str(time.time()) +
                         ' ' + sensor.name + ' ' +
                         str(sensor.STATUSES[sensor.status()]) + ' ' +
                         str(sensor.value()))
@@ -284,7 +312,7 @@ class SensorManager(object):
         # descr = sensor.description.replace(' ', '\_')
         descr = sensor.description
         if self._debug_mode:
-            LOGGER.info('SENSOR_DEBUG: sensor-list ' + sensor.name + ' ' +
+            self.logger.info('SENSOR_DEBUG: sensor-list ' + sensor.name + ' ' +
                         descr + ' ' + sensor.units + ' ' + str(sensor.type))
             return
         assert self.kcs_sensors
@@ -309,7 +337,7 @@ class SensorManager(object):
         :return:
         """
         if '_' in name:
-            LOGGER.warning(
+            self.logger.warning(
                 'Sensor names cannot have underscores in them, so {name} '
                 'becomes {name_conv}'.format(
                     name=name, name_conv=name.replace('_', '-')))
@@ -616,7 +644,7 @@ class Corr2SensorManager(SensorManager):
 #            err_sensor.set_value(feng.last_delay.last_load_success)
             load_time = self.instrument.time_from_mcnt(
                 feng.last_delay.load_mcnt)
-            LOGGER.debug(
+            self.logger.debug(
                 '{}: Delay update @mcnt {} ({}), {:.10e}, {:.10e}, {:.10e}, {:.10e}'.format(
                     feng.name,
                     load_mcnt,
@@ -987,7 +1015,7 @@ def boolean_sensor_do(host, sensor, funclist):
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(value=False)
     except Exception as e:
-        LOGGER.error('Error updating {} for {} - '
+        host.logger.error('Error updating {} for {} - '
                      '{}'.format(sensor.name, host.host, e.message))
         sensor.set(value=False)
 
