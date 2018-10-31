@@ -1,4 +1,6 @@
-import logging
+# import logging
+# Yes, I know it's just an integer value
+from logging import INFO
 import time
 import numpy
 
@@ -189,7 +191,7 @@ class SensorManager(object):
 
         # The instrument already has a .getLogger attribute
         self.getLogger = instrument.getLogger
-        logger_name = '{}_sensor_manager'.format(self.descriptor)
+        logger_name = '{}_sensor_manager'.format(instrument.descriptor)
         result, self.logger = self.getLogger(logger_name=logger_name,
                                              log_level=INFO, **kwargs)
         if not result:
