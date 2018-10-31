@@ -69,7 +69,7 @@ if __name__ == '__main__':
                         default=1235, type=int,
                         help='bind to this port to receive KATCP messages')
     parser.add_argument('--log_level', dest='loglevel', action='store',
-                        default='DEBUG', help='log level to set')
+                        default='WARN', help='log level to set')
     parser.add_argument('--log_format_katcp', dest='lfm', action='store_true',
                         default=False, help='format log messsages for katcp')
     parser.add_argument('--config', dest='config', type=str, action='store',
