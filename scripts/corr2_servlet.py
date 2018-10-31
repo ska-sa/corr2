@@ -148,7 +148,7 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', 'Cannot run ?initialise twice.'
         try:
             self.instrument.initialise(
-                program=program, configure=configure, require_epoch=require_epoch,   # sock=sock,
+                program=program, configure=configure, require_epoch=require_epoch,
                 mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
                 log_filename=self.log_filename, log_file_dir=self.log_file_dir)
 

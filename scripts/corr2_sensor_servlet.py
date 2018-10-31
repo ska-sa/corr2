@@ -13,6 +13,8 @@ import time
 from ConfigParser import ConfigParser
 
 from corr2 import sensors, sensors_periodic, fxcorrelator
+from corr2.corr2LogHandlers import getKatcpLogger
+from corr2.utils import parse_ini_file
 
 
 class Corr2SensorServer(katcp.DeviceServer):
@@ -36,13 +38,28 @@ class Corr2SensorServer(katcp.DeviceServer):
         :return:
 
         """
-        instrument = fxcorrelator.FxCorrelator(
-            'dummy fx correlator for sensors', config_source=config)
-        self.instrument = instrument
-        self.instrument.initialise(program=False, configure=False,
-                                   require_epoch=False)
+        _default_log_dir = '/var/log/corr'
+        config_file_dict = parse_ini_file(config)
+        log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir', _default_log_dir)
+        assert os.path.isdir(log_file_dir)
+        
+        start_time = str(time.time())
+        ini_filename = os.path.basename(config)
+        log_filename = '{}_{}_sensor_servlet.log'.format(ini_filename, start_time)
+
+        self.instrument = fxcorrelator.FxCorrelator(
+                            'dummy fx correlator for sensors', config_source=config,
+                            mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
+                            log_filename=log_filename, log_file_dir=log_file_dir)
+        self.instrument.initialise(program=False, configure=False, require_epoch=False,
+                                   mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
+                                   log_filename=log_filename, log_file_dir=log_file_dir)
+        
         #disable manually-issued sensor update informs (aka 'kcs' sensors):
-        sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False)
+        sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False,
+                            mass_inform_func=self.mass_inform,
+                            log_filename=log_filename,
+                            log_file_dir=log_file_dir)
         self.instrument.sensor_manager = sensor_manager
         sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
 
@@ -83,31 +100,12 @@ if __name__ == '__main__':
     # def boop():
     #     raise KeyboardInterrupt
 
-    # set up the logger
-    corr2_sensors_logger = logging.getLogger('corr2.sensors')
-    corr2_sensors_logger.setLevel(log_level)
-
+    
     if 'CORR2INI' in os.environ.keys() and args.config == '':
         args.config = os.environ['CORR2INI']
     if args.config == '':
         raise RuntimeError('No config file.')
 
-    # Always log to file.
-    cp = ConfigParser()
-    cp.read(args.config)
-    iname = os.path.basename(args.config)
-    start_time = str(time.time())
-    logfiles_path = cp.get('FxCorrelator', 'log_file_dir')
-    assert os.path.isdir(logfiles_path)
-    log_filename = '{}/{}_{}_sensor_servlet.log'.format(logfiles_path,
-        iname.strip().replace(' ', '_'), start_time)
-    file_handler = logging.FileHandler("{}".format(log_filename))
-    file_handler.setLevel(logging.ERROR)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - '
-                                '%(filename)s:%(lineno)s - '
-                                '%(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    corr2_sensors_logger.addHandler(file_handler)
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)

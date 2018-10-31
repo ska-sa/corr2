@@ -142,6 +142,8 @@ def getKatcpLogger(logger_name, mass_inform_func, log_level=logging.DEBUG, *args
     # Set the log-level before returning
     logger.setLevel(log_level)
 
+    logger.parent.handlers = []
+
     return True, logger
 
 
