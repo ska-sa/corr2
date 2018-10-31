@@ -15,12 +15,12 @@ import time
 from concurrent import futures
 
 from corr2 import fxcorrelator, sensors
-from corr2.utils import KatcpStreamHandler, parse_ini_file
 
 from corr2.corr2LogHandlers import getKatcpLogger, set_logger_group_level
 from corr2.corr2LogHandlers import get_instrument_loggers, check_logging_level
 from corr2.corr2LogHandlers import check_logging_level, LOG_LEVELS
 from corr2.corr2LogHandlers import LOGGING_RATIO_CASPER_CORR as LOG_RATIO
+from corr2.utils import parse_ini_file
 
 from corr2 import corr_monitoring_loop as corr_mon_loop
 
@@ -1143,23 +1143,6 @@ if __name__ == '__main__':
     except Exception:
         raise RuntimeError('Received nonsensical log level {}'.format(args.loglevel))
 
-    # set up the logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
-    # while len(root_logger.handlers) > 0:
-    #     root_logger.removeHandler(root_logger.handlers[0])
-    root_logger.handlers = []
-    if args.lfm or (not sys.stdout.isatty()):
-        console_handler = KatcpStreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        root_logger.addHandler(console_handler)
-    else:
-        console_handler = logging.StreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(formatter)
-        root_logger.addHandler(console_handler)
 
     server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
     print('Server listening on port {} '.format(args.port, end=''))

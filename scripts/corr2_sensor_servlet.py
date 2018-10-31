@@ -13,7 +13,6 @@ import time
 from ConfigParser import ConfigParser
 
 from corr2 import sensors, sensors_periodic, fxcorrelator
-from corr2.utils import KatcpStreamHandler
 
 
 class Corr2SensorServer(katcp.DeviceServer):
@@ -87,18 +86,6 @@ if __name__ == '__main__':
     # set up the logger
     corr2_sensors_logger = logging.getLogger('corr2.sensors')
     corr2_sensors_logger.setLevel(log_level)
-    if args.lfm or (not sys.stdout.isatty()):
-        console_handler = KatcpStreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        corr2_sensors_logger.addHandler(console_handler)
-    else:
-        console_handler = logging.StreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - '
-                                      '%(filename)s:%(lineno)s - '
-                                      '%(levelname)s - %(message)s')
-        console_handler.setFormatter(formatter)
-        corr2_sensors_logger.addHandler(console_handler)
 
     if 'CORR2INI' in os.environ.keys() and args.config == '':
         args.config = os.environ['CORR2INI']
