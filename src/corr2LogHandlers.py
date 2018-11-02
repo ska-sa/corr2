@@ -85,7 +85,6 @@ def getKatcpLogger(logger_name, mass_inform_func, log_level=logging.DEBUG, *args
     """
     Custom method allowing us to add default handlers to a logger
     :param logger_name:
-    :param sock:
     :return: Tuple - Boolean Success/Fail, True/False
                    - Logger entity with Katcp and File Handlers added as default
     """
@@ -171,6 +170,32 @@ def create_casper_file_handler(logger, filename, file_dir='/var/log/'):
     new_file_handler = logging.FileHandler(filename=filename)
 
     return True
+
+
+def create_katcp_and_file_handlers(logger_entity, mass_inform_func, log_filename,
+									log_file_dir, log_level=logging.INFO):
+    katcp_handler_name = '{}_katcp'.format(logger_entity.name)
+    this_katcp_handler = KatcpHandler(name=katcp_handler_name, mass_inform_func=mass_inform_func)
+    logger_entity.addHandler(this_katcp_handler)
+
+    abs_path = os.path.abspath(log_file_dir)
+    full_log_file_path = '{}/{}'.format(log_file_dir, log_filename)
+    this_file_handler = logging.FileHandler(filename=full_log_file_path)
+    this_file_handler.name = '{}_file'.format(logger_entity.name)
+
+    format_string = '%(asctime)s - %(levelname)s - %(name)s %(filename)s:%(lineno)s - %(msg)s'
+    file_handler_formatter = logging.Formatter(format_string)
+    this_file_handler.setFormatter(file_handler_formatter)
+
+    logger_entity.addHandler(this_file_handler)
+
+    # Set the log-level before returning
+    logger_entity.setLevel(log_level)
+
+    logger_entity.parent.handlers = []
+
+    # return True
+
 
 # endregion
 
@@ -262,6 +287,33 @@ def get_all_loggers():
     :return: dictionary of logging objects
     """
     return logging.Logger.manager.loggerDict
+
+
+def reassign_log_handlers(mass_inform_func, log_filename, log_file_dir):
+	all_loggers = get_all_loggers()
+	normal_loggers = [logger for logger in all_loggers.values() if type(logger) != logging.PlaceHolder]
+	desired_log_handlers = [KatcpHandler, logging.FileHandler]
+
+	changed_logger_counter = 0
+	for logger_entity in normal_loggers:
+		# Now, change the log-handlers, if necessary
+		if logger_entity.handlers:
+			for log_handler in logger_entity.handlers:
+				if(type(log_handler) not in desired_log_handlers):
+					# Probably a ConsoleHandler
+					# Remove it
+					logger_entity.removeHandler(log_handler)
+	
+
+    # Rather get all empty loggers and reassign log-handlers then
+	empty_loggers = [logger for logger in normal_loggers if len(logger.handlers) == 0]
+	for logger_entity in empty_loggers:
+		# Katcp and FileHandlers
+		create_katcp_and_file_handlers(logger_entity, mass_inform_func,
+									   log_filename, log_file_dir)
+		changed_logger_counter += 1
+
+	return changed_logger_counter
 
 
 def check_logging_level(logging_level):

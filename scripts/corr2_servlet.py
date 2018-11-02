@@ -19,6 +19,7 @@ from corr2 import fxcorrelator, sensors
 from corr2.corr2LogHandlers import getKatcpLogger, set_logger_group_level
 from corr2.corr2LogHandlers import get_instrument_loggers, check_logging_level
 from corr2.corr2LogHandlers import check_logging_level, LOG_LEVELS
+from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
 from corr2.corr2LogHandlers import LOGGING_RATIO_CASPER_CORR as LOG_RATIO
 from corr2.utils import parse_ini_file
 
@@ -119,6 +120,12 @@ class Corr2Server(katcp.DeviceServer):
                               getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
+
+            # Function created to reassign all non-conforming log-handlers
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
+                                                    log_filename=self.log_filename, 
+                                                    log_file_dir=self.log_file_dir)
+
             return 'ok',
         except Exception as ex:
             return self._log_excep(ex, 'Failed to create instrument.')
@@ -176,6 +183,12 @@ class Corr2Server(katcp.DeviceServer):
                 # enable auto reset / resync for the f-engines (in hardware)
                 self.instrument.fops.auto_rst_enable()
             self._initialised = True
+
+            # Once more, for completeness
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
+                                                    log_filename=self.log_filename, 
+                                                    log_file_dir=self.log_file_dir)
+
             return 'ok',
         except Exception as ex:
             return self._log_excep(ex, 'Failed to initialise {}'.format(
@@ -797,10 +810,16 @@ class Corr2Server(katcp.DeviceServer):
         :return: Printed list of logger names
         """
 
-        instrument_loggers, skarab_loggers = get_instrument_loggers(corr_obj=self.instrument,
-                                                    group_name='instrument')
-        logger_names = [logger.name for logger in instrument_loggers]
-        logger_names += [logger.name for logger in skarab_loggers]
+        # instrument_loggers, skarab_loggers = get_instrument_loggers(corr_obj=self.instrument,
+        #                                             group_name='instrument')
+        # logger_names = [logger.name for logger in instrument_loggers]
+        # logger_names += [logger.name for logger in skarab_loggers]
+
+        all_loggers = get_all_loggers()
+
+        import IPython; IPython.embed()
+
+        logger_names = all_loggers.keys()
 
         # return_string = '\n'.join(logger_names)
         return 'ok', logger_names

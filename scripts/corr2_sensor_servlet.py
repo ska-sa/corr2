@@ -13,7 +13,7 @@ import time
 from ConfigParser import ConfigParser
 
 from corr2 import sensors, sensors_periodic, fxcorrelator
-from corr2.corr2LogHandlers import getKatcpLogger
+from corr2.corr2LogHandlers import getKatcpLogger, reassign_log_handlers
 from corr2.utils import parse_ini_file
 
 
@@ -57,11 +57,16 @@ class Corr2SensorServer(katcp.DeviceServer):
         
         #disable manually-issued sensor update informs (aka 'kcs' sensors):
         sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False,
-                            mass_inform_func=self.mass_inform,
-                            log_filename=log_filename,
-                            log_file_dir=log_file_dir)
+                                                mass_inform_func=self.mass_inform,
+                                                log_filename=log_filename,
+                                                log_file_dir=log_file_dir)
         self.instrument.sensor_manager = sensor_manager
         sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
+
+        # Function created to reassign all non-conforming log-handlers
+        loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
+                                                log_filename=log_filename, 
+                                                log_file_dir=log_file_dir)
 
 
 @tornado.gen.coroutine
