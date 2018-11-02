@@ -306,7 +306,7 @@ class MonitoringLoop(object):
 
         if action['disable_output']:
             # keep track of which boards have been disabled
-            if host not in self.disabled_fhosts:
+            if host not in self.disabled_xhosts:
                 self.disabled_xhosts.append(host)
                 self._disable_xeng_ouput(xhost=host)
 
