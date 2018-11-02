@@ -22,6 +22,14 @@ LOGGING_RATIO_CASPER_CORR = 2
 # This returns an xrange object that can be iterated over when needed
 # - It does not need to be re-initialised after iteration
 LOG_LEVELS = xrange(0,60,10)
+LOG_NAME_TRANSLATE={'OFF':'off',
+'FATAL':'fatal',
+'ERROR':'error',
+'WARN':'warn','WARNING':'warn',
+'INFO':'info',
+'DEBUG':'debug',
+'TRACE':'trace',
+'ALL':'all'}
 
 
 """
@@ -256,7 +264,7 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
         time_now = str(time.time())
         # "arguments" argument of KatcpMessage needs to be such a list.
         # can't we leverage katcp-python's bottled functions for generating log messages?
-        message_data = [message.levelname.lower(), time_now, message.name, message.msg]
+        message_data = [LOG_NAME_TRANSLATE[message.levelname], time_now, message.name, message.msg]
         log_message = KatcpMessage(message_type, message_name, arguments=message_data)
         
         # self.sock.mass_inform(log_message)
