@@ -48,13 +48,9 @@ import corr2
 from casperfpga.network import IpAddress
 from corr2 import data_stream
 
-interface_prefix = "10.100"
-ri = True
-
-logging.getLogger("casperfpga").setLevel(logging.FATAL)
-logging.getLogger("casperfpga.register").setLevel(logging.FATAL)
-logging.getLogger("casperfpga.bitfield").setLevel(logging.FATAL)
-
+logging.getLogger("casperfpga").setLevel(logging.ERROR)
+logging.getLogger("casperfpga.register").setLevel(logging.ERROR)
+logging.getLogger("casperfpga.bitfield").setLevel(logging.ERROR)
 
 assert hasattr(corr2, "fxcorrelator")
 assert hasattr(corr2.fxcorrelator, "FxCorrelator")
@@ -62,6 +58,8 @@ assert hasattr(casperfpga, "network")
 assert hasattr(casperfpga.network, "IpAddress")
 
 _file_name = os.path.basename(sys.argv[0])
+interface_prefix = "10.100"
+ri = True
 
 
 class DictObject(object):
@@ -98,9 +96,13 @@ class LoggingClass(object):
 
         name = '.'.join([_file_name, self.__class__.__name__])
         try:
-            logging.basicConfig(level=getattr(logging, self.log_level), format=log_format)
-            coloredlogs.install(level=getattr(logging, self.log_level), fmt=log_format)
-            return logging.getLogger(name)
+            logger = logging.getLogger(name)
+            handler = logging.StreamHandler()
+            handler.setLevel(getattr(logging, self.log_level))
+            formatter = coloredlogs.ColoredFormatter(fmt=log_format, datefmt='%Y.%m.%d %H:%M:%S')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            return logger
         except AttributeError:
             raise RuntimeError('No such log level: %s' % self.log_level)
 
@@ -175,19 +177,20 @@ class PlotConsumer(object):
             self.figure.add_subplot(2, 1, 1)
             self.figure.add_subplot(2, 1, 2)
 
+        self.figure.subplots_adjust(hspace=0.5)
         sbplt = self.figure.axes
         sbplt[0].cla()
         if args.ri:
-            sbplt[0].set_title('power - %i' % self.plot_counter)
+            sbplt[0].set_title('real - %s' % self.plot_counter)
             sbplt[0].grid(True)
             sbplt[1].cla()
-            sbplt[1].set_title('phase - %i' % self.plot_counter)
+            sbplt[1].set_title('imag - %s' % self.plot_counter)
             sbplt[1].grid(True)
         else:
-            sbplt[0].set_title('real - %i' % self.plot_counter)
+            sbplt[0].set_title('power - %s' % self.plot_counter)
             sbplt[0].grid(True)
             sbplt[1].cla()
-            sbplt[1].set_title('imag - %i' % self.plot_counter)
+            sbplt[1].set_title('phase - %s' % self.plot_counter)
             sbplt[1].grid(True)
         powerdata = plotdata[0]
         phasedata = plotdata[1]
@@ -265,6 +268,8 @@ class CorrReceiver(threading.Thread):
             self.logger = LoggingClass(log_level=log_level).logger
         except Exception:
             self.logger = LoggingClass(log_level=getattr(logging, log_level)).logger
+        finally:
+            self.logger.setLevel(getattr(logging, log_level))
 
         # This runs a capture once with only one substream.
         # It seems to be needed to get larger captures to work.
