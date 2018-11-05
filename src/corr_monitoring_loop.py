@@ -42,6 +42,11 @@ class MonitoringLoop(object):
         self.disabled_xhosts = []
         self.disabled_bhosts = []
 
+        # some other useful bits of info
+        self.n_chans = self.instrument.n_chans
+        self.n_xengs_per_host = self.instrument.x_per_fpga
+        self.n_per_xeng = self.n_chans/(self.n_xengs_per_host*self.num_xhosts)
+
     def start(self):
         """
         Start the monitoring loop
@@ -157,11 +162,14 @@ class MonitoringLoop(object):
 
         if self.disabled_fhosts:
             self.instrument.logger.warning('corr2 monitor loop: disabled f-hosts: %s' % [
-                '%d:%s' % (disabled_fhost.fhost_index, disabled_fhost.host) for disabled_fhost in self.disabled_fhosts])
+                'fhost%d:%s:inputs%s' % (disabled_fhost.fhost_index, disabled_fhost.host, [feng.input.name for feng in disabled_fhost.fengines]) for disabled_fhost in self.disabled_fhosts])
 
         if self.disabled_xhosts:
-            self.instrument.logger.warning('corr2 monitor loop: disabled x-hosts: %s' % [
-                '%d:%s' % (disabled_xhost.index, disabled_xhost.host) for disabled_xhost in self.disabled_xhosts])
+            self.instrument.logger.warning('corr2 monitor loop: disabled x-hosts: %s'
+                                           % ['xhost%d:%s:channel_range%s' % (disabled_xhost.index, disabled_xhost.host,
+                                                                             (self.instrument.xops.board_ids[disabled_xhost.host]*self.n_per_xeng,
+                                                                             (self.instrument.xops.board_ids[disabled_xhost.host]+1)*self.n_per_xeng-1))
+                                                                             for disabled_xhost in self.disabled_xhosts])
 
         #if self.disabled_bhosts:
         #    self.instrument.logger.warning('corr2 monitor loop: disabled b-hosts: %s' % [
@@ -658,8 +666,11 @@ class MonitoringLoop(object):
         """
 
         fhost.tx_disable()
-        self.instrument.logger.warning('feng %s output disabled!' %
-                                       fhost.host)
+        self.instrument.logger.warning('fhost%d %s %s output disabled!' %
+                                       (fhost.fhost_index,
+                                        fhost.host,
+                                        [feng.input.name for feng in fhost.fengines]
+                                        ))
 
     def _renable_feng_output(self, fhost):
         """
@@ -669,8 +680,12 @@ class MonitoringLoop(object):
         """
 
         fhost.tx_enable()
-        self.instrument.logger.info('feng %s output reenabled!' %
-                                    fhost.host)
+        self.instrument.logger.info('fhost%d %s %s output reenabled!' %
+                                    (fhost.fhost_index,
+                                     fhost.host,
+                                     [feng.input.name for feng in
+                                      fhost.fengines]
+                                     ))
 
     def _disable_xeng_ouput(self, xhost):
         """
@@ -680,8 +695,11 @@ class MonitoringLoop(object):
         """
 
         xhost.registers.control.write(gbe_txen=False)
-        self.instrument.logger.warning('xhost %s output disabled!' %
-                                       xhost.host)
+        self.instrument.logger.warning('xhost%d %s %s output disabled!' %
+                                      (xhost.index, xhost.host,
+                                      (self.instrument.xops.board_ids[xhost.host] * self.n_per_xeng,
+                                      (self.instrument.xops.board_ids[xhost.host] + 1) * self.n_per_xeng - 1)
+                                      ))
 
     def _renable_xeng_output(self, xhost):
         """
@@ -691,8 +709,13 @@ class MonitoringLoop(object):
         """
 
         xhost.registers.control.write(gbe_txen=True)
-        self.instrument.logger.info('xhost %s output reenabled!' %
-                                    xhost.host)
+        self.instrument.logger.info('xhost%d %s %s output reenabled!' %
+                                    (xhost.index, xhost.host,
+                                     (self.instrument.xops.board_ids[
+                                          xhost.host] * self.n_per_xeng,
+                                      (self.instrument.xops.board_ids[
+                                           xhost.host] + 1) * self.n_per_xeng - 1)
+                                     ))
 
     def get_bad_fhosts(self):
         """
