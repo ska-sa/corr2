@@ -373,10 +373,11 @@ class Corr2SensorManager(SensorManager):
                 'The IP, range and port to which data for this stream is sent.')
             sensor.set_value(stream.destination)
 
-            sensor = self.do_sensor(
-                Corr2Sensor.string, '{}-source'.format(stream.name),
-                'The sources from which data is received to create this stream')
-            sensor.set_value(stream.source or '')
+            if stream.category is not data_stream.DIGITISER_ADC_SAMPLES:
+                sensor = self.do_sensor(
+                    Corr2Sensor.string, '{}-source'.format(stream.name),
+                    'The sources from which data is received to create this stream')
+                sensor.set_value(stream.source or '')
 
     def sensors_gbe_interfacing(self):
         """
