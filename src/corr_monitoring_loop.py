@@ -162,13 +162,12 @@ class MonitoringLoop(object):
 
         if self.disabled_fhosts:
             self.instrument.logger.warning('corr2 monitor loop: disabled f-hosts: %s' % [
-                'fhost%d:%s:inputs%s' % (disabled_fhost.fhost_index, disabled_fhost.host, [feng.input.name for feng in disabled_fhost.fengines]) for disabled_fhost in self.disabled_fhosts])
+                'fhost%d:%s:%s' % (disabled_fhost.fhost_index, disabled_fhost.host, [feng.input.name for feng in disabled_fhost.fengines]) for disabled_fhost in self.disabled_fhosts])
 
         if self.disabled_xhosts:
             self.instrument.logger.warning('corr2 monitor loop: disabled x-hosts: %s'
-                                           % ['xhost%d:%s:channel_range%s' % (disabled_xhost.index, disabled_xhost.host,
-                                                                             (self.instrument.xops.board_ids[disabled_xhost.host]*self.n_per_xeng,
-                                                                             (self.instrument.xops.board_ids[disabled_xhost.host]+1)*self.n_per_xeng-1))
+                                           % ['xhost%d:%s:%d-%d' % (disabled_xhost.index, disabled_xhost.host, self.instrument.xops.board_ids[disabled_xhost.host]*self.n_per_xeng,
+                                                                             (self.instrument.xops.board_ids[disabled_xhost.host]+1)*self.n_per_xeng-1)
                                                                              for disabled_xhost in self.disabled_xhosts])
 
         #if self.disabled_bhosts:
