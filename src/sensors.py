@@ -397,13 +397,6 @@ class Corr2SensorManager(SensorManager):
                 '{prf} (MAC,IP,port)'.format(prf=dpref))
             sensor.set_value(sensor_value)
 
-            sensor = self.do_sensor(
-                Corr2Sensor.string,
-                '{eng}-{iface}-multicast-subscriptions'.format(
-                    eng=eng, iface=iface),
-                '{prf} multicast subscriptions'.format(prf=dpref))
-            sensor.set_value(str(host.gbes[iface].multicast_subscriptions))
-
         for ctr, host in enumerate(self.instrument.fhosts):
             for gbe in host.gbes:
                 iface_sensors_for_host(host, 'fhost{0}'.format(ctr), gbe.name)
@@ -625,7 +618,7 @@ class Corr2SensorManager(SensorManager):
         pref = '{strm}-input{npt}'.format(strm=strmnm, npt=feng.input_number)
         sensor = self.do_sensor(
             Corr2Sensor.string, '{}-delay'.format(pref),
-            'The delay settings for this input: (load_mcnt <ADC sample count when model was loaded>, delay <in seconds>, '
+            'The delay settings for this input: (loadmcnt <ADC sample count when model was loaded>, delay <in seconds>, '
             'delay-rate <unit-less, or, seconds-per-second>, phase <radians>, phase-rate <radians per second>).')
        # err_sensor = self.do_sensor(
        #     Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
@@ -821,6 +814,11 @@ class Corr2SensorManager(SensorManager):
                 'The global input indices of the sources summed in this beam.')
             tmp = beam.source_indices
             sensor.set_value(str(tmp))
+
+            sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
+                'Number of channels in the stream.')
+            sensor.set_value(self.instrument.n_chans)
 
         self.sensors_beng_weights()
         self.sensors_beng_gains()

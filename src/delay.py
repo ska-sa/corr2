@@ -32,6 +32,7 @@ def process_list(delay_list, sample_rate_hz):
         try:
             if isinstance(delay, str):
                 delaytup = process_string(delay)
+                LOGGER.debug('input %i update received: %s'%(ctr,delay))
             else:
                 delaytup = delay
             rv.append(prepare_delay_vals(delaytup, sample_rate_hz))
