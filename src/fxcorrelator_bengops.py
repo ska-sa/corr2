@@ -21,9 +21,12 @@ class BEngineOperations(object):
 
         # Now creating separate instances of loggers as needed
         logger_name = '{}_BengOps'.format(corr_obj.descriptor)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+
         # All 'Instrument-level' objects will log at level INFO
         result, self.logger = corr_obj.getLogger(logger_name=logger_name,
-                                                 log_level=INFO, **kwargs)
+                                                 log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -49,7 +52,7 @@ class BEngineOperations(object):
         #self.set_beam_weights()
         for beam_name in self.beams:
             beam=self.get_beam_by_name(beam_name)
-            self.set_beam_quant_gain(float(beam.config['quant_gain']),beam_name) 
+            self.set_beam_quant_gain(float(beam.config['quant_gain']),beam_name)
         self.logger.info('Beamformer initialised.')
 
     def configure(self, *args, **kwargs):
@@ -175,7 +178,7 @@ class BEngineOperations(object):
             new_weights=[weights for a in range(self.corr.n_antennas)]
         else:
             new_weights=weights
-        
+
         assert len(new_weights)==self.corr.n_antennas,'Need to specify %i values; you offered %i.'%(len(new_weights),self.corr.n_antennas)
         beam_index = self.get_beam_by_name(beam_name).index
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set',

@@ -662,6 +662,9 @@ def get_feng_stream_loggers(corr_obj):
     for value in corr_obj.get_data_streams_by_type(DIGITISER_ADC_SAMPLES):
         return_list.append(value.logger)
 
+    from corr2 import delay
+    return_list.append(delay.LOGGER)
+
     return return_list
 
 def get_xeng_stream_loggers(corr_obj):
