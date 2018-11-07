@@ -65,10 +65,10 @@ class Corr2Sensor(Sensor):
                  params=None, default=None, initial_status=None,
                  manager=None, executor=None,
                  *args, **kwargs):
-        
+
         # Log to the parent SensorManager.logger for now
         self.logger = manager.logger
-        
+
         if '_' in name:
             self.logger.debug('Sensor names cannot have underscores in them, '
                          'so {name} becomes {name_conv}'.format(
@@ -96,7 +96,7 @@ class Corr2Sensor(Sensor):
         :param warnif: set status to WARNING if value 'changed' or 'notchanged'.
         :return:
         """
-	
+
         status_none = 0
         if value is None:
             raise ValueError('Cannot set a sensor to None')
@@ -113,7 +113,7 @@ class Corr2Sensor(Sensor):
         if (value==False):
             if (errif == 'False'):
                 self.logger.error('Sensor error: {} is False'.format(self.name))
-		if(status_none == 1 ): 
+		if(status_none == 1 ):
 		    status = Sensor.ERROR
             elif (warnif == 'False'):
                 self.logger.warn('Sensor warning: {} is False'.format(self.name))
@@ -192,8 +192,10 @@ class SensorManager(object):
         # The instrument already has a .getLogger attribute
         self.getLogger = instrument.getLogger
         logger_name = '{}_sensor_manager'.format(instrument.descriptor)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format()
