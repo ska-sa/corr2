@@ -22,13 +22,15 @@ class FpgaBHost(FpgaXHost):
             descriptor = kwargs['descriptor']
         except KeyError:
             descriptor = 'InstrumentName'
-        
+
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
 
         logger_name = '{}_bhost-{}-{}'.format(descriptor, str(index), host)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -53,7 +55,7 @@ class FpgaBHost(FpgaXHost):
         :param beam: The Beam() on which to act
         :return
         """
-        
+
         self.registers['bf%i_config' % beam.index].write(port=beam.destination.port)
         self.registers['bf%i_ip' % beam.index].write(ip=int(beam.destination.ip_address))
         self.logger.debug('%s:%i: Beam %i:%s destination set to %s' % (

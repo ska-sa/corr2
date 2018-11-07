@@ -141,13 +141,15 @@ class SPEADStream(object):
         self.getLogger = kwargs['getLogger']
 
         logger_name = '{}_SPEADStream'.format(name)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                        log_level=INFO, **kwargs)
+                                        log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
             raise ValueError(errmsg)
-            
+
         self.logger.debug('Successfully created logger for {}'.format(logger_name))
 
         self.name = name
@@ -218,7 +220,7 @@ class SPEADStream(object):
             self.logger.debug('%s: tx sockets have not been set up for '
                          'stream yet.' % self.name)
             return
-    
+
         for dest_ctr in range(self.destination.ip_range):
             self.tx_sockets[dest_ctr].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
 
