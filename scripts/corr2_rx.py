@@ -48,10 +48,6 @@ import corr2
 from casperfpga.network import IpAddress
 from corr2 import data_stream
 
-logging.getLogger("casperfpga").setLevel(logging.ERROR)
-logging.getLogger("casperfpga.register").setLevel(logging.ERROR)
-logging.getLogger("casperfpga.bitfield").setLevel(logging.ERROR)
-
 assert hasattr(corr2, "fxcorrelator")
 assert hasattr(corr2.fxcorrelator, "FxCorrelator")
 assert hasattr(casperfpga, "network")
@@ -61,26 +57,45 @@ _file_name = os.path.basename(sys.argv[0])
 interface_prefix = "10.100"
 ri = True
 
+# Custom logging level for printing time
+TIMEDEBUG = 45
+logging.addLevelName(TIMEDEBUG, 'TIMEDEBUG')
+
+def timedebug(self, message, *args, **kws):
+    self.log(TIMEDEBUG, message, *args, **kws)
+logging.Logger.timedebug = timedebug
+
 
 class DictObject(object):
-    """
-    Fancier way of converting nested dictionary to an object!
-
-    Parameters
-    ----------
-    _dict: dictionary
-        Already defined dictionary
-    Returns
-    -------
-    object: dictionary object
-    """
 
     def __init__(self, _dict):
+        """
+        Fancier way of converting nested dictionary to an object!
+
+        Parameters
+        ----------
+        _dict: dictionary
+            Already defined dictionary
+        Returns
+        -------
+        object: dictionary object
+        """
         for key, value in _dict.items():
             if isinstance(value, (list, tuple)):
                 setattr(self, key, [obj(x) if isinstance(x, dict) else x for x in value])
             else:
                 setattr(self, key, obj(value) if isinstance(value, dict) else value)
+
+    @staticmethod
+    def _dictsMerger(*dicts):
+        """
+        Given any number of dicts, shallow copy and merge into a new dict,
+        precedence goes to key value pairs in latter dicts.
+        """
+        result = {}
+        for dictionary in dicts:
+            result.update(dictionary)
+        return result
 
 
 class LoggingClass(object):
@@ -97,11 +112,8 @@ class LoggingClass(object):
         name = '.'.join([_file_name, self.__class__.__name__])
         try:
             logger = logging.getLogger(name)
-            handler = logging.StreamHandler()
-            handler.setLevel(getattr(logging, self.log_level))
-            formatter = coloredlogs.ColoredFormatter(fmt=log_format, datefmt='%Y.%m.%d %H:%M:%S')
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
+            coloredlogs.install(level=getattr(logging, self.log_level),
+                fmt=log_format, datefmt='%Y.%m.%d %H:%M:%S')
             return logger
         except AttributeError:
             raise RuntimeError('No such log level: %s' % self.log_level)
@@ -224,14 +236,14 @@ class PlotConsumer(object):
             self.need_data_flag.set()
 
 
-class CorrReceiver(threading.Thread):
+class CorrReceiver(LoggingClass, threading.Thread):
     """
     Receive thread to process heaps received by a SPEAD2 stream.
     """
 
     def __init__(
         self, servlet="127.0.0.1:7601", config_file=None, channels=(0, 4095), baselines=None,
-        h5_file=None, warmup_capture=False, realimag=True, log_level="INFO",
+        h5_file=None, warmup_capture=False, realimag=True, **kwargs
     ):
         """
 
@@ -252,54 +264,38 @@ class CorrReceiver(threading.Thread):
 
         """
 
+        # Better logging
+        log_level = kwargs.get('log_level', "INFO").upper()
+        LoggingClass.__init__(self)
+        self.logger.setLevel(getattr(logging, log_level))
+
         self.servlet_ip, self.servlet_port = servlet.split(":")
         self._config_file = config_file
         self.h5_file = h5_file
         self.realimag = realimag
         # a quit event to stop the thread if needed
         self.quit_event = threading.Event()
-
-        # Better logging
-        log_level = log_level.upper()
         if log_level == 'DEBUG':
             spead2._logger.setLevel(getattr(logging, log_level))
-
-        try:
-            self.logger = LoggingClass(log_level=log_level).logger
-        except Exception:
-            self.logger = LoggingClass(log_level=getattr(logging, log_level)).logger
-        finally:
-            self.logger.setLevel(getattr(logging, log_level))
 
         # This runs a capture once with only one substream.
         # It seems to be needed to get larger captures to work.
         # Must be investigated
         # After the warmup loop the normal loop runs
         self.warmup_capture = warmup_capture
-
-        if self._config_file:
-            # {'baseline_correlation_products_bls_ordering': [('ant0x', 'ant0x'),  ..., ('ant0y', 'ant3x')],
-            #  'baseline_correlation_products_destination': 239.101.12.64+15:7148,
-            #  'baseline_correlation_products_n_bls': 40,
-            #  'baseline_correlation_products_n_chans': 4096,
-            #  'baseline_correlation_products_n_chans_per_substream': 256,
-            #  'n_ants': 4,
-            #  'n_xengs': 16,
-            #  'output_products': 'baseline-correlation-products'
-            # }
-
-            self.corrVars = DictObject(self.corr_config(self._config_file))
+        try:
+            assert isinstance(self._config_file, str)
+        except AssertionError:
+            self.logger.error("No Config File defined!!!")
+            raise
         else:
-            self.corrVars = DictObject(self.get_sensors(self.servlet_ip, self.servlet_port))
-            # {'baseline_correlation_products_bls_ordering': [('ant0x', 'ant0x'), ..., ('ant0y', 'ant3x')],
-            #  'baseline_correlation_products_destination': '239.101.12.64+15:7148',
-            #  'baseline_correlation_products_n_bls': 40,
-            #  'baseline_correlation_products_n_chans': 4096,
-            #  'baseline_correlation_products_n_chans_per_substream': 256,
-            #  'n_ants': 4,
-            #  'n_xengs': 16
-            #  'n_accs':}
+            # self.corrVars = DictObject(self.corr_config(self._config_file))
+            self._config_info = self.corr_config(self._config_file, **kwargs)
+        finally:
+            # self.corrVars = DictObject(self.get_sensors(self.servlet_ip, self.servlet_port))
+            self._sensors_info = self.get_sensors(self.servlet_ip, self.servlet_port)
 
+        self.corrVars = DictObject(DictObject._dictsMerger(self._sensors_info,  self._config_info))
         self._get_plot_limits(baselines, channels)
 
         self.need_print_data = None
@@ -506,27 +502,64 @@ class CorrReceiver(threading.Thread):
         n_substreams = self._stop_substream - self._strt_substream + 1
         n_chans_per_substream = self.corrVars.baseline_correlation_products_n_chans_per_substream
         chan_offset = n_chans_per_substream * self._strt_substream
+        prev_ts = None
+        ts_wrap_offset = 0        # Value added to compensate for CBF timestamp wrapping
+        ts_wrap_period = 2**48
+
         if 'xeng_raw' not in ig.keys():
+            self.logger.debug("CBF non-data heap received on stream ?")
             return None
+
         if ig['xeng_raw'] is None:
+            self.logger.warning("CBF Xengine data Null and Void.")
             return None
+
         xeng_raw = ig['xeng_raw'].value
         if xeng_raw is None:
+            self.logger.warning("CBF Xengine data Null and Void.")
+            return None
+
+        if 'timestamp' not in ig.keys():
+            self.logger.warning("CBF heap without timestamp received on stream ?",)
+            return None
+
+        if 'frequency' not in ig.keys():
+            self.logger.warning("CBF heap without frequency received on stream ?")
             return None
 
         self.logger.info('PROCESSING %i BASELINES, %i CHANNELS' % (len(baselines),
                                                                    channels[1] - channels[0]))
-        this_time = ig['timestamp'].value
+        data_ts = ig['timestamp'].value + ts_wrap_offset
         this_freq = ig['frequency'].value
+
+        if prev_ts is not None and data_ts < prev_ts - ts_wrap_period // 2:
+            # This happens either because packets ended up out-of-order,
+            # or because the CBF timestamp wrapped. Out-of-order should
+            # jump backwards a tiny amount while wraps should jump back by
+            # close to ts_wrap_period.
+            ts_wrap_offset += ts_wrap_period
+            data_ts += ts_wrap_period
+            self.logger.warning('Data timestamps wrapped')
+        elif prev_ts is not None and data_ts > prev_ts + ts_wrap_period // 2:
+            # This happens if we wrapped, then received another heap
+            # (probably from a different X engine) from before the
+            # wrap. We need to undo the wrap.
+            ts_wrap_offset -= ts_wrap_period
+            data_ts -= ts_wrap_period
+            self.logger.warning('Data timestamps reverse wrapped')
+        self.logger.debug('Received heap with timestamp %s on stream x, channel %s' % (data_ts, this_freq))
+        prev_ts = data_ts
+        # we have new data...
+
         # start a new heap for this timestamp if it's not in our data
-        if this_time not in heap_data:
-            heap_data[this_time] = {}
-        if this_time in heap_data:
-            if this_freq in heap_data[this_time]:
+        if data_ts not in heap_data:
+            heap_data[data_ts] = {}
+        if data_ts in heap_data:
+            if this_freq in heap_data[data_ts]:
                 # already have this frequency - this seems to be a bug
                 errstr = ('ERROR: time(%i) freq(%i) - repeat freq data received: ' % (
-                    this_time, this_freq))
-                old_data = heap_data[this_time][this_freq]
+                    data_ts, this_freq))
+                old_data = heap_data[data_ts][this_freq]
                 if np.shape(old_data) != np.shape(xeng_raw):
                     errstr += ' DIFFERENT DATA SHAPE'
                 else:
@@ -537,7 +570,7 @@ class CorrReceiver(threading.Thread):
                 self.logger.error(errstr)
             else:
                 # save the frequency for this timestamp
-                heap_data[this_time][this_freq] = xeng_raw
+                heap_data[data_ts][this_freq] = xeng_raw
         # housekeeping - are there older heaps in the data?
         if len(heap_data) > 5:
             self.logger.info('Culling stale timestamps:')
@@ -554,7 +587,7 @@ class CorrReceiver(threading.Thread):
             :return:
             """
             freqs = hdata.keys()
-            print ('freqs = {}'.format(freqs))
+            self.logger.info('freqs = {}'.format(freqs))
             freqs.sort()
             check_range = range(n_chans_per_substream * self._strt_substream,
                                 n_chans_per_substream * self._stop_substream + 1,
@@ -576,13 +609,7 @@ class CorrReceiver(threading.Thread):
                 'Processing xeng_raw heap with time 0x%012x (%.2fs since epoch) and shape: %s' % (
                     ig['timestamp'].value, time_s, str(np.shape(xeng_raw))))
             heap_data.pop(htime)
-            # TODO scaling
-            # scale_factor = float(ig['scale_factor_timestamp'].value)
-            # sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value /
-            #                                         scale_factor)
-            # logger.info('(%s) timestamp %i => %s' % (
-            #     time.ctime(), ig['timestamp'].value, time.ctime(sd_timestamp)))
-            # /TODO scaling
+
             baseline_data = []
             baseline_phase = []
             for baseline in baselines:
@@ -639,6 +666,11 @@ class CorrReceiver(threading.Thread):
                 rv = process_heaptime(heaptime, heap_data[heaptime])
                 if rv:
                     rvs[rv[0]] = (rv[1], rv[2])
+                    _dump_timestamp = self.corrVars.sync_time + float(rv[0]) / self.corrVars.scale_factor_timestamp
+                    _dump_timestamp_readable = time.strftime("%H:%M:%S",
+                        time.localtime(_dump_timestamp))
+                    self.logger.timedebug("Current Dump Timestamp: %s vs Current local time: %s" % (
+                        _dump_timestamp_readable, time.strftime('%H:%M:%S')))
         return rvs
 
     def _get_plot_limits(self, baselines, channels):
@@ -685,7 +717,7 @@ class CorrReceiver(threading.Thread):
         return lst
 
     @staticmethod
-    def corr_config(config_file=None):
+    def corr_config(config_file=None, **kwargs):
         """
         Retrieve running correlator information from config file
 
@@ -699,9 +731,11 @@ class CorrReceiver(threading.Thread):
         config_info: dict
             Dictionary containing all defined requirements
         """
+        logLevel = kwargs.get('log_level', 'INFO')
         assert config_file
-        corr_instance = corr2.fxcorrelator.FxCorrelator('bob', config_source=config_file)
-        corr_instance.initialise(configure=False, program=False, require_epoch=False)
+        corr_instance = corr2.fxcorrelator.FxCorrelator('bob', config_source=config_file,
+            logLevel=logLevel)
+        corr_instance.initialise(configure=False, program=False, require_epoch=False, logLevel=logLevel)
         assert hasattr(corr_instance, "get_data_stream")
         fengine_conf = corr_instance.configd.get('fengine')
         assert isinstance(fengine_conf, dict)
@@ -730,8 +764,8 @@ class CorrReceiver(threading.Thread):
 
     @staticmethod
     def get_sensors(servlet_ip=None, servlet_port=None,
-                    product_name='baseline-correlation-products'
-                    ):
+        product_name='baseline-correlation-products'
+    ):
         """
         Retrieve running instruments sensors.
 
@@ -769,12 +803,14 @@ class CorrReceiver(threading.Thread):
             raise RuntimeError('Could not read sensors from corr2_servlet, request failed.')
         sensors_required = ['{}-n-chans'.format(product_name),
                             '{}-n-accs'.format(product_name),
-                            '{}-destination'.format(product_name),
+                            # '{}-destination'.format(product_name),
                             '{}-n-bls'.format(product_name),
                             '{}-bls-ordering'.format(product_name),
                             '{}-n-accs'.format(product_name),
                             'n-ants',
-                            'n-xengs'
+                            'n-xengs',
+                            'scale-factor-timestamp',
+                            'sync-time',
                             ]
         search = re.compile('|'.join(sensors_required))
         sensors = {}
@@ -787,19 +823,6 @@ class CorrReceiver(threading.Thread):
 
         return sensors
 
-    @staticmethod
-    def evaluate_corr(sensors, config_info):
-        """
-        Compare contents in the correlator config file and sensors
-        """
-        try:
-            assert sensors or config_info
-        except Exception:
-            raise RuntimeError('Missing sensors correlator config info')
-        else:
-            sensors_attrib = [attrib for attrib in dir(sensors) if not attrib.startswith("_")]
-            config_info_attrib = [attrib for attrib in dir(config_info) if not attrib.startswith("_")]
-            # ToDo compare config file stuffs with sensors stuffs
 
 
 if __name__ == '__main__':
@@ -873,7 +896,6 @@ if __name__ == '__main__':
 
     # start the receiver thread
     logger.info('Initialising SPEAD transports for data:')
-
     corr_rx = CorrReceiver(
         config_file=args.config,
         baselines=args.baselines,
