@@ -213,13 +213,13 @@ class BEngineOperations(object):
         except AttributeError:
             return {}
 
-   def get_pack_status(self):
+    def get_pack_status(self):
         """
         Get the status of all the pack blocks in the beamformer system.
         Returns a dictionary, indexed by beam name, of all the engines' states
         """
         rv={}
         for beam in self.beams.itervalues():
-            rv{beam.name}=THREADED_FPGA_FUNC(self.hosts, 5, ('get_pack_status',
+            rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_pack_status',
                                            [beam.index], {}))
         return rv
