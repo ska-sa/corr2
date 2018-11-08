@@ -203,3 +203,23 @@ class BEngineOperations(object):
         return vals.values()[0]
 
 
+    def get_version_info(self):
+        """
+        Get the version information for the hosts
+        :return: a dict of {file: version_info, }
+        """
+        try:
+            return self.hosts[0].get_version_info()
+        except AttributeError:
+            return {}
+
+   def get_pack_status(self):
+        """
+        Get the status of all the pack blocks in the beamformer system.
+        Returns a dictionary, indexed by beam name, of all the engines' states
+        """
+        rv={}
+        for beam in self.beams.itervalues():
+            rv{beam.name}=THREADED_FPGA_FUNC(self.hosts, 5, ('get_pack_status',
+                                           [beam.index], {}))
+        return rv
