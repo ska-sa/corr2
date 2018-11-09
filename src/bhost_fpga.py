@@ -130,3 +130,13 @@ class FpgaBHost(FpgaXHost):
         reg.write(txen=True)
         self.logger.debug('%s:%i: Beam %i: Output enabled' % (
                         self.host, self.index, beam_index))
+
+    def get_pack_status(self,beam_index):
+        """
+        Get the status of the beamformer pack blocks.
+        """
+        rv=[]
+        for engine_index in range(self.beng_per_host):
+            reg = self.registers['sys{}_bf_pack_out{}_status'.format(engine_index,beam_index)]
+            rv.append(reg.read()['data'])
+        return rv
