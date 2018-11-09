@@ -36,13 +36,12 @@ class AdcData(object):
         self.data = data
 
 
-def delay_get_bitshift():
+def delay_get_bitshift(bitshift_schedule=23):
     """
     :return: Returns the scale factor used in the delay calculations
             due to bitshifting (nominally 2**23).
     """
     # TODO should this be in config file?
-    bitshift_schedule = 23
     bitshift = (2**bitshift_schedule)
     return bitshift
 
@@ -224,7 +223,6 @@ class Fengine(object):
         """
         delay is in samples.
         """
-        bitshift = delay_get_bitshift()
         delay_reg = self.host.registers['delay%i' % self.offset]
 
         #figure out register offsets and widths
@@ -251,7 +249,7 @@ class Fengine(object):
     def _delay_write_delay_rate(self, delay_rate):
         """
         """
-        bitshift = delay_get_bitshift()
+        bitshift = delay_get_bitshift(bitshift_schedule=23)
         delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
         # shift up by amount shifted down by on fpga
         delta_delay_shifted = float(delay_rate) * bitshift

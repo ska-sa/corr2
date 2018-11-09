@@ -711,6 +711,8 @@ class FxCorrelator(Instrument):
             rv['fengine_firmware_' + fname] = (fver, '')
         for fname, fver in self.xops.get_version_info():
             rv['xengine_firmware_' + fname] = (fver, '')
+        for fname, fver in self.bops.get_version_info():
+            rv['bengine_firmware_' + fname] = (fver, '')
         return rv
 
 # end
