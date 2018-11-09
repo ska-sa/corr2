@@ -76,7 +76,7 @@ class Beam(SPEADStream):
         beam_address.ip_range = num_beng
 
         obj = cls(beam_name, int(beam_dict['stream_index']), beam_address,
-                  *args, **kwargs)
+                  instrument_descriptor=fengops.corr.descriptor, *args, **kwargs)
         obj.config = beam_dict
         obj.hosts = bhosts
         obj.speadops = speadops

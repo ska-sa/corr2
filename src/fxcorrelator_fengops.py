@@ -38,7 +38,8 @@ class FengineStream(SPEADStream):
         self.fops = fops
         self.timeout = timeout
         super(FengineStream, self).__init__(
-            name, FENGINE_CHANNELISED_DATA, destination, **kwargs)
+            name, FENGINE_CHANNELISED_DATA, destination,
+            instrument_descriptor=self.fops.corr.descriptor, **kwargs)
 
     def descriptors_setup(self):
         """

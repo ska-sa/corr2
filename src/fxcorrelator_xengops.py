@@ -33,6 +33,7 @@ class XengineStream(data_stream.SPEADStream):
         self.xops = xops
         super(XengineStream, self).__init__(name,
             data_stream.XENGINE_CROSS_PRODUCTS, destination,
+            instrument_descriptor=self.xops.corr.descriptor,
             *args, **kwargs)
 
     def descriptors_setup(self):

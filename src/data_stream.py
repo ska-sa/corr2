@@ -139,8 +139,11 @@ class SPEADStream(object):
         """
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
-
-        logger_name = '{}_SPEADStream'.format(name)
+        try:
+            instrument_descriptor = kwargs['instrument_descriptor']
+            logger_name = '{}.{}_SPEADStream'.format(instrument_descriptor, name)
+        except KeyError:
+            logger_name = '{}_SPEADStream'.format(name)
         # Why is logging defaulted to INFO, what if I do not want to see the info logs?
         logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,

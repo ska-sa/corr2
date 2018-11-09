@@ -12,6 +12,7 @@ class DigitiserStream(SPEADStream):
         self.correlator = correlator
         super(DigitiserStream, self).__init__(name,
             DIGITISER_ADC_SAMPLES, destination,
+            instrument_descriptor=correlator.descriptor,
             *args, **kwargs)
 
     def __str__(self):
