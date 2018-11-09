@@ -112,12 +112,8 @@ class LoggingClass(object):
         name = '.'.join([_file_name, self.__class__.__name__])
         try:
             logger = logging.getLogger(name)
-            if not len(logger.handlers):
-                handler = logging.StreamHandler()
-                handler.setLevel(getattr(logging, self.log_level))
-                formatter = coloredlogs.ColoredFormatter(fmt=log_format, datefmt='%Y.%m.%d %H:%M:%S')
-                handler.setFormatter(formatter)
-                logger.addHandler(handler)
+            coloredlogs.install(level=getattr(logging, self.log_level),
+                fmt=log_format, datefmt='%Y.%m.%d %H:%M:%S')
             return logger
         except AttributeError:
             raise RuntimeError('No such log level: %s' % self.log_level)
@@ -506,27 +502,64 @@ class CorrReceiver(LoggingClass, threading.Thread):
         n_substreams = self._stop_substream - self._strt_substream + 1
         n_chans_per_substream = self.corrVars.baseline_correlation_products_n_chans_per_substream
         chan_offset = n_chans_per_substream * self._strt_substream
+        prev_ts = None
+        ts_wrap_offset = 0        # Value added to compensate for CBF timestamp wrapping
+        ts_wrap_period = 2**48
+
         if 'xeng_raw' not in ig.keys():
+            self.logger.debug("CBF non-data heap received on stream ?")
             return None
+
         if ig['xeng_raw'] is None:
+            self.logger.warning("CBF Xengine data Null and Void.")
             return None
+
         xeng_raw = ig['xeng_raw'].value
         if xeng_raw is None:
+            self.logger.warning("CBF Xengine data Null and Void.")
+            return None
+
+        if 'timestamp' not in ig.keys():
+            self.logger.warning("CBF heap without timestamp received on stream ?",)
+            return None
+
+        if 'frequency' not in ig.keys():
+            self.logger.warning("CBF heap without frequency received on stream ?")
             return None
 
         self.logger.info('PROCESSING %i BASELINES, %i CHANNELS' % (len(baselines),
                                                                    channels[1] - channels[0]))
-        this_time = ig['timestamp'].value
+        data_ts = ig['timestamp'].value + ts_wrap_offset
         this_freq = ig['frequency'].value
+
+        if prev_ts is not None and data_ts < prev_ts - ts_wrap_period // 2:
+            # This happens either because packets ended up out-of-order,
+            # or because the CBF timestamp wrapped. Out-of-order should
+            # jump backwards a tiny amount while wraps should jump back by
+            # close to ts_wrap_period.
+            ts_wrap_offset += ts_wrap_period
+            data_ts += ts_wrap_period
+            self.logger.warning('Data timestamps wrapped')
+        elif prev_ts is not None and data_ts > prev_ts + ts_wrap_period // 2:
+            # This happens if we wrapped, then received another heap
+            # (probably from a different X engine) from before the
+            # wrap. We need to undo the wrap.
+            ts_wrap_offset -= ts_wrap_period
+            data_ts -= ts_wrap_period
+            self.logger.warning('Data timestamps reverse wrapped')
+        self.logger.debug('Received heap with timestamp %s on stream x, channel %s' % (data_ts, this_freq))
+        prev_ts = data_ts
+        # we have new data...
+
         # start a new heap for this timestamp if it's not in our data
-        if this_time not in heap_data:
-            heap_data[this_time] = {}
-        if this_time in heap_data:
-            if this_freq in heap_data[this_time]:
+        if data_ts not in heap_data:
+            heap_data[data_ts] = {}
+        if data_ts in heap_data:
+            if this_freq in heap_data[data_ts]:
                 # already have this frequency - this seems to be a bug
                 errstr = ('ERROR: time(%i) freq(%i) - repeat freq data received: ' % (
-                    this_time, this_freq))
-                old_data = heap_data[this_time][this_freq]
+                    data_ts, this_freq))
+                old_data = heap_data[data_ts][this_freq]
                 if np.shape(old_data) != np.shape(xeng_raw):
                     errstr += ' DIFFERENT DATA SHAPE'
                 else:
@@ -537,7 +570,7 @@ class CorrReceiver(LoggingClass, threading.Thread):
                 self.logger.error(errstr)
             else:
                 # save the frequency for this timestamp
-                heap_data[this_time][this_freq] = xeng_raw
+                heap_data[data_ts][this_freq] = xeng_raw
         # housekeeping - are there older heaps in the data?
         if len(heap_data) > 5:
             self.logger.info('Culling stale timestamps:')
@@ -576,13 +609,7 @@ class CorrReceiver(LoggingClass, threading.Thread):
                 'Processing xeng_raw heap with time 0x%012x (%.2fs since epoch) and shape: %s' % (
                     ig['timestamp'].value, time_s, str(np.shape(xeng_raw))))
             heap_data.pop(htime)
-            # TODO scaling
-            # scale_factor = float(ig['scale_factor_timestamp'].value)
-            # sd_timestamp = ig['sync_time'].value + (ig['timestamp'].value /
-            #                                         scale_factor)
-            # logger.info('(%s) timestamp %i => %s' % (
-            #     time.ctime(), ig['timestamp'].value, time.ctime(sd_timestamp)))
-            # /TODO scaling
+
             baseline_data = []
             baseline_phase = []
             for baseline in baselines:
