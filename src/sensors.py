@@ -989,22 +989,24 @@ class Corr2SensorManager(SensorManager):
 
         #TODO: This is a bit nasty. Should detect what type of engines are in
         #      the build, and get version info for those engines types only.
-        hosts = [('fengine', self.instrument.fhosts[0]),
-                 ('bengine', self.instrument.xhosts[0]),
-                 ('xengine', self.instrument.xhosts[0])]
+        hosts = [('f', self.instrument.fhosts[0]),
+                 ('b', self.instrument.xhosts[0]),
+                 ('x', self.instrument.xhosts[0])]
+
         for _htype, _h in hosts:
             if 'git' in _h.rcs_info:
                 filectr = 0
                 for gitfile, gitparams in _h.rcs_info['git'].items():
                     for param, value in gitparams.items():
-                        sensname = 'git-' + _htype + '-' + str(filectr)
-                        sensor = Corr2Sensor.string(
-                            name=sensname,description='Git info.',
-                            initial_status=Sensor.UNKNOWN,
-                            manager=self)
-                        self.sensor_create(sensor)
-                        sensor.set_value(str(param)+':'+str(value))
-                        filectr += 1
+                        if param != "tag":
+                            sensname = 'git-' + _htype + '-' + str(filectr)
+                            sensor = Corr2Sensor.string(
+                                name=sensname, description='Git info.',
+                                initial_status=Sensor.UNKNOWN,
+                                manager=self)
+                            self.sensor_create(sensor)
+                            sensor.set_value(str(param)+':'+str(value))
+                            filectr += 1
 
         self.sensors_xeng_streams()
 
