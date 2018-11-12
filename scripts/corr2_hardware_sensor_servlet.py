@@ -14,7 +14,6 @@ import tornado.gen as gen
 
 from corr2 import sensors
 from corr2.sensors import Corr2Sensor
-from corr2.utils import KatcpStreamHandler
 from concurrent.futures import ThreadPoolExecutor
 
 LOGGER = logging.getLogger(__name__)
@@ -218,22 +217,6 @@ if __name__ == '__main__':
         log_level = getattr(logging, args.loglevel)
     except BaseException:
         raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
-
-    # set up the logger
-    corr2_sensors_logger = logging.getLogger('hardware_sensors')
-    corr2_sensors_logger.setLevel(log_level)
-    if args.lfm or (not sys.stdout.isatty()):
-        console_handler = KatcpStreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        corr2_sensors_logger.addHandler(console_handler)
-    else:
-        console_handler = logging.StreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - '
-                                      '%(filename)s:%(lineno)s - '
-                                      '%(levelname)s - %(message)s')
-        console_handler.setFormatter(formatter)
-        corr2_sensors_logger.addHandler(console_handler)
 
     ioloop = IOLoop.current()
     sensor_server = Corr2HardwareSensorServer(
