@@ -131,7 +131,7 @@ class FpgaBHost(FpgaXHost):
         self.logger.debug('%s:%i: Beam %i: Output enabled' % (
                         self.host, self.index, beam_index))
 
-    def get_pack_status(self,beam_index):
+    def get_bpack_status(self,beam_index):
         """
         Get the status of the beamformer pack blocks.
         """
