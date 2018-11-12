@@ -10,6 +10,8 @@ from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
 
 from katcp import Sensor, Message
 
+from corr2.corr2LogHandlers import getKatcpLogger
+
 import data_stream
 
 # LOGGER = logging.getLogger(__name__)
@@ -189,9 +191,15 @@ class SensorManager(object):
         self.katcp_server = katcp_server
         self.instrument = instrument
 
-        # The instrument already has a .getLogger attribute
-        self.getLogger = instrument.getLogger
-        logger_name = '{}_sensor_manager'.format(instrument.descriptor)
+        if instrument == None:
+            # You are a strong, independent SensorManager
+            self.getLogger = getKatcpLogger
+            logger_name = '{}_sensor_manager'.format(katcp_server.host.host)
+        else:
+            # The instrument already has a getLogger attribute
+            self.getLogger = instrument.getLogger
+            logger_name = '{}_sensor_manager'.format(instrument.descriptor)
+
         # Why is logging defaulted to INFO, what if I do not want to see the info logs?
         logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
