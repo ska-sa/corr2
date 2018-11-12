@@ -1008,6 +1008,13 @@ class Corr2SensorManager(SensorManager):
                             sensor.set_value(str(param)+':'+str(value))
                             filectr += 1
 
+            sensor = Corr2Sensor.string(
+                name="{}engine-bitstream".format(_htype), description="FPGA bitstream file.",
+                initial_status=Sensor.UNKNOWN,
+                manager=self)
+            self.sensor_create(sensor)
+            sensor.set_value(str(_h.bitstream))
+
         self.sensors_xeng_streams()
 
         self.sensors_feng_streams()
