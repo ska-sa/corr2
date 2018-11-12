@@ -33,6 +33,7 @@ class XengineStream(data_stream.SPEADStream):
         self.xops = xops
         super(XengineStream, self).__init__(name,
             data_stream.XENGINE_CROSS_PRODUCTS, destination,
+            instrument_descriptor=self.xops.corr.descriptor,
             *args, **kwargs)
 
     def descriptors_setup(self):
@@ -138,9 +139,12 @@ class XEngineOperations(object):
 
         # Now creating separate instances of loggers as needed
         logger_name = '{}_XEngOps'.format(corr_obj.descriptor)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+
         # All 'Instrument-level' objects will log at level INFO
         result, self.logger = corr_obj.getLogger(logger_name=logger_name,
-                                                 log_level=INFO, **kwargs)
+                                                 log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -378,7 +382,7 @@ class XEngineOperations(object):
     def _vacc_sync_calc_load_mcount(self, vacc_loadtime, phase_sync=True):
         """
         Calculate the loadtime in clock ticks,
-         from a vacc_loadtime in seconds since the unix epoch. 
+         from a vacc_loadtime in seconds since the unix epoch.
         Accounts for quantisation due to Feng PFB.
         :param vacc_loadtime:
         :return:
@@ -396,7 +400,7 @@ class XEngineOperations(object):
             n_accs=int(((ldmcnt-last_loadmcnt)>>(quantisation_bits))/acc_len)+1
             self.logger.info("Attempting to phase-up VACC at acc_cnt {} since {}.".format(n_accs,last_loadmcnt))
             ldmcnt=last_loadmcnt+(((n_accs)*acc_len-1)<<quantisation_bits)
-            
+
         self.logger.debug('$$$$$$$$$$$ - quant bits = %i' % quantisation_bits)
         ldmcnt = ((ldmcnt >> quantisation_bits) + 1) << quantisation_bits
         self.logger.debug('$$$$$$$$$$$ - ldmcnt quantised = %i' % ldmcnt)
@@ -550,7 +554,7 @@ class XEngineOperations(object):
     def get_acc_time(self):
         """
         Get the dump time currently being used.
-    
+
         Note: Will only be correct if accumulation time was set using this
         correlator
         object instance since cached values are used for the calculation.

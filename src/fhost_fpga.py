@@ -13,7 +13,7 @@ from host_fpga import FpgaHost
 # from corr2LogHandlers import getLogger
 
 #TODO: move snapshots from fhost obj to feng obj?
-#   -> not sensible while trig_time registers are shared for adc snapshots.    
+#   -> not sensible while trig_time registers are shared for adc snapshots.
 
 
 
@@ -36,13 +36,12 @@ class AdcData(object):
         self.data = data
 
 
-def delay_get_bitshift():
+def delay_get_bitshift(bitshift_schedule=23):
     """
-    :return: Returns the scale factor used in the delay calculations 
+    :return: Returns the scale factor used in the delay calculations
             due to bitshifting (nominally 2**23).
     """
     # TODO should this be in config file?
-    bitshift_schedule = 23
     bitshift = (2**bitshift_schedule)
     return bitshift
 
@@ -71,13 +70,15 @@ class Fengine(object):
             descriptor = kwargs['descriptor']
         except KeyError:
             descriptor = 'InstrumentName'
-        
+
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
-        
+
         logger_name = '{}_feng{}-{}'.format(descriptor, str(self.feng_id), input_stream.name)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -110,7 +111,7 @@ class Fengine(object):
     @input_number.setter
     def input_number(self, value):
         raise NotImplementedError('This is not currently defined.')
-    
+
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
@@ -175,7 +176,7 @@ class Fengine(object):
 
     def _arm_timed_latch(self, name, mcnt=None):
         """
-        Arms the delay correction timed latch. 
+        Arms the delay correction timed latch.
         Optimisations bypass normal register bitfield operations.
         :param names: name of latch to trigger
         :param mcnt: sample mcnt to trigger at. If None triggers immediately
@@ -204,11 +205,11 @@ class Fengine(object):
 ##TODO: Only return useful values if they actually loaded?
 #    def delay_get(self):
 #        """
-#        Store in local variables (and return) the values that were 
+#        Store in local variables (and return) the values that were
 #        written into the various FPGA load registers.
 #        :return:
 #        """
-#        
+#
 #        bitshift = delay_get_bitshift()
 #        delay_reg = self.host.registers['delay%i' % self.offset]
 #        delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
@@ -222,7 +223,6 @@ class Fengine(object):
         """
         delay is in samples.
         """
-        bitshift = delay_get_bitshift()
         delay_reg = self.host.registers['delay%i' % self.offset]
 
         #figure out register offsets and widths
@@ -231,14 +231,14 @@ class Fengine(object):
 
         max_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
         if delay < 0:
-            self.logger.warn('Setting smallest delay of 0. Requested %f samples.' % 
+            self.logger.warn('Setting smallest delay of 0. Requested %f samples.' %
                 (delay))
             delay = 0
         elif delay > max_delay:
             self.logger.warn('Setting largest possible delay. Requested %f samples, set %f.' %
                 (delay,max_delay))
             delay = max_delay
-        
+
         #prepare the register:
         prep_int=int(delay*(2**reg_bp))&((2**reg_bw)-1)
         act_value = (float(prep_int)/(2**reg_bp))
@@ -249,7 +249,7 @@ class Fengine(object):
     def _delay_write_delay_rate(self, delay_rate):
         """
         """
-        bitshift = delay_get_bitshift()
+        bitshift = delay_get_bitshift(bitshift_schedule=23)
         delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
         # shift up by amount shifted down by on fpga
         delta_delay_shifted = float(delay_rate) * bitshift
@@ -301,12 +301,12 @@ class Fengine(object):
         max_negative_phase = -2 ** (initial_reg_bw - initial_reg_bp - 1) + 1 / float(2 ** initial_reg_bp)
         if phase > max_positive_phase:
             self.logger.warn('Setting largest possible positive phase. '
-                        'Requested: %e*pi radians, set %e.' % 
+                        'Requested: %e*pi radians, set %e.' %
                         (phase, max_positive_phase))
             phase = max_positive_phase
         elif phase < max_negative_phase:
             self.logger.warn('Setting largest possible negative phase. '
-                        'Requested: %e*pi radians, set %e.' % 
+                        'Requested: %e*pi radians, set %e.' %
                         (phase, max_negative_phase))
             phase = max_negative_phase
 
@@ -403,7 +403,7 @@ class FpgaFHost(FpgaHost):
     """
     def __init__(self, host, katcp_port=7147, bitstream=None,
                  connect=True, config=None, **kwargs):
-        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port, 
+        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port,
                                         bitstream=bitstream,
                                         transport=SkarabTransport,
                                         connect=connect)
@@ -423,10 +423,12 @@ class FpgaFHost(FpgaHost):
 
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
-        
+
         logger_name = '{}_fhost-{}-{}'.format(descriptor, str(self.fhost_index), host)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -471,7 +473,7 @@ class FpgaFHost(FpgaHost):
         msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
         rv = (msw << 32) | lsw
         return rv
-    
+
     def clear_status(self):
         """
         Clear the status registers and counters on this host
@@ -499,7 +501,7 @@ class FpgaFHost(FpgaHost):
         if autoresync:
             self.registers.control.write(time_diff_check_en=True)
         return
-        
+
 
     def add_fengine(self, fengine):
         """
@@ -587,12 +589,12 @@ class FpgaFHost(FpgaHost):
         """
         Retrieve all the Corner-Turner registers.
         returns a list (one per pol on board) of status dictionaries.
-        """ 
+        """
         rv={}
         for i in range(5):
             rv.update(self.registers['hmc_ct_status%i' %i].read()['data'])
         return rv
-        
+
     def get_pfb_status(self):
         """
         Returns the pfb counters on f-eng
@@ -607,7 +609,7 @@ class FpgaFHost(FpgaHost):
         :param timeout: timeout in seconds for snapshot read operation.
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
-        if input_name != None: 
+        if input_name != None:
             fengine = self.get_fengine(input_name)
         if loadcnt>0:
             self.logger.info("Triggering ADC snapshot at %i"%loadcnt)
@@ -687,8 +689,8 @@ class FpgaFHost(FpgaHost):
     def subscribe_to_multicast(self):
         """
         Subscribe a skarab to its multicast input addresses.
-        Assumes first 40G interface on SKARAB. 
-        :return: 
+        Assumes first 40G interface on SKARAB.
+        :return:
         """
         gbe0_name = self.gbes.names()[0]
         first_ip = self.fengines[0].input.destination.ip_address

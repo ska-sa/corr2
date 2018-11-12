@@ -65,10 +65,10 @@ class Corr2Sensor(Sensor):
                  params=None, default=None, initial_status=None,
                  manager=None, executor=None,
                  *args, **kwargs):
-        
+
         # Log to the parent SensorManager.logger for now
         self.logger = manager.logger
-        
+
         if '_' in name:
             self.logger.debug('Sensor names cannot have underscores in them, '
                          'so {name} becomes {name_conv}'.format(
@@ -96,7 +96,7 @@ class Corr2Sensor(Sensor):
         :param warnif: set status to WARNING if value 'changed' or 'notchanged'.
         :return:
         """
-	
+
         status_none = 0
         if value is None:
             raise ValueError('Cannot set a sensor to None')
@@ -113,7 +113,7 @@ class Corr2Sensor(Sensor):
         if (value==False):
             if (errif == 'False'):
                 self.logger.error('Sensor error: {} is False'.format(self.name))
-		if(status_none == 1 ): 
+		if(status_none == 1 ):
 		    status = Sensor.ERROR
             elif (warnif == 'False'):
                 self.logger.warn('Sensor warning: {} is False'.format(self.name))
@@ -192,8 +192,10 @@ class SensorManager(object):
         # The instrument already has a .getLogger attribute
         self.getLogger = instrument.getLogger
         logger_name = '{}_sensor_manager'.format(instrument.descriptor)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format()
@@ -396,13 +398,6 @@ class Corr2SensorManager(SensorManager):
                 '{eng}-{iface}-details'.format(eng=eng, iface=iface),
                 '{prf} (MAC,IP,port)'.format(prf=dpref))
             sensor.set_value(sensor_value)
-
-            sensor = self.do_sensor(
-                Corr2Sensor.string,
-                '{eng}-{iface}-multicast-subscriptions'.format(
-                    eng=eng, iface=iface),
-                '{prf} multicast subscriptions'.format(prf=dpref))
-            sensor.set_value(str(host.gbes[iface].multicast_subscriptions))
 
         for ctr, host in enumerate(self.instrument.fhosts):
             for gbe in host.gbes:
@@ -625,7 +620,7 @@ class Corr2SensorManager(SensorManager):
         pref = '{strm}-input{npt}'.format(strm=strmnm, npt=feng.input_number)
         sensor = self.do_sensor(
             Corr2Sensor.string, '{}-delay'.format(pref),
-            'The delay settings for this input: (load_mcnt <ADC sample count when model was loaded>, delay <in seconds>, '
+            'The delay settings for this input: (loadmcnt <ADC sample count when model was loaded>, delay <in seconds>, '
             'delay-rate <unit-less, or, seconds-per-second>, phase <radians>, phase-rate <radians per second>).')
        # err_sensor = self.do_sensor(
        #     Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
@@ -822,6 +817,11 @@ class Corr2SensorManager(SensorManager):
             tmp = beam.source_indices
             sensor.set_value(str(tmp))
 
+            sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
+                'Number of channels in the stream.')
+            sensor.set_value(self.instrument.n_chans)
+
         self.sensors_beng_weights()
         self.sensors_beng_gains()
 
@@ -977,24 +977,43 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value('({start},{end})'.format(
                 start=bid * chans_per_x, end=(bid + 1) * chans_per_x - 1))
 
-        # hosts = [('fengine', self.instrument.fhosts[0]),
-        #          ('xengine', self.instrument.xhosts[0])]
-        # for _htype, _h in hosts:
-        #     if 'git' in _h.rcs_info:
-        #         filectr = 0
-        #         for gitfile, gitparams in _h.rcs_info['git'].items():
-        #             namepref = 'git-' + _htype + '-' + str(filectr)
-        #             for param, value in gitparams.items():
-        #                 sensname = namepref + '-' + param
-        #                 sensname = sensname.replace('_', '-')
-        #                 sensor = Corr2Sensor.string(
-        #                     name=sensname,
-        #                     description='Git info: %s' % sensname,
-        #                     initial_status=Sensor.UNKNOWN,
-        #                     manager=self)
-        #                 self.sensor_create(sensor)
-        #                 sensor.set_value(str(value))
-        #             filectr += 1
+            sensor = Corr2Sensor.string(
+                name='beng-host{}-chan-range'.format(bid),
+                description='The range of frequency channels processed '
+                            'by beng board {brd}, inclusive.'.format(brd=bid),
+                initial_status=Sensor.UNKNOWN,
+                manager=self)
+            self.sensor_create(sensor)
+            sensor.set_value('({start},{end})'.format(
+                start=bid * chans_per_x, end=(bid + 1) * chans_per_x - 1))
+
+        #TODO: This is a bit nasty. Should detect what type of engines are in
+        #      the build, and get version info for those engines types only.
+        hosts = [('f', self.instrument.fhosts[0]),
+                 ('b', self.instrument.xhosts[0]),
+                 ('x', self.instrument.xhosts[0])]
+
+        for _htype, _h in hosts:
+            if 'git' in _h.rcs_info:
+                filectr = 0
+                for gitfile, gitparams in _h.rcs_info['git'].items():
+                    for param, value in gitparams.items():
+                        if param != "tag":
+                            sensname = 'git-' + _htype + '-' + str(filectr)
+                            sensor = Corr2Sensor.string(
+                                name=sensname, description='Git info.',
+                                initial_status=Sensor.UNKNOWN,
+                                manager=self)
+                            self.sensor_create(sensor)
+                            sensor.set_value(str(param)+':'+str(value))
+                            filectr += 1
+
+            sensor = Corr2Sensor.string(
+                name="{}engine-bitstream".format(_htype), description="FPGA bitstream file.",
+                initial_status=Sensor.UNKNOWN,
+                manager=self)
+            self.sensor_create(sensor)
+            sensor.set_value(str(_h.bitstream))
 
         self.sensors_xeng_streams()
 

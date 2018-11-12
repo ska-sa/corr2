@@ -38,7 +38,8 @@ class FengineStream(SPEADStream):
         self.fops = fops
         self.timeout = timeout
         super(FengineStream, self).__init__(
-            name, FENGINE_CHANNELISED_DATA, destination, **kwargs)
+            name, FENGINE_CHANNELISED_DATA, destination,
+            instrument_descriptor=self.fops.corr.descriptor, **kwargs)
 
     def descriptors_setup(self):
         """
@@ -135,10 +136,13 @@ class FEngineOperations(object):
 
         # Now creating separate instances of loggers as needed
         logger_name = '{}_FEngOps'.format(corr_obj.descriptor)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+
         # All 'Instrument-level' objects will log at level INFO
         # - corr_obj already has it, might as well use it
         result, self.logger = corr_obj.getLogger(logger_name=logger_name,
-                                                 log_level=INFO, **kwargs)
+                                                 log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)

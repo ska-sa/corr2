@@ -124,7 +124,8 @@ class Corr2Server(katcp.DeviceServer):
             # Function created to reassign all non-conforming log-handlers
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
                                                     log_filename=self.log_filename, 
-                                                    log_file_dir=self.log_file_dir)
+                                                    log_file_dir=self.log_file_dir,
+                                                    instrument_name=self.instrument.descriptor)
 
             return 'ok',
         except Exception as ex:
@@ -187,7 +188,8 @@ class Corr2Server(katcp.DeviceServer):
             # Once more, for completeness
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
                                                     log_filename=self.log_filename, 
-                                                    log_file_dir=self.log_file_dir)
+                                                    log_file_dir=self.log_file_dir,
+                                                    instrument_name=self.instrument.descriptor)
 
             return 'ok',
         except Exception as ex:
@@ -817,9 +819,8 @@ class Corr2Server(katcp.DeviceServer):
 
         all_loggers = get_all_loggers()
 
-        import IPython; IPython.embed()
-
-        logger_names = all_loggers.keys()
+        # logger_names = all_loggers.keys()
+        logger_names = [logger.name for logger in all_loggers.values() if type(logger) != logging.PlaceHolder]
 
         # return_string = '\n'.join(logger_names)
         return 'ok', logger_names
