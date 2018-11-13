@@ -53,8 +53,8 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
                 log_file_dir = os.path.abspath('.')
             else:
                 log_file_dir = '/var/log/skarab'
-		
-	    start_time = str(time.time())
+
+            start_time = str(time.time())
             log_filename = '{}_hardware_sensor_servlet.log'.format(kwargs['skarab_host'])
 
             self.sensor_manager = corr2.sensors.SensorManager(self, instrument=None,
@@ -75,7 +75,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
                 is_sensor_list_status_ok(sensordict)) else 'ERROR'
             sensordict['device-status'] = (0, '', device_status)
 
-		
+
             for key, value in sensordict.iteritems():
                 try:
                     if isinstance(value[0], float):
@@ -97,7 +97,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
                     raise e
 
     def start_sensor_loop(self):
-    	IOLoop.current().add_callback(
+        IOLoop.current().add_callback(
             _sensor_cb_hw,
             self.executor,
             self.sensors,
@@ -114,24 +114,24 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
     @request()
     @return_reply()
     def request_ping(self, sock):
-	"""
-	Just ping the server
-	:param sock:
-	:return: 'ok'
-	"""
-	return 'ok',
+        """
+        Just ping the server
+        :param sock:
+        :return: 'ok'
+        """
+        return 'ok',
 
-    @request() 
-    @return_reply(Str()) 
-    def request_reset_hardware_platform(self, sock): 
-	""" 
-	Reset the skarab and checks if it is in a reset state. 
-	:param sock: 
-	:return: {'ok,'fail'}
-	""" 
-	self.host.logger.info('Reseting Skarab: {}'.format(self.host.host))
-	self.host.transport.reset_fpga() 
-	return ('ok','Reset Successful')
+    @request()
+    @return_reply(Str())
+    def request_reset_hardware_platform(self, sock):
+        """
+        Reset the skarab and checks if it is in a reset state.
+        :param sock:
+        :return: {'ok,'fail'}
+        """
+        self.host.logger.info('Reseting Skarab: {}'.format(self.host.host))
+        self.host.transport.reset_fpga()
+        return ('ok', 'Reset Successful')
 
 
 
@@ -147,19 +147,19 @@ def get_physical_location(ipAddress):
         leafBaseRU = 24
 
     rackColumn = 'B'
-    rackRow = int((leafNo-1) // 2)
+    rackRow = int((leafNo - 1) // 2)
     #print(rackRow)
     rackUnit = leafBaseRU + switchPort
     if(switchPort > 8):
-    	rackUnit += 1
+        rackUnit += 1
 
     hardwareLocation = '{}{:02}:{:02}'.format(rackColumn, rackRow, rackUnit)
 
     errorStatus = 'OK'
     if(rackColumn != 'B' or rackRow < 2 or rackRow > 10
-        or rackUnit < 7 or rackUnit > 41
-        or rackUnit == 15 or rackUnit == 24 or rackUnit == 33):
-	errorStatus = 'ERROR'
+            or rackUnit < 7 or rackUnit > 41
+            or rackUnit == 15 or rackUnit == 24 or rackUnit == 33):
+        errorStatus = 'ERROR'
 
     return (hardwareLocation, 'string', errorStatus)
 
@@ -174,7 +174,8 @@ def parse_boot_image_return(tuple):
         imageType = 'multiboot'
     else:
         imageType = 'toolflow'
-    return (imageType,'',errorStatus)
+    return (imageType, '', errorStatus)
+
 
 def is_sensor_list_status_ok(sensors_dict):
     for key, values in sensors_dict.iteritems():
@@ -190,7 +191,8 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
     :param sensors: per-host dict of sensors
     :return:
     """
-    print('Running Loop')
+    #print('Running Loop')
+
     def set_failure():
         for key, sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,
@@ -216,7 +218,7 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
     # Server Generated Sensors
     server_sensors_dict = {}
     server_sensors_dict['location'] = rack_location_tuple
-    try :
+    try:
         server_sensors_dict['boot_image'] = parse_boot_image_return(host.transport.get_virtex7_firmware_version())
     except Exception as e:
         host.logger.error('Error connecting to host {} - {}'.format(host.host, e.message))
@@ -225,8 +227,8 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
             executor, sensors, host, rack_location_tuple)
         return
 
-    onBoardSensorsOk=is_sensor_list_status_ok(results);
-    serverSensorsOk=is_sensor_list_status_ok(server_sensors_dict);
+    onBoardSensorsOk = is_sensor_list_status_ok(results)
+    serverSensorsOk = is_sensor_list_status_ok(server_sensors_dict)
 
     device_status = 'OK'
     if(not onBoardSensorsOk or not serverSensorsOk):
@@ -234,15 +236,15 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
 
     server_sensors_dict['device-status'] = (0, '', device_status)
 
-	# Determine Device Status
+    # Determine Device Status
     for key, value in server_sensors_dict.iteritems():
         try:
             status = Corr2Sensor.NOMINAL if value[2] == 'OK' else Corr2Sensor.ERROR
             sensors[key].set(value=value[0], status=status)
         except Exception as e:
             host.logger.error('Error updating {}-{} sensor '
-						'- {}'.format(host.host, key, e.message))
-        
+                              '- {}'.format(host.host, key, e.message))
+
     host.logger.debug('sensorloop ran')
     IOLoop.current().call_later(10, _sensor_cb_hw,
             executor, sensors, host, rack_location_tuple)
@@ -309,7 +311,7 @@ if __name__ == '__main__':
     #root_logger.addHandler(console_handler)
 
     server = Corr2HardwareSensorServer('127.0.0.1', args.port, tornado=(not args.no_tornado),
-										  skarab_host=args.host, log_here=args.log_here)
+                                       skarab_host=args.host, log_here=args.log_here)
     print('Server listening on port {} '.format(args.port, end=''))
 
     # def boop():
