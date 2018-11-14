@@ -471,12 +471,13 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(None).values()[0]
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
-    @request(Float(default=-1.0), Str(default='', multiple=True))
+    @request(Str(), Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
-    def request_delays(self, sock, loadtime, *delay_strings):
+    def request_delays(self, sock, stream_name, loadtime, *delay_strings):
         """
         Set delays for the instrument.
         :param sock:
+        :param stream_name: the name of the feng stream to adjust.
         :param loadtime: the load time, in seconds
         :param delay_strings: the coefficient set, as a list of strings,
             described in ICD.
@@ -484,8 +485,10 @@ class Corr2Server(katcp.DeviceServer):
         """
         if self.delays_disabled:
             return ('fail', 'delays disabled')
-
+        if stream_name != self.instrument.fops.data_stream.name:
+            return tuple(['fail', ' supplied stream name %s does not match expected %s.'%(stream_name,self.instrument.fops.data_stream.name)])
         try:
+            
             self.instrument.fops.delay_set_all(loadtime, delay_strings)
             return tuple(['ok', ' Model updated. Check sensors after next update to confirm application'])
         except Exception as ex:
