@@ -88,7 +88,7 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
         for beam_no in xrange(len(sens_man.instrument.bops.beams)):
             beam_data = []
             for bhost in sens_man.instrument.xhosts:
-                beam_data.append(bhost.get_bpack_status())
+                beam_data.append(bhost.get_bpack_status(beam_no))
             rv.append((beam_data))
 
 
