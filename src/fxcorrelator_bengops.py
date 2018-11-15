@@ -220,6 +220,6 @@ class BEngineOperations(object):
         """
         rv={}
         for beam in self.beams.itervalues():
-            rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_pack_status',
+            rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_bpack_status',
                                            [beam.index], {}))
         return rv
