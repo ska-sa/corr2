@@ -85,6 +85,8 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
         executor = general_executor
         rv = yield executor.submit(sens_man.instrument.bops.get_pack_status)
 
+        print "\n\nRv:\n{rv}".format(rv=rv)
+
         for beam_name in rv.iterkeys():
 
             for n_bhost, sensordict in enumerate(sensors):
@@ -151,6 +153,8 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
                         executor=executor)}
                 sensors.append(sensordict)
             ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
+
+        print "\n\nSensors:\n{sensors}".format(sensors=sensors)
 
         # LRU ok
         sensor = sens_man.do_sensor(
