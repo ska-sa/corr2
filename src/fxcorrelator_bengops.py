@@ -202,7 +202,6 @@ class BEngineOperations(object):
                 raise RuntimeError('Boards dont all have the same gain! {}'.format(vals))
         return vals.values()[0]
 
-
     def get_version_info(self):
         """
         Get the version information for the hosts

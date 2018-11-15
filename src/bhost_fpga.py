@@ -134,6 +134,9 @@ class FpgaBHost(FpgaXHost):
     def get_bpack_status(self,beam_index):
         """
         Get the status of the beamformer pack blocks.
+
+        :param beam_index: The Beam() on which to act
+        :return a list containing a dictionary for each b-engine's pack status register key-value pairs
         """
         rv=[]
         for engine_index in range(self.beng_per_host):
