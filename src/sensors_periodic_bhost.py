@@ -78,8 +78,6 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
     value = True
     status = Corr2Sensor.NOMINAL
 
-    #import IPython; IPython.embed()
-
     try:
 
         executor = general_executor
@@ -91,23 +89,21 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
                 beam_data.append(bhost.get_bpack_status(beam_no))
             rv.append((beam_data))
 
-
         import IPython; IPython.embed()
-
-        print "\n\nRv:\n{rv}".format(rv=rv)
-
-        for beam_name in rv.iterkeys():
-
-            for n_bhost, sensordict in enumerate(sensors):
-
-                for key in ['fifo_of_err_cnt', 'pkt_cnt']:
-                    print "Trying to take {key} and set its value.".format(key=key)
-                    sensordict[key].set(value=rv[beam_name][n_bhost][key], errif='changed')
-                    print sensordict[key]
-                    if sensordict[key].status() == Corr2Sensor.ERROR:
-                        status = Corr2Sensor.ERROR
-                        value = False
-                    sensordict['device_status'].set(value=value, status=status)
+        # for beam_no, beam_data in enumerate(rv):
+        #
+        #     for bhost_no, bhost_data in enumerate(beam_data):
+        #
+        #         for beng_no, sensordict in enumerate(sensors):
+        #
+        #         for key in ['fifo_of_err_cnt', 'pkt_cnt']:
+        #             print "Trying to take {key} and set its value.".format(key=key)
+        #             sensordict[key].set(value=rv[beam_name][n_bhost][key], errif='changed')
+        #             print sensordict[key]
+        #             if sensordict[key].status() == Corr2Sensor.ERROR:
+        #                 status = Corr2Sensor.ERROR
+        #                 value = False
+        #             sensordict['device_status'].set(value=value, status=status)
 
     except Exception as e:
         print "{}".format(tb.format_exception(*sys.exc_info()))
@@ -135,33 +131,35 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
         host_offset_lookup = host_offset_dict.copy()
 
     # Beng Packetiser block
-    for _b in sens_man.instrument.xhosts:
+    for beamctr in range(len(sens_man.instrument.bops.beams)):
         sensors = []
-        executor = general_executor
-        bhost = host_offset_lookup[_b.host]
-        # print bhost, _b.host
-        # produces: xhost00 skarab020302-01
-        for bctr in range(_b.x_per_fpga):  # TODO alias this to b_per_fpga for consistency
-            for beamctr in range(len(sens_man.instrument.bops.beams)):
-                pref = '{bhost}.beng{bctr}.beam{beamctr}.spead-tx'.format(bhost=bhost, bctr=bctr, beamctr=beamctr)
-                sensordict = {
-                    'device_status': sens_man.do_sensor(
-                        Corr2Sensor.boolean,
-                        '{}.device-status'.format(pref),
-                        'B-engine pack (TX) status',
-                        executor=executor),
-                    'fifo_of_err_cnt': sens_man.do_sensor(
-                        Corr2Sensor.integer,
-                        '{}.fifo-of-err-cnt'.format(pref),
-                        'B-engine pack (TX) FIFO overflow error count',
-                        executor=executor),
-                    'pkt_cnt': sens_man.do_sensor(
-                        Corr2Sensor.integer,
-                        '{}.pkt-cnt'.format(pref),
-                        'B-engine pack (TX) packet count',
-                        executor=executor)}
-                sensors.append(sensordict)
-            ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
+        for _b in sens_man.instrument.xhosts:
+            _sensors = []
+            executor = general_executor
+            bhost = host_offset_lookup[_b.host]
+            # print bhost, _b.host
+            # produces: xhost00 skarab020302-01
+            for bengctr in range(_b.x_per_fpga):  # TODO alias this to b_per_fpga for consistency
+                    pref = 'beam{beamctr}.{bhost}.beng{bengctr}.spead-tx'.format(beamctr=beamctr, bhost=bhost, bengctr=bengctr)
+                    sensordict = {
+                        'device_status': sens_man.do_sensor(
+                            Corr2Sensor.boolean,
+                            '{}.device-status'.format(pref),
+                            'B-engine pack (TX) status',
+                            executor=executor),
+                        'fifo_of_err_cnt': sens_man.do_sensor(
+                            Corr2Sensor.integer,
+                            '{}.fifo-of-err-cnt'.format(pref),
+                            'B-engine pack (TX) FIFO overflow error count',
+                            executor=executor),
+                        'pkt_cnt': sens_man.do_sensor(
+                            Corr2Sensor.integer,
+                            '{}.pkt-cnt'.format(pref),
+                            'B-engine pack (TX) packet count',
+                            executor=executor)}
+                    _sensors.append(sensordict)
+            sensors.append(_sensors)
+        ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
 
         print "\n\nSensors:\n{sensors}".format(sensors=sensors)
 
@@ -170,8 +168,8 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
             Corr2Sensor.boolean, '{}.device-status'.format(bhost),
             'B-engine %s LRU ok' % _b.host, executor=executor)
         #TODO think a little bit more about how this needs to work.
-        # for bctr in range(_b.x_per_fpga):
-        #     pref = '{bhost}.beng{bctr}'.format(bhost=bhost, bctr=bctr)
+        # for bengctr in range(_b.x_per_fpga):
+        #     pref = '{bhost}.beng{bengctr}'.format(bhost=bhost, bengctr=bengctr)
         #     sens_man.do_sensor(
         #         Corr2Sensor.boolean,
         #         '{}.device-status'.format(pref),
