@@ -85,6 +85,13 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
         executor = general_executor
         #rv = yield executor.submit(sens_man.instrument.bops.get_pack_status) # Skip this.
         rv = []
+        for beam_no in xrange(len(sens_man.instrument.bops.beams)):
+            beam_data = []
+            for bhost in sens_man.instrument.xhosts:
+                beam_data.append(bhost.get_bpack_status())
+            rv.append((beam_data))
+
+
         import IPython; IPython.embed()
 
         print "\n\nRv:\n{rv}".format(rv=rv)
