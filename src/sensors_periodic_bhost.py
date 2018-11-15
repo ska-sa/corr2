@@ -83,7 +83,9 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
     try:
 
         executor = general_executor
-        rv = yield executor.submit(sens_man.instrument.bops.get_pack_status)
+        #rv = yield executor.submit(sens_man.instrument.bops.get_pack_status) # Skip this.
+        rv = []
+        import IPython; IPython.embed()
 
         print "\n\nRv:\n{rv}".format(rv=rv)
 

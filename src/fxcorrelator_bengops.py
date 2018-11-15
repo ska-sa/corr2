@@ -217,6 +217,7 @@ class BEngineOperations(object):
         Get the status of all the pack blocks in the beamformer system.
         Returns a dictionary, indexed by beam name, of all the engines' states
         """
+        #TODO This function doesn't really add value. Remove?
         rv={}
         for beam in self.beams.itervalues():
             rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_bpack_status',
