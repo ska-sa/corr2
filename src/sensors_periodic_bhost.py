@@ -94,7 +94,7 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
                 for beng_no, beng_sensors in enumerate(bhost_sensors):
                     for key in ['fifo_of_err_cnt', 'pkt_cnt']:
                         print "Trying to set {} value to: {}".format(key, rv[beam_no][bhost_no][beng_no])
-                        beng_sensors[key].set(value=rv[beam_no][bhost_no][beng_no], errif='changed')
+                        beng_sensors[key].set(value=rv[beam_no][bhost_no][beng_no][key], errif='changed')
                         #print bhost_sensors[key]
                         if beng_sensors[key].status() == Corr2Sensor.ERROR:
                             status = Corr2Sensor.ERROR
