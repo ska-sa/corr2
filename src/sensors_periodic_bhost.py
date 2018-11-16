@@ -137,8 +137,6 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
             _sensors = []
             executor = general_executor
             bhost = host_offset_lookup[_b.host]
-            # print bhost, _b.host
-            # produces: xhost00 skarab020302-01
             for bengctr in range(_b.x_per_fpga):  # TODO alias this to b_per_fpga for consistency
                     pref = 'beam{beamctr}.{bhost}.beng{bengctr}.spead-tx'.format(beamctr=beamctr, bhost=bhost, bengctr=bengctr)
                     sensordict = {
@@ -159,9 +157,7 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
                             executor=executor)}
                     _sensors.append(sensordict)
             sensors.append(_sensors)
-        ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
-
-        #print "\n\nSensors:\n{sensors}".format(sensors=sensors)
+    ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
 
         # LRU ok
         sensor = sens_man.do_sensor(
