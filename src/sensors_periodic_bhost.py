@@ -89,7 +89,6 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
                 beam_sensors.append(bhost.get_bpack_status(beam_no))
             rv.append((beam_sensors))
 
-        #import IPython; IPython.embed()
         for beam_no, beam_sensors in enumerate(sensors):
             for bhost_no, bhost_sensors in enumerate(beam_sensors):
                 for beng_no, beng_sensordict in enumerate(bhost_sensors):
@@ -103,6 +102,8 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
 
     except Exception as e:
         print "{}".format(tb.format_exception(*sys.exc_info()))
+        import IPython; IPython.embed()
+
         #LOGGER.error('Error updating beng pack sensors for {} - '
                      #'{}'.format(b_host.host, e.message))
     #LOGGER.debug('_cb_beng_pack ran on {}'.format(b_host.host))
