@@ -127,16 +127,14 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
         host_offset_lookup = host_offset_dict.copy()
 
     # Beng Packetiser block
-    sensors = []
+    beam_sensors = []
     for beamctr in range(len(sens_man.instrument.bops.beams)):
-        print "{} beam".format(beamctr)
         bhost_sensors = []
         for _b in sens_man.instrument.xhosts:
-            print "\t{} host".format(_b)
             executor = general_executor
             bhost = host_offset_lookup[_b.host]
+            beng_sensors = []
             for bengctr in range(_b.x_per_fpga):  # TODO alias this to b_per_fpga for consistency
-                print "\t\t{} beng".format(bengctr)
                 pref = 'beam{beamctr}.{bhost}.beng{bengctr}.spead-tx'.format(beamctr=beamctr, bhost=bhost, bengctr=bengctr)
                 sensordict = {
                     'device_status': sens_man.do_sensor(
@@ -154,9 +152,10 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
                         '{}.pkt-cnt'.format(pref),
                         'B-engine pack (TX) packet count',
                         executor=executor)}
-            bhost_sensors.append(sensordict)
-        sensors.append(bhost_sensors)
-    ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
+                beng_sensors.append(sensordict)
+            bhost_sensors.append(beng_sensors)
+        beam_sensors.append(bhost_sensors)
+    ioloop.add_callback(_cb_beng_pack, beam_sensors, general_executor, sens_man)
 
     # LRU ok
     sensor = sens_man.do_sensor(
