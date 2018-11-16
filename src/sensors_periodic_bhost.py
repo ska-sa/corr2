@@ -84,26 +84,22 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
         #rv = yield executor.submit(sens_man.instrument.bops.get_pack_status) # Skip this.
         rv = []
         for beam_no in xrange(len(sens_man.instrument.bops.beams)):
-            beam_data = []
+            beam_sensors = []
             for bhost in sens_man.instrument.xhosts:
-                beam_data.append(bhost.get_bpack_status(beam_no))
-            rv.append((beam_data))
+                beam_sensors.append(bhost.get_bpack_status(beam_no))
+            rv.append((beam_sensors))
 
-        import IPython; IPython.embed()
-        # for beam_no, beam_data in enumerate(rv):
-        #
-        #     for bhost_no, bhost_data in enumerate(beam_data):
-        #
-        #         for beng_no, sensordict in enumerate(sensors):
-        #
-        #         for key in ['fifo_of_err_cnt', 'pkt_cnt']:
-        #             print "Trying to take {key} and set its value.".format(key=key)
-        #             sensordict[key].set(value=rv[beam_name][n_bhost][key], errif='changed')
-        #             print sensordict[key]
-        #             if sensordict[key].status() == Corr2Sensor.ERROR:
-        #                 status = Corr2Sensor.ERROR
-        #                 value = False
-        #             sensordict['device_status'].set(value=value, status=status)
+        #import IPython; IPython.embed()
+        for beam_no, beam_sensors in enumerate(sensors):
+            for bhost_no, bhost_sensors in enumerate(beam_sensors):
+                for beng_no, beng_sensordict in enumerate(bhost_sensors):
+                    for key in ['fifo_of_err_cnt', 'pkt_cnt']:
+                        beng_sensordict[key].set(value=rv[beam_no][bhost_no][beng_no], errif='changed')
+                        print beng_sensordict[key]
+                        if beng_sensordict[key].status() == Corr2Sensor.ERROR:
+                            status = Corr2Sensor.ERROR
+                            value = False
+                    beng_sensordict['device_status'].set(value=value, status=status)
 
     except Exception as e:
         print "{}".format(tb.format_exception(*sys.exc_info()))
