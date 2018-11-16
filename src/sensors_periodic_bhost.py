@@ -91,13 +91,14 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
 
         for beam_no, beam_sensors in enumerate(sensors):
             for bhost_no, bhost_sensors in enumerate(beam_sensors):
-                for key in ['fifo_of_err_cnt', 'pkt_cnt']:
-                    bhost_sensors[key].set(value=rv[beam_no][bhost_no][beng_no], errif='changed')
-                    #print bhost_sensors[key]
-                    if bhost_sensors[key].status() == Corr2Sensor.ERROR:
-                        status = Corr2Sensor.ERROR
-                        value = False
-                bhost_sensors['device_status'].set(value=value, status=status)
+                for beng_no, beng_sensors in enumerate(bhost_sensors):
+                    for key in ['fifo_of_err_cnt', 'pkt_cnt']:
+                        beng_sensors[key].set(value=rv[beam_no][bhost_no][beng_no], errif='changed')
+                        #print bhost_sensors[key]
+                        if beng_sensors[key].status() == Corr2Sensor.ERROR:
+                            status = Corr2Sensor.ERROR
+                            value = False
+                    beng_sensors['device_status'].set(value=value, status=status)
 
     except Exception as e:
         print "{}".format(tb.format_exception(*sys.exc_info()))
