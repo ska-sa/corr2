@@ -159,18 +159,18 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
             sensors.append(_sensors)
     ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
 
-        # LRU ok
-        sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}.device-status'.format(bhost),
-            'B-engine %s LRU ok' % _b.host, executor=executor)
-        #TODO think a little bit more about how this needs to work.
-        # for bengctr in range(_b.x_per_fpga):
-        #     pref = '{bhost}.beng{bengctr}'.format(bhost=bhost, bengctr=bengctr)
-        #     sens_man.do_sensor(
-        #         Corr2Sensor.boolean,
-        #         '{}.device-status'.format(pref),
-        #         'B-engine core status')
-        ioloop.add_callback(_cb_bhost_lru, sens_man, sensor, _b)
+    # LRU ok
+    sensor = sens_man.do_sensor(
+        Corr2Sensor.boolean, '{}.device-status'.format(bhost),
+        'B-engine %s LRU ok' % _b.host, executor=executor)
+    #TODO think a little bit more about how this needs to work.
+    # for bengctr in range(_b.x_per_fpga):
+    #     pref = '{bhost}.beng{bengctr}'.format(bhost=bhost, bengctr=bengctr)
+    #     sens_man.do_sensor(
+    #         Corr2Sensor.boolean,
+    #         '{}.device-status'.format(pref),
+    #         'B-engine core status')
+    ioloop.add_callback(_cb_bhost_lru, sens_man, sensor, _b)
 
     # TODO - right now this just mirrors the xhostn-lru-ok sensors
 
