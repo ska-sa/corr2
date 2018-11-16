@@ -131,10 +131,10 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
         host_offset_lookup = host_offset_dict.copy()
 
     # Beng Packetiser block
+    sensors = []
     for beamctr in range(len(sens_man.instrument.bops.beams)):
-        sensors = []
+        bhost_sensors = []
         for _b in sens_man.instrument.xhosts:
-            _sensors = []
             executor = general_executor
             bhost = host_offset_lookup[_b.host]
             for bengctr in range(_b.x_per_fpga):  # TODO alias this to b_per_fpga for consistency
@@ -155,8 +155,8 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
                             '{}.pkt-cnt'.format(pref),
                             'B-engine pack (TX) packet count',
                             executor=executor)}
-                    _sensors.append(sensordict)
-            sensors.append(_sensors)
+            bhost_sensors.append(sensordict)
+        sensors.append(bhost_sensors)
     ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
 
     # LRU ok
