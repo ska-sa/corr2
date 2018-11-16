@@ -161,7 +161,7 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
             sensors.append(_sensors)
         ioloop.add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
 
-        print "\n\nSensors:\n{sensors}".format(sensors=sensors)
+        #print "\n\nSensors:\n{sensors}".format(sensors=sensors)
 
         # LRU ok
         sensor = sens_man.do_sensor(
