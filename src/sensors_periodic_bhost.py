@@ -72,7 +72,7 @@ def _cb_bhost_lru(sensor_manager, sensor, b_host):
 def _cb_beng_pack(sensors, general_executor, sens_man):
     """
 
-    :param sensors: all sensors for all bengine pack blocks, a list of dictionaries.
+    :param sensors: all sensors for all bengine pack blocks, a nested list of dictionaries.
     :return:
     """
     value = True
@@ -81,7 +81,6 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
     try:
 
         executor = general_executor
-        #rv = yield executor.submit(sens_man.instrument.bops.get_pack_status) # Skip this.
         rv = []
         for beam_no in xrange(len(sens_man.instrument.bops.beams)):
             beam_sensors = []
@@ -99,14 +98,10 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
                             value = False
                     beng_sensors['device_status'].set(value=value, status=status)
 
-
     except Exception as e:
-        print "{}".format(tb.format_exception(*sys.exc_info()))
-        import IPython; IPython.embed()
-
-        #LOGGER.error('Error updating beng pack sensors for {} - '
-                     #'{}'.format(b_host.host, e.message))
-    #LOGGER.debug('_cb_beng_pack ran on {}'.format(b_host.host))
+        #TODO This logger stuff doesn't seem to actually work. Not sure why.
+        LOGGER.error('Error updating beng pack sensors - '
+                     '{}'.format(e.message))
     IOLoop.current().call_later(sensor_poll_time, _cb_beng_pack, sensors, general_executor, sens_man)
 
 
@@ -119,8 +114,10 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
     :param host_executors:
     :param ioloop:
     :param host_offset_dict:
-    :return:
+    :return: none
     """
+    #TODO: update the docstring once it's clearly understood what everything actually *does*.
+
     global host_offset_lookup
     global sensor_poll_time
     sensor_poll_time = sens_man.instrument.sensor_poll_time
@@ -128,6 +125,16 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
         host_offset_lookup = host_offset_dict.copy()
 
     # Beng Packetiser block
+
+    # passes beam_sensors object to the ioloop to be populated by _cb_beng_pack
+    # format is a nested list:
+    # [ per beam
+    #   [ per host
+    #       [ per beng
+    #           {sensors: name:sensor-object}
+    #       ]
+    #   ]
+    # ]
     beam_sensors = []
     for beamctr in range(len(sens_man.instrument.bops.beams)):
         bhost_sensors = []
