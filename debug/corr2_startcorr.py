@@ -21,8 +21,8 @@ parser.add_argument(
     '--noprogram', dest='noprogram', action='store_true', default=False,
     help='do NOT program the FPGAs, and everything that goes with that')
 parser.add_argument(
-    '--noqdrcal', dest='no_qdr_cal', action='store_true', default=False,
-    help='do NOT calibrate the QDRs')
+    '--noconfig', dest='no_config', action='store_true', default=False,
+    help='configure the system')
 parser.add_argument(
     '--ipython', dest='ipython', action='store_true', default=False,
     help='start an ipython session after completion/error')
@@ -43,12 +43,10 @@ if args.log_level:
 if 'CORR2INI' in os.environ.keys() and args.config == '':
     args.config = os.environ['CORR2INI']
 
-c = fxcorrelator.FxCorrelator('correlator',
-                              config_source=args.config)
-c.standard_log_config(log_level=eval('logging.%s' % log_level))
+c = fxcorrelator.FxCorrelator('correlator', config_source=args.config)
 try:
     _tic = time.time()
-    c.initialise(program=not args.noprogram, qdr_cal=not args.no_qdr_cal)
+    c.initialise(program=not args.noprogram, configure=not args.no_config)
     print('Intialisation took %.3f seconds.' % (time.time() - _tic))
 except Exception as e:
     print(e)

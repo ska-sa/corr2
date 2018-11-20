@@ -590,37 +590,4 @@ def parse_output_products(dictionary):
     return prods, addresses
 
 
-class KatcpStreamHandler(logging.StreamHandler):
-
-    def format(self, record):
-        """
-        Convert the record message contents to a katcp #log format
-        :param record: a logging.LogRecord
-        :return:
-        """
-        level = 'WARN' if record.levelname == 'WARNING' else record.levelname
-        level = level.lower()
-        msg = record.msg.replace(' ', '\_')
-        msg = msg.replace('\t', '\_' * 4)
-        return '#log ' + level + ' ' + '%.6f' % time.time() + ' ' + \
-               record.filename + ' ' + msg
-
-
-class StreamToLogger(object):
-    """
-    Fake file-like stream object that redirects writes to
-    a logger instance.
-    From: http://www.electricmonk.nl/log/2011/08/14/redirect-stdout-and-stderr-to-a-logger-in-python/
-    """
-
-    def __init__(self, logger, log_level=logging.INFO):
-        self.logger = logger
-        self.log_level = log_level
-        self.linebuf = ''
-
-    def write(self, buf):
-        for line in buf.rstrip().splitlines():
-            self.logger.log(self.log_level, line.rstrip())
-
-
 # end

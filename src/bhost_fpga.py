@@ -22,13 +22,15 @@ class FpgaBHost(FpgaXHost):
             descriptor = kwargs['descriptor']
         except KeyError:
             descriptor = 'InstrumentName'
-        
+
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
 
         logger_name = '{}_bhost-{}-{}'.format(descriptor, str(index), host)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -37,6 +39,8 @@ class FpgaBHost(FpgaXHost):
         self.logger.debug('Successfully created logger for {}'.format(logger_name))
 
         self.beng_per_host = self.x_per_fpga
+
+        self.host_type = 'bhost'
 
     # @classmethod
     # def from_config_source(cls, hostname, index, katcp_port,
@@ -51,7 +55,7 @@ class FpgaBHost(FpgaXHost):
         :param beam: The Beam() on which to act
         :return
         """
-        
+
         self.registers['bf%i_config' % beam.index].write(port=beam.destination.port)
         self.registers['bf%i_ip' % beam.index].write(ip=int(beam.destination.ip_address))
         self.logger.debug('%s:%i: Beam %i:%s destination set to %s' % (
@@ -67,11 +71,17 @@ class FpgaBHost(FpgaXHost):
         assert len(weights) == self.n_ants, ('Incorrect number of weights supplied (%i; need %i)'%(len(weights),self.n_ants))
         for source_index,source_weight in enumerate(weights):
             self.registers.bf_weight.write(weight=source_weight,
-                    stream=beam_index, antenna=source_index, load_now='pulse')
+                    stream=beam_index, antenna=source_index, load_now=0)
+            self.registers.bf_weight.write(weight=source_weight,
+                    stream=beam_index, antenna=source_index, load_now=1)
+            #self.registers.bf_weight.write(weight=source_weight,
+            #        stream=beam_index, antenna=source_index, load_now=0)
             self.logger.debug(
-                    '%s:%i: Beam %i: set antenna(%i) weight(%.5f)'
-                    '' % (self.host, self.index, beam_index,
-                          source_index, source_weight))
+                    '%s:%i: Beam %i: set antenna(%i) weight(%.5f)' % (
+                        self.host, self.index, beam_index,
+                        source_index, source_weight))
+        self.registers.bf_weight.write(weight=source_weight,
+                stream=beam_index, antenna=source_index, load_now=0)
 
     def beam_weights_get(self, beam_index):
         """
@@ -120,3 +130,13 @@ class FpgaBHost(FpgaXHost):
         reg.write(txen=True)
         self.logger.debug('%s:%i: Beam %i: Output enabled' % (
                         self.host, self.index, beam_index))
+
+    def get_bpack_status(self,beam_index):
+        """
+        Get the status of the beamformer pack blocks.
+        """
+        rv=[]
+        for engine_index in range(self.beng_per_host):
+            reg = self.registers['sys{}_bf_pack_out{}_status'.format(engine_index,beam_index)]
+            rv.append(reg.read()['data'])
+        return rv

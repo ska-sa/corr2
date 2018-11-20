@@ -13,7 +13,7 @@ from host_fpga import FpgaHost
 # from corr2LogHandlers import getLogger
 
 #TODO: move snapshots from fhost obj to feng obj?
-#   -> not sensible while trig_time registers are shared for adc snapshots.    
+#   -> not sensible while trig_time registers are shared for adc snapshots.
 
 
 
@@ -36,13 +36,12 @@ class AdcData(object):
         self.data = data
 
 
-def delay_get_bitshift():
+def delay_get_bitshift(bitshift_schedule=23):
     """
-    :return: Returns the scale factor used in the delay calculations 
+    :return: Returns the scale factor used in the delay calculations
             due to bitshifting (nominally 2**23).
     """
     # TODO should this be in config file?
-    bitshift_schedule = 23
     bitshift = (2**bitshift_schedule)
     return bitshift
 
@@ -71,13 +70,15 @@ class Fengine(object):
             descriptor = kwargs['descriptor']
         except KeyError:
             descriptor = 'InstrumentName'
-        
+
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
-        
+
         logger_name = '{}_feng{}-{}'.format(descriptor, str(self.feng_id), input_stream.name)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -110,7 +111,7 @@ class Fengine(object):
     @input_number.setter
     def input_number(self, value):
         raise NotImplementedError('This is not currently defined.')
-    
+
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
@@ -142,7 +143,9 @@ class Fengine(object):
         This function will also update this feng object's self.last_delay.
         :return: nothing!
         """
+        self.logger.debug("Processing request for delay model: {}.".format(delay_obj.__str__()))
         rv=True
+        self.last_delay.last_load_success=False
         # set up the delays and update the stored values
         self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
         self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
@@ -150,22 +153,30 @@ class Fengine(object):
 
         # arm the timed load latches
         cd_tl_name = 'tl_cd%i' % self.offset
-        load_count=self.host.registers['%s_status'%cd_tl_name].read()['data']['load_count']
-        if load_count == self.last_delay.load_count+1:
+        status=self.host.registers['%s_status'%cd_tl_name].read()['data']
+        load_count=status['load_count']
+        arm_count=status['arm_count']
+        if load_count != self.last_delay.load_count:
             self.last_delay.last_load_success=True
-            self.logger.debug('Last delay loaded successfully.')
+            self.logger.debug("Last delay successfully loaded at mcnt %i"%self.last_delay.load_mcnt)
         else:
             self.logger.error('Failed to load last delay model;' \
-                ' load_cnt before: %i, after: %i.'%(self.last_delay.load_count,load_count))
+                ' arm_cnt before: %i, after: %i.' \
+                ' load_cnt before: %i, after: %i.' \
+                ' Last requested load mcnt %i, time now %f.'%(
+                self.last_delay.arm_count,arm_count,
+                self.last_delay.load_count,load_count,
+                self.last_delay.load_mcnt,time.time()))
             self.last_delay.last_load_success=False
         self.last_delay.load_count = load_count
+        self.last_delay.arm_count = arm_count
         self.last_delay.load_mcnt=self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
-        #self.logger.info("loaded at %i"%self.last_delay.load_mcnt)
+        self.logger.debug("New delay model applied: {}".format(self.last_delay.__str__()))
         return self.last_delay.last_load_success
 
     def _arm_timed_latch(self, name, mcnt=None):
         """
-        Arms the delay correction timed latch. 
+        Arms the delay correction timed latch.
         Optimisations bypass normal register bitfield operations.
         :param names: name of latch to trigger
         :param mcnt: sample mcnt to trigger at. If None triggers immediately
@@ -181,6 +192,7 @@ class Fengine(object):
             control0_reg.write_int(0)
             return -1
         else:
+            self.logger.debug('Requested load mcnt %i.'%mcnt)
             load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
             load_time_msw = int(mcnt/(2**32))
             control_reg.write_int(load_time_lsw)
@@ -193,11 +205,11 @@ class Fengine(object):
 ##TODO: Only return useful values if they actually loaded?
 #    def delay_get(self):
 #        """
-#        Store in local variables (and return) the values that were 
+#        Store in local variables (and return) the values that were
 #        written into the various FPGA load registers.
 #        :return:
 #        """
-#        
+#
 #        bitshift = delay_get_bitshift()
 #        delay_reg = self.host.registers['delay%i' % self.offset]
 #        delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
@@ -211,7 +223,6 @@ class Fengine(object):
         """
         delay is in samples.
         """
-        bitshift = delay_get_bitshift()
         delay_reg = self.host.registers['delay%i' % self.offset]
 
         #figure out register offsets and widths
@@ -220,25 +231,25 @@ class Fengine(object):
 
         max_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
         if delay < 0:
-            self.logger.warn('Setting smallest delay of 0. Requested %f samples.' % 
+            self.logger.warn('Setting smallest delay of 0. Requested %f samples.' %
                 (delay))
             delay = 0
         elif delay > max_delay:
             self.logger.warn('Setting largest possible delay. Requested %f samples, set %f.' %
                 (delay,max_delay))
             delay = max_delay
-        
+
         #prepare the register:
         prep_int=int(delay*(2**reg_bp))&((2**reg_bw)-1)
         act_value = (float(prep_int)/(2**reg_bp))
-        self.logger.debug('Setting delay to %f samples.' % (act_value))
+        self.logger.debug('Setting delay to %f samples, from request for %f samples.' % (act_value,delay))
         delay_reg.write_int(prep_int)
         return act_value
 
     def _delay_write_delay_rate(self, delay_rate):
         """
         """
-        bitshift = delay_get_bitshift()
+        bitshift = delay_get_bitshift(bitshift_schedule=23)
         delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
         # shift up by amount shifted down by on fpga
         delta_delay_shifted = float(delay_rate) * bitshift
@@ -261,11 +272,9 @@ class Fengine(object):
                              'Requested: %e samples/sample, set %e.'%
                              (delay_rate,max_negative_delta_delay/bitshift))
 
-        #figure out the actual (rounded) register values:
-        prep_int=int(delta_delay_shifted*(2**reg_bp))&((2**reg_bw)-1)
+        prep_int=int(delta_delay_shifted*(2**reg_bp))
         act_value = (float(prep_int)/(2**reg_bp))/bitshift
-        if delta_delay_shifted<0: act_value-=(2**reg_bw)
-        self.logger.debug('Setting delay delta to %e samples/sample (reg 0x%08X).' %(act_value, prep_int))
+        self.logger.debug('Setting delay delta to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value, prep_int,delay_rate))
         delay_delta_reg.write_int(prep_int)
         return act_value
 
@@ -292,12 +301,12 @@ class Fengine(object):
         max_negative_phase = -2 ** (initial_reg_bw - initial_reg_bp - 1) + 1 / float(2 ** initial_reg_bp)
         if phase > max_positive_phase:
             self.logger.warn('Setting largest possible positive phase. '
-                        'Requested: %e*pi radians, set %e.' % 
+                        'Requested: %e*pi radians, set %e.' %
                         (phase, max_positive_phase))
             phase = max_positive_phase
         elif phase < max_negative_phase:
             self.logger.warn('Setting largest possible negative phase. '
-                        'Requested: %e*pi radians, set %e.' % 
+                        'Requested: %e*pi radians, set %e.' %
                         (phase, max_negative_phase))
             phase = max_negative_phase
 
@@ -317,19 +326,21 @@ class Fengine(object):
                         'Requested %e*pi radians/sample, set %e.' % (phase_rate, dp))
             delta_phase_shifted = max_negative_delta_phase
 
-        prep_int_initial=int(phase*(2**initial_reg_bp))&((2**initial_reg_bw)-1)
-        prep_int_delta=int(delta_phase_shifted*(2**delta_reg_bp))&((2**delta_reg_bw)-1)
+        prep_int_initial=int(phase*(2**initial_reg_bp))
+        prep_int_delta=int(delta_phase_shifted*(2**delta_reg_bp))
 
         act_value_initial = (float(prep_int_initial)/(2**initial_reg_bp))
-        if phase<0: act_value_initial-=(2**initial_reg_bw)
+        #if phase<0: act_value_initial-=(2**initial_reg_bw)  # Seems to me as though this shouldn't be here. (JS)
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
-        if delta_phase_shifted<0: act_value_delta-=(2**delta_reg_bw)
-        self.logger.debug('Writing initial phase to %e*pi radians.' % (act_value_initial))
-        self.logger.debug('Writing %e*pi radians/sample phase delta.' % (act_value_delta))
+        self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
+        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
 
+        prep_array = numpy.array([prep_int_initial, prep_int_delta], dtype=numpy.int16)
+        prep_array = prep_array.view(dtype=numpy.uint16)
         # actually write the values to the register
-        prep_int = (prep_int_initial<<initial_reg_offset) + (prep_int_delta<<delta_reg_offset)
+        prep_int = (prep_array[0]<<initial_reg_offset) + (prep_array[1]<<delta_reg_offset)
         phase_reg.write_int(prep_int)
+
         return act_value_initial,act_value_delta
 
     def eq_get(self):
@@ -392,7 +403,7 @@ class FpgaFHost(FpgaHost):
     """
     def __init__(self, host, katcp_port=7147, bitstream=None,
                  connect=True, config=None, **kwargs):
-        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port, 
+        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port,
                                         bitstream=bitstream,
                                         transport=SkarabTransport,
                                         connect=connect)
@@ -412,10 +423,12 @@ class FpgaFHost(FpgaHost):
 
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
-        
+
         logger_name = '{}_fhost-{}-{}'.format(descriptor, str(self.fhost_index), host)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -440,6 +453,8 @@ class FpgaFHost(FpgaHost):
 
         self.rx_data_sample_rate_hz = -1
 
+        self.host_type = 'fhost'
+
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source, **kwargs):
         bitstream = config_source['bitstream']
@@ -458,7 +473,7 @@ class FpgaFHost(FpgaHost):
         msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
         rv = (msw << 32) | lsw
         return rv
-    
+
     def clear_status(self):
         """
         Clear the status registers and counters on this host
@@ -486,7 +501,7 @@ class FpgaFHost(FpgaHost):
         if autoresync:
             self.registers.control.write(time_diff_check_en=True)
         return
-        
+
 
     def add_fengine(self, fengine):
         """
@@ -574,12 +589,12 @@ class FpgaFHost(FpgaHost):
         """
         Retrieve all the Corner-Turner registers.
         returns a list (one per pol on board) of status dictionaries.
-        """ 
+        """
         rv={}
         for i in range(5):
             rv.update(self.registers['hmc_ct_status%i' %i].read()['data'])
         return rv
-        
+
     def get_pfb_status(self):
         """
         Returns the pfb counters on f-eng
@@ -594,7 +609,7 @@ class FpgaFHost(FpgaHost):
         :param timeout: timeout in seconds for snapshot read operation.
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
-        if input_name != None: 
+        if input_name != None:
             fengine = self.get_fengine(input_name)
         if loadcnt>0:
             self.logger.info("Triggering ADC snapshot at %i"%loadcnt)
@@ -642,6 +657,22 @@ class FpgaFHost(FpgaHost):
         rv.update(self.registers.unpack_status1.read()['data'])
         return rv
 
+    def get_sync_status(self):
+        """
+        Read the synchronisation counters
+        :return:
+        """
+        rv={}
+        if 'sync_status' in self.registers.names():
+            rv.update(self.registers.sync_status.read()['data'])
+        if 'sync_status0' in self.registers.names():
+            rv.update(self.registers.sync_status0.read()['data'])
+        if 'sync_status1' in self.registers.names():
+            rv.update(self.registers.sync_status1.read()['data'])
+        if 'sync_status2' in self.registers.names():
+            rv.update(self.registers.sync_status2.read()['data'])
+        return rv
+
     def get_rx_reorder_status(self):
         """
         Read the reorder block counters
@@ -658,8 +689,8 @@ class FpgaFHost(FpgaHost):
     def subscribe_to_multicast(self):
         """
         Subscribe a skarab to its multicast input addresses.
-        Assumes first 40G interface on SKARAB. 
-        :return: 
+        Assumes first 40G interface on SKARAB.
+        :return:
         """
         gbe0_name = self.gbes.names()[0]
         first_ip = self.fengines[0].input.destination.ip_address

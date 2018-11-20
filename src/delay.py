@@ -32,6 +32,7 @@ def process_list(delay_list, sample_rate_hz):
         try:
             if isinstance(delay, str):
                 delaytup = process_string(delay)
+                LOGGER.debug('input %i update received: %s'%(ctr,delay))
             else:
                 delaytup = delay
             rv.append(prepare_delay_vals(delaytup, sample_rate_hz))
@@ -69,13 +70,15 @@ def prepare_delay_vals(coefficients, sample_rate):
 class Delay(object):
     def __init__(self, delay=0.0, delay_delta=0.0,
                  phase_offset=0.0, phase_offset_delta=0.0,
-                 load_mcnt=-1, load_count=-1, last_load_success=True):
+                 load_mcnt=-1, load_count=-1, arm_count=-1, last_load_success=True):
         """
         :param delay is in samples
         :param delay_delta is in samples per sample
         :param phase_offset is in fractions of a sample
         :param phase_offset_delta is in samples per sample
         :param load_mcnt is in samples since epoch
+        :param load_cnt is integer
+        :param arm_cnt is integer
         :param last_load_success: boolean, did the last delay load succeed?
         """
         self.delay = delay
@@ -85,6 +88,7 @@ class Delay(object):
         self.load_mcnt = load_mcnt
         self.last_load_success = last_load_success
         self.load_count = load_count
+        self.arm_count = arm_count
         self.error = Event()
 
     # @classmethod
@@ -93,7 +97,7 @@ class Delay(object):
     #     return prepare_delay_vals(coeff_tuple, sample_rate)
 
     def __str__(self):
-        return '{},{}:{},{}'.format(self.delay, self.delay_delta,
-                                    self.phase_offset, self.phase_offset_delta)
+        return 'Delay@{}: {},{}:{},{}'.format(self.load_mcnt,self.delay, 
+            self.delay_delta,self.phase_offset, self.phase_offset_delta)
 
 # end

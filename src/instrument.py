@@ -53,7 +53,7 @@ class Instrument(object):
         if self.config_source is not None:
             try:
                 self._read_config()
-            except:
+            except:  # TODO: this is very bad practice...
                 raise
         self.logger.info('%s %s created.' % (self.classname, self.descriptor))
 
@@ -191,8 +191,8 @@ class Instrument(object):
     def set_sensor_manager(self, sensor_manager):
         """
         Set the sensor manager for this instrument
-        :param sensor_manager: a SensorManager instance 
-        :return: 
+        :param sensor_manager: a SensorManager instance
+        :return:
         """
         self.sensor_manager = sensor_manager
 
@@ -222,7 +222,7 @@ class Instrument(object):
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
         self._synchronisation_epoch = float(new_synch_time)
-        if hasattr(self.sensor_manager,'sensors_sync_time'):
+        if hasattr(self.sensor_manager, 'sensors_sync_time'):
             self.sensor_manager.sensors_sync_time()
         self.logger.info('Set synch epoch to %.5f.' % new_synch_time)
 

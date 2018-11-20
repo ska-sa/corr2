@@ -21,9 +21,12 @@ class BEngineOperations(object):
 
         # Now creating separate instances of loggers as needed
         logger_name = '{}_BengOps'.format(corr_obj.descriptor)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+
         # All 'Instrument-level' objects will log at level INFO
         result, self.logger = corr_obj.getLogger(logger_name=logger_name,
-                                                 log_level=INFO, **kwargs)
+                                                 log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -47,7 +50,9 @@ class BEngineOperations(object):
         # disable all beams
         #self.tx_disable()
         #self.set_beam_weights()
-        #self.set_beam_quant_gain() 
+        for beam_name in self.beams:
+            beam=self.get_beam_by_name(beam_name)
+            self.set_beam_quant_gain(float(beam.config['quant_gain']),beam_name)
         self.logger.info('Beamformer initialised.')
 
     def configure(self, *args, **kwargs):
@@ -134,13 +139,13 @@ class BEngineOperations(object):
         """
         if beam_name is None:
             for beam in self.beams:
-                self.set_beam_quant_gains(new_gain, beam_name=beam.name)
+                self.set_beam_quant_gain(new_gain, beam_name=beam.name)
             return
         beam = self.get_beam_by_name(beam_name)
         # set the quantiser gains for this beam
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_quant_gains_set',
                                            [beam.index, new_gain], {}))
-        self.logger.info('%s quant gain set to %f.'%(beam_name),new_gain)
+        self.logger.info('%s quant gain set to %f.'%(beam_name,new_gain))
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_beng_gains()
 
@@ -170,10 +175,10 @@ class BEngineOperations(object):
                 self.set_beam_weights(weights, beam_name=beam_name)
             return
         if type(weights)==int or type(weights)==float:
-            new_weights=[weights for a in self.corr.n_antennas]
+            new_weights=[weights for a in range(self.corr.n_antennas)]
         else:
             new_weights=weights
-        
+
         assert len(new_weights)==self.corr.n_antennas,'Need to specify %i values; you offered %i.'%(len(new_weights),self.corr.n_antennas)
         beam_index = self.get_beam_by_name(beam_name).index
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set',
@@ -198,3 +203,23 @@ class BEngineOperations(object):
         return vals.values()[0]
 
 
+    def get_version_info(self):
+        """
+        Get the version information for the hosts
+        :return: a dict of {file: version_info, }
+        """
+        try:
+            return self.hosts[0].get_version_info()
+        except AttributeError:
+            return {}
+
+    def get_pack_status(self):
+        """
+        Get the status of all the pack blocks in the beamformer system.
+        Returns a dictionary, indexed by beam name, of all the engines' states
+        """
+        rv={}
+        for beam in self.beams.itervalues():
+            rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_pack_status',
+                                           [beam.index], {}))
+        return rv
