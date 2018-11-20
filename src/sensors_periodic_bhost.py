@@ -135,7 +135,8 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
             executor = general_executor
             bhost = host_offset_lookup[_b.host]
             beng_sensors = []
-            for bengctr in range(_b.x_per_fpga):  # TODO alias this to b_per_fpga for consistency
+            for bengctr in range(_b.x_per_fpga):
+                # TODO: This reports the hosts as xhosts. Should the sensor report them as bhosts?
                 pref = 'beam{beamctr}.{bhost}.beng{bengctr}.spead-tx'.format(beamctr=beamctr, bhost=bhost, bengctr=bengctr)
                 sensordict = {
                     'device_status': sens_man.do_sensor(
