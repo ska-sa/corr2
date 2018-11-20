@@ -207,29 +207,6 @@ class Corr2Server(katcp.DeviceServer):
         print(multiargs)
         return self._log_excep(None, 'A test failure, like it should')
 
-    @request(Float(default=-1.0))
-    @return_reply(Float())
-    def request_digitiser_synch_epoch(self, sock, synch_time):
-        """
-        Set/Get the digitiser synch time, UNIX time.
-        :param sock:
-        :param synch_time: unix time float
-        :return: the currently set synch time
-        """
-        # if not self.instrument.initialised():
-        #     logging.warn('request %s before initialised... refusing.' %
-        #                  'request_sync_epoch')
-        #     return 'fail', 'request %s before initialised... refusing.' % \
-        #            'request_sync_epoch'
-        if synch_time > -1.0:
-            try:
-                self.instrument.synchronisation_epoch = synch_time
-            except Exception as ex:
-                return self._log_excep(
-                    ex, 'Failed to set digitiser synch epoch.')
-        return 'ok', self.instrument.synchronisation_epoch
-
-    '''
     # TODO: deprecate above and instate this once CBF-CAM ICD Rev6 is fully implemented
     @request(Float(default=-1.0))
     @return_reply(Float())
@@ -252,7 +229,6 @@ class Corr2Server(katcp.DeviceServer):
                 return self._log_excep(
                     ex, 'Failed to set digitiser synch epoch.')
         return 'ok', self.instrument.synchronisation_epoch
-    '''
 
     @request(Str(), Str())
     @return_reply()
@@ -471,12 +447,13 @@ class Corr2Server(katcp.DeviceServer):
         _src = self.instrument.fops.eq_get(None).values()[0]
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
-    @request(Float(default=-1.0), Str(default='', multiple=True))
+    @request(Str(), Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
-    def request_delays(self, sock, loadtime, *delay_strings):
+    def request_delays(self, sock, stream_name, loadtime, *delay_strings):
         """
         Set delays for the instrument.
         :param sock:
+        :param stream_name: the name of the feng stream to adjust.
         :param loadtime: the load time, in seconds
         :param delay_strings: the coefficient set, as a list of strings,
             described in ICD.
@@ -484,8 +461,10 @@ class Corr2Server(katcp.DeviceServer):
         """
         if self.delays_disabled:
             return ('fail', 'delays disabled')
-
+        if stream_name != self.instrument.fops.data_stream.name:
+            return tuple(['fail', ' supplied stream name %s does not match expected %s.'%(stream_name,self.instrument.fops.data_stream.name)])
         try:
+            
             self.instrument.fops.delay_set_all(loadtime, delay_strings)
             return tuple(['ok', ' Model updated. Check sensors after next update to confirm application'])
         except Exception as ex:
