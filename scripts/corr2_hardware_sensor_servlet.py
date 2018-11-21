@@ -67,8 +67,13 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
 
             sensor_manager = self.sensor_manager
             sensor_manager.sensors_clear()
-
-            sensordict = self.host.transport.get_sensor_data()
+            
+            sensordict = dict()
+            try:
+            	sensordict = self.host.transport.get_sensor_data()
+            except Exception as e:
+                self.host.logger.error(
+                    'Error retrieving {}s sensors - {}'.format(self.host, e.message))
             sensordict['location'] = self.rack_location_tuple
             sensordict['boot_image'] = parse_boot_image_return(self.host.transport.get_virtex7_firmware_version())
             device_status = 'OK' if (
@@ -102,7 +107,8 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             self.executor,
             self.sensors,
             self.host,
-            self.rack_location_tuple)
+            self.rack_location_tuple,
+            self.sensor_manager)
 
     def setup_sensors(self):
         """
@@ -129,8 +135,11 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
         :param sock:
         :return: {'ok,'fail'}
         """
+	tmpLevel = self.host.logger.level
+        self.host.logger.setLevel(10)#Set logging level to info to record this reset
         self.host.logger.info('Reseting Skarab: {}'.format(self.host.host))
-        self.host.transport.reset_fpga()
+	self.host.logger.setLevel(tmpLevel)
+        self.host.transport.reboot_fpga()
         return ('ok', 'Reset Successful')
 
 
@@ -167,6 +176,7 @@ def get_physical_location(ipAddress):
 def parse_boot_image_return(tuple):
     imageType = ''
     errorStatus = 'OK'
+    #print(tuple)
     if(tuple[0] == 1):
         imageType = 'golden_image'
         errorStatus = 'ERROR'
@@ -185,7 +195,7 @@ def is_sensor_list_status_ok(sensors_dict):
 
 
 @gen.coroutine
-def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
+def _sensor_cb_hw(executor, sensors, host, rack_location_tuple, sensor_manager):
     """
     Sensor call back to check all HW sensors
     :param sensors: per-host dict of sensors
@@ -205,15 +215,30 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
             'Error retrieving {}s sensors - {}'.format(host.host, e.message))
         results = {}
         set_failure()
+    else:
 
-    # Board Sensors
-    for key, value in results.iteritems():
-        try:
-            status = Corr2Sensor.NOMINAL if value[2] == 'OK' else Corr2Sensor.ERROR
-            sensors[key].set(value=value[0], status=status)
-        except Exception as e:
-            host.logger.error('Error updating {}-{} sensor '
-                '- {}'.format(host.host, key, e.message))
+        #Board Sensors
+        #sensors = {};
+        for key, value in results.iteritems():
+            try:
+                #if isinstance(value[0], float):
+                #    sensortype = Corr2Sensor.float
+                #elif isinstance(value[0], int):
+                #    sensortype = Corr2Sensor.integer
+                #elif isinstance(value[0], bool):
+                #    sensortype = Corr2Sensor.boolean
+                #elif isinstance(value[0], str):
+                #    sensortype = Corr2Sensor.string
+                #else:
+                #    raise RuntimeError("Unknown datatype!")
+                status = Corr2Sensor.NOMINAL if value[2] == 'OK' else Corr2Sensor.ERROR
+                #sensors[key] = sensor_manager.do_sensor(
+                #            sensortype, '{}'.format(key),
+                #            'a generic HW sensor', unit=value[1])
+                sensors[key].set(value=value[0], status=status)
+            except Exception as e:
+                host.logger.error('Error updating {}-{} sensor '
+                    '- {}'.format(host.host, key, e.message))
 
     # Server Generated Sensors
     server_sensors_dict = {}
@@ -224,7 +249,7 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
         host.logger.error('Error connecting to host {} - {}'.format(host.host, e.message))
         set_failure()
         IOLoop.current().call_later(10, _sensor_cb_hw,
-            executor, sensors, host, rack_location_tuple)
+            executor, sensors, host, rack_location_tuple, sensor_manager)
         return
 
     onBoardSensorsOk = is_sensor_list_status_ok(results)
@@ -247,7 +272,7 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
 
     host.logger.debug('sensorloop ran')
     IOLoop.current().call_later(10, _sensor_cb_hw,
-            executor, sensors, host, rack_location_tuple)
+            executor, sensors, host, rack_location_tuple, sensor_manager)
 
 
 @gen.coroutine
