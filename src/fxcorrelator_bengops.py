@@ -202,7 +202,6 @@ class BEngineOperations(object):
                 raise RuntimeError('Boards dont all have the same gain! {}'.format(vals))
         return vals.values()[0]
 
-
     def get_version_info(self):
         """
         Get the version information for the hosts
@@ -218,8 +217,9 @@ class BEngineOperations(object):
         Get the status of all the pack blocks in the beamformer system.
         Returns a dictionary, indexed by beam name, of all the engines' states
         """
+        #TODO This function doesn't really add value. Remove?
         rv={}
         for beam in self.beams.itervalues():
-            rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_pack_status',
+            rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_bpack_status',
                                            [beam.index], {}))
         return rv
