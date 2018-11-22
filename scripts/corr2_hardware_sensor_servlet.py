@@ -67,10 +67,10 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
 
             sensor_manager = self.sensor_manager
             sensor_manager.sensors_clear()
-            
+
             sensordict = dict()
             try:
-            	sensordict = self.host.transport.get_sensor_data()
+                sensordict = self.host.transport.get_sensor_data()
             except Exception as e:
                 self.host.logger.error(
                     'Error retrieving {}s sensors - {}'.format(self.host, e.message))
@@ -78,7 +78,8 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             sensordict['boot_image'] = parse_boot_image_return(self.host.transport.get_virtex7_firmware_version())
             device_status = 'OK' if (
                 is_sensor_list_status_ok(sensordict)) else 'ERROR'
-            sensordict['device-status'] = (0, '', device_status)
+
+            sensordict['device-status'] = (0, '', 'unreachable')
 
 
             for key, value in sensordict.iteritems():
@@ -107,8 +108,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             self.executor,
             self.sensors,
             self.host,
-            self.rack_location_tuple,
-            self.sensor_manager)
+            self.rack_location_tuple)
 
     def setup_sensors(self):
         """
@@ -135,10 +135,10 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
         :param sock:
         :return: {'ok,'fail'}
         """
-	tmpLevel = self.host.logger.level
-        self.host.logger.setLevel(10)#Set logging level to info to record this reset
+        tmpLevel = self.host.logger.level
+        self.host.logger.setLevel(10)  # Set logging level to info to record this reset
         self.host.logger.info('Reseting Skarab: {}'.format(self.host.host))
-	self.host.logger.setLevel(tmpLevel)
+        self.host.logger.setLevel(tmpLevel)
         self.host.transport.reboot_fpga()
         return ('ok', 'Reset Successful')
 
@@ -195,7 +195,7 @@ def is_sensor_list_status_ok(sensors_dict):
 
 
 @gen.coroutine
-def _sensor_cb_hw(executor, sensors, host, rack_location_tuple, sensor_manager):
+def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
     """
     Sensor call back to check all HW sensors
     :param sensors: per-host dict of sensors
@@ -205,9 +205,11 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple, sensor_manager):
 
     def set_failure():
         for key, sensor in sensors.iteritems():
-            sensor.set(status=Corr2Sensor.FAILURE,
-                    value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
+            if(key != 'location'):
+                sensor.set(status=Corr2Sensor.UNREACHABLE,
+                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
+    device_unreachable = True;
     try:
         results = yield executor.submit(host.transport.get_sensor_data)
     except Exception as e:
@@ -219,22 +221,10 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple, sensor_manager):
 
         #Board Sensors
         #sensors = {};
+        device_unreachable = False;
         for key, value in results.iteritems():
             try:
-                #if isinstance(value[0], float):
-                #    sensortype = Corr2Sensor.float
-                #elif isinstance(value[0], int):
-                #    sensortype = Corr2Sensor.integer
-                #elif isinstance(value[0], bool):
-                #    sensortype = Corr2Sensor.boolean
-                #elif isinstance(value[0], str):
-                #    sensortype = Corr2Sensor.string
-                #else:
-                #    raise RuntimeError("Unknown datatype!")
                 status = Corr2Sensor.NOMINAL if value[2] == 'OK' else Corr2Sensor.ERROR
-                #sensors[key] = sensor_manager.do_sensor(
-                #            sensortype, '{}'.format(key),
-                #            'a generic HW sensor', unit=value[1])
                 sensors[key].set(value=value[0], status=status)
             except Exception as e:
                 host.logger.error('Error updating {}-{} sensor '
@@ -249,7 +239,7 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple, sensor_manager):
         host.logger.error('Error connecting to host {} - {}'.format(host.host, e.message))
         set_failure()
         IOLoop.current().call_later(10, _sensor_cb_hw,
-            executor, sensors, host, rack_location_tuple, sensor_manager)
+            executor, sensors, host, rack_location_tuple)
         return
 
     onBoardSensorsOk = is_sensor_list_status_ok(results)
@@ -259,12 +249,17 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple, sensor_manager):
     if(not onBoardSensorsOk or not serverSensorsOk):
         device_status = 'ERROR'
 
-    server_sensors_dict['device-status'] = (0, '', device_status)
+    if(device_unreachable == False):
+        server_sensors_dict['device-status'] = (0, '', device_status)
+    else:
+        server_sensors_dict['device-status'] = (0, '', 'unreachable')
 
     # Determine Device Status
     for key, value in server_sensors_dict.iteritems():
         try:
-            status = Corr2Sensor.NOMINAL if value[2] == 'OK' else Corr2Sensor.ERROR
+            status = Corr2Sensor.ERROR
+            if value[2] == 'OK': status = Corr2Sensor.NOMINAL
+            if value[2] == 'unreachable': status = Corr2Sensor.UNREACHABLE
             sensors[key].set(value=value[0], status=status)
         except Exception as e:
             host.logger.error('Error updating {}-{} sensor '
@@ -272,7 +267,7 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple, sensor_manager):
 
     host.logger.debug('sensorloop ran')
     IOLoop.current().call_later(10, _sensor_cb_hw,
-            executor, sensors, host, rack_location_tuple, sensor_manager)
+            executor, sensors, host, rack_location_tuple)
 
 
 @gen.coroutine
@@ -316,24 +311,6 @@ if __name__ == '__main__':
         log_level = getattr(logging, args.loglevel)
     except Exception:
         raise RuntimeError('Received nonsensical log level {}'.format(args.loglevel))
-
-    # set up the logger
-    #root_logger = logging.getLogger()
-    #root_logger.setLevel(log_level)
-    # while len(root_logger.handlers) > 0:
-    #     root_logger.removeHandler(root_logger.handlers[0])
-    #root_logger.handlers = []
-    #if args.lfm or (not sys.stdout.isatty()):
-    #    console_handler = KatcpStreamHandler(stream=sys.stdout)
-    #    console_handler.setLevel(log_level)
-    #    root_logger.addHandler(console_handler)
-    #else:
-    #    console_handler = logging.StreamHandler(stream=sys.stdout)
-    #    console_handler.setLevel(log_level)
-    #    formatter = logging.Formatter(
-    #        '%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
-    #    console_handler.setFormatter(formatter)
-    #root_logger.addHandler(console_handler)
 
     server = Corr2HardwareSensorServer('127.0.0.1', args.port, tornado=(not args.no_tornado),
                                        skarab_host=args.host, log_here=args.log_here)
