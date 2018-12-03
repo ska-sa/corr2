@@ -122,8 +122,8 @@ class Corr2Server(katcp.DeviceServer):
             self._created = True
 
             # Function created to reassign all non-conforming log-handlers
-            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
-                                                    log_filename=self.log_filename, 
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
+                                                    log_filename=self.log_filename,
                                                     log_file_dir=self.log_file_dir,
                                                     instrument_name=self.instrument.descriptor)
 
@@ -165,8 +165,8 @@ class Corr2Server(katcp.DeviceServer):
             self.extra_versions.update(self.instrument.get_version_info())
             # add a sensor manager
             sensor_manager = sensors.Corr2SensorManager(self, self.instrument,
-                                        mass_inform_func=self.mass_inform, 
-                                        log_filename=self.log_filename, 
+                                        mass_inform_func=self.mass_inform,
+                                        log_filename=self.log_filename,
                                         log_file_dir=self.log_file_dir)
             self.instrument.set_sensor_manager(sensor_manager)
             # set up the main loop sensors
@@ -186,8 +186,8 @@ class Corr2Server(katcp.DeviceServer):
             self._initialised = True
 
             # Once more, for completeness
-            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
-                                                    log_filename=self.log_filename, 
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
+                                                    log_filename=self.log_filename,
                                                     log_file_dir=self.log_file_dir,
                                                     instrument_name=self.instrument.descriptor)
 
@@ -462,9 +462,9 @@ class Corr2Server(katcp.DeviceServer):
         if self.delays_disabled:
             return ('fail', 'delays disabled')
         if stream_name != self.instrument.fops.data_stream.name:
-            return tuple(['fail', ' supplied stream name %s does not match expected %s.'%(stream_name,self.instrument.fops.data_stream.name)])
+            return tuple(['fail', ' supplied stream name %s does not match expected %s.' % (stream_name, self.instrument.fops.data_stream.name)])
         try:
-            
+
             self.instrument.fops.delay_set_all(loadtime, delay_strings)
             return tuple(['ok', ' Model updated. Check sensors after next update to confirm application'])
         except Exception as ex:
@@ -799,7 +799,7 @@ class Corr2Server(katcp.DeviceServer):
         all_loggers = get_all_loggers()
 
         # logger_names = all_loggers.keys()
-        logger_names = [logger.name for logger in all_loggers.values() if type(logger) != logging.PlaceHolder]
+        logger_names = [logger.name for logger in all_loggers.values() if not isinstance(logger, logging.PlaceHolder)]
 
         # return_string = '\n'.join(logger_names)
         return 'ok', logger_names
@@ -871,7 +871,7 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', errmsg
 
         return 'ok',
-    
+
     @request()
     @return_reply()
     def request_debug_deprogram_all(self, sock):
@@ -1031,14 +1031,14 @@ class Corr2Server(katcp.DeviceServer):
         """
 
         number_of_descriptors = self.instrument.stream_get_number_of_descriptors()
-        time_step = self.descriptor_cadence/(number_of_descriptors+5.0) #5.0 is just chosen arbitrarily, just needs to be greater than 1.0 and formatted as a double, not an integer
+        time_step = self.descriptor_cadence / (number_of_descriptors + 5.0)  # 5.0 is just chosen arbitrarily, just needs to be greater than 1.0 and formatted as a double, not an integer
 
         if self.descriptor_cadence == 0:
             return
         _logger = self.instrument.logger
 
         for i in range(number_of_descriptors):
-            IOLoop.current().call_later(time_step*(i+1), self.issue_single_descriptor, i)
+            IOLoop.current().call_later(time_step * (i + 1), self.issue_single_descriptor, i)
 
         #try:
         #    yield self.executor.submit(self.instrument.stream_issue_descriptors)
@@ -1049,14 +1049,14 @@ class Corr2Server(katcp.DeviceServer):
         IOLoop.current().call_later(self.descriptor_cadence, self.periodic_issue_descriptors)
 
     @gen.coroutine
-    def issue_single_descriptor(self,index):
+    def issue_single_descriptor(self, index):
         """
         Issue a single descriptor.
         :param index: index of descriptor to issue
         :return:
         """
         try:
-            yield self.executor.submit(self.instrument.stream_issue_descriptor_single,index)
+            yield self.executor.submit(self.instrument.stream_issue_descriptor_single, index)
         except Exception as ex:
             _logger.exception('Error sending metadata - {}'.format(ex.message))
 

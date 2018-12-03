@@ -26,6 +26,7 @@ class StreamAddress(object):
     A data source from an IP. Holds all the information we need to use
     that data source.
     """
+
     def __init__(self, ip_string, ip_range, port):
         """
 
@@ -96,13 +97,13 @@ class StreamAddress(object):
         return NotImplemented
 
     def __repr__(self):
-        return '%s+%i:%i' % (self.ip_address, self.ip_range-1, self.port)
+        return '%s+%i:%i' % (self.ip_address, self.ip_range - 1, self.port)
 
     def __str__(self):
-        return '%s+%i:%i' % (self.ip_address, self.ip_range-1, self.port)
+        return '%s+%i:%i' % (self.ip_address, self.ip_range - 1, self.port)
 
 
-def _setup_spead_tx(threadpool,ip_string, port):
+def _setup_spead_tx(threadpool, ip_string, port):
     """
     Set up a SPEAD transmitter.
     :param ip_string: where are messages on this socket sent?
@@ -129,6 +130,7 @@ class SPEADStream(object):
     A DataStream that is also a SPEAD stream.
     Sends SPEAD data descriptors on tx_enable.
     """
+
     def __init__(self, name, category, destination, *args, **kwargs):
         """
         Make a SPEAD stream.
@@ -160,8 +162,8 @@ class SPEADStream(object):
         self.destination = None
         self.source = None
         self.tx_enabled = False
-        self.tx_sockets=None
-        self.threadpool=spead2.ThreadPool()
+        self.tx_sockets = None
+        self.threadpool = spead2.ThreadPool()
         self.descr_ig = spead2.send.ItemGroup(
             flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
         self.descriptors_setup()
@@ -203,11 +205,11 @@ class SPEADStream(object):
         if not hasattr(new_dest, 'ip_address'):
             new_dest = StreamAddress.from_address_string(new_dest)
         self.destination = new_dest
-        self.tx_sockets=[]
+        self.tx_sockets = []
         ctr = 0
         for dest_ctr in range(self.destination.ip_range):
             ip = IpAddress.ip2str(int(self.destination.ip_address) + dest_ctr)
-            self.tx_sockets.append(_setup_spead_tx(self.threadpool,ip, self.destination.port))
+            self.tx_sockets.append(_setup_spead_tx(self.threadpool, ip, self.destination.port))
             ctr += 1
 
     def descriptors_issue(self):
@@ -223,14 +225,14 @@ class SPEADStream(object):
             self.logger.debug('%s: tx sockets have not been set up for '
                          'stream yet.' % self.name)
             return
-	
-        i = 0;
+
+        i = 0
         for dest_ctr in range(self.destination.ip_range):
-            i+=1
+            i += 1
             print(i)
             self.tx_sockets[dest_ctr].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
 
-        self.logger.debug('SPEADStream %s: sent descriptors to %i destinations'%(self.name, dest_ctr+1))
+        self.logger.debug('SPEADStream %s: sent descriptors to %i destinations' % (self.name, dest_ctr + 1))
 
     def descriptor_issue_single(self, index):
         """
@@ -247,12 +249,12 @@ class SPEADStream(object):
             return
 
         dest_ctr = self.destination.ip_range
-	if (index < 0 or index >= self.destination.ip_range):
-            self.logger.error('%s: Tried to issue discriptor out of range (%i descriptors, index: %i).' % (self.name,dest_ctr,index))
+        if (index < 0 or index >= self.destination.ip_range):
+            self.logger.error('%s: Tried to issue discriptor out of range (%i descriptors, index: %i).' % (self.name, dest_ctr, index))
             return
-	
+
         self.tx_sockets[index].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
-        self.logger.debug('SPEADStream %s: sent descriptor %i of %i destinations'%(self.name, index , dest_ctr))
+        self.logger.debug('SPEADStream %s: sent descriptor %i of %i destinations' % (self.name, index, dest_ctr))
 
     def get_num_descriptors(self):
         """
@@ -267,8 +269,8 @@ class SPEADStream(object):
             self.logger.debug('%s: tx sockets have not been set up for '
                          'stream yet.' % self.name)
             return -1
-	
-	return self.destination.ip_range;
+
+        return self.destination.ip_range
 
     def tx_enable(self):
         """
@@ -293,4 +295,3 @@ class SPEADStream(object):
     def __repr__(self):
         return 'SPEADStream(%s:%i:%s)' % (
             self.name, self.category, self.destination)
-
