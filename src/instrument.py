@@ -185,8 +185,48 @@ class Instrument(object):
             streams = self.data_streams
         else:
             streams = [self.get_data_stream(stream_name)]
+
+        i=0
         for stream in self.data_streams:
+            i+=1
             stream.descriptors_issue()
+
+    def stream_get_number_of_descriptors(self):
+        """
+        Return the total number of descriptors across all streams
+        :return: Returns number of descriptors
+        """
+        streams = self.data_streams
+
+        num_descriptors=0
+        for stream in self.data_streams:
+            num_descriptors_in_current_stream = stream.get_num_descriptors()
+            if(num_descriptors_in_current_stream>0):
+                num_descriptors+=num_descriptors_in_current_stream
+
+        return num_descriptors;
+
+    def stream_issue_descriptor_single(self,index):
+        """
+        Send a single descriptors from a single stream on this instrument
+        :param index: returns the descriptor index
+        :return:
+        """
+
+        streams = self.data_streams
+
+        position=0
+        stream_num=0;
+        for stream in self.data_streams:
+            num_descriptors_in_current_stream = stream.get_num_descriptors()
+            stream_num+=1;
+            if(num_descriptors_in_current_stream <=0): continue
+            if(num_descriptors_in_current_stream+position>index):
+                #self.logger.error('Index %i Stream %i Stream Index %i' % (index, stream_num-1, index-position))
+                stream.descriptor_issue_single((index-position))
+                return
+            else:
+                position+=num_descriptors_in_current_stream
 
     def set_sensor_manager(self, sensor_manager):
         """

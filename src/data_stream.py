@@ -223,11 +223,52 @@ class SPEADStream(object):
             self.logger.debug('%s: tx sockets have not been set up for '
                          'stream yet.' % self.name)
             return
-
+	
+        i = 0;
         for dest_ctr in range(self.destination.ip_range):
+            i+=1
+            print(i)
             self.tx_sockets[dest_ctr].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
 
-        self.logger.debug('SPEADStream %s: sent descriptors to %i destinations'%(self.name, dest_ctr))
+        self.logger.debug('SPEADStream %s: sent descriptors to %i destinations'%(self.name, dest_ctr+1))
+
+    def descriptor_issue_single(self, index):
+        """
+        Issue a single data descriptor
+        :return:
+        """
+        if (not self.descr_ig) or (not self.destination):
+            self.logger.debug('%s: descriptors have not been set up for '
+                         'stream yet.' % self.name)
+            return
+        if (not self.tx_sockets):
+            self.logger.debug('%s: tx sockets have not been set up for '
+                         'stream yet.' % self.name)
+            return
+
+        dest_ctr = self.destination.ip_range
+	if (index < 0 or index >= self.destination.ip_range):
+            self.logger.error('%s: Tried to issue discriptor out of range (%i descriptors, index: %i).' % (self.name,dest_ctr,index))
+            return
+	
+        self.tx_sockets[index].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
+        self.logger.debug('SPEADStream %s: sent descriptor %i of %i destinations'%(self.name, index , dest_ctr))
+
+    def get_num_descriptors(self):
+        """
+        Issue a single data descriptor
+        :return: returns number of descriptors
+        """
+        if (not self.descr_ig) or (not self.destination):
+            self.logger.debug('%s: descriptors have not been set up for '
+                         'stream yet.' % self.name)
+            return -1
+        if (not self.tx_sockets):
+            self.logger.debug('%s: tx sockets have not been set up for '
+                         'stream yet.' % self.name)
+            return -1
+	
+	return self.destination.ip_range;
 
     def tx_enable(self):
         """

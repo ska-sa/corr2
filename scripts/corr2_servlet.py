@@ -1029,15 +1029,36 @@ class Corr2Server(katcp.DeviceServer):
 
         :return:
         """
+
+        number_of_descriptors = self.instrument.stream_get_number_of_descriptors()
+        time_step = self.descriptor_cadence/(number_of_descriptors+5.0) #5.0 is just chosen arbitrarily, just needs to be greater than 1.0 and formatted as a double, not an integer
+
         if self.descriptor_cadence == 0:
             return
         _logger = self.instrument.logger
-        try:
-            yield self.executor.submit(self.instrument.stream_issue_descriptors)
-        except Exception as ex:
-            _logger.exception('Error sending metadata - {}'.format(ex.message))
+
+        for i in range(number_of_descriptors):
+            IOLoop.current().call_later(time_step*(i+1), self.issue_single_descriptor, i)
+
+        #try:
+        #    yield self.executor.submit(self.instrument.stream_issue_descriptors)
+        #except Exception as ex:
+        #    _logger.exception('Error sending metadata - {}'.format(ex.message))
+
         _logger.debug('self.periodic_issue_descriptors ran')
         IOLoop.current().call_later(self.descriptor_cadence, self.periodic_issue_descriptors)
+
+    @gen.coroutine
+    def issue_single_descriptor(self,index):
+        """
+        Issue a single descriptor.
+        :param index: index of descriptor to issue
+        :return:
+        """
+        try:
+            yield self.executor.submit(self.instrument.stream_issue_descriptor_single,index)
+        except Exception as ex:
+            _logger.exception('Error sending metadata - {}'.format(ex.message))
 
     @request(Str())
     @return_reply(Str())

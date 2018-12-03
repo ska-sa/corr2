@@ -211,15 +211,16 @@ class FxCorrelator(Instrument):
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(
                 self.fhosts, timeout=self.timeout * 10,
-                target_function=('get_system_information', [fbof], {}))
+                target_function=('get_system_information', [fbof], { }))
+            #THREADED_FPGA_FUNC(
+            #    self.fhosts, timeout=self.timeout * 10,
+            #    target_function=('get_system_information', [fbof], {'legacy_reg_map' : False}))
             THREADED_FPGA_FUNC(
                 self.xhosts, timeout=self.timeout * 10,
                 target_function=('get_system_information', [xbof], {}))
-
         # remove test hardware from designs
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
-
         # # disable write access to the correlator
         # if not (enable_write_access or program):
         #     for host in self.xhosts + self.fhosts:
@@ -232,7 +233,6 @@ class FxCorrelator(Instrument):
             self.configure(*args, **kwargs)
         else:
             self.configure(getLogger=self.getLogger, *args, **kwargs)
-
         # run post-programming initialisation
         if program or configure:
             # Passing args and kwargs through here, for completeness
