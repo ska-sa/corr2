@@ -41,7 +41,13 @@ def _cb_xhost_lru(sensor_manager, sensor, x_host):
             elif sensor_manager.sensor_get("{}.bram-reorder.device-status".format(pref)).status() == Corr2Sensor.ERROR:
                 status = Corr2Sensor.ERROR
                 eng_status = Corr2Sensor.ERROR
-            sens_val = (eng_status == Corr2Sensor.NOMINAL)
+
+            sens_val = Corr2Sensor.device_status_fail
+            if(eng_status == Corr2Sensor.NOMINAL):
+                sens_val = Corr2Sensor.device_status_ok
+            elif(eng_status == Corr2Sensor.WARN):
+                sens_val = Corr2Sensor.device_status_degraded
+
             sensor_manager.sensor_get(
                 "{}.device-status".format(pref)).set(value=sens_val, status=eng_status)
 
@@ -54,7 +60,14 @@ def _cb_xhost_lru(sensor_manager, sensor, x_host):
             status = Corr2Sensor.WARN
         elif sensor_manager.sensor_get("{}.network-reorder.device-status".format(h)).status() == Corr2Sensor.WARN:
             status = Corr2Sensor.WARN
-        sens_val = (status == Corr2Sensor.NOMINAL)
+
+
+        sens_val = Corr2Sensor.device_status_fail
+        if(status == Corr2Sensor.NOMINAL):
+            sens_val = Corr2Sensor.device_status_ok
+        elif(status == Corr2Sensor.WARN):
+            sens_val = Corr2Sensor.device_status_degraded
+
         sensor.set(value=sens_val, status=status)
     except Exception as e:
         LOGGER.error(
@@ -114,9 +127,15 @@ def _cb_xeng_network(sensors, x_host):
         if ((sensors['tx_err_cnt'].status() == Corr2Sensor.ERROR) or
                 (sensors['rx_err_cnt'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
-        device_status_value = (device_status == Corr2Sensor.NOMINAL)
+
+        sens_val = Corr2Sensor.device_status_fail
+        if(device_status == Corr2Sensor.NOMINAL):
+            sens_val = Corr2Sensor.device_status_ok
+        elif(device_status == Corr2Sensor.WARN):
+            sens_val = Corr2Sensor.device_status_degraded
+
         sensors['device_status'].set(
-            value=device_status_value,
+            value=sens_val,
             status=device_status)
 
     except Exception as e:
@@ -137,7 +156,7 @@ def _cb_xeng_rx_spead(sensors, x_host):
     # SPEAD RX
     executor = sensors['time_err_cnt'].executor
     status = Corr2Sensor.NOMINAL
-    value = True
+    value = Corr2Sensor.device_status_ok
     try:
         results = yield executor.submit(x_host.get_unpack_status)
 #        accum_errors=0
@@ -149,10 +168,10 @@ def _cb_xeng_rx_spead(sensors, x_host):
         sensors['cnt'].set(value=results['valid_pkt_cnt'], warnif='notchanged')
         if sensors['time_err_cnt'].status() == Corr2Sensor.ERROR:
             status = Corr2Sensor.ERROR
-            value = False
+            value = Corr2Sensor.device_status_fail
         elif sensors['cnt'].status() == Corr2Sensor.WARN:
             status = Corr2Sensor.WARN
-            value = False
+            value = Corr2Sensor.device_status_degraded
         sensors['device_status'].set(value=value, status=status)
     except Exception as e:
         LOGGER.error('Error updating SPEAD sensors for {} - '
@@ -201,9 +220,15 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
                 'hmc_err_cnt']:
             if sensors[key].status() == Corr2Sensor.ERROR:
                 device_status = Corr2Sensor.ERROR
-        device_sensor_value = (device_status == Corr2Sensor.NOMINAL)
+        
+        sens_val = Corr2Sensor.device_status_fail
+        if(status == Corr2Sensor.NOMINAL):
+            sens_val = Corr2Sensor.device_status_ok
+        elif(status == Corr2Sensor.WARN):
+            sens_val = Corr2Sensor.device_status_degraded
+
         sensors['device_status'].set(
-            value=device_sensor_value,
+            value=sens_val,
             status=device_status)
 
     except Exception as e:
@@ -228,17 +253,17 @@ def _cb_xeng_missing_ants(sensors, sensor_top, x_host):
         for sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
-        sensor_top.set(status=Corr2Sensor.FAILURE, value=False)
+        sensor_top.set(status=Corr2Sensor.FAILURE, value=Corr2Sensor.device_status_fail)
     executor = sensor_top.executor
     status = Corr2Sensor.NOMINAL
-    value = True
+    value = Corr2Sensor.device_status_ok
     try:
         results = yield executor.submit(x_host.get_missing_ant_counts)
         for n_ant, missing in enumerate(results):
             sensors[n_ant].set(value=missing, warnif='changed')
             if sensors[n_ant].status() == Corr2Sensor.WARN:
                 status = Corr2Sensor.WARN
-                value = False
+                value = Corr2Sensor.device_status_fail
         sensor_top.set(status=status, value=value)
     except Exception as e:
         LOGGER.error('Error updating RX reorder sensors for {} - '
@@ -283,9 +308,15 @@ def _cb_xeng_rx_reorder(sensors, x_host):
             for key in ['timeout_err_cnt']:
                 if sensordict[key].status() == Corr2Sensor.ERROR:
                     device_status = Corr2Sensor.ERROR
-            device_status_value = (device_status == Corr2Sensor.NOMINAL)
+            
+            sens_val = Corr2Sensor.device_status_fail
+            if(device_status == Corr2Sensor.NOMINAL):
+                sens_val = Corr2Sensor.device_status_ok
+            elif(device_status == Corr2Sensor.WARN):
+                sens_val = Corr2Sensor.device_status_degraded
+
             sensordict['device_status'].set(
-                value=device_status_value, status=device_status)
+                value=sens_val, status=device_status)
 
     except Exception as e:
         LOGGER.error('Error updating RX reorder sensors for {} - '
@@ -320,7 +351,7 @@ def _cb_xeng_vacc(sensors_value):
                     sensordict['timestamp'].set(
                         status=Corr2Sensor.FAILURE, value=-1)
                     sensordict['device_status'].set(
-                        status=Corr2Sensor.FAILURE, value=False)
+                        status=Corr2Sensor.FAILURE, value=Corr2Sensor.device_status_fail)
     executor = sensors_value['synchronised'].executor
     instrument = sensors_value['synchronised'].manager.instrument
     try:
@@ -345,10 +376,10 @@ def _cb_xeng_vacc(sensors_value):
                         (sensordict['arm_cnt'].status() == Corr2Sensor.ERROR) or
                             (sensordict['ld_cnt'].status() == Corr2Sensor.ERROR)):
                         status = Corr2Sensor.ERROR
-                        value = False
+                        value = Corr2Sensor.device_status_error
                     else:
                         status = Corr2Sensor.NOMINAL
-                        value = True
+                        value = Corr2Sensor.device_status_ok
                     sensordict['device_status'].set(value=value, status=status)
     except Exception as e:
         LOGGER.error('Error updating VACC sensors '
@@ -371,7 +402,7 @@ def _cb_xeng_pack(sensors, x_host):
             for key, sensor in sensordict.iteritems():
                 sensor.set(status=Corr2Sensor.FAILURE,
                            value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
-    value = True
+    value = Corr2Sensor.device_status_ok
     status = Corr2Sensor.NOMINAL
     try:
         executor = sensors[0]['align_err_cnt'].executor
@@ -381,7 +412,7 @@ def _cb_xeng_pack(sensors, x_host):
                 sensordict[key].set(value=rv[n_xengcore][key], errif='changed')
                 if sensordict[key].status() == Corr2Sensor.ERROR:
                     status = Corr2Sensor.ERROR
-                    value = False
+                    value = Corr2Sensor.device_status_fail
                 sensordict['device_status'].set(value=value, status=status)
     except Exception as e:
         LOGGER.error('Error updating xeng pack sensors for {} - '
@@ -414,7 +445,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         pref = '{xhost}.network'.format(xhost=xhost)
         network_sensors = {
             'device_status': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{pref}.device-status'.format(pref=pref),
+                Corr2Sensor.string, '{pref}.device-status'.format(pref=pref),
                 'Overall status of this HMC-reorder.', executor=executor),
             'tx_pps': sens_man.do_sensor(
                 Corr2Sensor.float, '{}.tx-pps'.format(pref),
@@ -443,7 +474,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         xhost = host_offset_lookup[_x.host]
         sensors = {
             'device_status': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}.spead-rx.device-status'.format(xhost),
+                Corr2Sensor.string, '{}.spead-rx.device-status'.format(xhost),
                 'X-engine RX SPEAD unpack device status',
                 executor=executor),
             #            'err_cnt': sens_man.do_sensor(
@@ -488,7 +519,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         pref = '{xhost}.network-reorder'.format(xhost=xhost)
         sensors = {
             'device_status': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{pref}.device-status'.format(pref=pref),
+                Corr2Sensor.string, '{pref}.device-status'.format(pref=pref),
                 'Overall status of this HMC-reorder.',
                 executor=executor),
             'dest_err_cnt': sens_man.do_sensor(
@@ -519,7 +550,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
         sensor_top = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}.missing-pkts.device-status'.format(xhost),
+            Corr2Sensor.string, '{}.missing-pkts.device-status'.format(xhost),
             'Rolled-up missing packets sensor.', executor=executor)
         sensors = []
         for ant in range(_x.n_ants):
@@ -538,7 +569,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 xhost=xhost, xctr=xctr)
             sensordict = {}
             sensordict['device_status'] = sens_man.do_sensor(
-                Corr2Sensor.boolean, '{pref}.device-status'.format(pref=pref),
+                Corr2Sensor.string, '{pref}.device-status'.format(pref=pref),
                 'Overall status of this bram-reorder.')
             sensordict['discard_err_cnt'] = sens_man.do_sensor(
                 Corr2Sensor.integer, '{pref}.discard-err-cnt'.format(pref=pref),
@@ -576,7 +607,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             pref = '{xhost}.xeng{xctr}.vacc'.format(xhost=xhost, xctr=xctr)
             sensordict = {}
             sensordict['device_status'] = sens_man.do_sensor(
-                Corr2Sensor.boolean, '{pref}.device-status'.format(pref=pref),
+                Corr2Sensor.string, '{pref}.device-status'.format(pref=pref),
                 'Overall status of this VACC.')
             sensordict['arm_cnt'] = sens_man.do_sensor(
                 Corr2Sensor.integer, '{pref}.arm-cnt'.format(pref=pref),
@@ -605,7 +636,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             pref = '{xhost}.xeng{xctr}.spead-tx'.format(xhost=xhost, xctr=xctr)
             sensordict = {
                 'device_status': sens_man.do_sensor(
-                    Corr2Sensor.boolean,
+                    Corr2Sensor.string,
                     '{}.device-status'.format(pref),
                     'X-engine pack (TX) status',
                     executor=executor),
@@ -624,12 +655,12 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
 
         # LRU ok
         sensor = sens_man.do_sensor(
-            Corr2Sensor.boolean, '{}.device-status'.format(xhost),
+            Corr2Sensor.string, '{}.device-status'.format(xhost),
             'X-engine %s LRU ok' % _x.host, executor=executor)
         for xctr in range(_x.x_per_fpga):
             pref = '{xhost}.xeng{xctr}'.format(xhost=xhost, xctr=xctr)
             sens_man.do_sensor(
-                Corr2Sensor.boolean,
+                Corr2Sensor.string,
                 '{}.device-status'.format(pref),
                 'X-engine core status')
         ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, _x)
