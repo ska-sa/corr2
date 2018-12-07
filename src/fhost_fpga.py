@@ -115,25 +115,36 @@ class Fengine(object):
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
-    def get_quant_snapshot(self):
+    def get_quant_snapshot(self, enable_single_channel=False, channel_select=-1):
         """
         Read the post-quantisation snapshot for this fengine.
         snapshot data.
         :return:
         """
-        snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
-        #calculate number of snapshot reads required:
-        n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
-        compl = []
-        for read_n in range(int(numpy.ceil(n_reads))):
-            offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
-            sdata = snapshot.read(offset=offset)['data']
-            for ctr in range(0, len(sdata['real0'])):
-                compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
-                compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
-                compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
-                compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
-        return compl[0:self.host.n_chans]
+        if enable_single_channel:
+            if channel_select == -1:
+                raise ValueError("If you want to snap a single channel, you need to specify which channel!")
+            snapshot = self.host.snapshots['snap_quant%i_ss' % self.offset]
+            sdata = snapshot.read()['data']
+            compl = numpy.vstack((complex(sdata['real0'], sdata['imag0']),
+                                  complex(sdata['real1'], sdata['imag1']),
+                                  complex(sdata['real2'], sdata['imag2']),
+                                  complex(sdata['real3'], sdata['imag3']))).reshape((-1),order='F')
+            return compl
+        else:
+            snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
+            #calculate number of snapshot reads required:
+            n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
+            compl = []
+            for read_n in range(int(numpy.ceil(n_reads))):
+                offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
+                sdata = snapshot.read(offset=offset)['data']
+                for ctr in range(0, len(sdata['real0'])):
+                    compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
+                    compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
+                    compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
+                    compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
+            return compl[0:self.host.n_chans]
 
 
     def delay_set(self, delay_obj):
