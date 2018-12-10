@@ -126,6 +126,9 @@ class Fengine(object):
                 raise ValueError("If you want to snap a single channel, you need to specify which channel!")
             snapshot = self.host.snapshots['snap_quant%i_ss' % self.offset]
             sdata = snapshot.read()['data']
+
+            import IPython; IPython.embed()
+
             compl = numpy.vstack((complex(sdata['real0'], sdata['imag0']),
                                   complex(sdata['real1'], sdata['imag1']),
                                   complex(sdata['real2'], sdata['imag2']),
