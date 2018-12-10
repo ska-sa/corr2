@@ -127,10 +127,10 @@ class Fengine(object):
             snapshot = self.host.snapshots['snap_quant%i_ss' % self.offset]
             sdata = snapshot.read()['data']
 
-            compl = numpy.vstack((np.vectorize(complex)(sdata['real0'], sdata['imag0']),
-                                  np.vectorize(complex)(sdata['real1'], sdata['imag1']),
-                                  np.vectorize(complex)(sdata['real2'], sdata['imag2']),
-                                  np.vectorize(complex)(sdata['real3'], sdata['imag3']))).reshape((-1),order='F')
+            compl = numpy.vstack((numpy.vectorize(complex)(sdata['real0'], sdata['imag0']),
+                                  numpy.vectorize(complex)(sdata['real1'], sdata['imag1']),
+                                  numpy.vectorize(complex)(sdata['real2'], sdata['imag2']),
+                                  numpy.vectorize(complex)(sdata['real3'], sdata['imag3']))).reshape((-1),order='F')
             return compl
         else:
             snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
