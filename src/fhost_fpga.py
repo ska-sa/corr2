@@ -115,22 +115,23 @@ class Fengine(object):
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
-    def get_quant_snapshot(self, enable_single_channel=False, channel_select=-1):
+    def get_quant_snapshot(self, channel_select=-1):
         """
         Read the post-quantisation snapshot for this fengine.
         snapshot data.
-        :return:
+        :param channel_select: If a value is passed here, a time-series of a single channel is returned, if not, a spectrum is returned.
+        :return: a numpy array of complex values
         """
-        if enable_single_channel:
-            if channel_select == -1:
-                raise ValueError("If you want to snap a single channel, you need to specify which channel!")
+
+        if channel_select != -1
+            if channel_select < 0 or channel_select >= self.host.n_chans:
+                raise ValueError("channel_select should be between 0 and {}, but received {}!".format(self.host.n_chans, channel_select))
+            chan_group = int(channel_select) / 4
+            which_chan = int(channel_select) % 4
+            self.host.registers.quant_snap_ctrl.write(single_channel=True, channel_select=chan_group)
             snapshot = self.host.snapshots['snap_quant%i_ss' % self.offset]
             sdata = snapshot.read()['data']
-
-            compl = numpy.vstack((numpy.vectorize(complex)(sdata['real0'], sdata['imag0']),
-                                  numpy.vectorize(complex)(sdata['real1'], sdata['imag1']),
-                                  numpy.vectorize(complex)(sdata['real2'], sdata['imag2']),
-                                  numpy.vectorize(complex)(sdata['real3'], sdata['imag3']))).reshape((-1),order='F')
+            compl = numpy.vectorize(complex)(sdata['real{}'.format(which_chan)], sdata['imag{}'.format(which_chan)])
             return compl
         else:
             snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
