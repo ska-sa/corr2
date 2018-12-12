@@ -715,14 +715,15 @@ class FEngineOperations(object):
         _chan_index = numpy.floor(freq / _hz_per_chan)
         return _chan_index
 
-    def get_quant_snap(self, input_name):
+    def get_quant_snap(self, input_name, channel_select=-1):
         """
         Get the quantiser snapshot for this input_name
         :param input_name:
+        :param channel_select:
         :return:
         """
         feng = self.get_fengine(input_name)
-        return feng.get_quant_snapshot()
+        return feng.get_quant_snapshot(channel_select=channel_select)
 
     def get_adc_snapshot(self, input_name=None, unix_time=-1):
         """
