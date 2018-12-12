@@ -508,6 +508,26 @@ class Corr2Server(katcp.DeviceServer):
         sock.inform(source_name, str(snapdata))
         return 'ok',
 
+    @request(Str(), Int())
+    @return_reply()
+    def request_quantiser_singlechan_snapshot(self, sock, source_name, channel_select):
+        """
+        Get a list of values representing the quantised spectrum for
+        the given source
+        :param sock:
+        :param channel_select: The channel
+        :param source_name: the source to query
+        :return:
+        """
+        if source_name.strip() == '':
+            return self._log_excep(None, 'No source name given.')
+        try:
+            snapdata = self.instrument.fops.get_quant_snap(source_name, channel_select)
+        except Exception as ex:
+            return self._log_excep(ex, ex.message)
+        sock.inform(source_name, str(snapdata))
+        return 'ok',
+
     @request(Str(), Float(default=-1))
     @return_reply(Int())
     def request_adc_snapshot(self, sock, source_name, capture_time):
