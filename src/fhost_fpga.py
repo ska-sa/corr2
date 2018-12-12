@@ -123,7 +123,7 @@ class Fengine(object):
         :return: a numpy array of complex values
         """
 
-        if channel_select != -1
+        if channel_select != -1:
             if channel_select < 0 or channel_select >= self.host.n_chans:
                 raise ValueError("channel_select should be between 0 and {}, but received {}!".format(self.host.n_chans, channel_select))
             chan_group = int(channel_select) / 4
@@ -573,13 +573,13 @@ class FpgaFHost(FpgaHost):
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 
-    def get_quant_snapshots(self):
+    def get_quant_snapshots(self, channel_select=-1):
         """
         Get the quant snapshots for all the inputs on this host.
         :return:
         """
         return {
-            feng.name: feng.get_quant_snapshot()
+            feng.name: feng.get_quant_snapshot(channel_select=channel_select)
             for feng in self.fengines
         }
 
