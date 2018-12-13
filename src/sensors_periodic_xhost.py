@@ -91,6 +91,7 @@ def _cb_xeng_network(sensors, x_host):
             status=Corr2Sensor.NOMINAL,
             value=result['tx_gbps'])
 
+#TODO The software-based PPS and Gbps counters aren't reliable, so ignore em for now:
         if (result['rx_pps'] < 900000) and (result['rx_pps'] > 800000):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.NOMINAL,
@@ -99,7 +100,7 @@ def _cb_xeng_network(sensors, x_host):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_pps'])
-            device_status = Corr2Sensor.WARN
+            #device_status = Corr2Sensor.WARN
 
         if (result['rx_gbps'] < 32) and (result['rx_gbps'] > 30):
             sensors['rx_gbps'].set(
@@ -109,7 +110,7 @@ def _cb_xeng_network(sensors, x_host):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_gbps'])
-            device_status = Corr2Sensor.WARN
+            #device_status = Corr2Sensor.WARN
 
         if ((sensors['tx_err_cnt'].status() == Corr2Sensor.ERROR) or
                 (sensors['rx_err_cnt'].status() == Corr2Sensor.ERROR)):

@@ -331,6 +331,7 @@ def _cb_fhost_check_network(sensors, f_host):
             status=Corr2Sensor.NOMINAL,
             value=result['tx_gbps'])
 
+# The software-based PPS and Gbps counters aren't reliable, so ignore them for now:
         if (result['rx_pps'] > 800000) and (result['rx_pps'] < 900000):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.NOMINAL,
@@ -339,7 +340,7 @@ def _cb_fhost_check_network(sensors, f_host):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_pps'])
-            device_status = Corr2Sensor.WARN
+            #device_status = Corr2Sensor.WARN
 
         if (result['rx_gbps'] > 35) and (result['rx_gbps'] < 38):
             sensors['rx_gbps'].set(
@@ -349,7 +350,7 @@ def _cb_fhost_check_network(sensors, f_host):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_gbps'])
-            device_status = Corr2Sensor.WARN
+            #device_status = Corr2Sensor.WARN
 
         if ((sensors['tx_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['rx_err_cnt'].status() == Corr2Sensor.ERROR) or

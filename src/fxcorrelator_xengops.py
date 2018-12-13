@@ -196,14 +196,22 @@ class XEngineOperations(object):
         self.subscribe_to_multicast()
 
         #set the tx_offset registers:
+        #This adjusts the read offset in the HMC reorder blocks.
+        # The idea is to offset each board's processing, so that
+        # B-engines are offset relative to other boards.
+        # We aim to offset each board by n_x_per_fpga windows (ie four frequency channels for MeerKAT)
+        # NNB: ensure that the compiled packet buffer is deep enough to accommodate these offsets.
+        # for 64A, the shift of the last board will be over 516K!
         board_id = 0
         self.logger.info("Setting TX offsets.")
         for f in self.hosts:
-            offset=4*board_id*self.corr.n_antennas*self.corr.xeng_accumulation_len/(256/32)
+            offset=f.x_per_fpga*board_id*self.corr.n_antennas*self.corr.xeng_accumulation_len/(256/32)
             f.registers.hmc_pkt_reord_rd_offset.write(rd_offset=offset)
             board_id += 1
 
         # set the gapsize register
+        # Here we space-out the packets that the correlator emits, to
+        # smooth-out the bursty nature of the VACC output.
         gapsize = int(self.corr.configd['xengine']['10gbe_pkt_gapsize'])
         self.logger.info('X-engines: setting packet gap size to %i' % gapsize)
         THREADED_FPGA_OP(
@@ -354,7 +362,7 @@ class XEngineOperations(object):
         :param load_time:
         :return: the vacc load time, in seconds since the UNIX epoch
         """
-        min_loadtime = self.get_acc_time() * 2.0
+        min_loadtime = self.get_acc_time() + 2.0
         # min_loadtime = 2
         t_now = time.time()
         if load_time is None:

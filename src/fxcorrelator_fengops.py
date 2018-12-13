@@ -202,6 +202,7 @@ class FEngineOperations(object):
                 # 8 packets in a row to one x-engine, and 32 256-bit
                 # words in an outgoing packet
                 f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (16 * 32)))
+                #https://docs.google.com/spreadsheets/d/1wBXsfUCxf5hzC0G8Vz7emh3qIeYMBLdObgv9pOe_Zgc/edit#gid=1568192830
             except AttributeError:
                 reg_error = True
             host_ctr += 1
