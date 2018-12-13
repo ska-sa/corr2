@@ -199,11 +199,11 @@ class SensorManager(object):
         if instrument is None:
             # You are a strong, independent SensorManager
             self.getLogger = getKatcpLogger
-            logger_name = '{}_sensor_manager'.format(katcp_server.host.host)
+            logger_name = '{}_sens_man'.format(katcp_server.host.host)
         else:
             # The instrument already has a getLogger attribute
             self.getLogger = instrument.getLogger
-            logger_name = '{}_sensor_manager'.format(instrument.descriptor)
+            logger_name = '{}_sens_man'.format(instrument.descriptor)
 
         # Why is logging defaulted to INFO, what if I do not want to see the info logs?
         logLevel = kwargs.get('logLevel', INFO)
