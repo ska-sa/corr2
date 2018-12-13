@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 import logging
+import traceback2 as traceback
 import sys
 import argparse
 import os
@@ -24,6 +25,38 @@ class Corr2SensorServer(katcp.DeviceServer):
         self.set_concurrency_options(thread_safe=False, handler_thread=False)
         self.instrument = None
 
+    def _log_excep(self, excep, msg=''):
+        """
+        Log an error and return fail
+        :param excep: the exception that caused us to fail
+        :param msg: the error message to log
+        :return:
+        """
+        message = msg
+        if excep is not None:
+            template = '\nAn exception of type {0} occured. Arguments: {1!r}'
+            message += template.format(type(excep).__name__, excep.args)
+        if self.instrument:
+            self.instrument.logger.error(message)
+        else:
+            logging.error(message)
+        return 'fail', message
+
+    def _log_stacktrace(self, stack_trace, msg=''):
+        """
+        Log a stack_trace and return fail
+        :param stack_trace: String formatted using traceback2 utility
+        :param msg: the error message to log
+        :return:
+        """
+        import IPython; IPython.embed()
+        log_message = '{} \n {}'.format(msg, stack_trace)
+        if self.instrument:
+            self.instrument.logger.error(log_message)
+        else:
+            logging.error(log_message)
+        return 'fail', log_message
+
     def setup_sensors(self):
         """
         Must be implemented in interface.
@@ -38,38 +71,43 @@ class Corr2SensorServer(katcp.DeviceServer):
         :return:
 
         """
-        _default_log_dir = '/var/log/corr'
-        config_file_dict = parse_ini_file(config)
-        log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir', _default_log_dir)
-        assert os.path.isdir(log_file_dir)
-        
-        start_time = str(time.time())
-        ini_filename = os.path.basename(config)
-        log_filename = '{}_{}_sensor_servlet.log'.format(ini_filename, start_time)
+        try:
+            _default_log_dir = '/var/log/corr'
+            config_file_dict = parse_ini_file(config)
+            log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir', _default_log_dir)
+            assert os.path.isdir(log_file_dir)
+            
+            start_time = str(time.time())
+            ini_filename = os.path.basename(config)
+            log_filename = '{}_{}_sensor_servlet.log'.format(ini_filename, start_time)
 
-        self.instrument = fxcorrelator.FxCorrelator(
-                            'dummy fx correlator for sensors', config_source=config,
-                            mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
-                            log_filename=log_filename, log_file_dir=log_file_dir)
-        self.instrument.initialise(program=False, configure=False, require_epoch=False,
-                                   mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
-                                   log_filename=log_filename, log_file_dir=log_file_dir)
-        
-        #disable manually-issued sensor update informs (aka 'kcs' sensors):
-        sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False,
-                                                mass_inform_func=self.mass_inform,
-                                                log_filename=log_filename,
-                                                log_file_dir=log_file_dir)
-        self.instrument.sensor_manager = sensor_manager
-        sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
+            self.instrument = fxcorrelator.FxCorrelator(
+                                'dummy fx correlator for sensors', config_source=config,
+                                mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
+                                log_filename=log_filename, log_file_dir=log_file_dir)
+            self.instrument.initialise(program=False, configure=False, require_epoch=False,
+                                    mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
+                                    log_filename=log_filename, log_file_dir=log_file_dir)
+            
+            #disable manually-issued sensor update informs (aka 'kcs' sensors):
+            sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False,
+                                                    mass_inform_func=self.mass_inform,
+                                                    log_filename=log_filename,
+                                                    log_file_dir=log_file_dir)
+            self.instrument.sensor_manager = sensor_manager
+            sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
 
-        # Function created to reassign all non-conforming log-handlers
-        loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
-                                                log_filename=log_filename, 
-                                                log_file_dir=log_file_dir,
-                                                instrument_name=self.instrument.descriptor)
+            # Function created to reassign all non-conforming log-handlers
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
+                                                    log_filename=log_filename, 
+                                                    log_file_dir=log_file_dir,
+                                                    instrument_name=self.instrument.descriptor)
+            
+        except Exception as exc:
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed to initialise sensor_servlet.')
 
-
+    
 @tornado.gen.coroutine
 def on_shutdown(ioloop, server):
     """
