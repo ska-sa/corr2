@@ -75,7 +75,7 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
     :param sensors: all sensors for all bengine pack blocks, a nested list of dictionaries.
     :return:
     """
-    value = True
+    value = device_status_ok
     status = Corr2Sensor.NOMINAL
 
     try:
@@ -98,7 +98,7 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
                             beng_sensors[key].set(value=rv[beam_no][bhost_no][beng_no][key], errif='notchanged')
                         if beng_sensors[key].status() == Corr2Sensor.ERROR:
                             status = Corr2Sensor.ERROR
-                            value = False
+                            value = device_status_fail
                     beng_sensors['device_status'].set(value=value, status=status)
 
     except Exception as e:
@@ -150,7 +150,7 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
                 pref = 'beam{beamctr}.{bhost}.beng{bengctr}.spead-tx'.format(beamctr=beamctr, bhost=bhost, bengctr=bengctr)
                 sensordict = {
                     'device_status': sens_man.do_sensor(
-                        Corr2Sensor.boolean,
+                        Corr2Sensor.string,
                         '{}.device-status'.format(pref),
                         'B-engine pack (TX) status',
                         executor=executor),
@@ -171,7 +171,7 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
 
     # LRU ok
     sensor = sens_man.do_sensor(
-        Corr2Sensor.boolean, '{}.device-status'.format(bhost),
+        Corr2Sensor.string, '{}.device-status'.format(bhost),
         'B-engine %s LRU ok' % _b.host, executor=executor)
     #TODO think a little bit more about how this needs to work.
     # for bengctr in range(_b.x_per_fpga):

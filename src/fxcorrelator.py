@@ -211,7 +211,7 @@ class FxCorrelator(Instrument):
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(
                 self.fhosts, timeout=self.timeout * 10,
-                target_function=('get_system_information', [fbof], { }))
+                target_function=('get_system_information', [fbof], {}))
             #THREADED_FPGA_FUNC(
             #    self.fhosts, timeout=self.timeout * 10,
             #    target_function=('get_system_information', [fbof], {'legacy_reg_map' : False}))

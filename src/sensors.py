@@ -18,6 +18,11 @@ import data_stream
 
 
 class Corr2Sensor(Sensor):
+
+    device_status_ok = "ok"
+    device_status_degraded = "degraded"
+    device_status_fail = "fail"  
+
     @classmethod
     def integer(cls, name, description=None, unit='', params=None,
                 default=None, initial_status=None,
