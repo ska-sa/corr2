@@ -53,13 +53,13 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host):
             status = Corr2Sensor.WARN
         else:
             status = Corr2Sensor.NOMINAL
-        
+
         sens_val = Corr2Sensor.device_status_fail
         if(status == Corr2Sensor.NOMINAL):
             sens_val = Corr2Sensor.device_status_ok
         elif(status == Corr2Sensor.WARN):
             sens_val = Corr2Sensor.device_status_degraded
-        
+
         sensor.set(value=sens_val, status=status)
     except Exception as e:
         LOGGER.error(
@@ -173,7 +173,7 @@ def _cb_feng_delays(sensors, f_host):
             (sensors['pol1_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['reorder_missing_err_cnt_pol0'].status() == Corr2Sensor.ERROR) or
             (sensors['reorder_missing_err_cnt_pol1'].status() == Corr2Sensor.ERROR) or
-            (sensors['hmc_post'].status() == Corr2Sensor.ERROR)):
+                (sensors['hmc_post'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
 
         device_status_value = Corr2Sensor.device_status_fail
@@ -236,15 +236,15 @@ def _cb_feng_ct(sensors, f_host):
             (sensors['pol1_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol0_post'].status() == Corr2Sensor.ERROR) or
             (sensors['reorder_missing_err_cnt'].status() != Corr2Sensor.NOMINAL) or
-            (sensors['pol1_post'].status() == Corr2Sensor.ERROR)):
+                (sensors['pol1_post'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
         else:
             device_status = Corr2Sensor.NOMINAL
-        
+
         device_value = Corr2Sensor.device_status_fail
         if(device_status == Corr2Sensor.NOMINAL):
             device_value = Corr2Sensor.device_status_ok
-            
+
         sensors['device-status'].set(value=device_value, status=device_status)
     except Exception as e:
         LOGGER.error(
@@ -421,7 +421,7 @@ def _cb_feng_rx_spead(sensors, f_host):
         sensors['cnt'].set(value=results['pkt_cnt'], warnif='notchanged')
         timestamp, status, value = sensors['cnt'].read()
         value = (status == Corr2Sensor.NOMINAL)
-        
+
         value = Corr2Sensor.device_status_fail
         if(status == Corr2Sensor.NOMINAL):
             value = Corr2Sensor.device_status_ok

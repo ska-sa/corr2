@@ -1,7 +1,6 @@
 import time
 from logging import INFO
 import struct
-import numpy
 
 import casperfpga.memory as caspermem
 from casperfpga.transport_skarab import SkarabTransport
@@ -125,6 +124,7 @@ class Fengine(object):
         #calculate number of snapshot reads required:
         n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
         compl = []
+        import numpy
         for read_n in range(int(numpy.ceil(n_reads))):
             offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
             sdata = snapshot.read(offset=offset)['data']
@@ -334,7 +334,8 @@ class Fengine(object):
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
         self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
         self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
-
+        
+        import numpy
         prep_array = numpy.array([prep_int_initial, prep_int_delta], dtype=numpy.int16)
         prep_array = prep_array.view(dtype=numpy.uint16)
         # actually write the values to the register
@@ -373,6 +374,7 @@ class Fengine(object):
                 coeffs[1::2] = [coeff.imag for coeff in eq_poly]
             elif len(eq_poly)<self.host.n_chans:
                 # polynomial
+                import numpy
                 poly_coeffs=numpy.polyval(eq_poly, range(self.host.n_chans))
                 coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
                 coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]

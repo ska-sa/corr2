@@ -1,4 +1,3 @@
-import numpy
 import Queue
 import threading
 import time
@@ -711,6 +710,7 @@ class FEngineOperations(object):
         _band = self.corr.sample_rate_hz / 2.0
         if (freq > _band) or (freq <= 0):
             raise RuntimeError('frequency {:.3f} is not in our band'.format(freq))
+        import numpy
         _hz_per_chan = _band / self.corr.n_chans
         _chan_index = numpy.floor(freq / _hz_per_chan)
         return _chan_index

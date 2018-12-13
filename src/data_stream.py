@@ -1,8 +1,13 @@
 from logging import INFO
-import spead2
-import spead2.send
 import struct
 import socket
+
+import lazy_import
+lazy_import.lazy_module("spead2")
+lazy_import.lazy_module("spead2.send")
+
+import spead2
+import spead2.send
 
 from casperfpga.network import IpAddress
 
