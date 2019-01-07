@@ -1,4 +1,3 @@
-import numpy
 from logging import INFO
 from casperfpga import utils as fpgautils
 

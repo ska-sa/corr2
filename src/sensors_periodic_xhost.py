@@ -195,7 +195,7 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
     executor = sensors['post_ok'].executor
     try:
-	results = yield executor.submit(x_host.get_hmc_reorder_status)
+        results = yield executor.submit(x_host.get_hmc_reorder_status)
         device_status = Corr2Sensor.NOMINAL
         for key in ['miss_err_cnt']:
             sensors[key].set(value=results[key], warnif='changed')
@@ -221,7 +221,7 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
                 'hmc_err_cnt']:
             if sensors[key].status() == Corr2Sensor.ERROR:
                 device_status = Corr2Sensor.ERROR
-        
+
         sens_val = Corr2Sensor.device_status_fail
         if(status == Corr2Sensor.NOMINAL):
             sens_val = Corr2Sensor.device_status_ok
@@ -242,6 +242,7 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
         _cb_xeng_hmc_reorder,
         sensors,
         x_host)
+
 
 @gen.coroutine
 def _cb_xeng_missing_ants(sensors, sensor_top, x_host):
@@ -309,7 +310,7 @@ def _cb_xeng_rx_reorder(sensors, x_host):
             for key in ['timeout_err_cnt']:
                 if sensordict[key].status() == Corr2Sensor.ERROR:
                     device_status = Corr2Sensor.ERROR
-            
+
             sens_val = Corr2Sensor.device_status_fail
             if(device_status == Corr2Sensor.NOMINAL):
                 sens_val = Corr2Sensor.device_status_ok

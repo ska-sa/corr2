@@ -1,6 +1,6 @@
 import logging
 import os
-import numpy as np
+
 from ConfigParser import SafeConfigParser
 import Queue
 import threading
@@ -432,6 +432,7 @@ class UnpackDengPacketCapture(object):
             Voltage time-series normalised to between -1 and 1.
 
         """
+        import numpy as np
         try:
             import bitstring
         except ImportError:

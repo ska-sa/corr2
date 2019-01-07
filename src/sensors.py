@@ -2,7 +2,7 @@
 # Yes, I know it's just an integer value
 from logging import INFO
 import time
-import numpy
+
 
 
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
@@ -21,7 +21,7 @@ class Corr2Sensor(Sensor):
 
     device_status_ok = "ok"
     device_status_degraded = "degraded"
-    device_status_fail = "fail"  
+    device_status_fail = "fail"
 
     @classmethod
     def integer(cls, name, description=None, unit='', params=None,
@@ -110,59 +110,59 @@ class Corr2Sensor(Sensor):
         if timestamp is None:
             timestamp = time.time()
         if status is None:
-	    status_none = 1
+            status_none = 1
             status = Sensor.NOMINAL
         (old_timestamp, old_status, old_value) = self.read()
         if (old_status == status) and (old_value == value):
             self.logger.debug('Sensor values unchanged, ignoring')
             return
 
-        if (value==False):
+        if (value == False):
             if (errif == 'False'):
                 self.logger.error('Sensor error: {} is False'.format(self.name))
-		if(status_none == 1 ):
-		    status = Sensor.ERROR
+                if(status_none == 1):
+                    status = Sensor.ERROR
             elif (warnif == 'False'):
                 self.logger.warn('Sensor warning: {} is False'.format(self.name))
-                if(status_none == 1 ):
-		    status = Sensor.WARN
+                if(status_none == 1):
+                    status = Sensor.WARN
             else:
-		if(status_none == 1):
+                if(status_none == 1):
                     status = Sensor.NOMINAL
 
-        elif (value==True):
+        elif (value):
             if (errif == 'True'):
                 self.logger.error('Sensor error: {} is True'.format(self.name))
-                if(status_none == 1 ):
-		    status = Sensor.ERROR
+                if(status_none == 1):
+                    status = Sensor.ERROR
             elif warnif == 'True':
                 self.logger.warn('Sensor warning: {} is True'.format(self.name))
-                if(status_none == 1 ):
-		    status = Sensor.WARN
+                if(status_none == 1):
+                    status = Sensor.WARN
             else:
-		if(status_none == 1 ):
+                if(status_none == 1):
                     status = Sensor.NOMINAL
 
         if old_value != value:
             if errif == 'changed':
                 self.logger.error(
                     'Sensor error: {} changed {} -> {}'.format(self.name, old_value, value))
-                if(status_none == 1 ):
-		    status = Sensor.ERROR
+                if(status_none == 1):
+                    status = Sensor.ERROR
             elif warnif == 'changed':
                 self.logger.warn(
                     'Sensor warning: {} changed {} -> {}'.format(self.name, old_value, value))
-                if(status_none == 1 ):
-		    status = Sensor.WARN
+                if(status_none == 1):
+                    status = Sensor.WARN
         else:
             if errif == 'notchanged':
-		if(status_none == 1 ):
+                if(status_none == 1):
                     status = Sensor.ERROR
                 self.logger.error(
                     'Sensor error: {} not changing {} -> {}'.format(self.name, old_value, value))
             elif warnif == 'notchanged':
-                if(status_none == 1 ):
-		    status = Sensor.WARN
+                if(status_none == 1):
+                    status = Sensor.WARN
                 self.logger.warn(
                     'Sensor warning: {} not changing {} -> {}'.format(self.name, old_value, value))
         super(Corr2Sensor, self).set(timestamp, status, value)
@@ -196,14 +196,14 @@ class SensorManager(object):
         self.katcp_server = katcp_server
         self.instrument = instrument
 
-        if instrument == None:
+        if instrument is None:
             # You are a strong, independent SensorManager
             self.getLogger = getKatcpLogger
-            logger_name = '{}_sensor_manager'.format(katcp_server.host.host)
+            logger_name = '{}_sens_man'.format(katcp_server.host.host)
         else:
             # The instrument already has a getLogger attribute
             self.getLogger = instrument.getLogger
-            logger_name = '{}_sensor_manager'.format(instrument.descriptor)
+            logger_name = '{}_sens_man'.format(instrument.descriptor)
 
         # Why is logging defaulted to INFO, what if I do not want to see the info logs?
         logLevel = kwargs.get('logLevel', INFO)
@@ -640,6 +640,7 @@ class Corr2SensorManager(SensorManager):
        #     'Delays for this input are functioning correctly.')
 
         if feng.last_delay is not None:
+            import numpy
             delay = feng.last_delay.delay / self.instrument.sample_rate_hz
             delay_delta = feng.last_delay.delay_delta
             phase_offset = feng.last_delay.phase_offset * numpy.pi
@@ -674,7 +675,7 @@ class Corr2SensorManager(SensorManager):
             data_stream.FENGINE_CHANNELISED_DATA)
 
         assert len(streams) == 1
-
+        import numpy
         for stream in streams:
             strmnm = stream.name
 
@@ -1018,7 +1019,7 @@ class Corr2SensorManager(SensorManager):
                                 initial_status=Sensor.UNKNOWN,
                                 manager=self)
                             self.sensor_create(sensor)
-                            sensor.set_value(str(param)+':'+str(value))
+                            sensor.set_value(str(param) + ':' + str(value))
                             filectr += 1
 
             sensor = Corr2Sensor.string(

@@ -31,10 +31,11 @@ class Corr2SensorServer(katcp.DeviceServer):
         """
         pass
 
-    def initialise(self, config):
+    def initialise(self, config, name):
         """
         Setup and start sensors
         :param config: the config to use when making the instrument
+        :param name: a name for the instrument
         :return:
 
         """
@@ -48,7 +49,7 @@ class Corr2SensorServer(katcp.DeviceServer):
         log_filename = '{}_{}_sensor_servlet.log'.format(ini_filename, start_time)
 
         self.instrument = fxcorrelator.FxCorrelator(
-                            'dummy fx correlator for sensors', config_source=config,
+                            name, config_source=config,
                             mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
                             log_filename=log_filename, log_file_dir=log_file_dir)
         self.instrument.initialise(program=False, configure=False, require_epoch=False,
@@ -96,6 +97,8 @@ if __name__ == '__main__':
                         default=False, help='format log messsages for katcp')
     parser.add_argument('--config', dest='config', type=str, action='store',
                         default='', help='a corr2 config file')
+    parser.add_argument('-n', '--name', dest='name', action='store',
+                        default='', help='a name for the instrument')
     args = parser.parse_args()
 
     try:
@@ -112,6 +115,9 @@ if __name__ == '__main__':
     if args.config == '':
         raise RuntimeError('No config file.')
 
+    if args.name == '':
+        # default to config file name?
+        args.name = args.config.split('/')[-1].split('.')[-2]
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
@@ -123,7 +129,7 @@ if __name__ == '__main__':
     ioloop.add_callback(sensor_server.start)
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
-    ioloop.add_callback(sensor_server.initialise, args.config)
+    ioloop.add_callback(sensor_server.initialise, args.config, args.name)
     # ioloop.call_later(10, boop)
     ioloop.start()
 

@@ -1,4 +1,3 @@
-import numpy
 from logging import INFO
 from casperfpga import utils as fpgautils
 from beam import Beam
@@ -196,6 +195,7 @@ class BEngineOperations(object):
         beam = self.get_beam_by_name(beam_name)
         vals=THREADED_FPGA_FUNC(self.hosts, 10, ('beam_weights_get',
                                            [beam.index], {}))
+        import numpy
         na=numpy.array(vals.values())
         for ant in range(self.corr.n_antennas):
             if na[:,ant].max() != na[:,ant].min():

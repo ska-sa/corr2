@@ -1,5 +1,4 @@
 import time
-import numpy
 import utils
 from logging import INFO
 
@@ -42,7 +41,7 @@ class XengineStream(data_stream.SPEADStream):
         :return:
         """
         speadops.item_0x1600(self.descr_ig)
-
+        import numpy
         n_xengs = len(self.xops.corr.xhosts) * self.xops.corr.x_per_fpga
         speadops.add_item(
             self.descr_ig, name='xeng_raw', id=0x1800,
@@ -395,6 +394,7 @@ class XEngineOperations(object):
         :param vacc_loadtime:
         :return:
         """
+        import numpy
         ldmcnt = int(self.corr.mcnt_from_time(vacc_loadtime))
         self.logger.debug('$$$$$$$$$$$ - ldmcnt = %i' % ldmcnt)
         _ldmcnt_orig = ldmcnt
