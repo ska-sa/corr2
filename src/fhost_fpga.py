@@ -362,12 +362,33 @@ class Fengine(object):
         Write a given complex eq to the given SBRAM.
         WARN: hardcoded for 16b values!
 
-        :param eq_poly: a list of polynomial coefficients, or list of float values (must be n_chans long) to write to bram.
+        :param eq_poly: a list of polynomial coefficients, or list of float values (must be n_chans long) to write to bram. Set to string 'auto' to have system attempt to automatically set gains (requires sane values to have been set beforehand!).
         :return:
         """
         coeffs = (self.host.n_chans * 2) * [0]
         try:
-            if len(eq_poly) == self.host.n_chans:
+            if eq_poly='auto':
+                tartget_output=0.1 #this is the goal for numpy.abs(complex_snapshot). For 8.7bit meerkat, total range is thus sqrt((abs(1+1j)))=1.4
+                n_averages=30
+
+                #get an estimate of the current spectrum:
+                chans = range(self.host.n_chans)
+                quant_snapshot = numpy.abs(self.get_quant_snapshot())
+                for i in range(n_averages):
+                    quant_snapshot += numpy.abs(self.get_quant_snapshot())
+                quant_snapshot /= n_averages
+
+                error=target_output/quant_snapshot
+
+                #ignore band edges; only use central 80%:
+                start_chan=int(self.host.n_chans*0.1)
+                stop_chan=int(self.host.n_chans*0.9)
+                eq_poly=numpy.polyfit(chans[start_chan:stop_chan],error[start_chan:stop_chan],3)
+                poly_coeffs=numpy.array(self.eq_get())*numpy.polyval(eq_poly,chans)
+                coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
+                coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]
+                
+            elif len(eq_poly) == self.host.n_chans:
                 # list - one for each channel
                 coeffs[0::2] = [coeff.real for coeff in eq_poly]
                 coeffs[1::2] = [coeff.imag for coeff in eq_poly]
@@ -538,18 +559,55 @@ class FpgaFHost(FpgaHost):
                                  'host.'.format(host=self.host, feng=feng_name))
 
 
-    def set_fft_shift(self, shift_schedule=None, issue_meta=True):
+    def set_fft_shift(self, shift_schedule=None):
         """
         Set the FFT shift schedule.
         :param shift_schedule: int representing bit mask. '1' represents a
-        shift for that stage. First stage is MSB.
-        Use default if None provided
-        :param issue_meta: Should SPEAD meta data be sent after the value is
-        changed?
+        shift for that stage. First stage is MSb.
+        Use default if None provided.
+        Determine fft shift automatically if 'auto' is provided.
         :return: <nothing>
         """
+        def distribute_shifts(n_stages_total,n_stages_shift):
+            if n_stages_shift<=0:
+                return 0
+            elif n_stages_shift>=n_stages_total:
+                return (2**(n_stages_total))-1
+            else:
+                new_shift_schedule=0
+                shift_stages=n_stages_total-1-numpy.uint(numpy.linspace(0,n_stages_total-1,n_stages_shift,endpoint=True))
+                for shift_stage in shift_stages:
+                    self.logger.debug("FFT shifting stage %i"%(shift_stage))
+                    new_shift_schedule+=(1<<int(shift_stage))
+                return new_shift_schedule
+
+        def test_shift_schedule(n_retries=5,wait_time=0.5):
+            status_first=self.get_pfb_status()
+            for test in range(n_retries):
+                status=self.get_pfb_status()
+                for pol in range(self.num_fengines):
+                    if status['pol%i_or_err_cnt'%pol] != status_first['pol%i_or_err_cnt'%pol]
+                        self.logger.debug('FFT Shift auto-adjust: polarisation %i is overflowing!')
+                        return False
+                time.sleep(wait_time)
+            return True
+        
         if shift_schedule is None:
             shift_schedule = self.fft_shift
+        elif shift_shedule == 'auto':
+            n_stages_total = int(numpy.log2(self.n_chans))
+            shift_ok=[]
+            for shift_stages in range(n_stages_total+1):
+                fft_shift=distribute_shifts(n_stages_total,shift_stages)
+                self.registers.fft_shift.write(fft_shift=fft_shift)
+                shift_ok.append(test_shift_schedule())
+            try:
+                shift_schedule=min(n_stages_total,shift_ok.index(True)+3)
+                self.logger.info("FFT shift auto-adj selected %i stages of shift from results: %s"%(shift_schedule,str(shift_ok)))
+            except ValueError:
+                self.logger.error("FFT shift auto-adj was unable to find a valid shift from results: %s. Shifting on every stage."%(str(shift_ok)))
+                shift_schedule=(2**(n_stages_total))-1
+        self.logger.info("Setting FFT shift to %i."%shift_schedule)
         self.registers.fft_shift.write(fft_shift=shift_schedule)
 
     def get_fft_shift(self):
