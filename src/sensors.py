@@ -604,7 +604,7 @@ class Corr2SensorManager(SensorManager):
                     Corr2Sensor.integer, '{}-fft0-shift'.format(pref),
                     'The FFT bitshift pattern for the <n>th FFT in the design. '
                     'n=0 is first in the RF chain (closest to source).')
-                sensor.set_value(self.instrument.fft_shift)
+                sensor.set_value(feng.host.get_fft_shift())
 
     def sensors_feng_eq(self, feng):
         streams = self.instrument.get_data_streams_by_type(

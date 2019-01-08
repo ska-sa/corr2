@@ -14,7 +14,7 @@ import Queue
 import time
 from concurrent import futures
 
-from corr2 import fxcorrelator, sensors
+from corr2 import fxcorrelator, sensors, utils
 
 from corr2.corr2LogHandlers import getKatcpLogger, set_logger_group_level
 from corr2.corr2LogHandlers import get_instrument_loggers, check_logging_level
@@ -420,7 +420,8 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(None, 'No source name given.')
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.fops.eq_set(source_name, list(eq_vals))
+                neweqvals = utils.process_new_eq(list(eq_vals))
+                self.instrument.fops.eq_set(new_eq=neweqvals, input_name=source_name)
                 return ('ok', 'gain set for input {}.'.format(source_name))
             except Exception as ex:
                 failmsg = 'Failed setting eq for source {0}.'.format(source_name)
@@ -431,21 +432,30 @@ class Corr2Server(katcp.DeviceServer):
                      Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Str(default='', multiple=True))
-    @return_reply(Str(multiple=True))
+    @return_reply()
     def request_gain_all(self, sock, *eq_vals):
         """
-        Apply and/or get the gain settings for an input
+        Apply the gain settings for an input
         :param sock:
-        :param eq_vals: the equaliser values
+        :param eq_vals: the equaliser values, or 'auto'.
         :return:
         """
-        if len(eq_vals) > 0 and eq_vals[0] != '':
-            try:
-                self.instrument.fops.eq_set(None, list(eq_vals))
-            except Exception as ex:
-                return self._log_excep(ex, 'Failed setting eq for all sources')
-        _src = self.instrument.fops.eq_get(None).values()[0]
-        return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
+        try:
+            if len(eq_vals) <= 0:
+                neweqvals=None
+                self.instrument.logger.info('Applying default gains')
+            elif eq_vals[0] == '':
+                neweqvals=None
+                self.instrument.logger.info('Applying default gains')
+            elif eq_vals[0] == 'auto':
+                neweqvals='auto'
+                self.instrument.logger.info('Trying to set gains automatically')
+            else:
+                neweqvals = utils.process_new_eq(list(eq_vals))
+            self.instrument.fops.eq_set(new_eq=neweqvals, input_name=None)
+        except Exception as ex:
+            return self._log_excep(ex, 'Failed setting eq for all sources')
+        return 'ok',
 
     @request(Str(), Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -644,8 +654,8 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(ex, 'Failed syncing vaccs')
         return 'ok',
 
-    @request(Int(default=-1))
-    @return_reply(Int())
+    @request(Str())
+    @return_reply()
     def request_fft_shift(self, sock, new_shift):
         """
         Set a new FFT shift schedule.
@@ -653,12 +663,15 @@ class Corr2Server(katcp.DeviceServer):
         :param new_shift: an integer representation of the new FFT shift
         :return:
         """
-        if new_shift >= 0:
-            current_shift_value = self.instrument.fops.set_fft_shift_all(new_shift)
-        else:
-            current_shift_value = self.instrument.fops.get_fft_shift_all()
-            current_shift_value = current_shift_value[current_shift_value.keys()[0]]
-        return ('ok', current_shift_value)
+        try:
+            new_shift=int(new_shift)
+        except ValueError:
+            pass
+        try:
+            self.instrument.fops.set_fft_shift_all(new_shift)
+            return 'ok',
+        except Exception as ex:
+            return self._log_excep(ex, 'Failed setting fft shift')
 
     @request(Int(default=-1))
     @return_reply()

@@ -358,7 +358,7 @@ class Fengine(object):
         self.last_eq=eqcomplex
         return self.last_eq
 
-    def eq_set(self, eq_poly):
+    def eq_set(self, eq_poly=None):
         """
         Write a given complex eq to the given SBRAM.
         WARN: hardcoded for 16b values!
@@ -367,9 +367,13 @@ class Fengine(object):
         :return:
         """
         coeffs = (self.host.n_chans * 2) * [0]
+        if eq_poly==None:
+            self.logger.info('Setting default eq')
+            eq_poly=int(self.host._config['default_eq_poly'])
         try:
-            if eq_poly='auto':
-                tartget_output=0.1 #this is the goal for numpy.abs(complex_snapshot). For 8.7bit meerkat, total range is thus sqrt((abs(1+1j)))=1.4
+            if eq_poly == 'auto':
+                import numpy
+                target_output=0.1 #this is the goal for numpy.abs(complex_snapshot). For 8.7bit meerkat, total range is thus sqrt((abs(1+1j)))=1.4
                 n_averages=30
 
                 #get an estimate of the current spectrum:
@@ -465,12 +469,10 @@ class FpgaFHost(FpgaHost):
 
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
-            self.fft_shift = int(config['fft_shift'])
             self.n_chans = int(config['n_chans'])
             self.min_load_time = float(config['min_load_time'])
         else:
             self.num_fengines = None
-            self.fft_shift = None
             self.n_chans = None
             self.min_load_time = None
 
@@ -570,6 +572,7 @@ class FpgaFHost(FpgaHost):
         Determine fft shift automatically if 'auto' is provided.
         :return: <nothing>
         """
+        import numpy
         def distribute_shifts(n_stages_total,n_stages_shift):
             if n_stages_shift<=0:
                 return 0
@@ -588,15 +591,15 @@ class FpgaFHost(FpgaHost):
             for test in range(n_retries):
                 status=self.get_pfb_status()
                 for pol in range(self.num_fengines):
-                    if status['pol%i_or_err_cnt'%pol] != status_first['pol%i_or_err_cnt'%pol]
+                    if status['pol%i_or_err_cnt'%pol] != status_first['pol%i_or_err_cnt'%pol]:
                         self.logger.debug('FFT Shift auto-adjust: polarisation %i is overflowing!')
                         return False
                 time.sleep(wait_time)
             return True
         
         if shift_schedule is None:
-            shift_schedule = self.fft_shift
-        elif shift_shedule == 'auto':
+            shift_schedule = int(self._config['fft_shift'])
+        elif shift_schedule == 'auto':
             n_stages_total = int(numpy.log2(self.n_chans))
             shift_ok=[]
             for shift_stages in range(n_stages_total+1):
@@ -604,8 +607,9 @@ class FpgaFHost(FpgaHost):
                 self.registers.fft_shift.write(fft_shift=fft_shift)
                 shift_ok.append(test_shift_schedule())
             try:
-                shift_schedule=min(n_stages_total,shift_ok.index(True)+3)
-                self.logger.info("FFT shift auto-adj selected %i stages of shift from results: %s"%(shift_schedule,str(shift_ok)))
+                shift_stages=min(n_stages_total,shift_ok.index(True)+3)
+                shift_schedule=distribute_shifts(n_stages_total,shift_stages)
+                self.logger.info("FFT shift auto-adj selected %i stages of shift from results: %s"%(shift_stages,str(shift_ok)))
             except ValueError:
                 self.logger.error("FFT shift auto-adj was unable to find a valid shift from results: %s. Shifting on every stage."%(str(shift_ok)))
                 shift_schedule=(2**(n_stages_total))-1
