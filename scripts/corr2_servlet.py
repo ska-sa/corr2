@@ -14,13 +14,14 @@ import Queue
 import time
 from concurrent import futures
 
-from corr2 import fxcorrelator, sensors
-from corr2.utils import KatcpStreamHandler, parse_ini_file
+from corr2 import fxcorrelator, sensors, utils
 
 from corr2.corr2LogHandlers import getKatcpLogger, set_logger_group_level
 from corr2.corr2LogHandlers import get_instrument_loggers, check_logging_level
 from corr2.corr2LogHandlers import check_logging_level, LOG_LEVELS
+from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
 from corr2.corr2LogHandlers import LOGGING_RATIO_CASPER_CORR as LOG_RATIO
+from corr2.utils import parse_ini_file
 
 from corr2 import corr_monitoring_loop as corr_mon_loop
 
@@ -119,6 +120,13 @@ class Corr2Server(katcp.DeviceServer):
                               getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
+
+            # Function created to reassign all non-conforming log-handlers
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
+                                                    log_filename=self.log_filename,
+                                                    log_file_dir=self.log_file_dir,
+                                                    instrument_name=self.instrument.descriptor)
+
             return 'ok',
         except Exception as ex:
             return self._log_excep(ex, 'Failed to create instrument.')
@@ -148,7 +156,7 @@ class Corr2Server(katcp.DeviceServer):
             return 'fail', 'Cannot run ?initialise twice.'
         try:
             self.instrument.initialise(
-                program=program, configure=configure, require_epoch=require_epoch,   # sock=sock,
+                program=program, configure=configure, require_epoch=require_epoch,
                 mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
                 log_filename=self.log_filename, log_file_dir=self.log_file_dir)
 
@@ -156,7 +164,10 @@ class Corr2Server(katcp.DeviceServer):
             # from the running firmware
             self.extra_versions.update(self.instrument.get_version_info())
             # add a sensor manager
-            sensor_manager = sensors.Corr2SensorManager(self, self.instrument)
+            sensor_manager = sensors.Corr2SensorManager(self, self.instrument,
+                                        mass_inform_func=self.mass_inform,
+                                        log_filename=self.log_filename,
+                                        log_file_dir=self.log_file_dir)
             self.instrument.set_sensor_manager(sensor_manager)
             # set up the main loop sensors
             sensor_manager.sensors_clear()
@@ -173,6 +184,13 @@ class Corr2Server(katcp.DeviceServer):
                 # enable auto reset / resync for the f-engines (in hardware)
                 self.instrument.fops.auto_rst_enable()
             self._initialised = True
+
+            # Once more, for completeness
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
+                                                    log_filename=self.log_filename,
+                                                    log_file_dir=self.log_file_dir,
+                                                    instrument_name=self.instrument.descriptor)
+
             return 'ok',
         except Exception as ex:
             return self._log_excep(ex, 'Failed to initialise {}'.format(
@@ -189,29 +207,6 @@ class Corr2Server(katcp.DeviceServer):
         print(multiargs)
         return self._log_excep(None, 'A test failure, like it should')
 
-    @request(Float(default=-1.0))
-    @return_reply(Float())
-    def request_digitiser_synch_epoch(self, sock, synch_time):
-        """
-        Set/Get the digitiser synch time, UNIX time.
-        :param sock:
-        :param synch_time: unix time float
-        :return: the currently set synch time
-        """
-        # if not self.instrument.initialised():
-        #     logging.warn('request %s before initialised... refusing.' %
-        #                  'request_sync_epoch')
-        #     return 'fail', 'request %s before initialised... refusing.' % \
-        #            'request_sync_epoch'
-        if synch_time > -1.0:
-            try:
-                self.instrument.synchronisation_epoch = synch_time
-            except Exception as ex:
-                return self._log_excep(
-                    ex, 'Failed to set digitiser synch epoch.')
-        return 'ok', self.instrument.synchronisation_epoch
-
-    '''
     # TODO: deprecate above and instate this once CBF-CAM ICD Rev6 is fully implemented
     @request(Float(default=-1.0))
     @return_reply(Float())
@@ -234,7 +229,6 @@ class Corr2Server(katcp.DeviceServer):
                 return self._log_excep(
                     ex, 'Failed to set digitiser synch epoch.')
         return 'ok', self.instrument.synchronisation_epoch
-    '''
 
     @request(Str(), Str())
     @return_reply()
@@ -426,7 +420,8 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(None, 'No source name given.')
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.fops.eq_set(source_name, list(eq_vals))
+                neweqvals = utils.process_new_eq(list(eq_vals))
+                self.instrument.fops.eq_set(new_eq=neweqvals, input_name=source_name)
                 return ('ok', 'gain set for input {}.'.format(source_name))
             except Exception as ex:
                 failmsg = 'Failed setting eq for source {0}.'.format(source_name)
@@ -437,28 +432,38 @@ class Corr2Server(katcp.DeviceServer):
                      Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Str(default='', multiple=True))
-    @return_reply(Str(multiple=True))
+    @return_reply()
     def request_gain_all(self, sock, *eq_vals):
         """
-        Apply and/or get the gain settings for an input
+        Apply the gain settings for an input
         :param sock:
-        :param eq_vals: the equaliser values
+        :param eq_vals: the equaliser values, or 'auto'.
         :return:
         """
-        if len(eq_vals) > 0 and eq_vals[0] != '':
-            try:
-                self.instrument.fops.eq_set(None, list(eq_vals))
-            except Exception as ex:
-                return self._log_excep(ex, 'Failed setting eq for all sources')
-        _src = self.instrument.fops.eq_get(None).values()[0]
-        return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
+        try:
+            if len(eq_vals) <= 0:
+                neweqvals=None
+                self.instrument.logger.info('Applying default gains')
+            elif eq_vals[0] == '':
+                neweqvals=None
+                self.instrument.logger.info('Applying default gains')
+            elif eq_vals[0] == 'auto':
+                neweqvals='auto'
+                self.instrument.logger.info('Trying to set gains automatically')
+            else:
+                neweqvals = utils.process_new_eq(list(eq_vals))
+            self.instrument.fops.eq_set(new_eq=neweqvals, input_name=None)
+        except Exception as ex:
+            return self._log_excep(ex, 'Failed setting eq for all sources')
+        return 'ok',
 
-    @request(Float(default=-1.0), Str(default='', multiple=True))
+    @request(Str(), Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
-    def request_delays(self, sock, loadtime, *delay_strings):
+    def request_delays(self, sock, stream_name, loadtime, *delay_strings):
         """
         Set delays for the instrument.
         :param sock:
+        :param stream_name: the name of the feng stream to adjust.
         :param loadtime: the load time, in seconds
         :param delay_strings: the coefficient set, as a list of strings,
             described in ICD.
@@ -466,8 +471,10 @@ class Corr2Server(katcp.DeviceServer):
         """
         if self.delays_disabled:
             return ('fail', 'delays disabled')
-
+        if stream_name != self.instrument.fops.data_stream.name:
+            return tuple(['fail', ' supplied stream name %s does not match expected %s.' % (stream_name, self.instrument.fops.data_stream.name)])
         try:
+
             self.instrument.fops.delay_set_all(loadtime, delay_strings)
             return tuple(['ok', ' Model updated. Check sensors after next update to confirm application'])
         except Exception as ex:
@@ -647,8 +654,8 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(ex, 'Failed syncing vaccs')
         return 'ok',
 
-    @request(Int(default=-1))
-    @return_reply(Int())
+    @request(Str())
+    @return_reply()
     def request_fft_shift(self, sock, new_shift):
         """
         Set a new FFT shift schedule.
@@ -656,12 +663,15 @@ class Corr2Server(katcp.DeviceServer):
         :param new_shift: an integer representation of the new FFT shift
         :return:
         """
-        if new_shift >= 0:
-            current_shift_value = self.instrument.fops.set_fft_shift_all(new_shift)
-        else:
-            current_shift_value = self.instrument.fops.get_fft_shift_all()
-            current_shift_value = current_shift_value[current_shift_value.keys()[0]]
-        return ('ok', current_shift_value)
+        try:
+            new_shift=int(new_shift)
+        except ValueError:
+            pass
+        try:
+            self.instrument.fops.set_fft_shift_all(new_shift)
+            return 'ok',
+        except Exception as ex:
+            return self._log_excep(ex, 'Failed setting fft shift')
 
     @request(Int(default=-1))
     @return_reply()
@@ -794,10 +804,15 @@ class Corr2Server(katcp.DeviceServer):
         :return: Printed list of logger names
         """
 
-        instrument_loggers, skarab_loggers = get_instrument_loggers(corr_obj=self.instrument,
-                                                    group_name='instrument')
-        logger_names = [logger.name for logger in instrument_loggers]
-        logger_names += [logger.name for logger in skarab_loggers]
+        # instrument_loggers, skarab_loggers = get_instrument_loggers(corr_obj=self.instrument,
+        #                                             group_name='instrument')
+        # logger_names = [logger.name for logger in instrument_loggers]
+        # logger_names += [logger.name for logger in skarab_loggers]
+
+        all_loggers = get_all_loggers()
+
+        # logger_names = all_loggers.keys()
+        logger_names = [logger.name for logger in all_loggers.values() if not isinstance(logger, logging.PlaceHolder)]
 
         # return_string = '\n'.join(logger_names)
         return 'ok', logger_names
@@ -869,7 +884,7 @@ class Corr2Server(katcp.DeviceServer):
                 return 'fail', errmsg
 
         return 'ok',
-    
+
     @request()
     @return_reply()
     def request_debug_deprogram_all(self, sock):
@@ -1027,15 +1042,36 @@ class Corr2Server(katcp.DeviceServer):
 
         :return:
         """
+
+        number_of_descriptors = self.instrument.stream_get_number_of_descriptors()
+        time_step = self.descriptor_cadence / (number_of_descriptors + 5.0)  # 5.0 is just chosen arbitrarily, just needs to be greater than 1.0 and formatted as a double, not an integer
+
         if self.descriptor_cadence == 0:
             return
         _logger = self.instrument.logger
-        try:
-            yield self.executor.submit(self.instrument.stream_issue_descriptors)
-        except Exception as ex:
-            _logger.exception('Error sending metadata - {}'.format(ex.message))
+
+        for i in range(number_of_descriptors):
+            IOLoop.current().call_later(time_step * (i + 1), self.issue_single_descriptor, i)
+
+        #try:
+        #    yield self.executor.submit(self.instrument.stream_issue_descriptors)
+        #except Exception as ex:
+        #    _logger.exception('Error sending metadata - {}'.format(ex.message))
+
         _logger.debug('self.periodic_issue_descriptors ran')
         IOLoop.current().call_later(self.descriptor_cadence, self.periodic_issue_descriptors)
+
+    @gen.coroutine
+    def issue_single_descriptor(self, index):
+        """
+        Issue a single descriptor.
+        :param index: index of descriptor to issue
+        :return:
+        """
+        try:
+            yield self.executor.submit(self.instrument.stream_issue_descriptor_single, index)
+        except Exception as ex:
+            _logger.exception('Error sending metadata - {}'.format(ex.message))
 
     @request(Str())
     @return_reply(Str())
@@ -1140,23 +1176,6 @@ if __name__ == '__main__':
     except Exception:
         raise RuntimeError('Received nonsensical log level {}'.format(args.loglevel))
 
-    # set up the logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
-    # while len(root_logger.handlers) > 0:
-    #     root_logger.removeHandler(root_logger.handlers[0])
-    root_logger.handlers = []
-    if args.lfm or (not sys.stdout.isatty()):
-        console_handler = KatcpStreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        root_logger.addHandler(console_handler)
-    else:
-        console_handler = logging.StreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(filename)s:%(lineno)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(formatter)
-        root_logger.addHandler(console_handler)
 
     server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
     print('Server listening on port {} '.format(args.port, end=''))

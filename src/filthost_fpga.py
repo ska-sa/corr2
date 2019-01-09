@@ -29,8 +29,11 @@ class FpgaFilterHost(FpgaHost):
 
         # No idea
         logger_name = 'FpgaFilterHost_{}'.format(board_id)
-        result, self.logger = self.getLogger(logger_name=logger_name, 
-                                     log_level=INFO, **kwargs)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                     log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(self.descriptor)
@@ -46,7 +49,7 @@ class FpgaFilterHost(FpgaHost):
         _katcp_port = int(self._instrument_config['FxCorrelator']['katcp_port'])
         _bof = self._config['bitstream']
         _hosts = self._config['hosts'].strip().split(',')
-        
+
         super(FpgaFilterHost, self).__init__(_hosts[board_id],
                                              katcp_port=_katcp_port,
                                              bitstream=_bof,

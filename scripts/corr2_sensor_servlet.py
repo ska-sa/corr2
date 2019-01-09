@@ -10,9 +10,11 @@ import signal
 from tornado.ioloop import IOLoop
 import tornado.gen
 import time
+from ConfigParser import ConfigParser
 
 from corr2 import sensors, sensors_periodic, fxcorrelator
-from corr2.utils import KatcpStreamHandler
+from corr2.corr2LogHandlers import getKatcpLogger, reassign_log_handlers
+from corr2.utils import parse_ini_file
 
 
 class Corr2SensorServer(katcp.DeviceServer):
@@ -29,22 +31,44 @@ class Corr2SensorServer(katcp.DeviceServer):
         """
         pass
 
-    def initialise(self, config):
+    def initialise(self, config, name):
         """
         Setup and start sensors
         :param config: the config to use when making the instrument
+        :param name: a name for the instrument
         :return:
 
         """
-        instrument = fxcorrelator.FxCorrelator(
-            'dummy fx correlator for sensors', config_source=config)
-        self.instrument = instrument
-        self.instrument.initialise(program=False, configure=False,
-                                   require_epoch=False)
+        _default_log_dir = '/var/log/corr'
+        config_file_dict = parse_ini_file(config)
+        log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir', _default_log_dir)
+        assert os.path.isdir(log_file_dir)
+        
+        start_time = str(time.time())
+        ini_filename = os.path.basename(config)
+        log_filename = '{}_{}_sensor_servlet.log'.format(ini_filename, start_time)
+
+        self.instrument = fxcorrelator.FxCorrelator(
+                            name, config_source=config,
+                            mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
+                            log_filename=log_filename, log_file_dir=log_file_dir)
+        self.instrument.initialise(program=False, configure=False, require_epoch=False,
+                                   mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
+                                   log_filename=log_filename, log_file_dir=log_file_dir)
+        
         #disable manually-issued sensor update informs (aka 'kcs' sensors):
-        sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False)
+        sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False,
+                                                mass_inform_func=self.mass_inform,
+                                                log_filename=log_filename,
+                                                log_file_dir=log_file_dir)
         self.instrument.sensor_manager = sensor_manager
         sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
+
+        # Function created to reassign all non-conforming log-handlers
+        loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
+                                                log_filename=log_filename, 
+                                                log_file_dir=log_file_dir,
+                                                instrument_name=self.instrument.descriptor)
 
 
 @tornado.gen.coroutine
@@ -68,11 +92,13 @@ if __name__ == '__main__':
                         default=1235, type=int,
                         help='bind to this port to receive KATCP messages')
     parser.add_argument('--log_level', dest='loglevel', action='store',
-                        default='DEBUG', help='log level to set')
+                        default='WARN', help='log level to set')
     parser.add_argument('--log_format_katcp', dest='lfm', action='store_true',
                         default=False, help='format log messsages for katcp')
     parser.add_argument('--config', dest='config', type=str, action='store',
                         default='', help='a corr2 config file')
+    parser.add_argument('-n', '--name', dest='name', action='store',
+                        default='', help='a name for the instrument')
     args = parser.parse_args()
 
     try:
@@ -83,35 +109,15 @@ if __name__ == '__main__':
     # def boop():
     #     raise KeyboardInterrupt
 
-    # set up the logger
-    corr2_sensors_logger = logging.getLogger('corr2.sensors')
-    corr2_sensors_logger.setLevel(log_level)
-    if args.lfm or (not sys.stdout.isatty()):
-        console_handler = KatcpStreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        corr2_sensors_logger.addHandler(console_handler)
-    else:
-        console_handler = logging.StreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - '
-                                      '%(filename)s:%(lineno)s - '
-                                      '%(levelname)s - %(message)s')
-        console_handler.setFormatter(formatter)
-        corr2_sensors_logger.addHandler(console_handler)
-
+    
     if 'CORR2INI' in os.environ.keys() and args.config == '':
         args.config = os.environ['CORR2INI']
     if args.config == '':
         raise RuntimeError('No config file.')
 
-    # Always log to file.
-    iname = os.path.basename(os.environ["CORR2INI"])
-    start_time = str(time.time())
-    log_filename = '{}_{}_sensor_servlet.log'.format(iname.strip().replace(' ', '_'), start_time)
-    file_handler = logging.FileHandler("{}".format(log_filename))
-    file_handler.setLevel(logging.ERROR)
-    file_handler.setFormatter(formatter)
-    corr2_sensors_logger.addHandler(file_handler)
+    if args.name == '':
+        # default to config file name?
+        args.name = args.config.split('/')[-1].split('.')[-2]
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
@@ -123,7 +129,7 @@ if __name__ == '__main__':
     ioloop.add_callback(sensor_server.start)
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
-    ioloop.add_callback(sensor_server.initialise, args.config)
+    ioloop.add_callback(sensor_server.initialise, args.config, args.name)
     # ioloop.call_later(10, boop)
     ioloop.start()
 

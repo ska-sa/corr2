@@ -25,8 +25,11 @@ class FpgaXHost(FpgaHost):
         self.getLogger = kwargs['getLogger']
 
         logger_name = '{}_xhost-{}-{}'.format(descriptor, str(index), host)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -54,6 +57,8 @@ class FpgaXHost(FpgaHost):
             self.sample_rate_hz = int(ccfg['sample_rate_hz'])
         self._vaccs_per_sec_last_readtime = None
         self._vaccs_per_sec_last_values = None
+
+        self.host_type = 'xhost'
 
     def get_system_information(self, filename=None, fpg_info=None):
         """

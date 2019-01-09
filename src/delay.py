@@ -1,6 +1,5 @@
 from threading import Event
 import logging
-import numpy
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +31,7 @@ def process_list(delay_list, sample_rate_hz):
         try:
             if isinstance(delay, str):
                 delaytup = process_string(delay)
+                LOGGER.debug('input %i update received: %s'%(ctr,delay))
             else:
                 delaytup = delay
             rv.append(prepare_delay_vals(delaytup, sample_rate_hz))
@@ -59,6 +59,7 @@ def prepare_delay_vals(coefficients, sample_rate):
     # convert delay in time into delay in clock cycles
     delay_s = float(delay_coeff[0]) * sample_rate
     # convert to fractions of a sample
+    import numpy
     phase_offset_s = float(phase_coeff[0])/float(numpy.pi)
     # convert from radians per second to fractions of sample per sample
     delta_phase_offset_s = (float(phase_coeff[1]) / float(numpy.pi) /

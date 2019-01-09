@@ -1,5 +1,7 @@
 # CORR2
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/dc5e1d1d17024777a43aa2c47da03f02)](https://app.codacy.com/app/mmphego/corr2?utm_source=github.com&utm_medium=referral&utm_content=ska-sa/corr2&utm_campaign=Badge_Grade_Dashboard)
+
 This package provides interfaces and functions to configure MeerKAT packetised digital backend; FX correlators, beamformers and other real-time instrumentation.
 
 ## Installation:

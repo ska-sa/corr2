@@ -1,4 +1,3 @@
-import numpy
 from logging import INFO
 from casperfpga import utils as fpgautils
 
@@ -31,14 +30,16 @@ class Beam(SPEADStream):
 
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
 
         result, self.logger = self.getLogger(logger_name=name,
-                                        log_level=INFO, **kwargs)
+                                        log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
             raise ValueError(errmsg)
-        
+
         super(Beam, self).__init__(name, BEAMFORMER_FREQUENCY_DOMAIN,
                                    destination, **kwargs)
 
@@ -74,11 +75,11 @@ class Beam(SPEADStream):
         beam_address.ip_range = num_beng
 
         obj = cls(beam_name, int(beam_dict['stream_index']), beam_address,
-                  *args, **kwargs)
+                  instrument_descriptor=fengops.corr.descriptor, *args, **kwargs)
         obj.config = beam_dict
         obj.hosts = bhosts
         obj.speadops = speadops
-        
+
         obj.polarisation = obj.index%2
         n_ants=int(config['FxCorrelator']['n_ants'])
         obj.source_indices = range(obj.polarisation,(n_ants*2)+(obj.polarisation),2)

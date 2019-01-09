@@ -95,10 +95,13 @@ class FxCorrelator(Instrument):
         except KeyError:
             self.getLogger = getLogger
             kwargs['getLogger'] = self.getLogger
+        finally:
+            # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+            logLevel = kwargs.get('logLevel', INFO)
 
         # All 'Instrument-level' objects will log at level INFO
         result, self.logger = self.getLogger(logger_name=self.descriptor,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(self.descriptor)
@@ -209,14 +212,15 @@ class FxCorrelator(Instrument):
             THREADED_FPGA_FUNC(
                 self.fhosts, timeout=self.timeout * 10,
                 target_function=('get_system_information', [fbof], {}))
+            #THREADED_FPGA_FUNC(
+            #    self.fhosts, timeout=self.timeout * 10,
+            #    target_function=('get_system_information', [fbof], {'legacy_reg_map' : False}))
             THREADED_FPGA_FUNC(
                 self.xhosts, timeout=self.timeout * 10,
                 target_function=('get_system_information', [xbof], {}))
-
         # remove test hardware from designs
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
-
         # # disable write access to the correlator
         # if not (enable_write_access or program):
         #     for host in self.xhosts + self.fhosts:
@@ -229,7 +233,6 @@ class FxCorrelator(Instrument):
             self.configure(*args, **kwargs)
         else:
             self.configure(getLogger=self.getLogger, *args, **kwargs)
-
         # run post-programming initialisation
         if program or configure:
             # Passing args and kwargs through here, for completeness
@@ -708,6 +711,8 @@ class FxCorrelator(Instrument):
             rv['fengine_firmware_' + fname] = (fver, '')
         for fname, fver in self.xops.get_version_info():
             rv['xengine_firmware_' + fname] = (fver, '')
+        for fname, fver in self.bops.get_version_info():
+            rv['bengine_firmware_' + fname] = (fver, '')
         return rv
 
 # end

@@ -1,7 +1,6 @@
 import time
 from logging import INFO
 import struct
-import numpy
 
 import casperfpga.memory as caspermem
 from casperfpga.transport_skarab import SkarabTransport
@@ -13,7 +12,7 @@ from host_fpga import FpgaHost
 # from corr2LogHandlers import getLogger
 
 #TODO: move snapshots from fhost obj to feng obj?
-#   -> not sensible while trig_time registers are shared for adc snapshots.    
+#   -> not sensible while trig_time registers are shared for adc snapshots.
 
 
 
@@ -36,13 +35,12 @@ class AdcData(object):
         self.data = data
 
 
-def delay_get_bitshift():
+def delay_get_bitshift(bitshift_schedule=23):
     """
-    :return: Returns the scale factor used in the delay calculations 
+    :return: Returns the scale factor used in the delay calculations
             due to bitshifting (nominally 2**23).
     """
     # TODO should this be in config file?
-    bitshift_schedule = 23
     bitshift = (2**bitshift_schedule)
     return bitshift
 
@@ -71,13 +69,15 @@ class Fengine(object):
             descriptor = kwargs['descriptor']
         except KeyError:
             descriptor = 'InstrumentName'
-        
+
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
-        
+
         logger_name = '{}_feng{}-{}'.format(descriptor, str(self.feng_id), input_stream.name)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -110,7 +110,7 @@ class Fengine(object):
     @input_number.setter
     def input_number(self, value):
         raise NotImplementedError('This is not currently defined.')
-    
+
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
@@ -124,6 +124,7 @@ class Fengine(object):
         #calculate number of snapshot reads required:
         n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
         compl = []
+        import numpy
         for read_n in range(int(numpy.ceil(n_reads))):
             offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
             sdata = snapshot.read(offset=offset)['data']
@@ -175,7 +176,7 @@ class Fengine(object):
 
     def _arm_timed_latch(self, name, mcnt=None):
         """
-        Arms the delay correction timed latch. 
+        Arms the delay correction timed latch.
         Optimisations bypass normal register bitfield operations.
         :param names: name of latch to trigger
         :param mcnt: sample mcnt to trigger at. If None triggers immediately
@@ -204,11 +205,11 @@ class Fengine(object):
 ##TODO: Only return useful values if they actually loaded?
 #    def delay_get(self):
 #        """
-#        Store in local variables (and return) the values that were 
+#        Store in local variables (and return) the values that were
 #        written into the various FPGA load registers.
 #        :return:
 #        """
-#        
+#
 #        bitshift = delay_get_bitshift()
 #        delay_reg = self.host.registers['delay%i' % self.offset]
 #        delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
@@ -222,7 +223,6 @@ class Fengine(object):
         """
         delay is in samples.
         """
-        bitshift = delay_get_bitshift()
         delay_reg = self.host.registers['delay%i' % self.offset]
 
         #figure out register offsets and widths
@@ -231,14 +231,14 @@ class Fengine(object):
 
         max_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
         if delay < 0:
-            self.logger.warn('Setting smallest delay of 0. Requested %f samples.' % 
+            self.logger.warn('Setting smallest delay of 0. Requested %f samples.' %
                 (delay))
             delay = 0
         elif delay > max_delay:
             self.logger.warn('Setting largest possible delay. Requested %f samples, set %f.' %
                 (delay,max_delay))
             delay = max_delay
-        
+
         #prepare the register:
         prep_int=int(delay*(2**reg_bp))&((2**reg_bw)-1)
         act_value = (float(prep_int)/(2**reg_bp))
@@ -249,7 +249,7 @@ class Fengine(object):
     def _delay_write_delay_rate(self, delay_rate):
         """
         """
-        bitshift = delay_get_bitshift()
+        bitshift = delay_get_bitshift(bitshift_schedule=23)
         delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
         # shift up by amount shifted down by on fpga
         delta_delay_shifted = float(delay_rate) * bitshift
@@ -301,12 +301,12 @@ class Fengine(object):
         max_negative_phase = -2 ** (initial_reg_bw - initial_reg_bp - 1) + 1 / float(2 ** initial_reg_bp)
         if phase > max_positive_phase:
             self.logger.warn('Setting largest possible positive phase. '
-                        'Requested: %e*pi radians, set %e.' % 
+                        'Requested: %e*pi radians, set %e.' %
                         (phase, max_positive_phase))
             phase = max_positive_phase
         elif phase < max_negative_phase:
             self.logger.warn('Setting largest possible negative phase. '
-                        'Requested: %e*pi radians, set %e.' % 
+                        'Requested: %e*pi radians, set %e.' %
                         (phase, max_negative_phase))
             phase = max_negative_phase
 
@@ -334,7 +334,8 @@ class Fengine(object):
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
         self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
         self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
-
+        
+        import numpy
         prep_array = numpy.array([prep_int_initial, prep_int_delta], dtype=numpy.int16)
         prep_array = prep_array.view(dtype=numpy.uint16)
         # actually write the values to the register
@@ -357,22 +358,48 @@ class Fengine(object):
         self.last_eq=eqcomplex
         return self.last_eq
 
-    def eq_set(self, eq_poly):
+    def eq_set(self, eq_poly=None):
         """
         Write a given complex eq to the given SBRAM.
         WARN: hardcoded for 16b values!
 
-        :param eq_poly: a list of polynomial coefficients, or list of float values (must be n_chans long) to write to bram.
+        :param eq_poly: a list of polynomial coefficients, or list of float values (must be n_chans long) to write to bram. Set to string 'auto' to have system attempt to automatically set gains (requires sane values to have been set beforehand!).
         :return:
         """
         coeffs = (self.host.n_chans * 2) * [0]
+        if eq_poly==None:
+            self.logger.info('Setting default eq')
+            eq_poly=int(self.host._config['default_eq_poly'])
         try:
-            if len(eq_poly) == self.host.n_chans:
+            if eq_poly == 'auto':
+                import numpy
+                target_output=0.1 #this is the goal for numpy.abs(complex_snapshot). For 8.7bit meerkat, total range is thus sqrt((abs(1+1j)))=1.4
+                n_averages=30
+
+                #get an estimate of the current spectrum:
+                chans = range(self.host.n_chans)
+                quant_snapshot = numpy.abs(self.get_quant_snapshot())
+                for i in range(n_averages):
+                    quant_snapshot += numpy.abs(self.get_quant_snapshot())
+                quant_snapshot /= n_averages
+
+                error=target_output/quant_snapshot
+
+                #ignore band edges; only use central 80%:
+                start_chan=int(self.host.n_chans*0.1)
+                stop_chan=int(self.host.n_chans*0.9)
+                eq_poly=numpy.polyfit(chans[start_chan:stop_chan],error[start_chan:stop_chan],3)
+                poly_coeffs=numpy.array(self.eq_get())*numpy.polyval(eq_poly,chans)
+                coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
+                coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]
+                
+            elif len(eq_poly) == self.host.n_chans:
                 # list - one for each channel
                 coeffs[0::2] = [coeff.real for coeff in eq_poly]
                 coeffs[1::2] = [coeff.imag for coeff in eq_poly]
             elif len(eq_poly)<self.host.n_chans:
                 # polynomial
+                import numpy
                 poly_coeffs=numpy.polyval(eq_poly, range(self.host.n_chans))
                 coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
                 coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]
@@ -403,7 +430,7 @@ class FpgaFHost(FpgaHost):
     """
     def __init__(self, host, katcp_port=7147, bitstream=None,
                  connect=True, config=None, **kwargs):
-        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port, 
+        super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port,
                                         bitstream=bitstream,
                                         transport=SkarabTransport,
                                         connect=connect)
@@ -423,10 +450,12 @@ class FpgaFHost(FpgaHost):
 
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']
-        
+
         logger_name = '{}_fhost-{}-{}'.format(descriptor, str(self.fhost_index), host)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
         result, self.logger = self.getLogger(logger_name=logger_name,
-                                             log_level=INFO, **kwargs)
+                                             log_level=logLevel, **kwargs)
         if not result:
             # Problem
             errmsg = 'Unable to create logger for {}'.format(logger_name)
@@ -440,16 +469,16 @@ class FpgaFHost(FpgaHost):
 
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
-            self.fft_shift = int(config['fft_shift'])
             self.n_chans = int(config['n_chans'])
             self.min_load_time = float(config['min_load_time'])
         else:
             self.num_fengines = None
-            self.fft_shift = None
             self.n_chans = None
             self.min_load_time = None
 
         self.rx_data_sample_rate_hz = -1
+
+        self.host_type = 'fhost'
 
     @classmethod
     def from_config_source(cls, hostname, katcp_port, config_source, **kwargs):
@@ -469,7 +498,7 @@ class FpgaFHost(FpgaHost):
         msw = self.registers.local_time_msw.read()['data']['timestamp_msw']
         rv = (msw << 32) | lsw
         return rv
-    
+
     def clear_status(self):
         """
         Clear the status registers and counters on this host
@@ -497,7 +526,7 @@ class FpgaFHost(FpgaHost):
         if autoresync:
             self.registers.control.write(time_diff_check_en=True)
         return
-        
+
 
     def add_fengine(self, fengine):
         """
@@ -534,18 +563,57 @@ class FpgaFHost(FpgaHost):
                                  'host.'.format(host=self.host, feng=feng_name))
 
 
-    def set_fft_shift(self, shift_schedule=None, issue_meta=True):
+    def set_fft_shift(self, shift_schedule=None):
         """
         Set the FFT shift schedule.
         :param shift_schedule: int representing bit mask. '1' represents a
-        shift for that stage. First stage is MSB.
-        Use default if None provided
-        :param issue_meta: Should SPEAD meta data be sent after the value is
-        changed?
+        shift for that stage. First stage is MSb.
+        Use default if None provided.
+        Determine fft shift automatically if 'auto' is provided.
         :return: <nothing>
         """
+        import numpy
+        def distribute_shifts(n_stages_total,n_stages_shift):
+            if n_stages_shift<=0:
+                return 0
+            elif n_stages_shift>=n_stages_total:
+                return (2**(n_stages_total))-1
+            else:
+                new_shift_schedule=0
+                shift_stages=n_stages_total-1-numpy.uint(numpy.linspace(0,n_stages_total-1,n_stages_shift,endpoint=True))
+                for shift_stage in shift_stages:
+                    self.logger.debug("FFT shifting stage %i"%(shift_stage))
+                    new_shift_schedule+=(1<<int(shift_stage))
+                return new_shift_schedule
+
+        def test_shift_schedule(n_retries=5,wait_time=0.5):
+            status_first=self.get_pfb_status()
+            for test in range(n_retries):
+                status=self.get_pfb_status()
+                for pol in range(self.num_fengines):
+                    if status['pol%i_or_err_cnt'%pol] != status_first['pol%i_or_err_cnt'%pol]:
+                        self.logger.debug('FFT Shift auto-adjust: polarisation %i is overflowing!')
+                        return False
+                time.sleep(wait_time)
+            return True
+        
         if shift_schedule is None:
-            shift_schedule = self.fft_shift
+            shift_schedule = int(self._config['fft_shift'])
+        elif shift_schedule == 'auto':
+            n_stages_total = int(numpy.log2(self.n_chans))
+            shift_ok=[]
+            for shift_stages in range(n_stages_total+1):
+                fft_shift=distribute_shifts(n_stages_total,shift_stages)
+                self.registers.fft_shift.write(fft_shift=fft_shift)
+                shift_ok.append(test_shift_schedule())
+            try:
+                shift_stages=min(n_stages_total,shift_ok.index(True)+3)
+                shift_schedule=distribute_shifts(n_stages_total,shift_stages)
+                self.logger.info("FFT shift auto-adj selected %i stages of shift from results: %s"%(shift_stages,str(shift_ok)))
+            except ValueError:
+                self.logger.error("FFT shift auto-adj was unable to find a valid shift from results: %s. Shifting on every stage."%(str(shift_ok)))
+                shift_schedule=(2**(n_stages_total))-1
+        self.logger.info("Setting FFT shift to %i."%shift_schedule)
         self.registers.fft_shift.write(fft_shift=shift_schedule)
 
     def get_fft_shift(self):
@@ -585,12 +653,12 @@ class FpgaFHost(FpgaHost):
         """
         Retrieve all the Corner-Turner registers.
         returns a list (one per pol on board) of status dictionaries.
-        """ 
+        """
         rv={}
         for i in range(5):
             rv.update(self.registers['hmc_ct_status%i' %i].read()['data'])
         return rv
-        
+
     def get_pfb_status(self):
         """
         Returns the pfb counters on f-eng
@@ -605,7 +673,7 @@ class FpgaFHost(FpgaHost):
         :param timeout: timeout in seconds for snapshot read operation.
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
-        if input_name != None: 
+        if input_name != None:
             fengine = self.get_fengine(input_name)
         if loadcnt>0:
             self.logger.info("Triggering ADC snapshot at %i"%loadcnt)
@@ -685,8 +753,8 @@ class FpgaFHost(FpgaHost):
     def subscribe_to_multicast(self):
         """
         Subscribe a skarab to its multicast input addresses.
-        Assumes first 40G interface on SKARAB. 
-        :return: 
+        Assumes first 40G interface on SKARAB.
+        :return:
         """
         gbe0_name = self.gbes.names()[0]
         first_ip = self.fengines[0].input.destination.ip_address

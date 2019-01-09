@@ -10,6 +10,7 @@ from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
 from sensors import Corr2Sensor
 import sensors_periodic_fhost as sensors_fhost
 import sensors_periodic_xhost as sensors_xhost
+import sensors_periodic_bhost as sensors_bhost
 
 
 LOGGER = logging.getLogger(__name__)
@@ -120,7 +121,7 @@ def setup_sensors(sensor_manager, enable_counters=False):
             host_executors, ioloop, host_offset_lookup]
     sensors_fhost.setup_sensors_fengine(*args)
     sensors_xhost.setup_sensors_xengine(*args)
-    sensors_xhost.setup_sensors_bengine(*args)
+    sensors_bhost.setup_sensors_bengine(*args)
 
     all_hosts = sens_man.instrument.fhosts + sens_man.instrument.xhosts
 
