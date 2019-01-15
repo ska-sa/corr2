@@ -183,7 +183,7 @@ class FxCorrelator(Instrument):
             try:
                 self.filtops.initialise(program=program, *args, **kwargs)
             except Exception as err:
-                errmsg = 'Failed to initialise filter boards: {}' % str(err)
+                errmsg = 'Failed to initialise filter boards: %s' % str(err)
                 self.logger.error(errmsg)
                 raise RuntimeError(errmsg)
 
@@ -197,14 +197,20 @@ class FxCorrelator(Instrument):
         if program:
             # skfops = casperfpga.skarab_fileops
             # force the new programming method
-            skfops.upload_to_ram_progska(fbof, self.fhosts)
-            skfops.reboot_skarabs_from_sdram(self.fhosts)
-            skfops.upload_to_ram_progska(xbof, self.xhosts)
-            skfops.reboot_skarabs_from_sdram(self.xhosts)
-            skfops.wait_after_reboot(self.fhosts +
-                                     self.xhosts, timeout=self.timeout *
-                                     (len(self.fhosts) +
-                                      len(self.xhosts)))
+            try:
+                skfops.upload_to_ram_progska(fbof, self.fhosts, **kwargs)
+                skfops.reboot_skarabs_from_sdram(self.fhosts)
+                skfops.upload_to_ram_progska(xbof, self.xhosts, **kwargs)
+                skfops.reboot_skarabs_from_sdram(self.xhosts)
+                skfops.wait_after_reboot(self.fhosts +
+                                         self.xhosts, timeout=self.timeout *
+                                         (len(self.fhosts) +
+                                          len(self.xhosts)))
+            except Exception as err:
+                errmsg = 'Failed to program the boards: %s' % str(err)
+                self.logger.error(errmsg)
+                raise RuntimeError(errmsg)
+
         fisskarab = True
         xisskarab = True
         if (not program) or fisskarab or xisskarab:
