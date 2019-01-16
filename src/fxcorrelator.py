@@ -198,14 +198,13 @@ class FxCorrelator(Instrument):
             # skfops = casperfpga.skarab_fileops
             # force the new programming method
             try:
-                skfops.upload_to_ram_progska(fbof, self.fhosts, **kwargs)
+                skfops.upload_to_ram_progska(fbof, self.fhosts)
                 skfops.reboot_skarabs_from_sdram(self.fhosts)
-                skfops.upload_to_ram_progska(xbof, self.xhosts, **kwargs)
+                skfops.upload_to_ram_progska(xbof, self.xhosts)
                 skfops.reboot_skarabs_from_sdram(self.xhosts)
                 skfops.wait_after_reboot(self.fhosts +
                                          self.xhosts, timeout=self.timeout *
-                                         (len(self.fhosts) +
-                                          len(self.xhosts)))
+                                         (len(self.fhosts) + len(self.xhosts)))
             except Exception as err:
                 errmsg = 'Failed to program the boards: %s' % str(err)
                 self.logger.error(errmsg)

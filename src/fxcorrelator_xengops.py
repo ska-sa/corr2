@@ -404,10 +404,11 @@ class XEngineOperations(object):
 
         if phase_sync:
             last_loadmcnt=self.get_vacc_loadtime()
-            acc_len=self.get_acc_len()
-            n_accs=int(((ldmcnt-last_loadmcnt)>>(quantisation_bits))/acc_len)+1
-            self.logger.info("Attempting to phase-up VACC at acc_cnt {} since {}.".format(n_accs,last_loadmcnt))
-            ldmcnt=last_loadmcnt+(((n_accs)*acc_len-1)<<quantisation_bits)
+            if last_loadmcnt>0:
+                acc_len=self.get_acc_len()
+                n_accs=int(((ldmcnt-last_loadmcnt)>>(quantisation_bits))/acc_len)+1
+                self.logger.info("Attempting to phase-up VACC at acc_cnt {} since {}.".format(n_accs,last_loadmcnt))
+                ldmcnt=last_loadmcnt+(((n_accs)*acc_len-1)<<quantisation_bits)
 
         self.logger.debug('$$$$$$$$$$$ - quant bits = %i' % quantisation_bits)
         ldmcnt = ((ldmcnt >> quantisation_bits) + 1) << quantisation_bits
