@@ -19,10 +19,6 @@ import data_stream
 
 class Corr2Sensor(Sensor):
 
-    device_status_ok = "ok"
-    device_status_degraded = "degraded"
-    device_status_fail = "fail"
-
     @classmethod
     def integer(cls, name, description=None, unit='', params=None,
                 default=None, initial_status=None,
@@ -67,6 +63,16 @@ class Corr2Sensor(Sensor):
         return cls(cls.STRING, name, description, unit, None,
                    default, initial_status, manager, executor,
                    *args, **kwargs)
+
+    @classmethod
+    def device_status(cls, name, description=None, unit='',
+               default=None, initial_status=None,
+               manager=None, executor=None,
+               *args, **kwargs):
+        return cls(cls.DISCRETE, name=name, description=description, 
+                   units=unit, params=['ok','fail','degraded'],
+                   default=default, initial_status='ok', manager=manager, 
+                   executor=executor,*args, **kwargs)
 
     def __init__(self, sensor_type, name, description=None, units='',
                  params=None, default=None, initial_status=None,

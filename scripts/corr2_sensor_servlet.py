@@ -117,7 +117,15 @@ if __name__ == '__main__':
 
     if args.name == '':
         # default to config file name?
-        args.name = args.config.split('/')[-1].split('.')[-2]
+        try:
+            #whole path
+            args.name = args.config
+            #last part
+            args.name = args.name.split('/')[-1]
+            #remove extension, if present
+            args.name = args.name.split('.')[-2]
+        except IndexError:
+            pass
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
