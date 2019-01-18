@@ -16,11 +16,8 @@ from concurrent import futures
 
 from corr2 import fxcorrelator, sensors, utils
 
-from corr2.corr2LogHandlers import getKatcpLogger, set_logger_group_level
-from corr2.corr2LogHandlers import get_instrument_loggers, check_logging_level
-from corr2.corr2LogHandlers import check_logging_level, LOG_LEVELS
+from corr2.corr2LogHandlers import getKatcpLogger, servlet_log_level_request
 from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
-from corr2.corr2LogHandlers import LOGGING_RATIO_CASPER_CORR as LOG_RATIO
 from corr2.utils import parse_ini_file
 
 from corr2 import corr_monitoring_loop as corr_mon_loop
@@ -116,6 +113,11 @@ class Corr2Server(katcp.DeviceServer):
                 self.log_file_dir = '.'
             except AssertionError as ex:
                 self._log_excep(ex, "Logging dir {} does not exist".format(_default_log_dir))
+
+            # While we have the config-file parsed
+            # - To be used when initialising log-levels of instrument groups
+            self.log_leveld = config_file_dict.get('log-level', None)
+            
             self.instrument = fxcorrelator.FxCorrelator(iname, config_source=config_file,
                               getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
@@ -190,6 +192,21 @@ class Corr2Server(katcp.DeviceServer):
                                                     log_filename=self.log_filename,
                                                     log_file_dir=self.log_file_dir,
                                                     instrument_name=self.instrument.descriptor)
+
+            # Last thing to do, check if any default log-levels are specified in the config_file
+            # - Change the corresponding group's log-level accordingly
+            if self.log_leveld is None:
+                # All is well
+                return 'ok',
+            # else: More work to do!
+            for logger_group_name, log_level in self.log_level.items():
+                result, return_msg = servlet_log_level_request(corr_obj=self.instrument,
+                                                               log_level=log_level,
+                                                               logger_group_name=logger_group_name)
+                if not result:
+                    # Problem
+                    return 'fail', return_msg
+                # else: Great success
 
             return 'ok',
         except Exception as ex:
@@ -817,7 +834,7 @@ class Corr2Server(katcp.DeviceServer):
         # return_string = '\n'.join(logger_names)
         return 'ok', logger_names
 
-    @request(Str(default='debug'), Str(default=''))
+    @request(Str(default='debug'), Str(default='instrument'))
     @return_reply()
     def request_log_level(self, sock, log_level, logger_group_name):
         """
@@ -827,61 +844,19 @@ class Corr2Server(katcp.DeviceServer):
         :param log_level: Log-level at which to set loggers to
                           -> This will be a string E {debug|info|warn|error}
         :param logger_group_name: Optional parameter, string
+                                  -> Defaulted to 'instrument' group
         :return: Boolean - Success/Fail - True/False
         """
-        # For completeness
-        result, log_level_numeric = check_logging_level(log_level.strip().upper())
+        
+        # Moved all the heavy lifting to corr2LogHandlers
+        # - Where it should have been in the first place!
+        result, return_msg = servlet_log_level_request(corr_obj=self.instrument,
+                                                       log_level=log_level,
+                                                       logger_group_name=logger_group_name)
         if not result:
-            # Problem with the log-level specified
-            # errmsg = 'Problem with log-level specified: {}'.format(log_level)
-            return 'fail',
-        # else: Continue
-
-        logger_group_list = ['instrument', 'feng', 'xeng', 'beng',
-                             'delaytracking', 'xfpgas', 'ffpgas']
-        # No such thing as switch-case in python, unfortunately
-        logger_group_name = logger_group_name.lower().strip()
-        if logger_group_name not in logger_group_list:
-            if logger_group_name != '':
-                errmsg = 'Could not find group for group-name: {}'.format(group_name)
-                # self.logger.error(errmsg)
-                # self._log_excep(None, errmsg)
-                return 'fail', errmsg
-            # else: Empty string specified
-        # else: Continue!
-
-        logger_list, second_list = get_instrument_loggers(corr_obj=self.instrument,
-                                                          group_name=logger_group_name)
-
-        if logger_list is None:
-            # Maybe no loggers found matching the string?
-            warningmsg = 'No loggers found containing name: {}'.format(logger_group_name)
-            return 'fail', warningmsg
-        # else: Continue
-
-        # Will need to keep the log-level ratio tracking here, instead of in the set-method
-        # - Only ever one case when we'd need to maintain ratios: instrument
-        if logger_list and second_list:
-            # Instrument case
-            if not set_logger_group_level(logger_group=logger_list, log_level=log_level_numeric):
-                # Problem
-                errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
-                # self._log_excep(None, errmsg)
-                return 'fail', errmsg
-
-            skarab_log_level = (
-                log_level_numeric * LOG_RATIO) if (log_level_numeric * LOG_RATIO) in LOG_LEVELS else 0
-            if not set_logger_group_level(logger_group=second_list, log_level=skarab_log_level):
-                # Problem
-                errmsg = 'Unable to set SKARAB log-levels...'
-                # self._log_excep(None, errmsg)
-                return 'fail', errmsg
-        else:
-            if not set_logger_group_level(logger_group=logger_list, log_level=log_level_numeric):
-                # Problem
-                errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
-                # self._log_excep(None, errmsg)
-                return 'fail', errmsg
+            # Problem
+            return 'fail', return_msg
+        # else: Great success
 
         return 'ok',
 
