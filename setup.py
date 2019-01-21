@@ -21,7 +21,9 @@ _install_requires = [
     'numpy',
     'spead2',
     'coloredlogs',
-    'tornado>=4.3']
+    'tornado>=4.3',
+    'lazy-import>=0.2.2'
+]
 
 try:
     pip.main(['install', _dependencies])

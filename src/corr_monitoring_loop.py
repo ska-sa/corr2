@@ -372,20 +372,19 @@ class MonitoringLoop(object):
                 hmc_reorder_dict_prev = \
                     self.x_eng_board_monitoring_dict_prev[xhost][
                         'xeng_hmc_reorder']
-
-                if hmc_reorder_dict['err_cnt_link2'] != hmc_reorder_dict_prev[
-                    'err_cnt_link2']:
-
-                    self.instrument.logger.warning(
-                        'xhost %s hmc reorder has errors on link 2' %
-                         xhost.host)
-                    action_dict['disable_output'] = True
-                if hmc_reorder_dict['err_cnt_link3'] != hmc_reorder_dict_prev[
-                    'err_cnt_link3']:
-                    self.instrument.logger.warning(
-                        'xhost %s hmc reorder has errors on link 3' %
-                        xhost.host)
-                    action_dict['disable_output'] = True
+#TODO Ignore CRC errors on the HMCs for now...
+#                if hmc_reorder_dict['err_cnt_link2'] != hmc_reorder_dict_prev[
+#                    'err_cnt_link2']:
+#                    self.instrument.logger.warning(
+#                        'xhost %s hmc reorder has errors on link 2' %
+#                         xhost.host)
+#                    action_dict['disable_output'] = True
+#                if hmc_reorder_dict['err_cnt_link3'] != hmc_reorder_dict_prev[
+#                    'err_cnt_link3']:
+#                    self.instrument.logger.warning(
+#                        'xhost %s hmc reorder has errors on link 3' %
+#                        xhost.host)
+#                    action_dict['disable_output'] = True
                 if hmc_reorder_dict['lnk2_nrdy_err_cnt'] != hmc_reorder_dict_prev[
                     'lnk2_nrdy_err_cnt']:
                     self.instrument.logger.warning(

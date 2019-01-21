@@ -53,13 +53,13 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host):
             status = Corr2Sensor.WARN
         else:
             status = Corr2Sensor.NOMINAL
-        
-        sens_val = Corr2Sensor.device_status_fail
+
+        sens_val = 'fail'
         if(status == Corr2Sensor.NOMINAL):
-            sens_val = Corr2Sensor.device_status_ok
+            sens_val = 'ok'
         elif(status == Corr2Sensor.WARN):
-            sens_val = Corr2Sensor.device_status_degraded
-        
+            sens_val = 'degraded'
+
         sensor.set(value=sens_val, status=status)
     except Exception as e:
         LOGGER.error(
@@ -173,14 +173,14 @@ def _cb_feng_delays(sensors, f_host):
             (sensors['pol1_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['reorder_missing_err_cnt_pol0'].status() == Corr2Sensor.ERROR) or
             (sensors['reorder_missing_err_cnt_pol1'].status() == Corr2Sensor.ERROR) or
-            (sensors['hmc_post'].status() == Corr2Sensor.ERROR)):
+                (sensors['hmc_post'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
 
-        device_status_value = Corr2Sensor.device_status_fail
+        device_status_value = 'fail'
         if(device_status == Corr2Sensor.NOMINAL):
-            device_status_value = Corr2Sensor.device_status_ok
+            device_status_value = 'ok'
         elif(device_status == Corr2Sensor.WARN):
-            device_status_value = Corr2Sensor.device_status_degraded
+            device_status_value = 'degraded'
 
         sensors['device-status'].set(value=device_status_value,
                                      status=device_status)
@@ -236,15 +236,17 @@ def _cb_feng_ct(sensors, f_host):
             (sensors['pol1_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol0_post'].status() == Corr2Sensor.ERROR) or
             (sensors['reorder_missing_err_cnt'].status() != Corr2Sensor.NOMINAL) or
-            (sensors['pol1_post'].status() == Corr2Sensor.ERROR)):
+                (sensors['pol1_post'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
         else:
             device_status = Corr2Sensor.NOMINAL
-        
-        device_value = Corr2Sensor.device_status_fail
-        if(device_status == Corr2Sensor.NOMINAL):
-            device_value = Corr2Sensor.device_status_ok
-            
+
+        device_value = 'fail'
+        if(device_status == Corr2Sensor.WARN):
+            device_value = 'degraded'
+        elif(device_status == Corr2Sensor.NOMINAL):
+            device_value = 'ok'
+
         sensors['device-status'].set(value=device_value, status=device_status)
     except Exception as e:
         LOGGER.error(
@@ -269,16 +271,16 @@ def _cb_feng_pack(sensors, f_host):
             errif='changed')
         if sensors['err_cnt'].status() == Corr2Sensor.NOMINAL:
             status = Corr2Sensor.NOMINAL
-            value = Corr2Sensor.device_status_ok
+            value = 'ok'
         else:
             status = Corr2Sensor.ERROR
-            value = Corr2Sensor.device_status_fail
+            value = 'fail'
         sensors['device-status'].set(value=value, status=status)
     except Exception as e:
         LOGGER.error(
             'Error updating pack sensors for {} - {}'.format(
                 f_host.host, e.message))
-        sensors['device-status'].set(value=Corr2Sensor.device_status_fail, status=Corr2Sensor.FAILURE)
+        sensors['device-status'].set(value='fail', status=Corr2Sensor.FAILURE)
         sensors['err_cnt'].set(value=-1, status=Corr2Sensor.FAILURE)
     LOGGER.debug('_cb_feng_pack ran on {}'.format(f_host.host))
     IOLoop.current().call_later(sensor_poll_time, _cb_feng_pack, sensors, f_host)
@@ -306,9 +308,11 @@ def _cb_feng_pfbs(sensors, f_host):
             if sensor.status() == Corr2Sensor.WARN:
                 device_status = Corr2Sensor.WARN
 
-        device_status_value = Corr2Sensor.device_status_fail
+        device_status_value = 'fail'
+        if(device_status == Corr2Sensor.WARN):
+            device_status_value = 'degraded'
         if(device_status == Corr2Sensor.NOMINAL):
-            device_status_value = Corr2Sensor.device_status_ok
+            device_status_value = 'ok'
 
         sensors['device-status'].set(value=device_status_value,
                                      status=device_status)
@@ -350,6 +354,7 @@ def _cb_fhost_check_network(sensors, f_host):
             status=Corr2Sensor.NOMINAL,
             value=result['tx_gbps'])
 
+# The software-based PPS and Gbps counters aren't reliable, so ignore them for now:
         if (result['rx_pps'] > 800000) and (result['rx_pps'] < 900000):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.NOMINAL,
@@ -358,7 +363,7 @@ def _cb_fhost_check_network(sensors, f_host):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_pps'])
-            device_status = Corr2Sensor.WARN
+            #device_status = Corr2Sensor.WARN
 
         if (result['rx_gbps'] > 35) and (result['rx_gbps'] < 38):
             sensors['rx_gbps'].set(
@@ -368,18 +373,18 @@ def _cb_fhost_check_network(sensors, f_host):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_gbps'])
-            device_status = Corr2Sensor.WARN
+            #device_status = Corr2Sensor.WARN
 
         if ((sensors['tx_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['rx_err_cnt'].status() == Corr2Sensor.ERROR) or
                 (sensors['tx_enabled'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
 
-        sens_val = Corr2Sensor.device_status_fail
+        sens_val = 'fail'
         if(device_status == Corr2Sensor.NOMINAL):
-            sens_val = Corr2Sensor.device_status_ok
+            sens_val = 'ok'
         elif(device_status == Corr2Sensor.WARN):
-            sens_val = Corr2Sensor.device_status_degraded
+            sens_val = 'degraded'
 
         sensors['device-status'].set(value=sens_val,
                                      status=device_status)
@@ -421,10 +426,10 @@ def _cb_feng_rx_spead(sensors, f_host):
         sensors['cnt'].set(value=results['pkt_cnt'], warnif='notchanged')
         timestamp, status, value = sensors['cnt'].read()
         value = (status == Corr2Sensor.NOMINAL)
-        
-        value = Corr2Sensor.device_status_fail
+
+        value = 'fail'
         if(status == Corr2Sensor.NOMINAL):
-            value = Corr2Sensor.device_status_ok
+            value = 'ok'
 
         sensors['device-status'].set(value=value, status=status)
     except Exception as e:
@@ -474,9 +479,9 @@ def _cb_feng_rx_reorder(sensors, f_host):
 
         if device_status:
             sensors['device-status'].set(
-                status=Corr2Sensor.NOMINAL, value=Corr2Sensor.device_status_ok)
+                status=Corr2Sensor.NOMINAL, value='ok')
         else:
-            sensors['device-status'].set(status=Corr2Sensor.ERROR, value=Corr2Sensor.device_status_fail)
+            sensors['device-status'].set(status=Corr2Sensor.ERROR, value='fail')
 
     except Exception as e:
         LOGGER.error('Error updating rx_reorder sensors for {} - '
@@ -530,7 +535,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         # raw network comms - gbe counters must increment
         network_sensors = {
             'device-status': sens_man.do_sensor(
-                Corr2Sensor.string, '{}.network.device-status'.format(fhost),
+                Corr2Sensor.device_status, '{}.network.device-status'.format(fhost),
                 'Overall network interface ok.', executor=executor),
             'tx_enabled': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}.network.tx-enabled'.format(fhost),
@@ -559,7 +564,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         # SPEAD counters
         sensors = {
             'device-status': sens_man.do_sensor(
-                Corr2Sensor.string, '{}.spead-rx.device-status'.format(fhost),
+                Corr2Sensor.device_status, '{}.spead-rx.device-status'.format(fhost),
                 'F-engine is not encountering SPEAD errors.', executor=executor),
             #            'err_cnt': sens_man.do_sensor(
             #            Corr2Sensor.integer, '{}-spead-timestamp-err-cnt'.format(fhost),
@@ -600,7 +605,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         # Rx reorder counters
         sensors = {
             'device-status': sens_man.do_sensor(
-                Corr2Sensor.string, '{}.network-reorder.device-status'.format(fhost),
+                Corr2Sensor.device_status, '{}.network-reorder.device-status'.format(fhost),
                 'F-engine is receiving a good, clean digitiser data stream.',
                 executor=executor),
             'timestep_err_cnt': sens_man.do_sensor(
@@ -629,7 +634,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         # CD functionality
         sensors = {
             'device-status': sens_man.do_sensor(
-                Corr2Sensor.string, '{}.cd.device-status'.format(fhost),
+                Corr2Sensor.device_status, '{}.cd.device-status'.format(fhost),
                 'F-engine coarse delays ok.', executor=executor),
             'delay0_updating': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}.cd.delay0-updating'.format(fhost),
@@ -668,7 +673,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         # PFB counters
         sensors = {
             'device-status': sens_man.do_sensor(
-                Corr2Sensor.string, '{}.pfb.device-status'.format(fhost),
+                Corr2Sensor.device_status, '{}.pfb.device-status'.format(fhost),
                 'F-engine PFB ok.', executor=executor),
             'pol0_or_err_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.pfb.or0-err-cnt'.format(fhost),
@@ -685,7 +690,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         # CT functionality
         sensors = {
             'device-status': sens_man.do_sensor(
-                Corr2Sensor.string, '{}.ct.device-status'.format(fhost),
+                Corr2Sensor.device_status, '{}.ct.device-status'.format(fhost),
                 'F-engine Corner-Turner ok.', executor=executor),
             'pol0_post': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}.ct.post0'.format(fhost),
@@ -714,7 +719,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         # Pack block
         sensors = {
             'device-status': sens_man.do_sensor(
-                Corr2Sensor.string, '{}.spead-tx.device-status'.format(fhost),
+                Corr2Sensor.device_status, '{}.spead-tx.device-status'.format(fhost),
                 'F-engine packetiser (TX) is ok.', executor=executor),
             'err_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.spead-tx.err-cnt'.format(fhost),
@@ -724,7 +729,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
 
         # Overall LRU ok
         sensor = sens_man.do_sensor(
-            Corr2Sensor.string, '{}.device-status'.format(fhost),
+            Corr2Sensor.device_status, '{}.device-status'.format(fhost),
             'F-engine %s LRU ok' % _f.host, executor=executor)
         ioloop.add_callback(_cb_fhost_lru, sens_man, sensor, _f)
 

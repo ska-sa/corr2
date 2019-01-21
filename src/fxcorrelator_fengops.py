@@ -1,4 +1,3 @@
-import numpy
 import Queue
 import threading
 import time
@@ -202,6 +201,7 @@ class FEngineOperations(object):
                 # 8 packets in a row to one x-engine, and 32 256-bit
                 # words in an outgoing packet
                 f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (16 * 32)))
+                #https://docs.google.com/spreadsheets/d/1wBXsfUCxf5hzC0G8Vz7emh3qIeYMBLdObgv9pOe_Zgc/edit#gid=1568192830
             except AttributeError:
                 reg_error = True
             host_ctr += 1
@@ -228,8 +228,8 @@ class FEngineOperations(object):
             self.corr.sensor_manager.sensors_stream_destinations()
 
         # set eq and shift
-        self.eq_set()
         self.set_fft_shift_all()
+        self.eq_set()
 
         # configure the ethernet cores.
         THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
@@ -253,12 +253,6 @@ class FEngineOperations(object):
                 dig_streams.append((stream.name, stream.input_number))
         dig_streams = sorted(dig_streams, key=lambda stream: stream[1])
 
-        # match eq polys to input names
-        eq_polys = {}
-        for dig_stream in dig_streams:
-            stream_name = dig_stream[0]
-            eq_polys[stream_name] = utils.process_new_eq(_fengd.get('default_eq_poly', 100))
-
         # assemble the inputs given into a list
         _feng_temp = []
         for stream_index, stream_value in enumerate(dig_streams):
@@ -267,7 +261,6 @@ class FEngineOperations(object):
                 host=None,
                 offset=stream_value[1] % self.corr.f_per_fpga,
                 feng_id=stream_index, descriptor=self.corr.descriptor, *args, **kwargs)
-            new_feng.eq_poly = eq_polys[new_feng.name]
             new_feng.eq_bram_name = 'eq{}'.format(new_feng.offset)
             dest_ip_range = new_feng.input.destination.ip_range
             assert dest_ip_range == self.corr.n_input_streams_per_fengine, (
@@ -613,26 +606,23 @@ class FEngineOperations(object):
                 self.corr.sensor_manager.sensors_feng_eq(feng)
         return rv
 
-    def eq_set(self, input_name=None, new_eq=None):
+    def eq_set(self, new_eq=None, input_name=None):
         """
         Set the EQ for a specific input, or all inputs.
-        :param input_name: the input name. None for all fengines.
         :param new_eq: an eq list or value or poly
+        :param input_name: the input name. None for all fengines.
         :return:
         """
-        if new_eq is None:
-            self.logger.info('Setting default eq')
-            new_eq = self.corr.configd['fengine'].get('default_eq_poly', 100)
-        neweq = utils.process_new_eq(new_eq)
+        #neweq = utils.process_new_eq(new_eq)
         # if no input is given, apply the new eq to all inputs
         if input_name is None:
             self.logger.info('Setting EQ on all inputs to new given EQ.')
             fengs = self.fengines
-            rv = self.threaded_feng_operation(timeout=self.timeout,
-                target_function=(lambda feng_: feng_.eq_set(neweq),))
+            rv = self.threaded_feng_operation(timeout=self.timeout*2,
+                target_function=(lambda feng_: feng_.eq_set(new_eq),))
         else:
             fengs = [self.get_fengine(input_name)]
-            fengs[0].eq_set(eq_poly=neweq)
+            fengs[0].eq_set(eq_poly=new_eq)
         for feng in fengs:
             if self.corr.sensor_manager:
                 self.corr.sensor_manager.sensors_feng_eq(feng)
@@ -643,17 +633,16 @@ class FEngineOperations(object):
         :param shift_value:
         :return:
         """
-        if shift_value is None:
-            shift_value = self.corr.fft_shift
-        if shift_value < 0:
-            raise RuntimeError('Shift value cannot be less than zero')
-        self.logger.info('Setting FFT shift to {} on all F-engine boards...'.format(shift_value))
-        THREADED_FPGA_FUNC(self.hosts, 10, ('set_fft_shift', (shift_value,),))
-        self.corr.fft_shift = shift_value
+        self.logger.info('Attempting to set the FFT shift to {} on all F-engine boards...'.format(shift_value))
+        if shift_value=='auto':
+            import numpy
+            timeout = numpy.log2(self.corr.n_chans)*3
+        else:
+            timeout = self.timeout
+        THREADED_FPGA_FUNC(self.hosts, timeout, ('set_fft_shift', (shift_value,),))
         self.logger.info('done.')
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_feng_fft_shift()
-        return shift_value
 
     def get_fft_shift_all(self):
         """
@@ -662,10 +651,6 @@ class FEngineOperations(object):
         """
         # get the fft shift values
         rv = THREADED_FPGA_FUNC(self.hosts, 10, 'get_fft_shift')
-        if rv[rv.keys()[0]] != self.corr.fft_shift:
-            self.logger.warning('FFT shift read from fhosts disagrees with '
-                                'stored value. Correcting.')
-            self.corr.fft_shift = rv[rv.keys()[0]]
         return rv
 
     def fengine_to_host_mapping(self):
@@ -711,6 +696,7 @@ class FEngineOperations(object):
         _band = self.corr.sample_rate_hz / 2.0
         if (freq > _band) or (freq <= 0):
             raise RuntimeError('frequency {:.3f} is not in our band'.format(freq))
+        import numpy
         _hz_per_chan = _band / self.corr.n_chans
         _chan_index = numpy.floor(freq / _hz_per_chan)
         return _chan_index
