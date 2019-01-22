@@ -117,7 +117,7 @@ class Corr2Server(katcp.DeviceServer):
             # While we have the config-file parsed
             # - To be used when initialising log-levels of instrument groups
             self.log_leveld = config_file_dict.get('log-level', None)
-            
+
             self.instrument = fxcorrelator.FxCorrelator(iname, config_source=config_file,
                               getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
@@ -199,7 +199,7 @@ class Corr2Server(katcp.DeviceServer):
                 # All is well
                 return 'ok',
             # else: More work to do!
-            for logger_group_name, log_level in self.log_level.items():
+            for logger_group_name, log_level in self.log_leveld.items():
                 result, return_msg = servlet_log_level_request(corr_obj=self.instrument,
                                                                log_level=log_level,
                                                                logger_group_name=logger_group_name)
@@ -847,7 +847,7 @@ class Corr2Server(katcp.DeviceServer):
                                   -> Defaulted to 'instrument' group
         :return: Boolean - Success/Fail - True/False
         """
-        
+
         # Moved all the heavy lifting to corr2LogHandlers
         # - Where it should have been in the first place!
         result, return_msg = servlet_log_level_request(corr_obj=self.instrument,
