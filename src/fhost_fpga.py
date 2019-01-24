@@ -121,7 +121,7 @@ class Fengine(object):
         :param channel_select: If a value is passed here, a time-series of a single channel is returned, if not, a spectrum is returned.
         :return: a numpy array of complex values
         """
-
+        import numpy
         if channel_select != -1:
             if channel_select < 0 or channel_select >= self.host.n_chans:
                 raise ValueError("channel_select should be between 0 and {}, but received {}!".format(self.host.n_chans, channel_select))
@@ -130,7 +130,6 @@ class Fengine(object):
             self.host.registers.quant_snap_ctrl.write(single_channel=True, channel_select=chan_group)
             snapshot = self.host.snapshots['snap_quant%i_ss' % self.offset]
             sdata = snapshot.read()['data']
-            #import numpy
             compl = numpy.vectorize(complex)(sdata['real{}'.format(which_chan)], sdata['imag{}'.format(which_chan)])
             return compl
         else:
@@ -138,7 +137,6 @@ class Fengine(object):
             #calculate number of snapshot reads required:
             n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
             compl = []
-            #import numpy
             for read_n in range(int(numpy.ceil(n_reads))):
                 offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
                 sdata = snapshot.read(offset=offset)['data']
