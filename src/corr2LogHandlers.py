@@ -231,7 +231,6 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
 
 		# These always need to be present
 		self.name = name
-		# self.sock = sock
 		self.mass_inform_func = mass_inform_func
 
 		try:
@@ -250,12 +249,8 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
 		if len(self._records) >= self._max_len:
 			self._records.pop(0)
 
-		# Might as well check here for the initial 'Successfully created instrument'
-		# message here and remove any fancy formatting
-
 		self._records.append(message)
-		# import IPython
-		# IPython.embed()
+		
 		# Need to construct the katcp.Message object
 		# - The pass it to a sock.mass_inform() to ensure it is #log'd
 		message_type = KatcpMessage.INFORM
@@ -269,7 +264,6 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
 		message_data = [LOG_NAME_TRANSLATE[message.levelname], time_now, message.name, message.msg]
 		log_message = KatcpMessage(message_type, message_name, arguments=message_data)
 		
-		# self.sock.mass_inform(log_message)
 		self.mass_inform_func(log_message)
 		
 	def format(self, record):
