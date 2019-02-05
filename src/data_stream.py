@@ -1,6 +1,7 @@
 from logging import INFO
 import struct
 import socket
+import time
 
 import lazy_import
 lazy_import.lazy_module("spead2")
@@ -215,6 +216,18 @@ class SPEADStream(object):
         for dest_ctr in range(self.destination.ip_range):
             ip = IpAddress.ip2str(int(self.destination.ip_address) + dest_ctr)
             self.tx_sockets.append(_setup_spead_tx(self.threadpool, ip, self.destination.port))
+            #################Determining Packet ID start location#################
+            #IP Component of Packet ID
+            ip_arr = ip.split('.')
+            ip_int = (int(ip_arr[0]) << 24) + (int(ip_arr[1]) << 16) + (int(ip_arr[2]) << 8) + (int(ip_arr[3]) << 0)
+            #Time Component of Packet ID
+            time_int = int(round(time.time()))
+            #Combine these to create a single 48 bit packet id
+            time_int = time_int & 0xffff
+            ip_int = ip_int & 0xffffffff
+            packet_id_int = ((ip_int << 16) + (time_int << 0)) & 0xffffffffffff
+            self.tx_sockets[-1].set_cnt_sequence(packet_id_int,1)
+            ################Packet ID Set###############
             ctr += 1
 
     def descriptors_issue(self):
