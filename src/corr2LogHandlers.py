@@ -12,7 +12,7 @@ from data_stream import (DIGITISER_ADC_SAMPLES, FENGINE_CHANNELISED_DATA,
 						 FLYS_EYE, ANTENNA_VOLTAGE_BUFFER)
 
 # Define the log-level ratio between corr2 objects and casperfpga objects up here
-LOGGING_RATIO_CASPER_CORR = 2
+LOG_RATIO = 2
 # This returns an xrange object that can be iterated over when needed
 # - It does not need to be re-initialised after iteration
 LOG_LEVELS = xrange(0,60,10)
@@ -24,6 +24,10 @@ LOG_NAME_TRANSLATE={'OFF':'off',
 'DEBUG':'debug',
 'TRACE':'trace',
 'ALL':'all'}
+
+# Used in corr2_servlet when changing the log-levels of associated groups
+LOGGER_GROUP_LIST = ['instrument', 'feng', 'xeng', 'beng',
+					 'delaytracking', 'xfpgas', 'ffpgas']
 
 # Known entity names that do not have the instrument name prepended
 # - Declaring up here for ease of editing
@@ -227,7 +231,6 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
 
 		# These always need to be present
 		self.name = name
-		# self.sock = sock
 		self.mass_inform_func = mass_inform_func
 
 		try:
@@ -246,12 +249,8 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
 		if len(self._records) >= self._max_len:
 			self._records.pop(0)
 
-		# Might as well check here for the initial 'Successfully created instrument'
-		# message here and remove any fancy formatting
-
 		self._records.append(message)
-		# import IPython
-		# IPython.embed()
+		
 		# Need to construct the katcp.Message object
 		# - The pass it to a sock.mass_inform() to ensure it is #log'd
 		message_type = KatcpMessage.INFORM
@@ -265,7 +264,6 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
 		message_data = [LOG_NAME_TRANSLATE[message.levelname], time_now, message.name, message.msg]
 		log_message = KatcpMessage(message_type, message_name, arguments=message_data)
 		
-		# self.sock.mass_inform(log_message)
 		self.mass_inform_func(log_message)
 		
 	def format(self, record):
@@ -530,18 +528,6 @@ def get_log_handler_by_name(log_handler_name, logger_dict=None):
 					return handler
 
 
-def set_feng_loglevel(feng_logger_dict, log_level=logging.DEBUG):
-	"""
-	Neatly packaged function for setting all F-engine loggers to some log_level
-	:param feng_logger_dict: Dictionary of F-engines - {feng_name: feng_logger}
-	:param log_level: log-level required to set logger entities to
-	:return: Boolean - Success/Fail - True/False
-	"""
-
-	for feng_name, feng_logger in feng_logger_dict.iter():
-		feng_logger.setLevel(log_level)
-
-
 def _remove_handler_from_logger(logger, log_handler_name):
 	"""
 	Removes handler from logging entity
@@ -585,65 +571,126 @@ def remove_all_loggers(logger_dict=None):
 
 # region --- Methods related to getting specific logger groups ---
 
+def servlet_log_level_request(corr_obj, log_level, logger_group_name):
+	"""
+	This is to service the corr2_servlet log-level request
+	- Not sure what to name it, so I've left it as this
+	:param corr_obj: The correlator object of type FxCorrelator
+	:param log_level: Desired log-level to change the group's loggers to
+					  - This has to be a string value at the moment
+					  - Will accommodate for int/str case later!
+	:param logger_group_name: Name of group of correlator-related objects
+
+	:return: Tuple - Boolean, return_message
+			 - Including a return message as there are many points of failure in this method
+	"""
+
+	result, log_level_numeric = check_logging_level(log_level.strip().upper())
+	if not result:
+		# Problem with the log-level specified
+		errmsg = 'Problem with log-level specified: {}'.format(log_level)
+		return 'fail', errmsg
+	# else: Continue
+
+	logger_group_name = logger_group_name.lower().strip()
+	if logger_group_name not in LOGGER_GROUP_LIST:
+		errmsg = 'Could not find group for group-name: {}'.format(group_name)
+		# self.logger.error(errmsg)
+		# self._log_excep(None, errmsg)
+		return False, errmsg
+	# else: Continue!
+
+	logger_list, second_list = get_instrument_loggers(corr_obj=corr_obj,
+													  group_name=logger_group_name)
+
+	if logger_list is None:
+		# Maybe no loggers found matching the string?
+		warningmsg = 'No loggers found containing name: {}'.format(logger_group_name)
+		return False, warningmsg
+	# else: Continue
+
+	# Will need to keep the log-level ratio tracking here, instead of in the set-method
+	# - Only ever one case when we'd need to maintain ratios: instrument
+	if logger_list and second_list:
+		# Instrument case
+		if not set_logger_group_level(logger_group=logger_list, log_level=log_level_numeric):
+			# Problem
+			errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
+			return False, errmsg
+
+		skarab_log_level = (
+			log_level_numeric * LOG_RATIO) if (log_level_numeric * LOG_RATIO) in LOG_LEVELS else 0
+		if not set_logger_group_level(logger_group=second_list, log_level=skarab_log_level):
+			# Problem
+			errmsg = 'Unable to set SKARAB log-levels...'
+			return False, errmsg
+	else:
+		if not set_logger_group_level(logger_group=logger_list, log_level=log_level_numeric):
+			# Problem
+			errmsg = 'Unable to set {} loggers to log-level: {}'.format(len(logger_list), log_level)
+			return False, errmsg
+
+	return True, None
+
 def get_instrument_loggers(corr_obj, group_name):
-		"""
-		Separating concerns from corr2LogHandlers because the instrument object already exists here.
-		:param corr_obj: Correlator object to get all these loggers from!
-		:param group_name: Should correspond to names in logger_group_dict.keys() below
-		:return: tuple - (list, list) - (corr2-based loggers, casperfpga-based loggers)
-		"""
-		# Silly dictionary doesn't keep order by default!
-		# logger_group_keys = logger_group_dict.keys()
+	"""
+	Separating concerns from corr2LogHandlers because the instrument object already exists here.
+	:param corr_obj: Correlator object to get all these loggers from!
+	:param group_name: Should correspond to names in logger_group_dict.keys() below
+	:return: tuple - (list, list) - (corr2-based loggers, casperfpga-based loggers)
+	"""
+	# Silly dictionary doesn't keep order by default!
+	# logger_group_keys = logger_group_dict.keys()
+	
+	if corr_obj is None:  # i.e. if the instrument hasn't been initialised yet.
+		return None, None
+
+	if group_name == '' or group_name == 'instrument':
+		# Need to get all loggers
+		instrument_loggers = []
+		instrument_loggers.append(corr_obj.logger)
+		for value in get_f_loggers(corr_obj):
+			instrument_loggers.append(value)
+		for value in get_x_loggers(corr_obj):
+			instrument_loggers.append(value)
+		for value in get_b_loggers(corr_obj):
+			instrument_loggers.append(value)
+
+		skarab_loggers = []
+		for value in get_ffpga_loggers(corr_obj):
+			skarab_loggers.append(value)
+		for value in get_xfpga_loggers(corr_obj):
+			skarab_loggers.append(value)
 		
-		if corr_obj is None:  # i.e. if the instrument hasn't been initialised yet.
-			return None, None
+		# Just so I don't have to separate the list on the other side again
+		return instrument_loggers, skarab_loggers
 
-		if group_name == '' or group_name == 'instrument':
-			# Need to get all loggers
-			instrument_loggers = []
-			instrument_loggers.append(corr_obj.logger)
-			for value in get_f_loggers(corr_obj):
-				instrument_loggers.append(value)
-			for value in get_x_loggers(corr_obj):
-				instrument_loggers.append(value)
-			for value in get_b_loggers(corr_obj):
-				instrument_loggers.append(value)
+	elif group_name == 'feng':
+		# Get f-related loggers
+		return get_f_loggers(corr_obj), None
+		
+	elif group_name == 'xeng':
+		# Get x-related loggers
+		return get_x_loggers(corr_obj), None
+		
+	elif group_name == 'beng':
+		# Get b-related loggers
+		return get_b_loggers(corr_obj), None
+		
+	elif group_name == 'delaytracking':
+		# Get delaytracking loggers
+		return get_feng_stream_loggers(corr_obj), None
+		
+	elif group_name == 'ffpgas':
+		# Get fhost_fpga CasperFpga loggers
+		return get_ffpga_loggers(corr_obj), None
 
-			skarab_loggers = []
-			for value in get_ffpga_loggers(corr_obj):
-				skarab_loggers.append(value)
-			for value in get_xfpga_loggers(corr_obj):
-				skarab_loggers.append(value)
-			
-			# Just so I don't have to separate the list on the other side again
-			return instrument_loggers, skarab_loggers
-
-		elif group_name == 'feng':
-			# Get f-related loggers
-			return get_f_loggers(corr_obj), None
-			
-		elif group_name == 'xeng':
-			# Get x-related loggers
-			return get_x_loggers(corr_obj), None
-			
-		elif group_name == 'beng':
-			# Get b-related loggers
-			return get_b_loggers(corr_obj), None
-			
-		elif group_name == 'delaytracking':
-			# Get delaytracking loggers
-			return get_feng_stream_loggers(corr_obj), None
-			
-		elif group_name == 'ffpgas':
-			# Get fhost_fpga CasperFpga loggers
-			return get_ffpga_loggers(corr_obj), None
-
-		elif group_name == 'xfpgas':
-			# Get f-related loggers
-			return get_xfpga_loggers(corr_obj), None
-		else:
-			# Problem?
-			return None, None
+	elif group_name == 'xfpgas':
+		# Get f-related loggers
+		return get_xfpga_loggers(corr_obj), None
+	else:
+		# Problem?
+		return None, None
 
 
 def get_f_loggers(corr_obj):

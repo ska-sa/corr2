@@ -983,8 +983,8 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(-1)
 
         n_chans = self.instrument.n_chans
-        n_xeng = len(self.instrument.xhosts)
-        chans_per_x = n_chans / n_xeng
+        n_xhosts = len(self.instrument.xhosts)
+        chans_per_xhost = n_chans / n_xhosts
         for _x in self.instrument.xhosts:
             bid = self.instrument.xops.board_ids[_x.host]
             sensor = Corr2Sensor.string(
@@ -995,7 +995,7 @@ class Corr2SensorManager(SensorManager):
                 manager=self)
             self.sensor_create(sensor)
             sensor.set_value('({start},{end})'.format(
-                start=bid * chans_per_x, end=(bid + 1) * chans_per_x - 1))
+                start=bid * chans_per_xhost, end=(bid + 1) * chans_per_xhost - 1))
 
             sensor = Corr2Sensor.string(
                 name='beng-host{}-chan-range'.format(bid),
@@ -1005,7 +1005,7 @@ class Corr2SensorManager(SensorManager):
                 manager=self)
             self.sensor_create(sensor)
             sensor.set_value('({start},{end})'.format(
-                start=bid * chans_per_x, end=(bid + 1) * chans_per_x - 1))
+                start=bid * chans_per_xhost, end=(bid + 1) * chans_per_xhost - 1))
 
         #TODO: This is a bit nasty. Should detect what type of engines are in
         #      the build, and get version info for those engines types only.
