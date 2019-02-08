@@ -83,6 +83,18 @@ def on_shutdown(ioloop, server):
     yield server.stop()
     ioloop.stop()
 
+@tornado.gen.coroutine
+def boop():
+    """
+    Shut down the ioloop sanely.
+    :param ioloop: the current tornado.ioloop.IOLoop
+    :param server: a katcp.DeviceServer instance
+    :return:
+    """
+    print('Boop a bop')
+    startTime = tornado.ioloop.time.time()
+    nextTime = tornado.ioloop.time.time() + 2
+    IOLoop.current().call_at(nextTime,boop)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -138,7 +150,7 @@ if __name__ == '__main__':
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
     ioloop.add_callback(sensor_server.initialise, args.config, args.name)
-    # ioloop.call_later(10, boop)
+    #ioloop.call_later(2, boop)
     ioloop.start()
 
 # end

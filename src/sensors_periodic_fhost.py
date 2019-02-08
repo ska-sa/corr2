@@ -1,5 +1,6 @@
 import logging
 import tornado.gen as gen
+import tornado
 
 from tornado.ioloop import IOLoop
 
@@ -26,7 +27,7 @@ sensor_poll_time = 10
 
 
 @gen.coroutine
-def _cb_fhost_lru(sensor_manager, sensor, f_host):
+def _cb_fhost_lru(sensor_manager, sensor, f_host,time):
     """
     Sensor call back function for F-engine LRU
     :param sensor:
@@ -68,16 +69,19 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host):
         sensor.set(value="ok", status=Corr2Sensor.FAILURE)
 
     LOGGER.debug('_cb_fhost_lru ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(
-        sensor_poll_time,
+    #print 'a', f_host, time ,'_cb_fhost_lru'
+
+    IOLoop.current().call_at(
+        time+sensor_poll_time,
         _cb_fhost_lru,
         sensor_manager,
         sensor,
-        f_host)
+        f_host,
+        time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_feng_rxtime(sensor_ok, sensors_value):
+def _cb_feng_rxtime(sensor_ok, sensors_value, time):
     """
     Sensor call back to check received F-engine times
     :param sensor_ok: the combined times-are-ok sensor
@@ -108,12 +112,13 @@ def _cb_feng_rxtime(sensor_ok, sensors_value):
         LOGGER.error('Error updating feng rxtime sensor '
                      '- {}'.format(e.message))
     LOGGER.debug('_cb_feng_rxtime ran')
-    IOLoop.current().call_later(sensor_poll_time, _cb_feng_rxtime,
-                                sensor_ok, sensors_value)
+    #print 'b', time, '_cb_feng_rxtime'
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_rxtime,
+                                sensor_ok, sensors_value,time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_feng_delays(sensors, f_host):
+def _cb_feng_delays(sensors, f_host, time):
     """
     Sensor call back function for F-engine delay functionality
     :param sensor:
@@ -191,11 +196,13 @@ def _cb_feng_delays(sensors, f_host):
                 f_host.host, e.message))
         set_failure()
     LOGGER.debug('_sensor_feng_delays ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(sensor_poll_time, _cb_feng_delays, sensors, f_host)
+
+    #print 'c', f_host, time, '_cb_feng_delays'
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_delays, sensors, f_host,time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_feng_ct(sensors, f_host):
+def _cb_feng_ct(sensors, f_host, time):
     """
     Sensor call back function to check F-engine corner-turner.
     :param sensor:
@@ -253,11 +260,12 @@ def _cb_feng_ct(sensors, f_host):
             'Error updating CT sensors for {} - {}'.format(
                 f_host.host, e.message))
     LOGGER.debug('_cb_feng_ct ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(sensor_poll_time, _cb_feng_ct, sensors, f_host)
+    #print 'd', f_host, time,'_cb_feng_ct'
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_ct, sensors, f_host,time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_feng_pack(sensors, f_host):
+def _cb_feng_pack(sensors, f_host, time):
     """
     Sensor call back function to check F-engine pack block.
     :param sensor:
@@ -283,11 +291,13 @@ def _cb_feng_pack(sensors, f_host):
         sensors['device-status'].set(value='fail', status=Corr2Sensor.FAILURE)
         sensors['err_cnt'].set(value=-1, status=Corr2Sensor.FAILURE)
     LOGGER.debug('_cb_feng_pack ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(sensor_poll_time, _cb_feng_pack, sensors, f_host)
+
+    #print 'e', f_host, time,'_cb_feng_pack'
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_pack, sensors, f_host, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_feng_pfbs(sensors, f_host):
+def _cb_feng_pfbs(sensors, f_host,time):
     """
     F-engine PFB check
     :param sensor:
@@ -322,11 +332,12 @@ def _cb_feng_pfbs(sensors, f_host):
                 f_host.host, e.message))
         set_failure()
     LOGGER.debug('_sensor_feng_pfbs ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(sensor_poll_time, _cb_feng_pfbs, sensors, f_host)
+    #print 'f', f_host, time, '_cb_feng_pfbs'
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_pfbs, sensors, f_host,time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_fhost_check_network(sensors, f_host):
+def _cb_fhost_check_network(sensors, f_host, time):
     """
     Check that the f-hosts are receiving data correctly
     :param sensors: a dict of the network sensors to update
@@ -393,16 +404,19 @@ def _cb_fhost_check_network(sensors, f_host):
             'Error updating gbe_stats for {} - {}'.format(
                 f_host.host, e.message))
         set_failure()
+
+    #print 'g', f_host, time, '_cb_fhost_check_network'
     LOGGER.debug('_sensor_fhost_check_network ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(
-        sensor_poll_time,
+    IOLoop.current().call_at(
+        time+sensor_poll_time,
         _cb_fhost_check_network,
         sensors,
-        f_host)
+        f_host,
+        time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_feng_rx_spead(sensors, f_host):
+def _cb_feng_rx_spead(sensors, f_host,time):
     """
     F-engine SPEAD unpack block
     :param sensor:
@@ -440,11 +454,12 @@ def _cb_feng_rx_spead(sensors, f_host):
     LOGGER.debug(
         '_sensor_feng_rx_spead ran on {}: {}'.format(
             f_host.host, results))
-    IOLoop.current().call_later(sensor_poll_time, _cb_feng_rx_spead, sensors, f_host)
+    #print 'h', f_host, time, '_cb_feng_rx_spead'
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_rx_spead, sensors, f_host, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_feng_rx_reorder(sensors, f_host):
+def _cb_feng_rx_reorder(sensors, f_host, time):
     """
     F-engine RX reorder counters
     :param sensors: dictionary of sensors
@@ -489,7 +504,9 @@ def _cb_feng_rx_reorder(sensors, f_host):
         set_failure()
 
     LOGGER.debug('_sensor_feng_rx_reorder ran on {}'.format(f_host.host))
-    IOLoop.current().call_later(sensor_poll_time, _cb_feng_rx_reorder, sensors, f_host)
+
+    #print 'i', f_host, time,'_cb_feng_rx_reorder'
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_rx_reorder, sensors, f_host, time+sensor_poll_time)
 
 
 def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
@@ -505,9 +522,15 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
     """
     global host_offset_lookup
     global sensor_poll_time
-    sensor_poll_time = sens_man.instrument.sensor_poll_time
+    #sensor_poll_time = sens_man.instrument.sensor_poll_time
     if len(host_offset_lookup) == 0:
         host_offset_lookup = host_offset_dict.copy()
+
+    startTime = tornado.ioloop.time.time() + sensor_poll_time
+    staggerTime = sensor_poll_time/float(9.0);#sensor_poll_time/number_of_loops
+    #print "StartTime:",startTime
+    #print "StaggerTime:",staggerTime,sensor_poll_time
+    #print "Step",timeStep 
 
     # F-engine received timestamps ok and per-host received timestamps
     sensor_ok = sens_man.do_sensor(
@@ -515,6 +538,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         'Are the times received by F-engines in the system ok?',
         executor=general_executor)
     sensors_value = {}
+
     for _f in sens_man.instrument.fhosts:
         fhost = host_offset_lookup[_f.host]
         sensor = sens_man.do_sensor(
@@ -526,9 +550,11 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             'F-engine %s - UNIX timestamps received from '
             'the digitisers' % _f.host)
         sensors_value[_f.host] = (sensor, sensor_u)
-    ioloop.add_callback(_cb_feng_rxtime, sensor_ok, sensors_value)
+    ioloop.add_callback(_cb_feng_rxtime, sensor_ok, sensors_value, startTime + staggerTime*0)
 
     # F-engine host sensors
+    timeStep = (sensor_poll_time-1)/float(len(sens_man.instrument.fhosts))
+    increment = 0;
     for _f in sens_man.instrument.fhosts:
         executor = host_executors[_f.host]
         fhost = host_offset_lookup[_f.host]
@@ -559,7 +585,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.network.rx-err-cnt'.format(fhost),
                 'RX network error count (bad packets received)', executor=executor),
         }
-        ioloop.add_callback(_cb_fhost_check_network, network_sensors, _f)
+        ioloop.add_callback(_cb_fhost_check_network, network_sensors, _f, startTime + timeStep*increment + staggerTime*1)
 
         # SPEAD counters
         sensors = {
@@ -600,7 +626,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 'F-engine RX SPEAD packet timestamp has non-zero lsbs.',
                 executor=executor),
         }
-        ioloop.add_callback(_cb_feng_rx_spead, sensors, _f)
+        ioloop.add_callback(_cb_feng_rx_spead, sensors, _f, startTime + timeStep*increment + staggerTime*2)
 
         # Rx reorder counters
         sensors = {
@@ -629,7 +655,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 'F-engine error reordering packets: input buffer overflow.',
                 executor=executor),
         }
-        ioloop.add_callback(_cb_feng_rx_reorder, sensors, _f)
+        ioloop.add_callback(_cb_feng_rx_reorder, sensors, _f, startTime + timeStep*increment + staggerTime*3)
 
         # CD functionality
         sensors = {
@@ -668,7 +694,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         }
         sensors['delay0_updating'].tempstore = 0
         sensors['delay1_updating'].tempstore = 0
-        ioloop.add_callback(_cb_feng_delays, sensors, _f)
+        ioloop.add_callback(_cb_feng_delays, sensors, _f, startTime + timeStep*increment + staggerTime*4)
 
         # PFB counters
         sensors = {
@@ -685,7 +711,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.pfb.sync-cnt'.format(fhost),
                 'F-engine PFB resync counter', executor=executor),
         }
-        ioloop.add_callback(_cb_feng_pfbs, sensors, _f)
+        ioloop.add_callback(_cb_feng_pfbs, sensors, _f, startTime + timeStep*increment + staggerTime*5)
 
         # CT functionality
         sensors = {
@@ -714,7 +740,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.ct.reord-missing-err-cnt'.format(fhost),
                 'F-engine corner-turner HMC reorder missing word count.', executor=executor),
         }
-        ioloop.add_callback(_cb_feng_ct, sensors, _f)
+        ioloop.add_callback(_cb_feng_ct, sensors, _f, startTime + timeStep*increment + staggerTime*6)
 
         # Pack block
         sensors = {
@@ -725,13 +751,14 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.spead-tx.err-cnt'.format(fhost),
                 'F-engine pack (TX) error count', executor=executor)
         }
-        ioloop.add_callback(_cb_feng_pack, sensors, _f)
+        ioloop.add_callback(_cb_feng_pack, sensors, _f, startTime + timeStep*increment + staggerTime*7)
 
         # Overall LRU ok
         sensor = sens_man.do_sensor(
             Corr2Sensor.device_status, '{}.device-status'.format(fhost),
             'F-engine %s LRU ok' % _f.host, executor=executor)
-        ioloop.add_callback(_cb_fhost_lru, sens_man, sensor, _f)
+        ioloop.add_callback(_cb_fhost_lru, sens_man, sensor, _f, startTime + timeStep*increment + staggerTime*8)
+        increment+=1
 
 
 # end

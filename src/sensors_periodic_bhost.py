@@ -17,7 +17,7 @@ sensor_poll_time = 10
 
 
 @gen.coroutine
-def _cb_bhost_lru(sensor_manager, sensor, b_host):
+def _cb_bhost_lru(sensor_manager, sensor, b_host, time):
     """
     Sensor call back function for x-engine LRU
     :param sensor:
@@ -69,7 +69,7 @@ def _cb_bhost_lru(sensor_manager, sensor, b_host):
 
 
 @gen.coroutine
-def _cb_beng_pack(sensors, general_executor, sens_man):
+def _cb_beng_pack(sensors, general_executor, sens_man, time):
     """
 
     :param sensors: all sensors for all bengine pack blocks, a nested list of dictionaries.
@@ -106,7 +106,7 @@ def _cb_beng_pack(sensors, general_executor, sens_man):
         #TODO This logger stuff doesn't seem to actually work. Not sure why.
         LOGGER.error('Error updating beng pack sensors - '
                      '{}'.format(e.message))
-    IOLoop.current().call_later(sensor_poll_time, _cb_beng_pack, sensors, general_executor, sens_man)
+    IOLoop.current().call_at(sensor_poll_time + time, _cb_beng_pack, sensors, general_executor, sens_man, time + sensor_poll_time)
 
 
 def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,

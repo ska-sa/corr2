@@ -1,6 +1,7 @@
 import logging
 import time
 import tornado.gen as gen
+import tornado
 
 from IPython.core.debugger import Pdb
 
@@ -21,7 +22,7 @@ sensor_poll_time = 10
 
 
 @gen.coroutine
-def _cb_xhost_lru(sensor_manager, sensor, sensors, x_host):
+def _cb_xhost_lru(sensor_manager, sensor, sensors, x_host, time):
     """
     Sensor call back function for x-engine LRU
     :param sensor:
@@ -91,17 +92,17 @@ def _cb_xhost_lru(sensor_manager, sensor, sensors, x_host):
             sensors[xctr].set(value='fail', status=Corr2Sensor.FAILURE)
         sensor.set(value='fail', status=Corr2Sensor.FAILURE)
 
-    LOGGER.debug('_cb_xhost_lru ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(
-        sensor_poll_time,
+    #print 'a',x_host,time
+    IOLoop.current().call_at(
+        time+sensor_poll_time,
         _cb_xhost_lru,
         sensor_manager,
         sensor, sensors,
-        x_host)
+        x_host, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_xeng_network(sensors, x_host):
+def _cb_xeng_network(sensors, x_host, time):
     def set_failure():
         for key, sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,
@@ -160,12 +161,13 @@ def _cb_xeng_network(sensors, x_host):
             'Error updating gbe_stats for {} - {}'.format(
                 x_host.host, e.message))
         set_failure()
-    LOGGER.debug('_cb_xhost_check_network ran')
-    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_network, sensors, x_host)
+    #print 'b',x_host,time
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_xeng_network, sensors, x_host, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_xeng_rx_spead(sensors, x_host):
+def _cb_xeng_rx_spead(sensors, x_host, time):
+    LOGGER.warn('_cb_xeng_rx_spead')
     def set_failure():
         for key, sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,
@@ -194,17 +196,18 @@ def _cb_xeng_rx_spead(sensors, x_host):
         LOGGER.error('Error updating SPEAD sensors for {} - '
                      '{}'.format(x_host.host, e.message))
         set_failure()
-    LOGGER.debug('_cb_xeng_rx_spead ran')
-    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_rx_spead, sensors, x_host)
+    #print 'c',x_host,time
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_xeng_rx_spead, sensors, x_host, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_xeng_hmc_reorder(sensors, x_host):
+def _cb_xeng_hmc_reorder(sensors, x_host, time):
     """
     X-engine HMC packet RX reorder counters
     :param sensors: a sensor for each xengine rx reorder
     :return:
     """
+    LOGGER.warn(_cb_xeng_hmc_reorder)
     def set_failure():
         for key,sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,
@@ -253,16 +256,16 @@ def _cb_xeng_hmc_reorder(sensors, x_host):
         LOGGER.error('Error updating HMC RX reorder sensors for {} - '
                      '{}'.format(x_host.host, e.message))
         set_failure()
-    LOGGER.debug('_cb_xhost_hmc_reorder ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(
-        sensor_poll_time,
+    #print 'd',x_host,time
+    IOLoop.current().call_at(
+        time+sensor_poll_time,
         _cb_xeng_hmc_reorder,
         sensors,
-        x_host)
+        x_host, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_xeng_missing_ants(sensors, sensor_top, x_host):
+def _cb_xeng_missing_ants(sensors, sensor_top, x_host, time):
     """
     X-engine missing packet counts per antenna.
     :param sensors:
@@ -288,17 +291,17 @@ def _cb_xeng_missing_ants(sensors, sensor_top, x_host):
         LOGGER.error('Error updating RX reorder sensors for {} - '
                      '{}'.format(x_host.host, e.message))
         set_failure()
-    LOGGER.debug('_cb_xeng_missing_ants ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(
-        sensor_poll_time,
+    #print 'e',x_host,time
+    IOLoop.current().call_at(
+        time+sensor_poll_time,
         _cb_xeng_missing_ants,
         sensors,
         sensor_top,
-        x_host)
+        x_host, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_xeng_rx_reorder(sensors, x_host):
+def _cb_xeng_rx_reorder(sensors, x_host, time):
     """
     X-engine BRAM RX reorder counters
     :param sensors: a sensor for each xengine rx reorder
@@ -340,12 +343,12 @@ def _cb_xeng_rx_reorder(sensors, x_host):
     except Exception as e:
         LOGGER.error('Error updating RX reorder sensors for {} - '
                      '{}'.format(x_host.host, e.message))
-    LOGGER.debug('_cb_xeng_rx_reorder ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_rx_reorder, sensors, x_host)
+    #print 'f',x_host,time
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_xeng_rx_reorder, sensors, x_host, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_xeng_vacc(sensors_value):
+def _cb_xeng_vacc(sensors_value, time):
     """
     Sensor call back to check xeng vaccs.
     :param sensors_value: a dictionary of lists of dicts for all vaccs.
@@ -404,12 +407,12 @@ def _cb_xeng_vacc(sensors_value):
         LOGGER.error('Error updating VACC sensors '
                      '- {}'.format(e.message))
         set_failure()
-    LOGGER.debug('_cb_xeng_vacc ran')
-    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_vacc, sensors_value)
+    #print 'g',time
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_xeng_vacc, sensors_value, time+sensor_poll_time)
 
 
 @gen.coroutine
-def _cb_xeng_pack(sensors, x_host):
+def _cb_xeng_pack(sensors, x_host, time):
     """
 
     :param sensors: a sensor for each xengine pack block
@@ -437,7 +440,8 @@ def _cb_xeng_pack(sensors, x_host):
         LOGGER.error('Error updating xeng pack sensors for {} - '
                      '{}'.format(x_host.host, e.message))
     LOGGER.debug('_cb_xeng_pack ran on {}'.format(x_host.host))
-    IOLoop.current().call_later(sensor_poll_time, _cb_xeng_pack, sensors, x_host)
+    #print 'h',x_host,time
+    IOLoop.current().call_at(time+sensor_poll_time, _cb_xeng_pack, sensors, x_host, time+sensor_poll_time)
 
 
 def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
@@ -453,10 +457,19 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
     """
     global host_offset_lookup
     global sensor_poll_time
-    sensor_poll_time = sens_man.instrument.sensor_poll_time
+    #sensor_poll_time = sens_man.instrument.sensor_poll_time
     if len(host_offset_lookup) == 0:
         host_offset_lookup = host_offset_dict.copy()
 
+    startTime = tornado.ioloop.time.time() + 5
+    staggerTime = sensor_poll_time/float(8.0);#sensor_poll_time/number_of_loops    
+
+    #print "StartTime:",startTime
+    #print "StaggerTime:",staggerTime,sensor_poll_time
+    #print "Step",timeStep 
+    
+    timeStep = (sensor_poll_time-1)/float(len(sens_man.instrument.xhosts))
+    increment = 0;
     # NETWORK
     for _x in sens_man.instrument.xhosts:
         executor = host_executors[_x.host]
@@ -485,9 +498,13 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.rx-err-cnt'.format(pref),
                 'RX network error count (bad packets received)', executor=executor),
         }
-        ioloop.add_callback(_cb_xeng_network, network_sensors, _x)
+        ioloop.add_callback(_cb_xeng_network, network_sensors, _x, startTime + timeStep*increment + staggerTime*0)
+        increment+=1;
 
     # SPEAD counters
+    timeStep = (sensor_poll_time-1)/float(len(sens_man.instrument.xhosts))
+
+    increment = 0;
     for _x in sens_man.instrument.xhosts:
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
@@ -529,9 +546,13 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 'X-engine RX SPEAD packet timestamp has non-zero lsbs.',
                 executor=executor),
         }
-        ioloop.add_callback(_cb_xeng_rx_spead, sensors, _x)
+        ioloop.add_callback(_cb_xeng_rx_spead, sensors, _x, startTime + timeStep*increment + staggerTime*1)
+        increment+=1;
 
     # HMC reorders
+    timeStep = (sensor_poll_time-1)/float(len(sens_man.instrument.xhosts))
+
+    increment = 0;
     for _x in sens_man.instrument.xhosts:
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
@@ -562,9 +583,13 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.hmc-err-cnt'.format(pref),
                 'HMC hardware memory error counters.', executor=executor),
         }
-        ioloop.add_callback(_cb_xeng_hmc_reorder, sensors, _x)
+        ioloop.add_callback(_cb_xeng_hmc_reorder, sensors, _x, startTime + timeStep*increment + staggerTime*2)
+        increment+=1;
 
     # missing antennas
+    timeStep = (sensor_poll_time-1)/float(len(sens_man.instrument.xhosts))
+
+    increment = 0;
     for _x in sens_man.instrument.xhosts:
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
@@ -576,9 +601,13 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             sensors.append(sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.missing-pkts.fhost{:02}-cnt'.format(xhost, ant),
                 'Missing packet count for antenna %i.' % ant, executor=executor))
-        ioloop.add_callback(_cb_xeng_missing_ants, sensors, sensor_top, _x)
+        ioloop.add_callback(_cb_xeng_missing_ants, sensors, sensor_top, _x, startTime + timeStep*increment + staggerTime*3)
+        increment+=1;
 
     # BRAM reorders
+    timeStep = (sensor_poll_time-1)/float(len(sens_man.instrument.xhosts))
+
+    increment = 0;
     for _x in sens_man.instrument.xhosts:
         sensors = []
         executor = host_executors[_x.host]
@@ -600,7 +629,8 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{pref}.missing-err-cnt'.format(pref=pref),
                 'BRAM Reorder block missing data words error counter.', executor=executor)
             sensors.append(sensordict)
-        ioloop.add_callback(_cb_xeng_rx_reorder, sensors, _x)
+        ioloop.add_callback(_cb_xeng_rx_reorder, sensors, _x, startTime + timeStep*increment + staggerTime*4)
+        increment+=1;
 
 
 #        # VACC accumulations per second
@@ -644,9 +674,12 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{pref}.timestamp'.format(pref=pref),
                 'Current VACC timestamp.')
             sensors_value[_x.host].append(sensordict)
-    ioloop.add_callback(_cb_xeng_vacc, sensors_value)
+    ioloop.add_callback(_cb_xeng_vacc, sensors_value, startTime + staggerTime*5)
 
     # Xeng Packetiser block
+    timeStep = (sensor_poll_time-1)/float(len(sens_man.instrument.xhosts))
+
+    increment = 0;
     for _x in sens_man.instrument.xhosts:
         sensors = []
         executor = host_executors[_x.host]
@@ -670,7 +703,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                     'X-engine pack (TX) fifo overflow error count',
                     executor=executor)}
             sensors.append(sensordict)
-        ioloop.add_callback(_cb_xeng_pack, sensors, _x)
+        ioloop.add_callback(_cb_xeng_pack, sensors, _x, startTime + timeStep*increment + staggerTime*6)
 
         # LRU ok
         sensor = sens_man.do_sensor(
@@ -684,6 +717,8 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 '{}.device-status'.format(pref),
                 'X-engine core status')
             sensors.append(xeng_sensor)
-        ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, sensors, _x)
+        ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, sensors, _x, startTime + timeStep*increment + + staggerTime*7)
+        increment+=1;
+
 
 # end
