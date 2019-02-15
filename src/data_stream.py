@@ -247,7 +247,6 @@ class SPEADStream(object):
         i = 0
         for dest_ctr in range(self.destination.ip_range):
             i += 1
-            print(i)
             self.tx_sockets[dest_ctr].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
 
         self.logger.debug('SPEADStream %s: sent descriptors to %i destinations' % (self.name, dest_ctr + 1))
