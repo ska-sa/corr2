@@ -122,7 +122,7 @@ class Corr2Server(katcp.DeviceServer):
                               getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
-            
+
             # Function created to reassign all non-conforming log-handlers
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
                                                     log_filename=self.log_filename,
@@ -450,7 +450,7 @@ class Corr2Server(katcp.DeviceServer):
                      Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Str(default='', multiple=True))
-    @return_reply()
+    @return_reply(Str(multiple=True))
     def request_gain_all(self, sock, *eq_vals):
         """
         Apply the gain settings for an input
@@ -473,7 +473,8 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.fops.eq_set(new_eq=neweqvals, input_name=None)
         except Exception as ex:
             return self._log_excep(ex, 'Failed setting eq for all sources')
-        return 'ok',
+        _src = list(set(self.instrument.fops.eq_get(None).values()[0]))
+        return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
 
     @request(Str(), Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
