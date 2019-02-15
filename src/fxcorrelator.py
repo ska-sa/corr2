@@ -614,7 +614,7 @@ class FxCorrelator(Instrument):
             self.beng_outbits = int(_beam_d.get('beng_outbits'))
             assert isinstance(self.beng_outbits, int)
         except Exception:
-            self.logger.error('No beamfomer found in the config.')
+            self.logger.info('No beamfomer found in the config.')
 
     def _create_digitiser_streams(self, *args, **kwargs):
         """
