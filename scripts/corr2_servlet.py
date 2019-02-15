@@ -22,8 +22,6 @@ from corr2.utils import parse_ini_file
 
 from corr2 import corr_monitoring_loop as corr_mon_loop
 
-from casperfpga.utils import get_git_info_from_fpg
-
 
 class Corr2Server(katcp.DeviceServer):
 
@@ -120,39 +118,11 @@ class Corr2Server(katcp.DeviceServer):
             # - To be used when initialising log-levels of instrument groups
             self.log_level_dict = config_file_dict.get('log-level', None)
 
-            # - Get the bitstream filenames and corresponding git-info(s)
-            fpg_files = []
-            for key_1, value_1 in config_file_dict.items():
-                for key_2, value_2 in value_1.items():
-                    if key_2 == 'bitstream':
-                        fpg_files.append(value_2)
-            
-            # - Now, get the git-info
-            #   - Dictionary: Key = bitstream location
-            #                 Value = dictionary of git-info
-            bitstream_dict = {}
-            for filename in fpg_files:
-                bitstream_dict[filename] = get_git_info_from_fpg(filename)
-
-            # Unfortunately can only log against the instrument.logger 
-            # AFTER the instrument has been created
-            
             self.instrument = fxcorrelator.FxCorrelator(iname, config_source=config_file,
                               getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
             
-            # Better to stitch a log-string together
-            # than to log in a for-loop
-            bitstream_info_str = ''
-            for fpg_filename, git_info in bitstream_dict.items():
-                bitstream_info_str += '{}\n'.format(fpg_filename)
-                for git_repo, git_version in git_info.items():
-                    bitstream_info_str += '\t {} \n \t {} \n\n'.format(git_repo, git_version)
-            
-            # Log the bitstream info
-            self.instrument.logger.info(bitstream_info_str)
-
             # Function created to reassign all non-conforming log-handlers
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
                                                     log_filename=self.log_filename,
@@ -566,6 +536,26 @@ class Corr2Server(katcp.DeviceServer):
         sock.inform(source_name, str(snapdata))
         return 'ok',
 
+    @request(Str(), Int())
+    @return_reply()
+    def request_quantiser_singlechan_snapshot(self, sock, source_name, channel_select):
+        """
+        Get a list of values representing the quantised spectrum for
+        the given source
+        :param sock:
+        :param channel_select: The channel
+        :param source_name: the source to query
+        :return:
+        """
+        if source_name.strip() == '':
+            return self._log_excep(None, 'No source name given.')
+        try:
+            snapdata = self.instrument.fops.get_quant_snap(source_name, channel_select)
+        except Exception as ex:
+            return self._log_excep(ex, ex.message)
+        sock.inform(source_name, str(snapdata))
+        return 'ok',
+
     @request(Str(), Float(default=-1))
     @return_reply(Int())
     def request_adc_snapshot(self, sock, source_name, capture_time):
@@ -851,19 +841,12 @@ class Corr2Server(katcp.DeviceServer):
         Get all loggers associated with self.instrument
         :return: Printed list of logger names
         """
-
-        # instrument_loggers, skarab_loggers = get_instrument_loggers(corr_obj=self.instrument,
-        #                                             group_name='instrument')
-        # logger_names = [logger.name for logger in instrument_loggers]
-        # logger_names += [logger.name for logger in skarab_loggers]
-
         all_loggers = get_all_loggers()
 
-        # logger_names = all_loggers.keys()
         logger_names = [logger.name for logger in all_loggers.values() if not isinstance(logger, logging.PlaceHolder)]
 
-        # return_string = '\n'.join(logger_names)
         return 'ok', logger_names
+
 
     @request(Str(default='debug'), Str(default='instrument'))
     @return_reply()

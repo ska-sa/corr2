@@ -114,27 +114,38 @@ class Fengine(object):
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
-    def get_quant_snapshot(self):
+    def get_quant_snapshot(self, channel_select=-1):
         """
         Read the post-quantisation snapshot for this fengine.
         snapshot data.
-        :return:
+        :param channel_select: If a value is passed here, a time-series of a single channel is returned, if not, a spectrum is returned.
+        :return: a numpy array of complex values
         """
-        snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
-        #calculate number of snapshot reads required:
-        n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
-        compl = []
         import numpy
-        for read_n in range(int(numpy.ceil(n_reads))):
-            offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
-            sdata = snapshot.read(offset=offset)['data']
-            for ctr in range(0, len(sdata['real0'])):
-                compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
-                compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
-                compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
-                compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
-        return compl[0:self.host.n_chans]
-
+        if channel_select != -1:
+            if channel_select < 0 or channel_select >= self.host.n_chans:
+                raise ValueError("channel_select should be between 0 and {}, but received {}!".format(self.host.n_chans, channel_select))
+            chan_group = int(channel_select) / 4
+            which_chan = int(channel_select) % 4
+            self.host.registers.quant_snap_ctrl.write(single_channel=True, channel_select=chan_group)
+            snapshot = self.host.snapshots['snap_quant%i_ss' % self.offset]
+            sdata = snapshot.read()['data']
+            compl = numpy.vectorize(complex)(sdata['real{}'.format(which_chan)], sdata['imag{}'.format(which_chan)])
+            return compl
+        else:
+            snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
+            #calculate number of snapshot reads required:
+            n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
+            compl = []
+            for read_n in range(int(numpy.ceil(n_reads))):
+                offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
+                sdata = snapshot.read(offset=offset)['data']
+                for ctr in range(0, len(sdata['real0'])):
+                    compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
+                    compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
+                    compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
+                    compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
+            return compl[0:self.host.n_chans]
 
     def delay_set(self, delay_obj):
         """
@@ -624,13 +635,13 @@ class FpgaFHost(FpgaHost):
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 
-    def get_quant_snapshots(self):
+    def get_quant_snapshots(self, channel_select=-1):
         """
         Get the quant snapshots for all the inputs on this host.
         :return:
         """
         return {
-            feng.name: feng.get_quant_snapshot()
+            feng.name: feng.get_quant_snapshot(channel_select=channel_select)
             for feng in self.fengines
         }
 
