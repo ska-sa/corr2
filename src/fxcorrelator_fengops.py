@@ -618,7 +618,7 @@ class FEngineOperations(object):
         if input_name is None:
             self.logger.info('Setting EQ on all inputs to new given EQ.')
             fengs = self.fengines
-            rv = self.threaded_feng_operation(timeout=self.timeout*2,
+            rv = self.threaded_feng_operation(timeout=self.timeout*(self.corr.n_chans/1024),
                 target_function=(lambda feng_: feng_.eq_set(new_eq),))
         else:
             fengs = [self.get_fengine(input_name)]

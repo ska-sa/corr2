@@ -173,9 +173,9 @@ class FxCorrelator(Instrument):
                 getLogger=self.getLogger, *args, **kwargs)
 
         # set up the F, X, B and filter handlers
-        self.fops = FEngineOperations(self, **kwargs)
-        self.xops = XEngineOperations(self, **kwargs)
-        self.bops = BEngineOperations(self, **kwargs)
+        self.fops = FEngineOperations(self, timeout=self.timeout, **kwargs)
+        self.xops = XEngineOperations(self, timeout=self.timeout, **kwargs)
+        self.bops = BEngineOperations(self, timeout=self.timeout, **kwargs)
         self.filtops = FilterOperations(self, **kwargs)
 
         # set up the filter boards if we need to
