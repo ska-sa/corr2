@@ -64,10 +64,11 @@ class Corr2SensorServer(katcp.DeviceServer):
         """
         pass
 
-    def initialise(self, config):
+    def initialise(self, config, name):
         """
         Setup and start sensors
         :param config: the config to use when making the instrument
+        :param name: a name for the instrument
         :return:
 
         """
@@ -120,6 +121,18 @@ def on_shutdown(ioloop, server):
     yield server.stop()
     ioloop.stop()
 
+@tornado.gen.coroutine
+def boop():
+    """
+    Shut down the ioloop sanely.
+    :param ioloop: the current tornado.ioloop.IOLoop
+    :param server: a katcp.DeviceServer instance
+    :return:
+    """
+    print('Boop a bop')
+    startTime = tornado.ioloop.time.time()
+    nextTime = tornado.ioloop.time.time() + 2
+    IOLoop.current().call_at(nextTime,boop)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -134,6 +147,8 @@ if __name__ == '__main__':
                         default=False, help='format log messsages for katcp')
     parser.add_argument('--config', dest='config', type=str, action='store',
                         default='', help='a corr2 config file')
+    parser.add_argument('-n', '--name', dest='name', action='store',
+                        default='', help='a name for the instrument')
     args = parser.parse_args()
 
     try:
@@ -150,6 +165,17 @@ if __name__ == '__main__':
     if args.config == '':
         raise RuntimeError('No config file.')
 
+    if args.name == '':
+        # default to config file name?
+        try:
+            #whole path
+            args.name = args.config
+            #last part
+            args.name = args.name.split('/')[-1]
+            #remove extension, if present
+            args.name = args.name.split('.')[-2]
+        except IndexError:
+            pass
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
@@ -161,8 +187,8 @@ if __name__ == '__main__':
     ioloop.add_callback(sensor_server.start)
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
-    ioloop.add_callback(sensor_server.initialise, args.config)
-    # ioloop.call_later(10, boop)
+    ioloop.add_callback(sensor_server.initialise, args.config, args.name)
+    #ioloop.call_later(2, boop)
     ioloop.start()
 
 # end

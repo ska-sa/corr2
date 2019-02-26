@@ -1,35 +1,25 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
+
+#from __future__ import print_function
 import os
 import logging
-import sys
+#import sys
 import argparse
 import katcp
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 import signal
 from tornado import gen
 from tornado.ioloop import IOLoop
-import Queue
 import time
 import casperfpga
 import socket
-import math
 from concurrent import futures
 
 import corr2
 
 from corr2 import sensors
 from corr2.sensors import Corr2Sensor
-from corr2.utils import parse_ini_file
-
-from corr2.corr2LogHandlers import getKatcpLogger, set_logger_group_level
-from corr2.corr2LogHandlers import get_instrument_loggers, check_logging_level
-from corr2.corr2LogHandlers import check_logging_level, LOG_LEVELS
-from corr2.corr2LogHandlers import LOGGING_RATIO_CASPER_CORR as LOG_RATIO
-
-from corr2 import corr_monitoring_loop as corr_mon_loop
-
 
 class Corr2HardwareSensorServer(katcp.DeviceServer):
 
@@ -38,7 +28,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
 
     # Device server build / instance information.
     BUILD_INFO = ('corr2', 0, 1, 'alpha')
-
+    #@profile
     def __init__(self, *args, **kwargs):
         use_tornado = kwargs.pop('tornado')
         super(Corr2HardwareSensorServer, self).__init__(*args)
@@ -79,7 +69,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             device_status = 'OK' if (
                 is_sensor_list_status_ok(sensordict)) else 'ERROR'
 
-            sensordict['device-status'] = (0, '', 'unreachable')
+            sensordict['device-status'] = ('unreachable', '', 'unreachable')
 
 
             for key, value in sensordict.iteritems():
@@ -157,7 +147,6 @@ def get_physical_location(ipAddress):
 
     rackColumn = 'B'
     rackRow = int((leafNo - 1) // 2)
-    #print(rackRow)
     rackUnit = leafBaseRU + switchPort
     if(switchPort > 8):
         rackUnit += 1
@@ -176,7 +165,6 @@ def get_physical_location(ipAddress):
 def parse_boot_image_return(tuple):
     imageType = ''
     errorStatus = 'OK'
-    #print(tuple)
     if(tuple[0] == 1):
         imageType = 'golden_image'
         errorStatus = 'ERROR'
@@ -201,7 +189,6 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
     :param sensors: per-host dict of sensors
     :return:
     """
-    #print('Running Loop')
 
     def set_failure():
         for key, sensor in sensors.iteritems():
@@ -250,9 +237,9 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
         device_status = 'ERROR'
 
     if(device_unreachable == False):
-        server_sensors_dict['device-status'] = (0, '', device_status)
+        server_sensors_dict['device-status'] = (device_status.lower(), '', device_status)
     else:
-        server_sensors_dict['device-status'] = (0, '', 'unreachable')
+        server_sensors_dict['device-status'] = ('unreachable', '', 'unreachable')
 
     # Determine Device Status
     for key, value in server_sensors_dict.iteritems():
@@ -266,6 +253,8 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
                               '- {}'.format(host.host, key, e.message))
 
     host.logger.debug('sensorloop ran')
+
+
     IOLoop.current().call_later(10, _sensor_cb_hw,
             executor, sensors, host, rack_location_tuple)
 
@@ -282,8 +271,7 @@ def on_shutdown(ioloop, server):
     yield server.stop()
     ioloop.stop()
 
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
         description='Start a corr2 hardware sensor server.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -356,4 +344,7 @@ if __name__ == '__main__':
             print('Shutting down...')
             server.stop()
             server.join()
+
+if __name__ == '__main__':
+    main()
 # end

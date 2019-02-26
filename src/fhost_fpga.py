@@ -1,7 +1,6 @@
 import time
 from logging import INFO
 import struct
-import numpy
 
 import casperfpga.memory as caspermem
 from casperfpga.transport_skarab import SkarabTransport
@@ -115,26 +114,38 @@ class Fengine(object):
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
-    def get_quant_snapshot(self):
+    def get_quant_snapshot(self, channel_select=-1):
         """
         Read the post-quantisation snapshot for this fengine.
         snapshot data.
-        :return:
+        :param channel_select: If a value is passed here, a time-series of a single channel is returned, if not, a spectrum is returned.
+        :return: a numpy array of complex values
         """
-        snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
-        #calculate number of snapshot reads required:
-        n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
-        compl = []
-        for read_n in range(int(numpy.ceil(n_reads))):
-            offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
-            sdata = snapshot.read(offset=offset)['data']
-            for ctr in range(0, len(sdata['real0'])):
-                compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
-                compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
-                compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
-                compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
-        return compl[0:self.host.n_chans]
-
+        import numpy
+        if channel_select != -1:
+            if channel_select < 0 or channel_select >= self.host.n_chans:
+                raise ValueError("channel_select should be between 0 and {}, but received {}!".format(self.host.n_chans, channel_select))
+            chan_group = int(channel_select) / 4
+            which_chan = int(channel_select) % 4
+            self.host.registers.quant_snap_ctrl.write(single_channel=True, channel_select=chan_group)
+            snapshot = self.host.snapshots['snap_quant%i_ss' % self.offset]
+            sdata = snapshot.read()['data']
+            compl = numpy.vectorize(complex)(sdata['real{}'.format(which_chan)], sdata['imag{}'.format(which_chan)])
+            return compl
+        else:
+            snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
+            #calculate number of snapshot reads required:
+            n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
+            compl = []
+            for read_n in range(int(numpy.ceil(n_reads))):
+                offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
+                sdata = snapshot.read(offset=offset)['data']
+                for ctr in range(0, len(sdata['real0'])):
+                    compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
+                    compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
+                    compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
+                    compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
+            return compl[0:self.host.n_chans]
 
     def delay_set(self, delay_obj):
         """
@@ -334,7 +345,8 @@ class Fengine(object):
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
         self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
         self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
-
+        
+        import numpy
         prep_array = numpy.array([prep_int_initial, prep_int_delta], dtype=numpy.int16)
         prep_array = prep_array.view(dtype=numpy.uint16)
         # actually write the values to the register
@@ -357,22 +369,48 @@ class Fengine(object):
         self.last_eq=eqcomplex
         return self.last_eq
 
-    def eq_set(self, eq_poly):
+    def eq_set(self, eq_poly=None):
         """
         Write a given complex eq to the given SBRAM.
         WARN: hardcoded for 16b values!
 
-        :param eq_poly: a list of polynomial coefficients, or list of float values (must be n_chans long) to write to bram.
+        :param eq_poly: a list of polynomial coefficients, or list of float values (must be n_chans long) to write to bram. Set to string 'auto' to have system attempt to automatically set gains (requires sane values to have been set beforehand!).
         :return:
         """
         coeffs = (self.host.n_chans * 2) * [0]
+        if eq_poly==None:
+            self.logger.info('Setting default eq')
+            eq_poly=int(self.host._config['default_eq_poly'])
         try:
-            if len(eq_poly) == self.host.n_chans:
+            if eq_poly == 'auto':
+                import numpy
+                target_output=0.1 #this is the goal for numpy.abs(complex_snapshot). For 8.7bit meerkat, total range is thus sqrt((abs(1+1j)))=1.4
+                n_averages=30
+
+                #get an estimate of the current spectrum:
+                chans = range(self.host.n_chans)
+                quant_snapshot = numpy.abs(self.get_quant_snapshot())
+                for i in range(n_averages):
+                    quant_snapshot += numpy.abs(self.get_quant_snapshot())
+                quant_snapshot /= n_averages
+
+                error=target_output/quant_snapshot
+
+                #ignore band edges; only use central 80%:
+                start_chan=int(self.host.n_chans*0.1)
+                stop_chan=int(self.host.n_chans*0.9)
+                eq_poly=numpy.polyfit(chans[start_chan:stop_chan],error[start_chan:stop_chan],3)
+                poly_coeffs=numpy.array(self.eq_get())*numpy.polyval(eq_poly,chans)
+                coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
+                coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]
+                
+            elif len(eq_poly) == self.host.n_chans:
                 # list - one for each channel
                 coeffs[0::2] = [coeff.real for coeff in eq_poly]
                 coeffs[1::2] = [coeff.imag for coeff in eq_poly]
             elif len(eq_poly)<self.host.n_chans:
                 # polynomial
+                import numpy
                 poly_coeffs=numpy.polyval(eq_poly, range(self.host.n_chans))
                 coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
                 coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]
@@ -442,12 +480,10 @@ class FpgaFHost(FpgaHost):
 
         if config is not None:
             self.num_fengines = int(config['f_per_fpga'])
-            self.fft_shift = int(config['fft_shift'])
             self.n_chans = int(config['n_chans'])
             self.min_load_time = float(config['min_load_time'])
         else:
             self.num_fengines = None
-            self.fft_shift = None
             self.n_chans = None
             self.min_load_time = None
 
@@ -538,18 +574,57 @@ class FpgaFHost(FpgaHost):
                                  'host.'.format(host=self.host, feng=feng_name))
 
 
-    def set_fft_shift(self, shift_schedule=None, issue_meta=True):
+    def set_fft_shift(self, shift_schedule=None):
         """
         Set the FFT shift schedule.
         :param shift_schedule: int representing bit mask. '1' represents a
-        shift for that stage. First stage is MSB.
-        Use default if None provided
-        :param issue_meta: Should SPEAD meta data be sent after the value is
-        changed?
+        shift for that stage. First stage is MSb.
+        Use default if None provided.
+        Determine fft shift automatically if 'auto' is provided.
         :return: <nothing>
         """
+        import numpy
+        def distribute_shifts(n_stages_total,n_stages_shift):
+            if n_stages_shift<=0:
+                return 0
+            elif n_stages_shift>=n_stages_total:
+                return (2**(n_stages_total))-1
+            else:
+                new_shift_schedule=0
+                shift_stages=n_stages_total-1-numpy.uint(numpy.linspace(0,n_stages_total-1,n_stages_shift,endpoint=True))
+                for shift_stage in shift_stages:
+                    self.logger.debug("FFT shifting stage %i"%(shift_stage))
+                    new_shift_schedule+=(1<<int(shift_stage))
+                return new_shift_schedule
+
+        def test_shift_schedule(n_retries=5,wait_time=0.5):
+            status_first=self.get_pfb_status()
+            for test in range(n_retries):
+                status=self.get_pfb_status()
+                for pol in range(self.num_fengines):
+                    if status['pol%i_or_err_cnt'%pol] != status_first['pol%i_or_err_cnt'%pol]:
+                        self.logger.debug('FFT Shift auto-adjust: polarisation %i is overflowing!')
+                        return False
+                time.sleep(wait_time)
+            return True
+        
         if shift_schedule is None:
-            shift_schedule = self.fft_shift
+            shift_schedule = int(self._config['fft_shift'])
+        elif shift_schedule == 'auto':
+            n_stages_total = int(numpy.log2(self.n_chans))
+            shift_ok=[]
+            for shift_stages in range(n_stages_total+1):
+                fft_shift=distribute_shifts(n_stages_total,shift_stages)
+                self.registers.fft_shift.write(fft_shift=fft_shift)
+                shift_ok.append(test_shift_schedule())
+            try:
+                shift_stages=min(n_stages_total,shift_ok.index(True)+3)
+                shift_schedule=distribute_shifts(n_stages_total,shift_stages)
+                self.logger.info("FFT shift auto-adj selected %i stages of shift from results: %s"%(shift_stages,str(shift_ok)))
+            except ValueError:
+                self.logger.error("FFT shift auto-adj was unable to find a valid shift from results: %s. Shifting on every stage."%(str(shift_ok)))
+                shift_schedule=(2**(n_stages_total))-1
+        self.logger.info("Setting FFT shift to %i."%shift_schedule)
         self.registers.fft_shift.write(fft_shift=shift_schedule)
 
     def get_fft_shift(self):
@@ -560,13 +635,13 @@ class FpgaFHost(FpgaHost):
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 
-    def get_quant_snapshots(self):
+    def get_quant_snapshots(self, channel_select=-1):
         """
         Get the quant snapshots for all the inputs on this host.
         :return:
         """
         return {
-            feng.name: feng.get_quant_snapshot()
+            feng.name: feng.get_quant_snapshot(channel_select=channel_select)
             for feng in self.fengines
         }
 

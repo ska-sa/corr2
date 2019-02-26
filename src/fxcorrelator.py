@@ -173,9 +173,9 @@ class FxCorrelator(Instrument):
                 getLogger=self.getLogger, *args, **kwargs)
 
         # set up the F, X, B and filter handlers
-        self.fops = FEngineOperations(self, **kwargs)
-        self.xops = XEngineOperations(self, **kwargs)
-        self.bops = BEngineOperations(self, **kwargs)
+        self.fops = FEngineOperations(self, timeout=self.timeout, **kwargs)
+        self.xops = XEngineOperations(self, timeout=self.timeout, **kwargs)
+        self.bops = BEngineOperations(self, timeout=self.timeout, **kwargs)
         self.filtops = FilterOperations(self, **kwargs)
 
         # set up the filter boards if we need to
@@ -183,7 +183,7 @@ class FxCorrelator(Instrument):
             try:
                 self.filtops.initialise(program=program, *args, **kwargs)
             except Exception as err:
-                errmsg = 'Failed to initialise filter boards: {}' % str(err)
+                errmsg = 'Failed to initialise filter boards: %s' % str(err)
                 self.logger.error(errmsg)
                 raise RuntimeError(errmsg)
 
@@ -197,21 +197,26 @@ class FxCorrelator(Instrument):
         if program:
             # skfops = casperfpga.skarab_fileops
             # force the new programming method
-            skfops.upload_to_ram_progska(fbof, self.fhosts)
-            skfops.reboot_skarabs_from_sdram(self.fhosts)
-            skfops.upload_to_ram_progska(xbof, self.xhosts)
-            skfops.reboot_skarabs_from_sdram(self.xhosts)
-            skfops.wait_after_reboot(self.fhosts +
-                                     self.xhosts, timeout=self.timeout *
-                                     (len(self.fhosts) +
-                                      len(self.xhosts)))
+            try:
+                skfops.upload_to_ram_progska(fbof, self.fhosts)
+                skfops.reboot_skarabs_from_sdram(self.fhosts)
+                skfops.upload_to_ram_progska(xbof, self.xhosts)
+                skfops.reboot_skarabs_from_sdram(self.xhosts)
+                skfops.wait_after_reboot(self.fhosts +
+                                         self.xhosts, timeout=self.timeout *
+                                         (len(self.fhosts) + len(self.xhosts)))
+            except Exception as err:
+                errmsg = 'Failed to program the boards: %s' % str(err)
+                self.logger.error(errmsg)
+                raise RuntimeError(errmsg)
+
         fisskarab = True
         xisskarab = True
         if (not program) or fisskarab or xisskarab:
             self.logger.info('Loading design information')
             THREADED_FPGA_FUNC(
                 self.fhosts, timeout=self.timeout * 10,
-                target_function=('get_system_information', [fbof], { }))
+                target_function=('get_system_information', [fbof], {}))
             #THREADED_FPGA_FUNC(
             #    self.fhosts, timeout=self.timeout * 10,
             #    target_function=('get_system_information', [fbof], {'legacy_reg_map' : False}))
@@ -609,7 +614,7 @@ class FxCorrelator(Instrument):
             self.beng_outbits = int(_beam_d.get('beng_outbits'))
             assert isinstance(self.beng_outbits, int)
         except Exception:
-            self.logger.error('No beamfomer found in the config.')
+            self.logger.info('No beamfomer found in the config.')
 
     def _create_digitiser_streams(self, *args, **kwargs):
         """

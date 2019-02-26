@@ -2,7 +2,7 @@
 # Yes, I know it's just an integer value
 from logging import INFO
 import time
-import numpy
+
 
 
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
@@ -18,6 +18,7 @@ import data_stream
 
 
 class Corr2Sensor(Sensor):
+
     @classmethod
     def integer(cls, name, description=None, unit='', params=None,
                 default=None, initial_status=None,
@@ -63,6 +64,16 @@ class Corr2Sensor(Sensor):
                    default, initial_status, manager, executor,
                    *args, **kwargs)
 
+    @classmethod
+    def device_status(cls, name, description=None, unit='',
+               default=None, initial_status=None,
+               manager=None, executor=None,
+               *args, **kwargs):
+        return cls(cls.DISCRETE, name=name, description=description, 
+                   units=unit, params=['ok','fail','degraded'],
+                   default=default, initial_status='ok', manager=manager, 
+                   executor=executor,*args, **kwargs)
+
     def __init__(self, sensor_type, name, description=None, units='',
                  params=None, default=None, initial_status=None,
                  manager=None, executor=None,
@@ -105,59 +116,59 @@ class Corr2Sensor(Sensor):
         if timestamp is None:
             timestamp = time.time()
         if status is None:
-	    status_none = 1
+            status_none = 1
             status = Sensor.NOMINAL
         (old_timestamp, old_status, old_value) = self.read()
         if (old_status == status) and (old_value == value):
             self.logger.debug('Sensor values unchanged, ignoring')
             return
 
-        if (value==False):
+        if (value == False):
             if (errif == 'False'):
                 self.logger.error('Sensor error: {} is False'.format(self.name))
-		if(status_none == 1 ):
-		    status = Sensor.ERROR
+                if(status_none == 1):
+                    status = Sensor.ERROR
             elif (warnif == 'False'):
                 self.logger.warn('Sensor warning: {} is False'.format(self.name))
-                if(status_none == 1 ):
-		    status = Sensor.WARN
+                if(status_none == 1):
+                    status = Sensor.WARN
             else:
-		if(status_none == 1):
+                if(status_none == 1):
                     status = Sensor.NOMINAL
 
-        elif (value==True):
+        elif (value):
             if (errif == 'True'):
                 self.logger.error('Sensor error: {} is True'.format(self.name))
-                if(status_none == 1 ):
-		    status = Sensor.ERROR
+                if(status_none == 1):
+                    status = Sensor.ERROR
             elif warnif == 'True':
                 self.logger.warn('Sensor warning: {} is True'.format(self.name))
-                if(status_none == 1 ):
-		    status = Sensor.WARN
+                if(status_none == 1):
+                    status = Sensor.WARN
             else:
-		if(status_none == 1 ):
+                if(status_none == 1):
                     status = Sensor.NOMINAL
 
         if old_value != value:
             if errif == 'changed':
                 self.logger.error(
                     'Sensor error: {} changed {} -> {}'.format(self.name, old_value, value))
-                if(status_none == 1 ):
-		    status = Sensor.ERROR
+                if(status_none == 1):
+                    status = Sensor.ERROR
             elif warnif == 'changed':
                 self.logger.warn(
                     'Sensor warning: {} changed {} -> {}'.format(self.name, old_value, value))
-                if(status_none == 1 ):
-		    status = Sensor.WARN
+                if(status_none == 1):
+                    status = Sensor.WARN
         else:
             if errif == 'notchanged':
-		if(status_none == 1 ):
+                if(status_none == 1):
                     status = Sensor.ERROR
                 self.logger.error(
                     'Sensor error: {} not changing {} -> {}'.format(self.name, old_value, value))
             elif warnif == 'notchanged':
-                if(status_none == 1 ):
-		    status = Sensor.WARN
+                if(status_none == 1):
+                    status = Sensor.WARN
                 self.logger.warn(
                     'Sensor warning: {} not changing {} -> {}'.format(self.name, old_value, value))
         super(Corr2Sensor, self).set(timestamp, status, value)
@@ -191,14 +202,14 @@ class SensorManager(object):
         self.katcp_server = katcp_server
         self.instrument = instrument
 
-        if instrument == None:
+        if instrument is None:
             # You are a strong, independent SensorManager
             self.getLogger = getKatcpLogger
-            logger_name = '{}_sensor_manager'.format(katcp_server.host.host)
+            logger_name = '{}_sens_man'.format(katcp_server.host.host)
         else:
             # The instrument already has a getLogger attribute
             self.getLogger = instrument.getLogger
-            logger_name = '{}_sensor_manager'.format(instrument.descriptor)
+            logger_name = '{}_sens_man'.format(instrument.descriptor)
 
         # Why is logging defaulted to INFO, what if I do not want to see the info logs?
         logLevel = kwargs.get('logLevel', INFO)
@@ -599,7 +610,7 @@ class Corr2SensorManager(SensorManager):
                     Corr2Sensor.integer, '{}-fft0-shift'.format(pref),
                     'The FFT bitshift pattern for the <n>th FFT in the design. '
                     'n=0 is first in the RF chain (closest to source).')
-                sensor.set_value(self.instrument.fft_shift)
+                sensor.set_value(feng.host.get_fft_shift())
 
     def sensors_feng_eq(self, feng):
         streams = self.instrument.get_data_streams_by_type(
@@ -635,6 +646,7 @@ class Corr2SensorManager(SensorManager):
        #     'Delays for this input are functioning correctly.')
 
         if feng.last_delay is not None:
+            import numpy
             delay = feng.last_delay.delay / self.instrument.sample_rate_hz
             delay_delta = feng.last_delay.delay_delta
             phase_offset = feng.last_delay.phase_offset * numpy.pi
@@ -669,7 +681,7 @@ class Corr2SensorManager(SensorManager):
             data_stream.FENGINE_CHANNELISED_DATA)
 
         assert len(streams) == 1
-
+        import numpy
         for stream in streams:
             strmnm = stream.name
 
@@ -971,8 +983,8 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(-1)
 
         n_chans = self.instrument.n_chans
-        n_xeng = len(self.instrument.xhosts)
-        chans_per_x = n_chans / n_xeng
+        n_xhosts = len(self.instrument.xhosts)
+        chans_per_xhost = n_chans / n_xhosts
         for _x in self.instrument.xhosts:
             bid = self.instrument.xops.board_ids[_x.host]
             sensor = Corr2Sensor.string(
@@ -983,7 +995,7 @@ class Corr2SensorManager(SensorManager):
                 manager=self)
             self.sensor_create(sensor)
             sensor.set_value('({start},{end})'.format(
-                start=bid * chans_per_x, end=(bid + 1) * chans_per_x - 1))
+                start=bid * chans_per_xhost, end=(bid + 1) * chans_per_xhost - 1))
 
             sensor = Corr2Sensor.string(
                 name='beng-host{}-chan-range'.format(bid),
@@ -993,7 +1005,7 @@ class Corr2SensorManager(SensorManager):
                 manager=self)
             self.sensor_create(sensor)
             sensor.set_value('({start},{end})'.format(
-                start=bid * chans_per_x, end=(bid + 1) * chans_per_x - 1))
+                start=bid * chans_per_xhost, end=(bid + 1) * chans_per_xhost - 1))
 
         #TODO: This is a bit nasty. Should detect what type of engines are in
         #      the build, and get version info for those engines types only.
@@ -1013,7 +1025,7 @@ class Corr2SensorManager(SensorManager):
                                 initial_status=Sensor.UNKNOWN,
                                 manager=self)
                             self.sensor_create(sensor)
-                            sensor.set_value(str(param)+':'+str(value))
+                            sensor.set_value(str(param) + ':' + str(value))
                             filectr += 1
 
             sensor = Corr2Sensor.string(

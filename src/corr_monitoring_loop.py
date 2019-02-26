@@ -44,8 +44,7 @@ class MonitoringLoop(object):
 
         # some other useful bits of info
         self.n_chans = self.instrument.n_chans
-        self.n_xengs_per_host = self.instrument.x_per_fpga
-        self.n_per_xeng = self.n_chans/(self.n_xengs_per_host*self.num_xhosts)
+        self.chans_per_xhost = self.n_chans / self.num_xhosts
 
     def start(self):
         """
@@ -166,8 +165,8 @@ class MonitoringLoop(object):
 
         if self.disabled_xhosts:
             self.instrument.logger.warning('corr2 monitor loop: disabled x-hosts: %s'
-                                           % ['xhost%d:%s:%d-%d' % (disabled_xhost.index, disabled_xhost.host, self.instrument.xops.board_ids[disabled_xhost.host]*self.n_per_xeng,
-                                                                             (self.instrument.xops.board_ids[disabled_xhost.host]+1)*self.n_per_xeng-1)
+                                           % ['xhost%d:%s:%d-%d' % (disabled_xhost.index, disabled_xhost.host, self.instrument.xops.board_ids[disabled_xhost.host] * self.chans_per_xhost,
+                                                                    (self.instrument.xops.board_ids[disabled_xhost.host]+1) * self.chans_per_xhost - 1)
                                                                              for disabled_xhost in self.disabled_xhosts])
 
         #if self.disabled_bhosts:
@@ -372,20 +371,19 @@ class MonitoringLoop(object):
                 hmc_reorder_dict_prev = \
                     self.x_eng_board_monitoring_dict_prev[xhost][
                         'xeng_hmc_reorder']
-
-                if hmc_reorder_dict['err_cnt_link2'] != hmc_reorder_dict_prev[
-                    'err_cnt_link2']:
-
-                    self.instrument.logger.warning(
-                        'xhost %s hmc reorder has errors on link 2' %
-                         xhost.host)
-                    action_dict['disable_output'] = True
-                if hmc_reorder_dict['err_cnt_link3'] != hmc_reorder_dict_prev[
-                    'err_cnt_link3']:
-                    self.instrument.logger.warning(
-                        'xhost %s hmc reorder has errors on link 3' %
-                        xhost.host)
-                    action_dict['disable_output'] = True
+#TODO Ignore CRC errors on the HMCs for now...
+#                if hmc_reorder_dict['err_cnt_link2'] != hmc_reorder_dict_prev[
+#                    'err_cnt_link2']:
+#                    self.instrument.logger.warning(
+#                        'xhost %s hmc reorder has errors on link 2' %
+#                         xhost.host)
+#                    action_dict['disable_output'] = True
+#                if hmc_reorder_dict['err_cnt_link3'] != hmc_reorder_dict_prev[
+#                    'err_cnt_link3']:
+#                    self.instrument.logger.warning(
+#                        'xhost %s hmc reorder has errors on link 3' %
+#                        xhost.host)
+#                    action_dict['disable_output'] = True
                 if hmc_reorder_dict['lnk2_nrdy_err_cnt'] != hmc_reorder_dict_prev[
                     'lnk2_nrdy_err_cnt']:
                     self.instrument.logger.warning(
@@ -696,8 +694,8 @@ class MonitoringLoop(object):
         xhost.registers.control.write(gbe_txen=False)
         self.instrument.logger.warning('xhost%d %s %s output disabled!' %
                                       (xhost.index, xhost.host,
-                                      (self.instrument.xops.board_ids[xhost.host] * self.n_per_xeng,
-                                      (self.instrument.xops.board_ids[xhost.host] + 1) * self.n_per_xeng - 1)
+                                      (self.instrument.xops.board_ids[xhost.host] * self.chans_per_xhost,
+                                       (self.instrument.xops.board_ids[xhost.host] + 1) * self.chans_per_xhost - 1)
                                       ))
 
     def _renable_xeng_output(self, xhost):
@@ -711,9 +709,9 @@ class MonitoringLoop(object):
         self.instrument.logger.info('xhost%d %s %s output reenabled!' %
                                     (xhost.index, xhost.host,
                                      (self.instrument.xops.board_ids[
-                                          xhost.host] * self.n_per_xeng,
+                                          xhost.host] * self.chans_per_xhost,
                                       (self.instrument.xops.board_ids[
-                                           xhost.host] + 1) * self.n_per_xeng - 1)
+                                           xhost.host] + 1) * self.chans_per_xhost - 1)
                                      ))
 
     def get_bad_fhosts(self):
