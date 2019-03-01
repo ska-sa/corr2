@@ -226,7 +226,8 @@ def _cb_xeng_hmc_reorder(sensors, x_host, time):
         overflows = results['lnk2_nrdy_err_cnt'] + results['lnk3_nrdy_err_cnt']
         sensors['hmc_overflow_err_cnt'].set(value=overflows, errif='changed')
         errs = results['err_cnt_link3'] + results['err_cnt_link2']
-        sensors['hmc_err_cnt'].set(value=errs, errif='changed')
+        sensors['hmc_err_cnt'].set(value=errs, status=Corr2Sensor.NOMINAL)
+        #sensors['hmc_err_cnt'].set(value=errs, errif='changed')
 
         for key in ['miss_err_cnt']:
             if sensors[key].status() != Corr2Sensor.NOMINAL:
