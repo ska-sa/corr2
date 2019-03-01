@@ -452,7 +452,10 @@ class XEngineOperations(object):
             for i,status_new in enumerate(vacc_status_new[host.host]): #iterate over vaccs on host
                 if (status_new[check] != vacc_status_initial[host.host][i][check] + 1):
                     errmsg = "xeng_vacc_sync: %s vacc %i's %s did not incrment."%(host.host,i,check)
-                    self.logger.error(errmsg)
+                    if check == 'arm_cnt':
+                        self.logger.warn(errmsg)
+                    else:
+                        self.logger.error(errmsg)
                     rv=False
         if rv: self.logger.info('VACC %s counters incremented successfully.'%check)
         return rv
