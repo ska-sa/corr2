@@ -22,7 +22,7 @@ class XengineStream(data_stream.SPEADStream):
     """
     An x-engine SPEAD stream
     """
-    def __init__(self, name, destination, xops, *args, **kwargs):
+    def __init__(self, name, destination, xops, max_pkt_size, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -31,7 +31,7 @@ class XengineStream(data_stream.SPEADStream):
         """
         self.xops = xops
         super(XengineStream, self).__init__(name,
-            data_stream.XENGINE_CROSS_PRODUCTS, destination,
+            data_stream.XENGINE_CROSS_PRODUCTS, destination, max_pkt_size=max_pkt_size,
             instrument_descriptor=self.xops.corr.descriptor,
             *args, **kwargs)
 
@@ -266,7 +266,9 @@ class XEngineOperations(object):
                 'The x-engine\'s given address range (%s) must be one, a '
                 'starting base.' % output_address)
         output_address.ip_range = num_xeng
+        max_pkt_size = self.corr.x_stream_payload_len
         xeng_stream = XengineStream(output_name, output_address, self,
+                                    max_pkt_size=max_pkt_size,
                                     *args, **kwargs)
         self.data_stream = xeng_stream
         self.data_stream.set_source(self.corr.fops.data_stream.destination)

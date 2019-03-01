@@ -27,7 +27,7 @@ class FengineStream(SPEADStream):
     An f-engine SPEAD stream
     """
 
-    def __init__(self, name, destination, fops, timeout=5, *args, **kwargs):
+    def __init__(self, name, destination, fops, max_pkt_size, timeout=5, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -37,7 +37,7 @@ class FengineStream(SPEADStream):
         self.fops = fops
         self.timeout = timeout
         super(FengineStream, self).__init__(
-            name, FENGINE_CHANNELISED_DATA, destination,
+            name, FENGINE_CHANNELISED_DATA, destination, max_pkt_size=max_pkt_size,
             instrument_descriptor=self.fops.corr.descriptor, **kwargs)
 
     def descriptors_setup(self):
@@ -289,7 +289,7 @@ class FEngineOperations(object):
                 fhost.add_fengine(_feng)
                 self.logger.info('\t{}: {}'.format(_feng_ctr, _feng))
                 _feng_ctr += 1
-
+        a =
         if _feng_ctr != len(self.hosts) * self.corr.f_per_fpga:
             raise RuntimeError(
                 'We have different numbers of inputs ({}) and F-engines ({}). Problem.'.format(
@@ -306,7 +306,8 @@ class FEngineOperations(object):
                 'a starting base address.'.format(output_address))
         num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
         output_address.ip_range = num_xeng
-        self.data_stream = FengineStream(output_name, output_address, self, *args, **kwargs)
+        max_pkt_size = self.corr.f_stream_payload_len
+        self.data_stream = FengineStream(output_name, output_address, self, max_pkt_size, *args, **kwargs)
         self.data_stream.set_source([feng.input.destination for feng in self.fengines])
         self.corr.add_data_stream(self.data_stream)
 

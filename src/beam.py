@@ -11,7 +11,7 @@ THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
 
 
 class Beam(SPEADStream):
-    def __init__(self, name, index, destination, *args, **kwargs):
+    def __init__(self, name, index, destination, max_pkt_size, *args, **kwargs):
         """
         A frequency-domain tied-array beam
         :param name - a string for the beam name
@@ -41,13 +41,14 @@ class Beam(SPEADStream):
             raise ValueError(errmsg)
 
         super(Beam, self).__init__(name, BEAMFORMER_FREQUENCY_DOMAIN,
-                                   destination, **kwargs)
+                                   destination, max_pkt_size=max_pkt_size,
+                                   **kwargs)
 
         self.logger.info('created okay')
 
     @classmethod
     def from_config(cls, beam_key, bhosts, config, fengops, speadops,
-                    *args, **kwargs):
+                    max_pkt_size, *args, **kwargs):
         """
 
         :param beam_key:
@@ -75,7 +76,9 @@ class Beam(SPEADStream):
         beam_address.ip_range = num_beng
 
         obj = cls(beam_name, int(beam_dict['stream_index']), beam_address,
-                  instrument_descriptor=fengops.corr.descriptor, *args, **kwargs)
+                  max_pkt_size=max_pkt_size,
+                  instrument_descriptor=fengops.corr.descriptor,
+                  *args, **kwargs)
         obj.config = beam_dict
         obj.hosts = bhosts
         obj.speadops = speadops
