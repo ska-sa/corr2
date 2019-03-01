@@ -89,11 +89,12 @@ def setup_sensors(sensor_manager, enable_counters=False):
     #TODO are these assert statements a wise idea? I think they should be refactored away in favour of something proper.
     for ctr, host in enumerate(sensor_manager.instrument.xhosts):
         assert host.host not in host_offset_lookup
-        if host.host_type == 'xhost':
-            host_offset_lookup[host.host] = 'xhost{:02}'.format(ctr)
-        else:
-            # bhost, probably
-            host_offset_lookup[host.host] = 'bhost{:02}'.format(ctr)
+        host_offset_lookup[host.host] = 'xhost{:02}'.format(ctr)
+        #if host.host_type == 'xhost':
+        #    host_offset_lookup[host.host] = 'xhost{:02}'.format(ctr)
+        #else:
+        #    # bhost, probably
+        #    host_offset_lookup[host.host] = 'bhost{:02}'.format(ctr)
     for ctr, host in enumerate(sensor_manager.instrument.fhosts):
         assert host.host not in host_offset_lookup
         host_offset_lookup[host.host] = 'fhost{:02}'.format(ctr)
