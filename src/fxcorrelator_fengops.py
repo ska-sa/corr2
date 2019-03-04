@@ -289,7 +289,7 @@ class FEngineOperations(object):
                 fhost.add_fengine(_feng)
                 self.logger.info('\t{}: {}'.format(_feng_ctr, _feng))
                 _feng_ctr += 1
-        a =
+
         if _feng_ctr != len(self.hosts) * self.corr.f_per_fpga:
             raise RuntimeError(
                 'We have different numbers of inputs ({}) and F-engines ({}). Problem.'.format(
