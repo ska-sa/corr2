@@ -419,12 +419,26 @@ class Fengine(object):
                 coeffs = (self.host.n_chans * 2) * [0]
                 coeffs[0::2] = [eq_poly.real for coeff in range(self.host.n_chans)]
                 coeffs[1::2] = [eq_poly.imag for coeff in range(self.host.n_chans)]
+
+        #Ensure coeffs values can be stored in 16 bits
+        saturated_channels_count=0
+        for i in range(len(coeffs)):
+            if(coeffs[i] > 32767):
+                coeffs[i]=32767
+                saturated_channels_count+=1
+            elif(coeffs[i] < -32767):
+                coeffs[i] =-32767
+                saturated_channels_count+=1
+
         creal = coeffs[0::2]
         cimag = coeffs[1::2]
         ss = struct.pack('>%ih' % (self.host.n_chans * 2), *coeffs)
         self.host.write(self.eq_bram_name, ss, 0)
         self.last_eq=[complex(creal[i],cimag[i]) for i in range(len(creal))]
-        self.logger.info('Updated EQ: %s...'%self.last_eq[0:10])
+        if(saturated_channels_count != 0):
+            self.logger.warn('EQ values adjusted. %i channels saturated.'%saturated_channels_count)
+        self.logger.info('EQ values: %s...'%self.last_eq[0:10])
+
         return self.last_eq
 
     def __repr__(self):
