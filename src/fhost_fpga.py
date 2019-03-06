@@ -691,6 +691,20 @@ class FpgaFHost(FpgaHost):
         """
         return self.registers.pfb_status.read()['data']
 
+    def get_adc_status(self):
+        """Return the ADC power levels in dBFS for all polarisations on this host.
+        :return: dict
+        """
+        import numpy
+        ret={}
+        for feng in self.fengines:
+            raw=self.registers['adc_dev%i'%feng.offset].read()['data']
+            ret['p%i_min'%feng.offset]=raw['min']
+            ret['p%i_max'%feng.offset]=raw['max']
+            ret['p%i_pwr'%feng.offset]=10*numpy.log10(self.registers['adc_pwr%i'%feng.offset].read()['data']['reg'])
+        return ret
+            
+
     def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10):
         """
         Read the ADC snapshots from this Fhost

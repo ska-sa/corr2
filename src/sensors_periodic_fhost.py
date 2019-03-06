@@ -152,10 +152,14 @@ def _cb_feng_delays(sensors, f_host, time):
         sensors['delay1_updating'].tempstore = cd1_cnt
 
         results = yield executor.submit(f_host.get_cd_status)
+#        sensors['pol0_crc_err_cnt'].set(
+#            value=results['hmc_crc_err_cnt_pol0'], errif='changed')
+#        sensors['pol1_crc_err_cnt'].set(
+#            value=results['hmc_crc_err_cnt_pol1'], errif='changed')
         sensors['pol0_crc_err_cnt'].set(
-            value=results['hmc_crc_err_cnt_pol0'], errif='changed')
+            value=results['hmc_crc_err_cnt_pol0'], status=Corr2Sensor.NOMINAL)
         sensors['pol1_crc_err_cnt'].set(
-            value=results['hmc_crc_err_cnt_pol1'], errif='changed')
+            value=results['hmc_crc_err_cnt_pol1'], status=Corr2Sensor.NOMINAL)
         hmc_post = ((results['hmc_init']) & (results['hmc_post']))
         sensors['hmc_post'].set(
             value=hmc_post,
@@ -231,10 +235,14 @@ def _cb_feng_ct(sensors, f_host, time):
         sensors['pol1_post'].set(
             value=results['hmc_post_pol1'],
             status=pol1_status)
+#        sensors['pol0_crc_err_cnt'].set(
+#            value=results['hmc_crc_err_cnt_pol0'], errif='changed')
+#        sensors['pol1_crc_err_cnt'].set(
+#            value=results['hmc_crc_err_cnt_pol1'], errif='changed')
         sensors['pol0_crc_err_cnt'].set(
-            value=results['hmc_crc_err_cnt_pol0'], errif='changed')
+            value=results['hmc_crc_err_cnt_pol0'], status=Corr2Sensor.NOMINAL)
         sensors['pol1_crc_err_cnt'].set(
-            value=results['hmc_crc_err_cnt_pol1'], errif='changed')
+            value=results['hmc_crc_err_cnt_pol1'], status=Corr2Sensor.NOMINAL)
         sensors['reorder_missing_err_cnt'].set(
             value=results['reorder_missing_err_cnt'], errif='changed')
         if ((sensors['pol0_err'].status() == Corr2Sensor.ERROR) or

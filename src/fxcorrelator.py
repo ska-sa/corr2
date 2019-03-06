@@ -173,9 +173,9 @@ class FxCorrelator(Instrument):
                 getLogger=self.getLogger, *args, **kwargs)
 
         # set up the F, X, B and filter handlers
-        self.fops = FEngineOperations(self, **kwargs)
-        self.xops = XEngineOperations(self, **kwargs)
-        self.bops = BEngineOperations(self, **kwargs)
+        self.fops = FEngineOperations(self, timeout=self.timeout, **kwargs)
+        self.xops = XEngineOperations(self, timeout=self.timeout, **kwargs)
+        self.bops = BEngineOperations(self, timeout=self.timeout, **kwargs)
         self.filtops = FilterOperations(self, **kwargs)
 
         # set up the filter boards if we need to
@@ -590,6 +590,9 @@ class FxCorrelator(Instrument):
         assert isinstance(self.fft_shift, int)
         self.pfb_group_delay = int(_feng_d.get('pfb_group_delay', -1))
         assert isinstance(self.pfb_group_delay, int)
+        self.f_stream_payload_len = int(_feng_d.get('feng_stream_payload_len',
+                                                    1024))
+        assert isinstance(self.f_stream_payload_len, int)
 
         # =====================================================================
         _xeng_d = self.configd.get('xengine', None)
@@ -603,6 +606,9 @@ class FxCorrelator(Instrument):
         assert isinstance(self.xeng_accumulation_len, int)
         self.xeng_outbits = int(_xeng_d.get('xeng_outbits', 32))
         assert isinstance(self.xeng_outbits, int)
+        self.x_stream_payload_len = int(_xeng_d.get('xeng_stream_payload_len',
+                                                    2048))
+        assert isinstance(self.x_stream_payload_len, int)
 
         # check if beamformer exists with x-engines
         self.found_beamformer = False
@@ -613,8 +619,17 @@ class FxCorrelator(Instrument):
             self.found_beamformer = True
             self.beng_outbits = int(_beam_d.get('beng_outbits'))
             assert isinstance(self.beng_outbits, int)
+
+            # currently, 64A1K beam has a different payload size
+            _sixty_four_1k = (self.n_antennas == 64 and self.n_chans == 1024)
+            default_b_eng_pkt_size = 2048 if _sixty_four_1k else 4096
+            self.b_stream_payload_len = int(
+                    _beam_d.get('beam0_stream_payload_len',
+                                default_b_eng_pkt_size))
+            assert isinstance(self.b_stream_payload_len, int)
+
         except Exception:
-            self.logger.error('No beamfomer found in the config.')
+            self.logger.info('No beamfomer found in the config.')
 
     def _create_digitiser_streams(self, *args, **kwargs):
         """

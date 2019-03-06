@@ -109,15 +109,16 @@ class StreamAddress(object):
         return '%s+%i:%i' % (self.ip_address, self.ip_range - 1, self.port)
 
 
-def _setup_spead_tx(threadpool, ip_string, port):
+def _setup_spead_tx(threadpool, ip_string, port, max_pkt_size):
     """
     Set up a SPEAD transmitter.
     :param ip_string: where are messages on this socket sent?
     :param port: and on which port?
+    :param max_pkt_size: maximum packet size for this stream
     :return:
     """
     streamconfig = spead2.send.StreamConfig(
-        max_packet_size=4096, max_heaps=8, rate=100e6)
+        max_packet_size=max_pkt_size, max_heaps=8, rate=100e6)
     streamsocket = socket.socket(
         family=socket.AF_INET, type=socket.SOCK_DGRAM, proto=socket.IPPROTO_IP)
     ttl_bin = struct.pack('@i', SPEAD_PKT_TTL)
@@ -137,12 +138,13 @@ class SPEADStream(object):
     Sends SPEAD data descriptors on tx_enable.
     """
 
-    def __init__(self, name, category, destination, *args, **kwargs):
+    def __init__(self, name, category, destination, max_pkt_size=4096, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
         :param category: what kind of stream is this
         :param destination: where is it going?
+        :param max_pkt_size: maximum packet size for this stream
         :return:
         """
         # This will always be a kwarg
@@ -173,7 +175,7 @@ class SPEADStream(object):
         self.descr_ig = spead2.send.ItemGroup(
             flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
         self.descriptors_setup()
-        self.set_destination(destination)
+        self.set_destination(new_dest=destination, max_pkt_size=max_pkt_size)
 
     def descriptors_setup(self):
         """
@@ -199,10 +201,11 @@ class SPEADStream(object):
                 srcs.append(StreamAddress.from_address_string(src))
         self.source = srcs
 
-    def set_destination(self, new_dest):
+    def set_destination(self, new_dest, max_pkt_size):
         """
         Set the destination for this stream
         :param new_dest: the new destination to use
+        :param max_pkt_size: maximum packet size for this stream
         :return:
         """
         if new_dest is None:
@@ -215,7 +218,10 @@ class SPEADStream(object):
         ctr = 0
         for dest_ctr in range(self.destination.ip_range):
             ip = IpAddress.ip2str(int(self.destination.ip_address) + dest_ctr)
-            self.tx_sockets.append(_setup_spead_tx(self.threadpool, ip, self.destination.port))
+            self.tx_sockets.append(_setup_spead_tx(threadpool=self.threadpool,
+                                                   ip_string=ip,
+                                                   port=self.destination.port,
+                                                   max_pkt_size=max_pkt_size))
             #################Determining Packet ID start location#################
             #IP Component of Packet ID
             ip_arr = ip.split('.')
@@ -247,7 +253,6 @@ class SPEADStream(object):
         i = 0
         for dest_ctr in range(self.destination.ip_range):
             i += 1
-            print(i)
             self.tx_sockets[dest_ctr].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
 
         self.logger.debug('SPEADStream %s: sent descriptors to %i destinations' % (self.name, dest_ctr + 1))

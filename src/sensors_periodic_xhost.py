@@ -167,7 +167,6 @@ def _cb_xeng_network(sensors, x_host, time):
 
 @gen.coroutine
 def _cb_xeng_rx_spead(sensors, x_host, time):
-    LOGGER.warn('_cb_xeng_rx_spead')
     def set_failure():
         for key, sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,
@@ -207,7 +206,6 @@ def _cb_xeng_hmc_reorder(sensors, x_host, time):
     :param sensors: a sensor for each xengine rx reorder
     :return:
     """
-    LOGGER.warn(_cb_xeng_hmc_reorder)
     def set_failure():
         for key,sensor in sensors.iteritems():
             sensor.set(status=Corr2Sensor.FAILURE,
@@ -228,7 +226,8 @@ def _cb_xeng_hmc_reorder(sensors, x_host, time):
         overflows = results['lnk2_nrdy_err_cnt'] + results['lnk3_nrdy_err_cnt']
         sensors['hmc_overflow_err_cnt'].set(value=overflows, errif='changed')
         errs = results['err_cnt_link3'] + results['err_cnt_link2']
-        sensors['hmc_err_cnt'].set(value=errs, errif='changed')
+        sensors['hmc_err_cnt'].set(value=errs, status=Corr2Sensor.NOMINAL)
+        #sensors['hmc_err_cnt'].set(value=errs, errif='changed')
 
         for key in ['miss_err_cnt']:
             if sensors[key].status() != Corr2Sensor.NOMINAL:

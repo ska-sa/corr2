@@ -27,7 +27,7 @@ class FengineStream(SPEADStream):
     An f-engine SPEAD stream
     """
 
-    def __init__(self, name, destination, fops, timeout=5, *args, **kwargs):
+    def __init__(self, name, destination, fops, max_pkt_size, timeout=5, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -37,7 +37,7 @@ class FengineStream(SPEADStream):
         self.fops = fops
         self.timeout = timeout
         super(FengineStream, self).__init__(
-            name, FENGINE_CHANNELISED_DATA, destination,
+            name, FENGINE_CHANNELISED_DATA, destination, max_pkt_size=max_pkt_size,
             instrument_descriptor=self.fops.corr.descriptor, **kwargs)
 
     def descriptors_setup(self):
@@ -306,7 +306,8 @@ class FEngineOperations(object):
                 'a starting base address.'.format(output_address))
         num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
         output_address.ip_range = num_xeng
-        self.data_stream = FengineStream(output_name, output_address, self, *args, **kwargs)
+        max_pkt_size = self.corr.f_stream_payload_len
+        self.data_stream = FengineStream(output_name, output_address, self, max_pkt_size, *args, **kwargs)
         self.data_stream.set_source([feng.input.destination for feng in self.fengines])
         self.corr.add_data_stream(self.data_stream)
 
@@ -618,7 +619,7 @@ class FEngineOperations(object):
         if input_name is None:
             self.logger.info('Setting EQ on all inputs to new given EQ.')
             fengs = self.fengines
-            rv = self.threaded_feng_operation(timeout=self.timeout*2,
+            rv = self.threaded_feng_operation(timeout=self.timeout*(self.corr.n_chans/1024),
                 target_function=(lambda feng_: feng_.eq_set(new_eq),))
         else:
             fengs = [self.get_fengine(input_name)]

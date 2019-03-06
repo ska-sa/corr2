@@ -250,7 +250,6 @@ class KatcpHandler(CasperLogHandlers.CasperConsoleHandler):
 			self._records.pop(0)
 
 		self._records.append(message)
-		
 		# Need to construct the katcp.Message object
 		# - The pass it to a sock.mass_inform() to ensure it is #log'd
 		message_type = KatcpMessage.INFORM

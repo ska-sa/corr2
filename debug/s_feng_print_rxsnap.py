@@ -69,7 +69,7 @@ n_xeng=int(configd['xengine']['x_per_fpga'])*len((configd['xengine']['hosts']).s
 
 def get_fpga_data(fpga,arm):
     print 'fetching data...'
-    return fpga.gbes['gbe0'].read_rxsnap(arm=arm)
+    return fpga.gbes['gbe0'].read_rxsnap()#(arm=arm)
 
 def print_snap_data(dd):
     packet_counter = 0

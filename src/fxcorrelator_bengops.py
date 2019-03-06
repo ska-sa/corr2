@@ -66,12 +66,14 @@ class BEngineOperations(object):
         # get beam names from config
         beam_names = []
         self.beams = {}
+        max_pkt_size = self.corr.b_stream_payload_len
         for section_name in self.corr.configd:
             if section_name.startswith('beam'):
                 beam = Beam.from_config(section_name, self.hosts,
                                         self.corr.configd,
                                         self.corr.fops,
                                         self.corr.speadops,
+                                        max_pkt_size=max_pkt_size,
                                         *args, **kwargs)
                 if beam.name in beam_names:
                     raise ValueError('Cannot have more than one beam with '
