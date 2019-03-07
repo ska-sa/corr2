@@ -96,7 +96,7 @@ class Corr2SensorServer(katcp.DeviceServer):
                                                     log_filename=log_filename,
                                                     log_file_dir=log_file_dir)
             self.instrument.sensor_manager = sensor_manager
-            sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
+            sensors_periodic.setup_sensors(sensor_manager)
 
             # Function created to reassign all non-conforming log-handlers
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
