@@ -278,12 +278,16 @@ class FxCorrelator(Instrument):
 
         #Forcefully resync the Fengines once the DIG data is flowing reliably:
         self.fops.sys_reset()
+        time.sleep(5)
+        self.fops.sys_reset()
 
         if self.synchronisation_epoch == -1:
             self.est_synch_epoch()
 
         # arm the vaccs on the x-engines
         if self.xops.vacc_sync() > 0:
+            self.fops.sys_reset()
+            time.sleep(1)
             # reset all counters on fhosts and xhosts
             self.fops.clear_status_all()
             self.xops.clear_status_all()
