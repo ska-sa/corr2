@@ -571,6 +571,23 @@ class Corr2Server(katcp.DeviceServer):
                 return self._log_stacktrace(stack_trace, 'Failed to set accumulation length.')
         return 'ok', self.instrument.xops.get_acc_time()
 
+    @request(Int())
+    @return_reply()
+    def request_xeng_interpacket_gap(self, sock, new_interpacket_gap):
+        """
+        Set the Xengine interpacket gap to the specified value.
+        :param sock:
+        :param new_interpacket_gap: 
+        :return:
+        """
+        try:
+            for f in self.instrument.xhosts:
+                f.registers.gapsize.write(gap_size=new_interpacket_gap)
+        except Exception as ex:
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed to set interpacket gap size.')
+        return 'ok', 
+
     @request(Str())
     # @return_reply(Str(multiple=True))
     @return_reply()
