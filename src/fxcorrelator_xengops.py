@@ -337,12 +337,16 @@ class XEngineOperations(object):
         """
         rv=THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                   target_function='get_vacc_status')
-
+        acc_len=self.get_acc_len()
         sync=True
         timestamp=rv[rv.keys()[0]][0]['timestamp']
+        #check that they're all in sync; 
+        #allow for reading registers at acc boundary:
         for hostname in rv:
             for vacc in rv[hostname]:
-                if vacc['timestamp'] != timestamp:
+                if ((vacc['timestamp'] != timestamp) and 
+                    (vacc['timestamp'] != (timestamp+acc_len)) and
+                    (vacc['timestamp'] != (timestamp-acc_len))):
                     sync=False
         rv['synchronised']=sync
         return rv
