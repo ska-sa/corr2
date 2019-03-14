@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
+import os
 import logging
+import traceback2 as traceback
 import sys
 import argparse
 import katcp
@@ -13,9 +15,15 @@ import Queue
 import time
 from concurrent import futures
 
-from corr2 import fxcorrelator, sensors
-from corr2.utils import KatcpStreamHandler
+from corr2 import fxcorrelator, sensors, utils
 
+from corr2.corr2LogHandlers import getKatcpLogger, servlet_log_level_request
+from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
+from corr2.utils import parse_ini_file
+
+from corr2 import corr_monitoring_loop as corr_mon_loop
+
+from casperfpga.utils import get_git_info_from_fpg
 
 class Corr2Server(katcp.DeviceServer):
 
@@ -29,14 +37,17 @@ class Corr2Server(katcp.DeviceServer):
         use_tornado = kwargs.pop('tornado')
         super(Corr2Server, self).__init__(*args, **kwargs)
         if use_tornado:
-            self.set_concurrency_options(thread_safe=False,
-                                         handler_thread=False)
+            self.set_concurrency_options(thread_safe=False, handler_thread=False)
         self.instrument = None
         self.metadata_cadence = 5
         self.descriptor_cadence = 5
         self.executor = futures.ThreadPoolExecutor(max_workers=1)
         self._created = False
         self._initialised = False
+        self.delays_disabled = False
+
+        self.mon_loop = None
+        self.mon_loop_running = None
 
     def _log_excep(self, excep, msg=''):
         """
@@ -54,6 +65,23 @@ class Corr2Server(katcp.DeviceServer):
         else:
             logging.error(message)
         return 'fail', message
+
+    def _log_stacktrace(self, stack_trace, msg=''):
+        """
+        Log a stack_trace and return fail
+        - Unfortunately the stack-trace needs to be formatted when the
+          exception is caught, hence the creation of a new method
+          rather than a change to _log_excep
+        :param stack_trace: String formatted using traceback2 utility
+        :param msg: the error message to log
+        :return:
+        """
+        log_message = '{} \n {}'.format(msg, stack_trace)
+        if self.instrument:
+            self.instrument.logger.error(log_message)
+        else:
+            logging.error(log_message)
+        return 'fail', log_message
 
     @request()
     @return_reply()
@@ -87,14 +115,73 @@ class Corr2Server(katcp.DeviceServer):
         if self._created:
             return 'fail', 'Cannot run ?create twice.'
         try:
-            iname = instrument_name or 'corr_%s' % str(time.time())
-            self.instrument = fxcorrelator.FxCorrelator(
-                iname, config_source=config_file)
+            # For completeness
+            time_str = str(time.time())
+            iname = instrument_name or 'corr_{}'.format(time_str)
+
+            # Changing the getLogger function to add Katcp and File Handlers
+            self.log_filename = '{}_{}_servlet.log'.format(iname.strip().replace(' ', '_'), time_str)
+            # Parse ini file to check for log_file_dir
+            config_file_dict = parse_ini_file(config_file)
+            try:
+                _default_log_dir = '/var/log/corr'
+                self.log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir',
+                    _default_log_dir)
+                assert os.path.exists(_default_log_dir)
+            except KeyError:
+                self.log_file_dir = '.'
+            except AssertionError as ex:
+                stack_trace = traceback.format_exc()
+                self._log_stacktrace(stack_trace, "Logging dir {} does not exist".format(
+                                                                                _default_log_dir))
+
+            # While we have the config-file parsed:
+            # - To be used when initialising log-levels of instrument groups
+            self.log_level_dict = config_file_dict.get('log-level', None)
+
+            # - Get the bitstream filenames and corresponding git-info(s)
+            fpg_files = []
+            for key_1, value_1 in config_file_dict.items():
+                for key_2, value_2 in value_1.items():
+                    if key_2 == 'bitstream':
+                        fpg_files.append(value_2)
+            
+            # - Now, get the git-info
+            #   - Dictionary: Key = bitstream location
+            #                 Value = dictionary of git-info
+            bitstream_dict = {}
+            for filename in fpg_files:
+                bitstream_dict[filename] = get_git_info_from_fpg(filename)
+
+            # Unfortunately can only log against the instrument.logger 
+            # AFTER the instrument has been created
+            self.instrument = fxcorrelator.FxCorrelator(iname, config_source=config_file,
+                              getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
+                              log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
+
+            # Better to stitch a log-string together
+            # than to log in a for-loop
+            bitstream_info_str = ''
+            for fpg_filename, git_info in bitstream_dict.items():
+                bitstream_info_str += '{}\n'.format(fpg_filename)
+                for git_repo, git_version in git_info.items():
+                    bitstream_info_str += '\t {} \n \t {} \n\n'.format(git_repo, git_version)
+            
+            self.instrument.logger.info(bitstream_info_str)
+
+            # Function created to reassign all non-conforming log-handlers
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
+                                                    log_filename=self.log_filename,
+                                                    log_file_dir=self.log_file_dir,
+                                                    instrument_name=self.instrument.descriptor)
+
             return 'ok',
         except Exception as ex:
-            return self._log_excep(ex, 'Failed to create instrument.')
-
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(ex, 'Failed to create instrument.')
+     
+    
     def setup_sensors(self):
         """
         Must be implemented in interface.
@@ -106,40 +193,76 @@ class Corr2Server(katcp.DeviceServer):
              Bool(default=True))
     @return_reply()
     def request_initialise(self, sock, program, configure, require_epoch,
-                           monitor_vacc):
+                           monitor_instrument):
         """
         Initialise self.instrument
         :param sock:
         :param program: program the FPGA boards if True
         :param configure: setup the FPGA registers if True
         :param require_epoch: the synch epoch MUST be set before init if True
-        :param monitor_vacc: start the VACC monitoring ioloop
+        :param monitor_instrument: start the instrument monitoring ioloop
         :return:
         """
         if self._initialised:
             return 'fail', 'Cannot run ?initialise twice.'
         try:
-            self.instrument.initialise(program=program,configure=configure,
-                                       require_epoch=require_epoch)
+            self.instrument.initialise(
+                program=program, configure=configure, require_epoch=require_epoch,
+                mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
+                log_filename=self.log_filename, log_file_dir=self.log_file_dir)
+
             # update the servlet's version list with version information
             # from the running firmware
             self.extra_versions.update(self.instrument.get_version_info())
             # add a sensor manager
-            sensor_manager = sensors.Corr2SensorManager(self, self.instrument)
+            sensor_manager = sensors.Corr2SensorManager(self, self.instrument,
+                                        mass_inform_func=self.mass_inform,
+                                        log_filename=self.log_filename,
+                                        log_file_dir=self.log_file_dir)
             self.instrument.set_sensor_manager(sensor_manager)
             # set up the main loop sensors
             sensor_manager.sensors_clear()
             sensor_manager.setup_mainloop_sensors()
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
-            #if monitor_vacc:
-            #    self.instrument.xops.vacc_check_timer_start()
+            if monitor_instrument:
+                # create the monitoring loop object
+                self.mon_loop = corr_mon_loop.MonitoringLoop(check_time=-1,
+                                                             fx_correlator_object=self.instrument)
+                # start the monitoring loop
+                self.mon_loop.start()
+                self.mon_loop_running = True
+                # enable auto reset / resync for the f-engines (in hardware)
+                self.instrument.fops.auto_rst_enable()
             self._initialised = True
+
+            # Once more, for completeness
+            loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
+                                                    log_filename=self.log_filename,
+                                                    log_file_dir=self.log_file_dir,
+                                                    instrument_name=self.instrument.descriptor)
+
+            # Last thing to do, check if any default log-levels are specified in the config_file
+            # - Change the corresponding group's log-level accordingly
+            if self.log_level_dict is None:
+                # All is well
+                return 'ok',
+            # else: More work to do!
+            for logger_group_name, log_level in self.log_level_dict.items():
+                result, return_msg = servlet_log_level_request(corr_obj=self.instrument,
+                                                               log_level=log_level,
+                                                               logger_group_name=logger_group_name)
+                if not result:
+                    # Problem
+                    return 'fail', return_msg
+                # else: Great success
+
             return 'ok',
         except Exception as ex:
-            return self._log_excep(ex, 'Failed to initialise {}'.format(
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed to initialise {}'.format(
                 self.instrument.descriptor))
-
+            
     @request(Str(multiple=True))
     @return_reply()
     def request_testfail(self, sock, *multiargs):
@@ -151,9 +274,10 @@ class Corr2Server(katcp.DeviceServer):
         print(multiargs)
         return self._log_excep(None, 'A test failure, like it should')
 
+    # TODO: deprecate above and instate this once CBF-CAM ICD Rev6 is fully implemented
     @request(Float(default=-1.0))
     @return_reply(Float())
-    def request_digitiser_synch_epoch(self, sock, synch_time):
+    def request_sync_epoch(self, sock, synch_time):
         """
         Set/Get the digitiser synch time, UNIX time.
         :param sock:
@@ -162,15 +286,16 @@ class Corr2Server(katcp.DeviceServer):
         """
         # if not self.instrument.initialised():
         #     logging.warn('request %s before initialised... refusing.' %
-        #                  'request_digitiser_synch_epoch')
+        #                  'request_sync_epoch')
         #     return 'fail', 'request %s before initialised... refusing.' % \
-        #            'request_digitiser_synch_epoch'
+        #            'request_sync_epoch'
         if synch_time > -1.0:
             try:
                 self.instrument.synchronisation_epoch = synch_time
             except Exception as ex:
-                return self._log_excep(
-                    ex, 'Failed to set digitiser synch epoch.')
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(
+                    stack_trace, 'Failed to set digitiser synch epoch.')
         return 'ok', self.instrument.synchronisation_epoch
 
     @request(Str(), Str())
@@ -202,13 +327,12 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.stream_set_destination(stream_name, ipportstr)
             except Exception as ex:
-                return self._log_excep(
-                    ex,
-                    'Failed to set capture AND meta destination '
-                    'for {}.'.format(stream_name))
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace, 
+                    'Failed to set capture AND meta destination for {}.'.format(stream_name))
         else:
             dstrm = self.instrument.data_streams[stream_name]
-            ipportstr = '%s:%d' % (dstrm.destination.ip, dstrm.destination.port)
+            ipportstr = '{}:{}'.format(dstrm.destination.ip, dstrm.destination.port)
         return 'ok', stream_name, ipportstr
 
     @request(Str(default=''))
@@ -228,11 +352,12 @@ class Corr2Server(katcp.DeviceServer):
                                  for stream in self.instrument.data_streams])
         for strm in stream_names:
             if not self.instrument.check_data_stream(strm):
-                failmsg = 'Failed: stream {0} not in instrument data streams:' \
-                          ' {1}'.format(strm, self.instrument.data_streams)
+                failmsg = 'Failed: stream {0} not in instrument data streams: {1}'.format(strm,
+                    self.instrument.data_streams)
                 return self._log_excep(None, failmsg)
             dstrm = self.instrument.get_data_stream(strm)
-            sock.inform(strm, '{0}'.format(str(dstrm.destination)))
+            _enabled = 'up' if dstrm.tx_enabled else 'down'
+            sock.inform(strm, str(dstrm.destination), _enabled)
         return 'ok',
 
     @request(Str(default=''))
@@ -245,8 +370,8 @@ class Corr2Server(katcp.DeviceServer):
         :return:
         """
         if not self.instrument.check_data_stream(stream_name):
-            failmsg = 'Failed: stream {0} not in instrument data streams:' \
-                      ' {1}'.format(stream_name, self.instrument.data_streams)
+            failmsg = 'Failed: stream {0} not in instrument data streams: {1}'.format(stream_name,
+                self.instrument.data_streams)
             return self._log_excep(None, failmsg)
         try:
             # Issue metadata deprecated (MM 18-12-17)
@@ -254,9 +379,9 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.stream_tx_enable(stream_name)
             return 'ok', stream_name
         except RuntimeError as excep:
-            failmsg = 'Failed: stream {0} could not be started.'.format(
-                stream_name)
-            return self._log_excep(excep, failmsg)
+            stack_trace = traceback.format_exc()
+            failmsg = 'Failed: stream {0} could not be started.'.format(stream_name)
+            return self._log_stacktrace(stack_trace, failmsg)
 
     @request(Str(default=''))
     @return_reply(Str())
@@ -275,9 +400,9 @@ class Corr2Server(katcp.DeviceServer):
             self.instrument.stream_tx_disable(stream_name)
             return 'ok', stream_name
         except RuntimeError as excep:
-            failmsg = 'Failed: stream {0} could not be stopped.'.format(
-                stream_name)
-            return self._log_excep(excep, failmsg)
+            stack_trace = traceback.format_exc()
+            failmsg = 'Failed: stream {0} could not be stopped.'.format(stream_name)
+            return self._log_stacktrace(stack_trace, failmsg)
 
     @request(Str(default=''))
     @return_reply(Str(), Int())
@@ -296,9 +421,9 @@ class Corr2Server(katcp.DeviceServer):
             tx_enabled = self.instrument.stream_tx_status(stream_name)
             return 'ok', stream_name, 1 if tx_enabled else 0
         except RuntimeError as excep:
-            failmsg = 'Failed: stream {0} could not get TX status.'.format(
-                stream_name)
-            return self._log_excep(excep, failmsg)
+            stack_trace = traceback.format_exc()
+            failmsg = 'Failed: stream {0} could not get TX status.'.format(stream_name)
+            return self._log_stacktrace(stack_trace, failmsg)
 
     @request(Str(default=''))
     @return_reply(Str())
@@ -364,77 +489,69 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(None, 'No source name given.')
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.fops.eq_set(True, source_name, list(eq_vals))
+                neweqvals = utils.process_new_eq(list(eq_vals))
+                self.instrument.fops.eq_set(new_eq=neweqvals, input_name=source_name)
+                return ('ok', 'gain set for input {}.'.format(source_name))
             except Exception as ex:
-                failmsg = 'Failed setting eq for source ' \
-                          '{0}.'.format(source_name)
-                return self._log_excep(ex, failmsg)
-        _src = self.instrument.fops.eq_get(source_name)
-        return tuple(['ok'] +
+                stack_trace = traceback.format_exc()
+                failmsg = 'Failed setting eq for source {0}.'.format(source_name)
+                return self._log_stacktrace(stack_trace, failmsg)
+        else:
+            _src = self.instrument.fops.eq_get(source_name)
+            return tuple(['ok'] +
                      Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Str(default='', multiple=True))
-    @return_reply(Str(multiple=True))
+    @return_reply()
     def request_gain_all(self, sock, *eq_vals):
         """
-        Apply and/or get the gain settings for an input
+        Apply the gain settings for an input
         :param sock:
-        :param eq_vals: the equaliser values
+        :param eq_vals: the equaliser values, or 'auto'.
         :return:
         """
-        if len(eq_vals) > 0 and eq_vals[0] != '':
-            try:
-                self.instrument.fops.eq_set(True, None, list(eq_vals))
-            except Exception as ex:
-                return self._log_excep(ex, 'Failed setting eq for all sources')
-        _src = self.instrument.fops.eq_get(None).values()[0]
-        return tuple(['ok'] + Corr2Server.rv_to_liststr(_src))
-
-    @request(Str(), Float(default=-1.0), Str(default=''))
-    @return_reply(Str())
-    def request_delay_input(self, sock, input_name, loadtime, delay_string):
-        """
-        Set delay for an input on the instrument.
-        :param sock:
-        :param input_name: the name of the source for which to set delays
-        :param loadtime: the load time, in seconds
-        :param delay_string: the coefficients, a string, described in ICD.
-        :return:
-        """
-        if input_name.strip() == '':
-            return self._log_excep(None, 'No source name given.')
         try:
-            if loadtime > -1:
-                import corr2.delay as delayops
-                sample_rate_hz = self.instrument.get_scale_factor()
-                delay = delayops.process_list([delay_string], sample_rate_hz)
-                delay = delay[0]
-                actual = self.instrument.fops.delays_set(
-                    input_name, loadtime, delay[0][0], delay[0][1],
-                    delay[1][0], delay[1][1])
+            if len(eq_vals) <= 0:
+                neweqvals=None
+                self.instrument.logger.info('Applying default gains')
+            elif eq_vals[0] == '':
+                neweqvals=None
+                self.instrument.logger.info('Applying default gains')
+            elif eq_vals[0] == 'auto':
+                neweqvals='auto'
+                self.instrument.logger.info('Trying to set gains automatically')
             else:
-                actual = self.instrument.fops.delays_get(input_name)
-            return 'ok', str(actual)
+                neweqvals = utils.process_new_eq(list(eq_vals))
+            self.instrument.fops.eq_set(new_eq=neweqvals, input_name=None)
         except Exception as ex:
-            return self._log_excep(ex, 'Failed setting delays.')
+            return self._log_excep(ex, 'Failed setting eq for all sources')
+        return 'ok',
 
-    @request(Float(default=-1.0), Str(default='', multiple=True))
+      
+    @request(Str(), Float(default=-1.0), Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
-    def request_delays(self, sock, loadtime, *delay_strings):
+    def request_delays(self, sock, stream_name, loadtime, *delay_strings):
         """
         Set delays for the instrument.
         :param sock:
+        :param stream_name: the name of the feng stream to adjust.
         :param loadtime: the load time, in seconds
         :param delay_strings: the coefficient set, as a list of strings,
             described in ICD.
         :return:
         """
+        if self.delays_disabled:
+            return ('fail', 'delays disabled')
+        if stream_name != self.instrument.fops.data_stream.name:
+            return tuple(['fail', ' supplied stream name %s does not match expected %s.' % (stream_name, self.instrument.fops.data_stream.name)])
         try:
-            actual = self.instrument.fops.delay_set_all(loadtime, delay_strings)
-            rv = [str(val) for val in actual]
-            return tuple(['ok'] + rv)
+
+            self.instrument.fops.delay_set_all(loadtime, delay_strings)
+            return tuple(['ok', ' Model updated. Check sensors after next update to confirm application'])
         except Exception as ex:
-            return self._log_excep(ex, 'Failed setting delays.')
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed setting delays.')
+
 
     @request(Float(default=-1.0))
     @return_reply(Float())
@@ -450,7 +567,8 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.xops.set_acc_time(new_acc_time)
             except Exception as ex:
-                return self._log_excep(ex, 'Failed to set accumulation length.')
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace, 'Failed to set accumulation length.')
         return 'ok', self.instrument.xops.get_acc_time()
 
     @request(Str())
@@ -468,12 +586,29 @@ class Corr2Server(katcp.DeviceServer):
             return self._log_excep(None, 'No source name given.')
         try:
             snapdata = self.instrument.fops.get_quant_snap(source_name)
-        except ValueError as ex:
+        except Exception as ex:
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, ex.message)
+        sock.inform(source_name, str(snapdata))
+        return 'ok',
+
+    @request(Str(), Int())
+    @return_reply()
+    def request_quantiser_singlechan_snapshot(self, sock, source_name, channel_select):
+        """
+        Get a list of values representing the quantised spectrum for
+        the given source
+        :param sock:
+        :param channel_select: The channel
+        :param source_name: the source to query
+        :return:
+        """
+        if source_name.strip() == '':
+            return self._log_excep(None, 'No source name given.')
+        try:
+            snapdata = self.instrument.fops.get_quant_snap(source_name, channel_select)
+        except Exception as ex:
             return self._log_excep(ex, ex.message)
-        # quant_string = ''
-        # for complex_word in snapdata:
-        #     quant_string += ' %s' % str(complex_word)
-        # return tuple(['ok'] + Corr2Server.rv_to_liststr(quant_string))
         sock.inform(source_name, str(snapdata))
         return 'ok',
 
@@ -498,7 +633,31 @@ class Corr2Server(katcp.DeviceServer):
             sock.inform(source_name, rstr)
             return 'ok', snaptime
         except ValueError as ex:
-            return self._log_excep(ex, ex.message)
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, ex.message)
+
+    @request(Bool())
+    @return_reply()
+    def request_delay_updates_disable(self, sock, disable_delays):
+        """
+        Disable the delays. If set, this will ignore any incoming delay model updates.
+        :param : disable_delays
+        :return:
+        """
+        try:
+            self.delays_disabled = disable_delays
+            if disable_delays:
+                message = "Delay model updates disabled."
+            else:
+                message = "Delay model updates re-enabled."
+            if self.instrument:
+                self.instrument.logger.info(message)
+            else:
+                logging.info(message)
+            return 'ok',
+        except ValueError as ex:
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed to configure delay disable.')
 
     @request()
     @return_reply(Int())
@@ -517,40 +676,38 @@ class Corr2Server(katcp.DeviceServer):
             snaptime = data[data.keys()[0]].timestamp
             return 'ok', snaptime
         except ValueError as ex:
-            return self._log_excep(ex, 'Failed to read ADC voltage data from '
-                                       'transient buffers.')
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed to read ADC voltage data from '
+                                                     'transient buffers.')
 
-    @request(Str(), Str(), Float(default='', multiple=True))
+    @request(Str(), Float(default='', multiple=True))
     @return_reply(Str(multiple=True))
-    def request_beam_weights(self, sock, beam_name, input_name, *weight_list):
+    def request_beam_weights(self, sock, beam_name, *weight_list):
         """
-        Set the weight for an input
+        Set the weights for all inputs of a given beam
         :param sock:
         :param beam_name: required beam stream
-        :param input_name: required input
         :param weight_list: list of weights to set, one per input
-        :return:
+        :return: a list of the weights set
         """
         if not self.instrument.found_beamformer:
             return self._log_excep(None, 'Cannot run beamformer commands with '
                                          'no beamformer')
-        if weight_list[0] != '':
+        if weight_list != '':
             try:
                 self.instrument.bops.set_beam_weights(
-                    weight_list[0], beam_name, input_name)
+                    weight_list, beam_name)
             except Exception as ex:
-                return self._log_excep(
-                    ex,
-                    'Failed setting beamweights for beam {0}, input '
-                    '{1}.'.format(beam_name, input_name))
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace,
+                    'Failed setting beamweights for beam {0}.'.format(beam_name))
         try:
             cur_weights = self.instrument.bops.get_beam_weights(
-                beam_name, input_name)
+                beam_name)
         except Exception as ex:
-            return self._log_excep(
-                ex,
-                'Failed reading beamweights for beam {0}, input {1}.'.format(
-                    beam_name, input_name))
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace,
+                'Failed reading beamweights for beam {0}.'.format(beam_name))
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_weights))
 
     @request(Str(), Float(default=''))
@@ -568,15 +725,17 @@ class Corr2Server(katcp.DeviceServer):
                                          'no beamformer')
         if new_gain != '':
             try:
-                self.instrument.bops.set_beam_quant_gains(new_gain, beam_name)
+                self.instrument.bops.set_beam_quant_gain(new_gain, beam_name)
             except Exception as ex:
-                return self._log_excep(ex, 'Failed setting beam gain for beam'
-                                           ' {0}.'.format(beam_name))
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace,
+                        'Failed setting beam gain for beam {0}.'.format(beam_name))
         try:
-            cur_gains = self.instrument.bops.get_beam_quant_gains(beam_name)
+            cur_gains = self.instrument.bops.get_beam_quant_gain(beam_name)
         except Exception as ex:
-            return self._log_excep(ex, 'Failed reading beam gain for beam'
-                                       ' {0}.'.format(beam_name))
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace,
+                        'Failed reading beam gain for beam {0}.'.format(beam_name))
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))
 
 
@@ -591,11 +750,12 @@ class Corr2Server(katcp.DeviceServer):
         try:
             self.instrument.xops.vacc_sync()
         except Exception as ex:
-            return self._log_excep(ex, 'Failed syncing vaccs')
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed syncing vaccs')
         return 'ok',
 
-    @request(Int(default=-1))
-    @return_reply(Int())
+    @request(Str())
+    @return_reply()
     def request_fft_shift(self, sock, new_shift):
         """
         Set a new FFT shift schedule.
@@ -603,14 +763,97 @@ class Corr2Server(katcp.DeviceServer):
         :param new_shift: an integer representation of the new FFT shift
         :return:
         """
-        if new_shift >= 0:
-            current_shift_value = self.instrument.fops.set_fft_shift_all(
-                new_shift)
+        try:
+            new_shift=int(new_shift)
+        except ValueError:
+            pass
+        try:
+            self.instrument.fops.set_fft_shift_all(new_shift)
+            return 'ok',
+        except Exception as ex:
+            return self._log_excep(ex, 'Failed setting fft shift')
+
+    @request(Int(default=-1))
+    @return_reply()
+    def request_enable_monitoring_loop(self, sock, check_time):
+        """
+        enable the monitoring loop if it wasn't enabled at initialisation
+        :return:
+        """
+
+        if self.mon_loop is None:
+            # create the monitoring loop object
+            self.mon_loop = corr_mon_loop.MonitoringLoop(check_time=check_time,
+                                                         fx_correlator_object=self.instrument)
+            # start the monitoring loop
+            self.mon_loop.start()
+            self.mon_loop_running = True
+            # enable auto reset / resync for the f-engines (in hardware)
+            #self.instrument.fops.auto_rst_enable()
+            return 'ok',
+        elif not self.mon_loop_running:
+            return 'fail', 'monitoring loop already enabled and waiting to be started'
         else:
-            current_shift_value = self.instrument.fops.get_fft_shift_all()
-            current_shift_value = current_shift_value[
-                current_shift_value.keys()[0]]
-        return 'ok', current_shift_value
+            return 'fail', 'monitoring loop already enabled and running'
+
+    @request()
+    @return_reply()
+    def request_start_monitoring_loop(self, sock):
+        """
+        start the monitoring loop
+        :return:
+        """
+
+        if self.mon_loop is None:
+            return 'fail', 'monitoring loop not enabled'
+        else:
+            if not self.mon_loop_running:
+                self.mon_loop.start()
+                self.mon_loop_running = True
+                return 'ok',
+            else:
+                return 'fail', 'monitoring loop already running'
+
+    @request()
+    @return_reply()
+    def request_stop_monitoring_loop(self, sock):
+        """
+        stop the monitoring loop
+        :return:
+        """
+
+        if self.mon_loop_running:
+            self.mon_loop.stop()
+            self.mon_loop_running = False
+            return 'ok',
+        else:
+            return 'fail', 'monitoring loop is not currently running'
+
+    @request(Float(default=-1))
+    @return_reply(Float())
+    def request_set_monitoring_loop_time(self, sock, check_time):
+        """
+        set the cadence for the monitoring loop. note that this stops and
+        restarts the loop (in seconds)
+        :param check_time: the interval at which the loop runs, seconds
+        :return:
+        """
+        if self.mon_loop is None:
+            return 'fail', 'monitoring loop is not enabled'
+
+        if check_time <= 0:
+            return 'fail', 'invalid check time for monitoring loop'
+        else:
+            if self.mon_loop_running:
+                self.mon_loop.stop()
+                self.mon_loop_running = False
+                self.mon_loop.check_time = check_time
+                self.mon_loop.start()
+                self.mon_loop_running = True
+            else:
+                self.mon_loop.check_time = check_time
+
+            return 'ok', check_time
 
     @request()
     @return_reply(Int(min=0))
@@ -620,9 +863,7 @@ class Corr2Server(katcp.DeviceServer):
         :param sock:
         :return:
         """
-        return self._log_excep(
-            None,
-            'Currently not working.')
+        return self._log_excep(None, 'Currently not working.')
         # if self.instrument is None:
         #     return self._log_excep(None, '... you have not connected yet!')
         # print('\nlog:'
@@ -632,21 +873,68 @@ class Corr2Server(katcp.DeviceServer):
         #     sock.inform('log', logstring)
         # return 'ok', len(logstrings)
 
-    @request(Str(default=''), Int(default=-1))
+    @request(Str(default=''), Str(default='debug'))
     @return_reply(Str())
-    def request_set_loglevel_logger(self, logger_name, log_level_int, sock):
+    def request_set_loglevel_logger(self, sock, logger_name, log_level_str):
         """
         Set the log level of one of the internal loggers.
-        :param logger_name: the name of the logger to configure
-        :param log_level_int: the integer level to set (eg. INFO=20, DEBUG=10)
         :param sock: not sure...
+        :param logger_name: the name of the logger to configure
+        :param log_level_str: the log-level to set - log-level E {INFO, WARN, ERROR, FATAL}
         """
         if logger_name != '':
             logger = logging.getLogger(logger_name)
         else:
             logger = logging.getLogger()
-        logger.setLevel(log_level_int)
-        return 'ok', '%s' % str(log_level_int)
+        result, log_level_numeric = check_logging_level(log_level_str.upper())
+        if not result:
+            # Problem
+            errmsg = 'Unable to set logger: {} to log-level: {}'.format(logger_name, log_level_str)
+            return 'fail', errmsg
+        # else: Continue
+        logger.setLevel(log_level_numeric)
+        return ('ok', 'Success: logger {} now logging at log-level {}'.format(logger_name, log_level_str))
+
+
+    @request()
+    @return_reply(Str())
+    def request_get_all_loggers(self, sock):
+        """
+        Get all loggers associated with self.instrument
+        :return: Printed list of logger names
+        """
+        all_loggers = get_all_loggers()
+
+        logger_names = [logger.name for logger in all_loggers.values() if not isinstance(logger, logging.PlaceHolder)]
+
+        return 'ok', logger_names
+
+
+    @request(Str(default='debug'), Str(default='instrument'))
+    @return_reply()
+    def request_log_level(self, sock, log_level, logger_group_name):
+        """
+        Set the log-level of entities matching logger_group_name.
+        If logger_group_name is present, get all loggers matching that name
+        and update accordingly
+        :param log_level: Log-level at which to set loggers to
+                          -> This will be a string E {debug|info|warn|error}
+        :param logger_group_name: Optional parameter, string
+                                  -> Defaulted to 'instrument' group
+        :return: Boolean - Success/Fail - True/False
+        """
+
+        # Moved all the heavy lifting to corr2LogHandlers
+        # - Where it should have been in the first place!
+        result, return_msg = servlet_log_level_request(corr_obj=self.instrument,
+                                                       log_level=log_level,
+                                                       logger_group_name=logger_group_name)
+        if not result:
+            # Problem
+            return 'fail', return_msg
+        # else: Great success
+
+        return 'ok',
 
     @request()
     @return_reply()
@@ -663,7 +951,8 @@ class Corr2Server(katcp.DeviceServer):
             fpgautils.threaded_fpga_function(fhosts, 10, 'deprogram')
             fpgautils.threaded_fpga_function(xhosts, 10, 'deprogram')
         except Exception as ex:
-            return self._log_excep(ex, 'unknown exception')
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'unknown exception')
         return 'ok',
 
     @request(Str(), Int(), Int(), Int())
@@ -689,11 +978,10 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.fops.eq_set(True, source_name, list(eq_vals))
             except Exception as ex:
-                return self._log_excep(ex, 'Failed setting eq for input '
-                                           '{0}'.format(source_name))
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace, 'Failed setting eq for input {0}'.format(source_name))
         _src = self.instrument.fops.eq_get(source_name)
-        return tuple(['ok'] +
-                     Corr2Server.rv_to_liststr(_src[source_name]))
+        return tuple(['ok'] + Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Str(default='', multiple=True))
     @return_reply()
@@ -708,7 +996,8 @@ class Corr2Server(katcp.DeviceServer):
             try:
                 self.instrument.fops.eq_set(True, None, list(eq_vals))
             except Exception as ex:
-                return self._log_excep(ex, 'Failed setting all eqs.')
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace, 'Failed setting all eqs.')
         else:
             return self._log_excep(None, 'did not give new eq values?')
         return 'ok',
@@ -723,7 +1012,7 @@ class Corr2Server(katcp.DeviceServer):
         :param msg:
         :return:
         """
-        self.instrument.logger.log(eval('logging.%s' % level), msg)
+        self.instrument.logger.log(eval('logging.{}'.format(level)), msg)
         return 'ok',
 
     @request()
@@ -737,7 +1026,7 @@ class Corr2Server(katcp.DeviceServer):
         import time
         ts = str(time.time())
         print('This should go to standard out. ' + ts)
-        sys.stderr.write('This should go to standard error. %s\n' % ts)
+        sys.stderr.write('This should go to standard error. {}\n'.format(ts))
         return 'ok',
 
     # @request(Int())
@@ -795,11 +1084,9 @@ class Corr2Server(katcp.DeviceServer):
         if new_cadence == 0:
             _logger.info('Disabled periodic descriptors.')
         else:
-            _logger.info('Enabled periodic descriptors @ %i '
-                         'seconds.' % new_cadence)
+            _logger.info('Enabled periodic descriptors @ {}seconds.'.format(new_cadence))
             if prev == 0:
-                IOLoop.current().call_later(self.descriptor_cadence,
-                                            self.periodic_issue_descriptors)
+                IOLoop.current().call_later(self.descriptor_cadence, self.periodic_issue_descriptors)
         return 'ok',
 
     @gen.coroutine
@@ -809,16 +1096,36 @@ class Corr2Server(katcp.DeviceServer):
 
         :return:
         """
+
+        number_of_descriptors = self.instrument.stream_get_number_of_descriptors()
+        time_step = self.descriptor_cadence / (number_of_descriptors + 5.0)  # 5.0 is just chosen arbitrarily, just needs to be greater than 1.0 and formatted as a double, not an integer
+
         if self.descriptor_cadence == 0:
             return
         _logger = self.instrument.logger
+
+        for i in range(number_of_descriptors):
+            IOLoop.current().call_later(time_step * (i + 1), self.issue_single_descriptor, i)
+
+        #try:
+        #    yield self.executor.submit(self.instrument.stream_issue_descriptors)
+        #except Exception as ex:
+        #    _logger.exception('Error sending metadata - {}'.format(ex.message))
+
+        _logger.debug('self.periodic_issue_descriptors ran')
+        IOLoop.current().call_later(self.descriptor_cadence, self.periodic_issue_descriptors)
+
+    @gen.coroutine
+    def issue_single_descriptor(self, index):
+        """
+        Issue a single descriptor.
+        :param index: index of descriptor to issue
+        :return:
+        """
         try:
-            yield self.executor.submit(self.instrument.stream_issue_descriptors)
+            yield self.executor.submit(self.instrument.stream_issue_descriptor_single, index)
         except Exception as ex:
             _logger.exception('Error sending metadata - {}'.format(ex.message))
-        _logger.debug('self.periodic_issue_descriptors ran')
-        IOLoop.current().call_later(self.descriptor_cadence,
-                                    self.periodic_issue_descriptors)
 
     @request(Str())
     @return_reply(Str())
@@ -832,7 +1139,8 @@ class Corr2Server(katcp.DeviceServer):
         try:
             return 'ok', str(getattr(self.instrument, attr))
         except Exception as exc:
-            return 'fail', exc.message
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, exc.message)
 
     @request()
     @return_reply(Str())
@@ -845,7 +1153,8 @@ class Corr2Server(katcp.DeviceServer):
         try:
             return 'ok', str(getattr(self.instrument, 'configd'))
         except Exception as exc:
-            return 'fail', exc.message
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, exc.message)
 
     @request()
     @return_reply(Str())
@@ -858,7 +1167,8 @@ class Corr2Server(katcp.DeviceServer):
         try:
             return 'ok', str(getattr(self.instrument, 'running_config'))
         except Exception as exc:
-            return 'fail', exc.message
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, exc.message)
 
     # @request(Str())
     # @return_reply(Str())
@@ -920,29 +1230,12 @@ if __name__ == '__main__':
 
     try:
         log_level = getattr(logging, args.loglevel)
-    except:
-        raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
+    except Exception:
+        raise RuntimeError('Received nonsensical log level {}'.format(args.loglevel))
 
-    # set up the logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
-    while len(root_logger.handlers) > 0:
-        root_logger.removeHandler(root_logger.handlers[0])
-    if args.lfm or (not sys.stdout.isatty()):
-        console_handler = KatcpStreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        root_logger.addHandler(console_handler)
-    else:
-        console_handler = logging.StreamHandler(stream=sys.stdout)
-        console_handler.setLevel(log_level)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(filename)s:%(lineno)s - '
-            '%(levelname)s - %(message)s')
-        console_handler.setFormatter(formatter)
-        root_logger.addHandler(console_handler)
 
     server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
-    print('Server listening on port %d ' % args.port, end='')
+    print('Server listening on port {} '.format(args.port, end=''))
 
     # def boop():
     #     raise KeyboardInterrupt

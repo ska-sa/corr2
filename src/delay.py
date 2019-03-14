@@ -1,6 +1,5 @@
 from threading import Event
 import logging
-import numpy
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,12 +31,10 @@ def process_list(delay_list, sample_rate_hz):
         try:
             if isinstance(delay, str):
                 delaytup = process_string(delay)
+                LOGGER.debug('input %i update received: %s'%(ctr,delay))
             else:
                 delaytup = delay
-            converted = prepare_delay_vals(delaytup, sample_rate_hz)
-            to_add = ((converted.delay, converted.delay_delta),
-                      (converted.phase_offset, converted.phase_offset_delta))
-            rv.append(to_add)
+            rv.append(prepare_delay_vals(delaytup, sample_rate_hz))
         except:
             errmsg = 'delay.process_list(): given delay \'%s\' at position %i' \
                      ' is not a valid delay setting' % (delay, ctr)
@@ -54,7 +51,7 @@ def prepare_delay_vals(coefficients, sample_rate):
     :return:
     """
     if len(coefficients) != 2:
-        errmsg = 'Incorrectly supplied coefficient tuple: %s' % coefficients
+        errmsg = 'Incorrectly supplied coefficient tuple: %s. Expecting ((delay,rate),(phase,rate)).' % coefficients
         LOGGER.error(errmsg)
         raise ValueError(errmsg)
     delay_coeff = coefficients[0]
@@ -62,6 +59,7 @@ def prepare_delay_vals(coefficients, sample_rate):
     # convert delay in time into delay in clock cycles
     delay_s = float(delay_coeff[0]) * sample_rate
     # convert to fractions of a sample
+    import numpy
     phase_offset_s = float(phase_coeff[0])/float(numpy.pi)
     # convert from radians per second to fractions of sample per sample
     delta_phase_offset_s = (float(phase_coeff[1]) / float(numpy.pi) /
@@ -72,24 +70,25 @@ def prepare_delay_vals(coefficients, sample_rate):
 class Delay(object):
     def __init__(self, delay=0.0, delay_delta=0.0,
                  phase_offset=0.0, phase_offset_delta=0.0,
-                 load_time=None, load_wait=None, load_check=True):
+                 load_mcnt=-1, load_count=-1, arm_count=-1, last_load_success=True):
         """
         :param delay is in samples
         :param delay_delta is in samples per sample
         :param phase_offset is in fractions of a sample
         :param phase_offset_delta is in samples per sample
-        :param load_time is in samples since epoch
-        :param load_wait is seconds to wait for delay values to load
-        :param load_check whether to check if load happened
+        :param load_mcnt is in samples since epoch
+        :param load_cnt is integer
+        :param arm_cnt is integer
+        :param last_load_success: boolean, did the last delay load succeed?
         """
         self.delay = delay
         self.delay_delta = delay_delta
         self.phase_offset = phase_offset
         self.phase_offset_delta = phase_offset_delta
-        self.load_time = load_time
-        self.load_wait = load_wait
-        self.load_check = load_check
-        self.load_count = -1
+        self.load_mcnt = load_mcnt
+        self.last_load_success = last_load_success
+        self.load_count = load_count
+        self.arm_count = arm_count
         self.error = Event()
 
     # @classmethod
@@ -98,7 +97,7 @@ class Delay(object):
     #     return prepare_delay_vals(coeff_tuple, sample_rate)
 
     def __str__(self):
-        return '{},{}:{},{}'.format(self.delay, self.delay_delta,
-                                    self.phase_offset, self.phase_offset_delta)
+        return 'Delay@{}: {},{}:{},{}'.format(self.load_mcnt,self.delay, 
+            self.delay_delta,self.phase_offset, self.phase_offset_delta)
 
 # end

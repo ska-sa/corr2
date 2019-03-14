@@ -1,10 +1,13 @@
 import time
+from logging import INFO
 
 from casperfpga import utils as fpgautils
 from casperfpga.network import Mac, IpAddress
 
 import filthost_fpga
 from data_stream import StreamAddress
+
+# from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -38,7 +41,7 @@ def parse_sources(name_string, ip_string):
 
 class FilterOperations(object):
 
-    def __init__(self, corr_obj):
+    def __init__(self, corr_obj, *args, **kwargs):
         """
         A collection of filter operations that act on/with a correlator instance.
         :param corr_obj:
@@ -46,10 +49,25 @@ class FilterOperations(object):
         """
         self.corr = corr_obj
         self.hosts = corr_obj.fhosts
-        self.logger = corr_obj.logger
+        # self.logger = corr_obj.logger
         # do config things
 
-    def initialise(self, program=True):
+        # Now creating separate instances of loggers as needed
+        logger_name = '{}_FilterOps'.format(corr_obj.descriptor)
+
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+        # All 'Instrument-level' objects will log at level INFO
+        result, self.logger = corr_obj.getLogger(logger_name=logger_name,
+                                        log_level=logLevel, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
+        self.logger.debug('Successfully created logger for {}'.format(logger_name))
+
+    def initialise(self, program=True, *args, **kwargs):
         """
         Set up filter engines
         :return:
@@ -58,15 +76,16 @@ class FilterOperations(object):
         _filthosts = self.corr.configd['filter']['hosts'].strip().split(',')
         self.logger.info('Adding filter boards:')
         for ctr, _ in enumerate(_filthosts):
-            _fpga = filthost_fpga.FpgaFilterHost(ctr, self.corr.configd)
+            _fpga = filthost_fpga.FpgaFilterHost(ctr, self.corr.configd
+                                                 *args, **kwargs)
             self.hosts.append(_fpga)
             self.logger.info('\t{} added to filters'.format(_fpga.host))
         self.logger.info('done.')
-    
+
         # hand out source and destination IPs
         self._process_sources()
         self._process_destinations()
-    
+
         # program the boards
         if program:
             THREADED_FPGA_FUNC(self.hosts, timeout=10,
@@ -75,7 +94,7 @@ class FilterOperations(object):
         else:
             THREADED_FPGA_FUNC(self.hosts, timeout=5,
                                target_function='get_system_information')
-    
+
         if program:
             # TODO read the pol IDs from the stream?
             THREADED_FPGA_OP(self.hosts, timeout=5,
@@ -85,26 +104,26 @@ class FilterOperations(object):
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_txen=False),))
             THREADED_FPGA_OP(self.hosts, timeout=5,
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=True),))
-    
+
             # write the TX registers
             self._write_tx_registers()
-    
+
             # write the TX port
             THREADED_FPGA_OP(self.hosts, timeout=5,
                              target_function=(lambda fpga_:
                                               fpga_.registers.gbe_porttx.write_int(
                                                   fpga_.data_destinations[0].port),))
-    
+
             # set up the 10gbe cores
             self._setup_gbe()
-    
+
             THREADED_FPGA_OP(self.hosts, timeout=5,
                              target_function=(lambda fpga_: fpga_.registers.control.write(gbe_rst=False),))
-    
+
             # subscribe to multicast data
             THREADED_FPGA_FUNC(self.hosts, timeout=5,
                                target_function='subscribe_to_source_data')
-    
+
             # check the RX data
             self.logger.info('filter_ops: waiting for data.')
             time.sleep(5.0)
@@ -118,7 +137,7 @@ class FilterOperations(object):
             if not self._check_rx():
                 raise RuntimeError('One or more filter engines are not '
                                    'receiving data.')
-    
+
             # enable TX
             THREADED_FPGA_FUNC(self.hosts, timeout=5,
                                target_function='enable_tx')
@@ -182,7 +201,7 @@ class FilterOperations(object):
                 mac += 1
             boards_info[f.host] = board_id, macs
             board_id += 1
-    
+
         def setup_gbes(f):
             board_id, macs = boards_info[f.host]
             for gbe, this_mac in zip(f.gbes, macs):
@@ -194,12 +213,12 @@ class FilterOperations(object):
         # THREADED_FPGA_OP(self.hosts, timeout=30, target_function=(setup_gbes,))
         for _fpga in self.hosts:
             setup_gbes(_fpga)
-    
+
         for _fpga in self.hosts:
             for _gbe in _fpga.gbes:
                 self.logger.info('{}: {} got address {}'.format(_fpga.host, _gbe.name,
                                                                 _gbe.core_details['ip']))
-    
+
     def _process_destinations(self):
         """
         Process the destinations found in the config file, assigning them
@@ -214,7 +233,7 @@ class FilterOperations(object):
         self.logger.info('filterops._process_destinations: assuming '
                          '{} destinations per filter '
                          'board'.format(_destinations_per_filter))
-    
+
         for _filtfpga in self.hosts:
             _offset = _filtfpga.board_id * _destinations_per_filter
             _filtfpga.data_destinations = []

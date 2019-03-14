@@ -8,8 +8,6 @@ Created on Feb 28, 2013
 import logging
 import time
 
-LOGGER = logging.getLogger(__name__)
-
 
 class Instrument(object):
     """
@@ -17,6 +15,7 @@ class Instrument(object):
     These Hosts host processing Engines that do work.
     Instruments produce data streams.
     """
+
     def __init__(self, descriptor, identifier=-1, config_source=None,
                  logger=None):
         """
@@ -35,7 +34,7 @@ class Instrument(object):
         self.identifier = identifier
         self.config_source = config_source
         self.configd = None
-        self.logger = logger or LOGGER
+        # self.logger = logger or LOGGER
 
         # The instrument might well have a sensor manager
         self.sensor_manager = None
@@ -55,7 +54,7 @@ class Instrument(object):
         if self.config_source is not None:
             try:
                 self._read_config()
-            except:
+            except BaseException:  # TODO: this is very bad practice...
                 raise
         self.logger.info('%s %s created.' % (self.classname, self.descriptor))
 
@@ -187,14 +186,55 @@ class Instrument(object):
             streams = self.data_streams
         else:
             streams = [self.get_data_stream(stream_name)]
+
+        i = 0
         for stream in self.data_streams:
+            i += 1
             stream.descriptors_issue()
+
+    def stream_get_number_of_descriptors(self):
+        """
+        Return the total number of descriptors across all streams
+        :return: Returns number of descriptors
+        """
+        streams = self.data_streams
+
+        num_descriptors = 0
+        for stream in self.data_streams:
+            num_descriptors_in_current_stream = stream.get_num_descriptors()
+            if(num_descriptors_in_current_stream > 0):
+                num_descriptors += num_descriptors_in_current_stream
+
+        return num_descriptors
+
+    def stream_issue_descriptor_single(self, index):
+        """
+        Send a single descriptors from a single stream on this instrument
+        :param index: returns the descriptor index
+        :return:
+        """
+
+        streams = self.data_streams
+
+        position = 0
+        stream_num = 0
+        for stream in self.data_streams:
+            num_descriptors_in_current_stream = stream.get_num_descriptors()
+            stream_num += 1
+            if(num_descriptors_in_current_stream <= 0):
+                continue
+            if(num_descriptors_in_current_stream + position > index):
+                #self.logger.error('Index %i Stream %i Stream Index %i' % (index, stream_num-1, index-position))
+                stream.descriptor_issue_single((index - position))
+                return
+            else:
+                position += num_descriptors_in_current_stream
 
     def set_sensor_manager(self, sensor_manager):
         """
         Set the sensor manager for this instrument
-        :param sensor_manager: a SensorManager instance 
-        :return: 
+        :param sensor_manager: a SensorManager instance
+        :return:
         """
         self.sensor_manager = sensor_manager
 
@@ -224,7 +264,7 @@ class Instrument(object):
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
         self._synchronisation_epoch = float(new_synch_time)
-        if hasattr(self.sensor_manager,'sensors_sync_time'):
+        if hasattr(self.sensor_manager, 'sensors_sync_time'):
             self.sensor_manager.sensors_sync_time()
         self.logger.info('Set synch epoch to %.5f.' % new_synch_time)
 

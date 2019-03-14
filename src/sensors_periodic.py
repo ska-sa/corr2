@@ -10,6 +10,7 @@ from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
 from sensors import Corr2Sensor
 import sensors_periodic_fhost as sensors_fhost
 import sensors_periodic_xhost as sensors_xhost
+import sensors_periodic_bhost as sensors_bhost
 
 
 LOGGER = logging.getLogger(__name__)
@@ -77,7 +78,6 @@ def _sensor_cb_system_counters(host, host_executor, manager):
                                 host, host_executor, manager)
 
 
-
 def setup_sensors(sensor_manager, enable_counters=False):
     """
     INSTRUMENT-STATE-INDEPENDENT sensors to be reported to CAM
@@ -86,12 +86,22 @@ def setup_sensors(sensor_manager, enable_counters=False):
     :return:
     """
     # make the mapping of hostnames to host offsets
+    #TODO are these assert statements a wise idea? I think they should be refactored away in favour of something proper.
     for ctr, host in enumerate(sensor_manager.instrument.xhosts):
         assert host.host not in host_offset_lookup
         host_offset_lookup[host.host] = 'xhost{:02}'.format(ctr)
+        #if host.host_type == 'xhost':
+        #    host_offset_lookup[host.host] = 'xhost{:02}'.format(ctr)
+        #else:
+        #    # bhost, probably
+        #    host_offset_lookup[host.host] = 'bhost{:02}'.format(ctr)
     for ctr, host in enumerate(sensor_manager.instrument.fhosts):
         assert host.host not in host_offset_lookup
         host_offset_lookup[host.host] = 'fhost{:02}'.format(ctr)
+
+    # for ctr, host in enumerate(sensor_manager.instrument.bhosts):
+    #     assert host.host not in host_offset_lookup
+    #     host_offset_lookup[host.host] = 'bhost{:02}'.format(ctr)
 
     sens_man = sensor_manager
 
@@ -120,7 +130,7 @@ def setup_sensors(sensor_manager, enable_counters=False):
             host_executors, ioloop, host_offset_lookup]
     sensors_fhost.setup_sensors_fengine(*args)
     sensors_xhost.setup_sensors_xengine(*args)
-    sensors_xhost.setup_sensors_bengine(*args)
+    sensors_bhost.setup_sensors_bengine(*args)
 
     all_hosts = sens_man.instrument.fhosts + sens_man.instrument.xhosts
 

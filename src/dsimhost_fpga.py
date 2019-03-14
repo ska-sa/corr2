@@ -1,11 +1,11 @@
 from __future__ import division
 import logging
-import time
-import re
 import math
-import struct
-import os.path
 import numpy as np
+import os.path
+import re
+import struct
+import time
 import matplotlib.pyplot as plt
 
 from casperfpga.attribute_container import AttributeContainer
@@ -24,8 +24,8 @@ alpha = 2.410e-16
 def get_prefixed_name(prefix, string):
     if not string.startswith(prefix):
         return None
-    if string.startswith(prefix+'_'):
-        return string[len(prefix)+1:]
+    if string.startswith(prefix + '_'):
+        return string[len(prefix) + 1:]
     else:
         return string[len(prefix):]
 
@@ -44,6 +44,7 @@ class SineSource(Source):
     """
 
     """
+
     def __init__(self, freq_register, scale_register, name,
                  repeat_en_register=None,
                  repeat_len_register=None, repeat_len_field_name=None):
@@ -136,245 +137,11 @@ class NoiseSource(Source):
         self.scale_register.write(**write_vars)
 
 
-class PulsarSource(Source):
-    """
-
-    """
-    def __init__(self, freq_register, scale_register, name):
-        """
-
-        :param freq_register:
-        :param scale_register:
-        :param name:
-        """
-        super(PulsarSource, self).__init__(freq_register, name)
-        self.freq_register = freq_register
-        self.scale_register = scale_register
-        # samples per second
-        self.freq_sampling = float(self.parent.config['sample_rate_hz'])
-        self.t_samp = 1/self.freq_sampling  # Time domain sample period
-        self.fft_size = 1024  # size of FFT
-        self.f_samp = self.freq_sampling/self.fft_size  # FFT bin width
-        self.fft_period = self.fft_size * self.t_samp  # FFT period
-        # [Hz] center frequency of passband (as received )
-        self.freq_centre = float(self.parent.config['true_cf'])
-        # duration of simulation
-        self.sim_time = float(self.parent.config['pulsar_sim_time'])
-        # number of FFT input blocks to process
-        self.fft_blocks = math.ceil(self.sim_time/self.fft_period)
-        self.n_samp = self.fft_blocks*self.fft_size  # number of samples
-        self.raw_data = np.array([])
-        freq_field = self.freq_register.field_get_by_name('frequency')
-        self.nr_freq_steps = 2**freq_field.width_bits
-        self.max_freq = self.freq_sampling / 2.
-        self.delta_freq = self.max_freq / (self.nr_freq_steps - 1)
-        self.dm = float(self.parent.config['pulsar_dm'])  # dispersion measure
-
-    @property
-    def frequency(self):
-        return self.freq_register.read()['data']['frequency'] * self.delta_freq
-
-    @property
-    def scale(self):
-        return self.scale_register.read()['data']['scale']
-
-    def set(self, scale=None, frequency=None):
-        """
-
-        :param scale:
-        :param frequency:
-        :return:
-        """
-        if scale is not None:
-            self.scale_register.write(scale=scale)
-        if frequency is not None:
-            freq_steps = int(round(frequency / self.delta_freq))
-            self.freq_register.write(frequency=freq_steps)
-
-    def _initialise_fft_bins(self):
-        """
-        FFT bin center frequencies (at baseband) [Hz]
-        :return:
-        """
-        self.fft_bin = np.arange(-self.freq_sampling/2, self.freq_sampling/2,
-                                 self.f_samp)
-
-    def _initialise_start_freq(self):
-        """
-        start frequency (center freq of pulse at start of simulation) [Hz]
-        :return:
-        """
-        self._initialise_fft_bins()
-        self.fch1 = self.freq_centre + max(self.fft_bin)/2
-
-    def _initialise_start_freq_delay(self):
-        """
-        Reference delay for start freq (f1) i.e. the shortest delay at
-        the highest freq [s]
-        :param dm: dispersion measure
-        :return:
-        """
-        self._initialise_start_freq()
-        self.dch1 = self.dm/(alpha*(self.fch1**2))
-
-    def _initialise_delay_bins(self):
-        """
-
-        :param dm: dispersion measure
-        :return:
-        """
-        self._initialise_start_freq_delay()
-        fc = self.freq_centre
-        df = self.f_samp
-        f2 = fc + self.fft_bin - df/2
-        t1 = self.dch1
-        # [s] delay relative to t1 for lowest frequency in each bin
-        tbin = (self.dm/(alpha*(f2**2))) - t1
-        fbin = self.fft_bin
-        lfft = self.fft_size
-        # to simplify algorithm
-        self.relative_delay = np.append(
-            tbin, (self.dm/(alpha*((fc+fbin[lfft-1]+df/2)**2)))-t1)
-
-    def initialise_data(self):
-        """
-
-        :param dm: dispersion measure
-        :return:
-        """
-        self._initialise_delay_bins()
-        self.raw_data = np.zeros(self.n_samples, dtype=np.complex64)
-
-    def write_pulse_to_bin(self, duty_cycle=0.05, t=0):
-        """
-
-        :param duty_cycle: the fraction of the pulse period in which the
-        pulse is actually on
-        :param t: time
-        :return: vector with delayed pulse
-        """
-        b = 0  # count bins
-        beta = 1/math.log(2)  # constant
-        tbin = self.relative_delay
-        X = [0] * self.fft_size
-        for f in range(len(self.fft_bin)):  # loop over FFT bins
-            t2 = tbin[b+1]  # delay for max frequency in this bin
-            # Gaussian shaped pulse
-            X[b] = math.exp(-(t - t2)**2/(beta * duty_cycle ** 2))
-            b += 1
-        return X
-
-    def write_impulse_to_bin(self, t=0):
-        """
-
-        :param t: time
-        :return: vector with delayed pulse
-        """
-        b = 0  # count bins
-        tbin = self.relative_delay
-        X = [0] * self.fft_size
-        fbin = self.fft_bin
-        for f in range(len(fbin)):  # loop over FFT bins
-            t2a = tbin[b+1]  # delay for max frequency in this bin
-            t2b = tbin[b]  # delay for min frequency in this bin
-            if t2b >= t > t2a:
-                X[b] = 1  # impulse
-            b += 1
-        return X
-
-    def fftshift(self, x):
-        """
-        FFT shift into screwy FFT order
-        :param x:
-        :return:
-        """
-        return np.fft.fftshift(x)
-
-    def ifft(self, x):
-        """
-        Inverse FFT gives time domain
-        :param x:
-        :return:
-        """
-        return np.fft.ifft(x)
-
-    def add_pulsar(self, duty_cycle=0.05):
-        """
-
-        :param duty_cycle: the fraction of the pulse period in which
-        the pulse is actually on
-        :return:
-        """
-        t = 0  # [s] initialize sim time
-        k = 0
-        lfft = self.fft_size
-        while k < self.fft_blocks:
-            k += 1
-            X = self.write_pulse_to_bin(duty_cycle, t)
-            t += self.fft_period  # update time
-            X = self.fftshift(X)
-            x = self.ifft(X)*lfft
-            self.raw_data[(k-1)*lfft:k*lfft] = x
-
-    def write_file(self, file_name='test', path_name=False):
-        """
-
-        :param file_name:
-        :param path_name:
-        :return:
-        """
-        if path_name:
-            complete_name = os.path.join(path_name, file_name)
-        else:
-            complete_name = file_name
-        xs = self.raw_data
-        p_amp = 1  # amplitude of the pulse in time domain
-        max_xs = max(np.absolute(xs))
-        with open(complete_name, 'ab') as myfile:
-            for l in range(len(xs)):
-                xr = int(round(10*(p_amp*np.real(xs[l]) / max_xs +
-                                   np.random.standard_normal())))
-                xi = int(round(10*(p_amp*np.imag(xs[l]) / max_xs +
-                                   np.random.standard_normal())))
-                mybuffer = struct.pack("bb", xr, xi)
-                myfile.write(mybuffer)
-
-    def plot(self, file_name='test', path_name=False):
-        """
-
-        :param file_name:
-        :param path_name:
-        :return:
-        """
-        if path_name:
-            complete_name = os.path.join(path_name, file_name)
-        else:
-            complete_name = file_name
-        with open(complete_name, 'rb') as fh:
-            loaded_array = np.frombuffer(fh.read(), dtype=np.int8)
-        xr = loaded_array[0:len(loaded_array)-1:2]
-        xi = loaded_array[1:len(loaded_array):2]
-        c_x = xr + xi*1j
-        fc = self.freq_centre
-        fbin = self.fft_bin
-        lfft = self.fft_size
-        p1 = 1
-        power_array = np.zeros((lfft, len(c_x)/lfft))
-        for p in range(len(c_x)/lfft):
-            power = np.abs(np.fft.fft(c_x[(p1-1)*lfft:p1*lfft], lfft))**2
-            p1 += 1
-            print('p1 = %d' % p1)
-            power_array[:, p] = power
-        power_array = np.fliplr(power_array)
-        plt.imshow(power_array, extent=[0, self.sim_time, fc-max(fbin),
-                                        fc+max(fbin)], aspect='auto')
-        plt.show()
-
-
 class Output(object):
     """
 
     """
+
     def __init__(self, name, scale_register, control_register):
         """
 
@@ -419,8 +186,9 @@ class FpgaDsimHost(FpgaHost):
     """
     An FpgaHost that acts as a Digitiser unit.
     """
+
     def __init__(self, host, katcp_port=7147, bitstream=None,
-                 connect=True, config=None, config_file=None):
+                 connect=True, config=None, config_file=None, **kwargs):
         """
 
         :param host:
@@ -429,7 +197,7 @@ class FpgaDsimHost(FpgaHost):
         :param connect:
         :param config:
         """
-        FpgaHost.__init__(self, host=host, katcp_port=katcp_port)
+        FpgaHost.__init__(self, host=host, katcp_port=katcp_port, **kwargs)
         if config is not None and config_file is not None:
             LOGGER.warn('config file and config supplied, defaulting to config')
         self.config = config or parse_ini_file(config_file)['dsimengine']
@@ -439,7 +207,7 @@ class FpgaDsimHost(FpgaHost):
         self.pulsar_sources = AttributeContainer()
         self.outputs = AttributeContainer()
 
-    def get_system_information(self, filename=None, fpg_info=None):
+    def get_system_information(self, filename=None, fpg_info=None, **kwargs):
         """
         Get system information and build D-engine sources
         :param filename:
@@ -447,7 +215,7 @@ class FpgaDsimHost(FpgaHost):
         :return:
         """
         FpgaHost.get_system_information(
-            self, filename=filename, fpg_info=fpg_info)
+            self, filename=filename, fpg_info=fpg_info, **kwargs)
         self.sine_sources.clear()
         self.noise_sources.clear()
         self.pulsar_sources.clear()
@@ -480,8 +248,7 @@ class FpgaDsimHost(FpgaHost):
             elif pulsar_name is not None:
                 scale_reg_postfix = ('_' + pulsar_name if reg.name.endswith(
                     '_' + pulsar_name) else pulsar_name)
-                scale_reg = getattr(self.registers, 'scale_pulsar' +
-                                    scale_reg_postfix)
+                scale_reg = getattr(self.registers, 'scale_pulsar' + scale_reg_postfix)
                 setattr(self.pulsar_sources, 'pulsar_' + pulsar_name,
                         PulsarSource(reg, scale_reg, pulsar_name))
             elif output_scale_name is not None:
@@ -501,11 +268,9 @@ class FpgaDsimHost(FpgaHost):
         if self.bitstream:
             self._program()
         else:
-            LOGGER.info('Not programming host {} since no bitstream is '
-                        'configured'.format(self.host))
+            LOGGER.info('Not programming host {} since no bitstream is configured'.format(self.host))
         if not self.is_running():
-            raise RuntimeError('D-engine {host} not '
-                               'running'.format(**self.__dict__))
+            raise RuntimeError('D-engine {host} not running'.format(**self.__dict__))
         self.get_system_information(self.bitstream)
         self.setup_gbes()
         # Set digitizer polarisation IDs, 0 - h, 1 - v
@@ -553,19 +318,16 @@ class FpgaDsimHost(FpgaHost):
         for r in num_regs:
             r.write(**{r.name: no_packets})
         reg_field_names = self.registers.pol_traffic_trigger.field_names()
-        self.registers.pol_traffic_trigger.write(
-            **{n: 'pulse' for n in reg_field_names})
+        self.registers.pol_traffic_trigger.write(**{n: 'pulse' for n in reg_field_names})
 
     def _program(self):
         """
         Program the bitstream to fpga and ensure 10GbE's are not transmitting
         """
-        LOGGER.info('Programming Dsim roach {host} with file {bitstream}'
-                    .format(**self.__dict__))
+        LOGGER.info('Programming Dsim roach {host} with file {bitstream}'.format(**self.__dict__))
         stime = time.time()
         self.upload_to_ram_and_program(self.bitstream)
-        LOGGER.info('Programmed %s in %.2f seconds.' % (
-            self.host, time.time() - stime))
+        LOGGER.info('Programmed {} in {:.2f} seconds.'.format(self.host, time.time() - stime))
         # Ensure data is not sent before the gbes are configured
         self.enable_data_output(False)
 
@@ -587,8 +349,7 @@ class FpgaDsimHost(FpgaHost):
             for polstream in [0, 1]:
                 txip = pol_base + polstream
                 txid = (pol * 2) + polstream
-                self.write_int('gbe_iptx%1i' % txid,
-                               IpAddress.str2ip('%s.%d' % (pol_prefix, txip)))
+                self.write_int('gbe_iptx%1i' % txid, IpAddress.str2ip('{}.{}'.format(pol_prefix, txip)))
         self.registers.control.write(gbe_rst=False)
 
     def setup_gbes(self):
@@ -601,14 +362,13 @@ class FpgaDsimHost(FpgaHost):
         port = int(self.config['10gbe_port'])
         num_gbes = len(self.gbes)
         if num_gbes < 1:
-            raise RuntimeError('D-engine with no 10gbe cores %s' % self.host)
+            raise RuntimeError('D-engine with no 10gbe cores {}'.format(self.host))
         gbes_per_pol = 2        # Hardcoded assumption
         num_pols = num_gbes // gbes_per_pol
         mac_ctr = 1
         for ctr in range(num_gbes):
             this_mac = Mac.from_roach_hostname(self.host, mac_ctr)
-            self.gbes['gbe%d' % ctr].setup(
-                mac=this_mac, ipaddress='0.0.0.0', port=port)
+            self.gbes['gbe{}'.format(ctr)].setup(mac=this_mac, ipaddress='0.0.0.0', port=port)
             mac_ctr += 1
         for gbe in self.gbes:
             gbe.dhcp_start()
@@ -627,11 +387,9 @@ class FpgaDsimHost(FpgaHost):
             addr_offset = 0
             for pol_gbe_ctr in range(0, gbes_per_pol):
                 txip = txaddr_base + addr_offset
-                LOGGER.info('%s sending to: %s.%d port %d' % (
-                    self.host, txaddr_prefix, txip, port))
-                self.write_int(
-                    'gbe_iptx%i' % gbe_ctr,
-                    IpAddress.str2ip('%s.%d' % (txaddr_prefix, txip)))
+                LOGGER.info('{} sending to: {}.{} port {}'.format(self.host, txaddr_prefix, txip, port))
+                self.write_int('gbe_iptx{}'.format(gbe_ctr), IpAddress.str2ip('{}.{}'.format(
+                    txaddr_prefix, txip)))
                 if not single_destination:
                     addr_offset += 1
                 gbe_ctr += 1

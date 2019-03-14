@@ -1,6 +1,6 @@
 import logging
 import os
-import numpy as np
+
 from ConfigParser import SafeConfigParser
 import Queue
 import threading
@@ -10,6 +10,7 @@ from casperfpga.memory import bin2fp
 import casperfpga.utils as fpgautils
 
 from data_stream import StreamAddress
+from corr2LogHandlers import getLogger
 from casperfpga import CasperFpga
 
 LOGGER = logging.getLogger(__name__)
@@ -220,27 +221,30 @@ def _script_get_hosts(cmdline_args, host_type=None):
 
 def feng_script_get_fpgas(cmdline_args):
     from fhost_fpga import FpgaFHost
-    return script_get_fpgas(cmdline_args, 'fengine', FpgaFHost)
+    return script_get_fpgas(cmdline_args, 'fengine', FpgaFHost,
+                            getLogger=getLogger)
 
 
 def feng_script_get_fpga(cmdline_args):
     from fhost_fpga import FpgaFHost
     return script_get_fpga(cmdline_args, host_type='fengine',
-                           fpga_class=FpgaFHost)
+                           fpga_class=FpgaFHost, getLogger=getLogger)
 
 
 def xeng_script_get_fpgas(cmdline_args):
     from xhost_fpga import FpgaXHost
-    return script_get_fpgas(cmdline_args, 'xengine', FpgaXHost)
+    return script_get_fpgas(cmdline_args, 'xengine', FpgaXHost,
+                            getLogger=getLogger)
 
 
 def xeng_script_get_fpga(cmdline_args):
     from xhost_fpga import FpgaXHost
     return script_get_fpga(cmdline_args, host_type='xengine',
-                           fpga_class=FpgaXHost)
+                           fpga_class=FpgaXHost, getLogger=getLogger)
 
 
-def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga):
+def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga,
+                     *args, **kwargs):
     """
     Given command line arguments, return CASPER FPGA objects
     :param cmdline_args: the parsed args object from the script
@@ -251,7 +255,8 @@ def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga):
     config, host_details = _script_get_hosts(cmdline_args, host_type)
     fpgas = []
     for val in host_details:
-        fhosts = fpgautils.threaded_create_fpgas_from_hosts(val[1], fpga_class)
+        fhosts = fpgautils.threaded_create_fpgas_from_hosts(val[1], fpga_class,
+                                                            *args, **kwargs)
         if hasattr(fhosts[0].transport, 'katcprequest'):
             gsi_args = []
         else:
@@ -264,7 +269,8 @@ def script_get_fpgas(cmdline_args, host_type=None, fpga_class=CasperFpga):
 
 
 def script_get_fpga(cmdline_args, host_name=None, host_index=-1,
-                    host_type=None, fpga_class=CasperFpga):
+                    host_type=None, fpga_class=CasperFpga,
+                    *args, **kwargs):
     """
     Given command line arguments, return a CasperFpga object specified by the
     argument 'host'
@@ -306,7 +312,7 @@ def script_get_fpga(cmdline_args, host_name=None, host_index=-1,
     if host_fpga is None:
         raise RuntimeError('Could not find host: \'%s,%s\'' % (
             str(host_name), str(host_index)))
-    fpga = fpga_class(host_fpga)
+    fpga = fpga_class(host_fpga, *args, **kwargs)
     if hasattr(fpga.transport, 'katcprequest'):
         fpga.get_system_information()
     else:
@@ -314,7 +320,7 @@ def script_get_fpga(cmdline_args, host_name=None, host_index=-1,
     return fpga
 
 
-def sources_from_config(config_file=None, config=None):
+def get_default_sources(config_file=None, config=None):
     """
     Get a list of the sources given by the config
     :param config_file: a corr2 config file
@@ -322,59 +328,11 @@ def sources_from_config(config_file=None, config=None):
     :return:
     """
     config = config or parse_ini_file(config_file)
-    sources = config['fengine']['source_names'].split(',')
-    for ctr, src in enumerate(sources):
-        sources[ctr] = src.strip()
+    sources = []
+    for ctr in range(int(config['FxCorrelator']['n_ants'])):
+        sources.append('ant%ix'%ctr)
+        sources.append('ant%iy'%ctr)
     return sources
-
-
-def host_to_sources(hosts, config_file=None, config=None):
-    """
-    Get sources related to a host
-    :param hosts: a list of hosts
-    :param config_file: a corr2 config file
-    :param config: a corr2 config dictionary
-    :return:
-    """
-    config = config or parse_ini_file(config_file)
-    f_per_fpga = int(config['fengine']['f_per_fpga'])
-    cfg, host_detail = hosts_and_bitstreams_from_config(
-        config=config, section='fengine')
-    fhosts = host_detail[0][1]
-    sources = sources_from_config(config=config)
-    if len(sources) != len(fhosts) * f_per_fpga:
-        raise RuntimeError('%i hosts, %i per fpga_host, expected %i '
-                           'sources' % (len(fhosts), f_per_fpga, len(sources)))
-    ctr = 0
-    rv = {}
-    for host in fhosts:
-        rv[host] = (sources[ctr], sources[ctr+1])
-        ctr += 2
-    return rv
-
-
-def source_to_host(sources, config_file=None, config=None):
-    """
-    Get sources related to a host
-    :param sources: a list of sources
-    :param config_file: a corr2 config file
-    :param config: a corr2 config dictionary
-    :return:
-    """
-    config = config or parse_ini_file(config_file)
-    cfg, host_detail = hosts_and_bitstreams_from_config(
-        config=config, section='fengine')
-    fhosts = host_detail[0][1]
-    source_host_dict = host_to_sources(fhosts, config=config)
-    ctr = 0
-    rv = {}
-    for source in sources:
-        for host in source_host_dict:
-            if source in source_host_dict[host]:
-                rv[source] = host
-                break
-    return rv
-
 
 def baselines_from_source_list(source_list):
     """
@@ -411,51 +369,6 @@ def baselines_from_source_list(source_list):
                    source_names[baseline[1] * 2]))
     return rv
 
-
-def baselines_from_config(config_file=None, config=None):
-    """
-    Get a list of the baselines from a config file.
-    :param config_file: a corr2 config file
-    :param config: a corr2 config dictionary
-    :return:
-    """
-    config = config or parse_ini_file(config_file)
-    sources = sources_from_config(config=config)
-    cfg, host_detail = hosts_and_bitstreams_from_config(
-        config=config, section='fengine')
-    fhosts = host_detail[0][1]
-    n_antennas = len(fhosts)
-    if len(sources) / 2 != n_antennas:
-        raise ValueError('Found {} sources, but {} antennas?'.format(
-            len(sources), n_antennas))
-    return baselines_from_source_list(sources)
-    # order1 = []
-    # order2 = []
-    # for ant_ctr in range(n_antennas):
-    #     # print('ant_ctr(%d)' % ant_ctr
-    #     for ctr2 in range(int(n_antennas / 2), -1, -1):
-    #         temp = (ant_ctr - ctr2) % n_antennas
-    #         # print('\tctr2(%d) temp(%d)' % (ctr2, temp)
-    #         if ant_ctr >= temp:
-    #             order1.append((temp, ant_ctr))
-    #         else:
-    #             order2.append((ant_ctr, temp))
-    # order2 = [order_ for order_ in order2 if order_ not in order1]
-    # baseline_order = order1 + order2
-    # source_names = []
-    # for source in sources:
-    #     source_names.append(source)
-    # rv = []
-    # for baseline in baseline_order:
-    #     rv.append((source_names[baseline[0] * 2],
-    #                source_names[baseline[1] * 2]))
-    #     rv.append((source_names[baseline[0] * 2 + 1],
-    #                source_names[baseline[1] * 2 + 1]))
-    #     rv.append((source_names[baseline[0] * 2],
-    #                source_names[baseline[1] * 2 + 1]))
-    #     rv.append((source_names[baseline[0] * 2 + 1],
-    #                source_names[baseline[1] * 2]))
-    # return rv
 
 
 def process_new_eq(eq):
@@ -519,6 +432,7 @@ class UnpackDengPacketCapture(object):
             Voltage time-series normalised to between -1 and 1.
 
         """
+        import numpy as np
         try:
             import bitstring
         except ImportError:
@@ -675,39 +589,6 @@ def parse_output_products(dictionary):
     for ctr, addr in enumerate(addresses):
         addresses[ctr] = StreamAddress.from_address_string(addr)
     return prods, addresses
-
-
-class KatcpStreamHandler(logging.StreamHandler):
-
-    def format(self, record):
-        """
-        Convert the record message contents to a katcp #log format
-        :param record: a logging.LogRecord
-        :return:
-        """
-        level = 'WARN' if record.levelname == 'WARNING' else record.levelname
-        level = level.lower()
-        msg = record.msg.replace(' ', '\_')
-        msg = msg.replace('\t', '\_' * 4)
-        return '#log ' + level + ' ' + '%.6f' % time.time() + ' ' + \
-               record.filename + ' ' + msg
-
-
-class StreamToLogger(object):
-    """
-    Fake file-like stream object that redirects writes to
-    a logger instance.
-    From: http://www.electricmonk.nl/log/2011/08/14/redirect-stdout-and-stderr-to-a-logger-in-python/
-    """
-
-    def __init__(self, logger, log_level=logging.INFO):
-        self.logger = logger
-        self.log_level = log_level
-        self.linebuf = ''
-
-    def write(self, buf):
-        for line in buf.rstrip().splitlines():
-            self.logger.log(self.log_level, line.rstrip())
 
 
 # end

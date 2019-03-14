@@ -1,13 +1,11 @@
-import logging
+from logging import INFO
 import time
-import casperfpga
 import struct
 
 from host_fpga import FpgaHost
 from host_fpga import FpgaHost
 from casperfpga.transport_skarab import SkarabTransport
-
-LOGGER = logging.getLogger(__name__)
+# from corr2LogHandlers import getLogger
 
 
 class FpgaXHost(FpgaHost):
@@ -15,9 +13,30 @@ class FpgaXHost(FpgaHost):
     A Host, that hosts Xengines, that is a CASPER KATCP FPGA.
     """
     def __init__(self, host, index, katcp_port=7147, bitstream=None,
-                 connect=True, config=None):
+                 connect=True, config=None, **kwargs):
         FpgaHost.__init__(self, host=host, katcp_port=katcp_port,
                           bitstream=bitstream, connect=connect, transport=SkarabTransport)
+        try:
+            descriptor = kwargs['descriptor']
+        except KeyError:
+            descriptor = 'InstrumentName'
+
+        # This will always be a kwarg
+        self.getLogger = kwargs['getLogger']
+
+        logger_name = '{}_xhost-{}-{}'.format(descriptor, str(index), host)
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                             log_level=logLevel, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(logger_name)
+            raise ValueError(errmsg)
+
+        self.logger.debug('Successfully created logger for {}'.format(logger_name))
+
         self.config = config
         self.index = index
         self.acc_len = None
@@ -34,10 +53,12 @@ class FpgaXHost(FpgaHost):
             self.acc_len = int(xcfg['accumulation_len'])
             self.xeng_accumulation_len = int(xcfg['xeng_accumulation_len'])
             self.n_chans = int(fcfg['n_chans'])
-            self.n_ants = int(fcfg['n_antennas'])
+            self.n_ants = int(ccfg['n_ants'])
             self.sample_rate_hz = int(ccfg['sample_rate_hz'])
         self._vaccs_per_sec_last_readtime = None
         self._vaccs_per_sec_last_values = None
+
+        self.host_type = 'xhost'
 
     def get_system_information(self, filename=None, fpg_info=None):
         """
@@ -55,7 +76,7 @@ class FpgaXHost(FpgaHost):
 
     @classmethod
     def from_config_source(cls, hostname, index, katcp_port,
-                           config_source):
+                           config_source, **kwargs):
         """
 
         :param hostname: the hostname of this host
@@ -66,7 +87,7 @@ class FpgaXHost(FpgaHost):
         """
         bitstream = config_source['xengine']['bitstream']
         obj = cls(hostname, index, katcp_port=katcp_port, bitstream=bitstream,
-                  connect=True, config=config_source)
+                  connect=True, config=config_source, **kwargs)
         return obj
 
     def _determine_x_per_fpga(self):
@@ -122,6 +143,11 @@ class FpgaXHost(FpgaHost):
         rv={}
         for i in range(3):
             rv.update(self.registers['hmc_pkt_reord_status%i'%i].read()['data'])
+        try:
+            for i in range(3,4):
+                rv.update(self.registers['hmc_pkt_reord_status%i'%i].read()['data'])
+        except:
+            pass
         return rv
 
     def get_rx_reorder_status(self):
@@ -163,6 +189,8 @@ class FpgaXHost(FpgaHost):
         for xnum in x_indices:
             temp = regs['sys%i_vacc_status' % xnum].read()['data']
             temp.update(timestamp = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp'])
+#            temp.update(regs['sys%i_vacc_hmc_vacc_fifo_status' % xnum].read()['data'])
+            temp.update(regs['sys%i_vacc_hmc_vacc_err_status' % xnum].read()['data'])
             stats.append(temp)
         return stats
 

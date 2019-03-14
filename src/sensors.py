@@ -1,59 +1,91 @@
-import logging
+# import logging
+# Yes, I know it's just an integer value
+from logging import INFO
 import time
+
+
 
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
 
 from katcp import Sensor, Message
 
+from corr2.corr2LogHandlers import getKatcpLogger
+
 import data_stream
 
-LOGGER = logging.getLogger(__name__)
+# LOGGER = logging.getLogger(__name__)
 
 
 class Corr2Sensor(Sensor):
+
     @classmethod
     def integer(cls, name, description=None, unit='', params=None,
                 default=None, initial_status=None,
-                manager=None, executor=None):
+                manager=None, executor=None,
+                *args, **kwargs):
         return cls(cls.INTEGER, name, description, unit, params,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     @classmethod
     def float(cls, name, description=None, unit='', params=None,
               default=None, initial_status=None,
-              manager=None, executor=None):
+              manager=None, executor=None,
+             *args, **kwargs):
         return cls(cls.FLOAT, name, description, unit, params,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     @classmethod
     def boolean(cls, name, description=None, unit='',
                 default=None, initial_status=None,
-                manager=None, executor=None):
+                manager=None, executor=None,
+                *args, **kwargs):
         return cls(cls.BOOLEAN, name, description, unit, None,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     @classmethod
     def lru(cls, name, description=None, unit='',
             default=None, initial_status=None,
-            manager=None, executor=None):
+            manager=None, executor=None,
+            *args, **kwargs):
         return cls(cls.LRU, name, description, unit, None,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
 
     @classmethod
     def string(cls, name, description=None, unit='',
                default=None, initial_status=None,
-               manager=None, executor=None):
+               manager=None, executor=None,
+               *args, **kwargs):
         return cls(cls.STRING, name, description, unit, None,
-                   default, initial_status, manager, executor)
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
+
+    @classmethod
+    def device_status(cls, name, description=None, unit='',
+               default=None, initial_status=None,
+               manager=None, executor=None,
+               *args, **kwargs):
+        return cls(cls.DISCRETE, name=name, description=description, 
+                   units=unit, params=['ok','fail','degraded'],
+                   default=default, initial_status='ok', manager=manager, 
+                   executor=executor,*args, **kwargs)
 
     def __init__(self, sensor_type, name, description=None, units='',
                  params=None, default=None, initial_status=None,
-                 manager=None, executor=None):
+                 manager=None, executor=None,
+                 *args, **kwargs):
+
+        # Log to the parent SensorManager.logger for now
+        self.logger = manager.logger
+
         if '_' in name:
-            LOGGER.warning('Sensor names cannot have underscores in them, '
-                           'so {name} becomes {name_conv}'.format(
-                            name=name, name_conv=name.replace('_', '-')))
+            self.logger.debug('Sensor names cannot have underscores in them, '
+                         'so {name} becomes {name_conv}'.format(
+                             name=name, name_conv=name.replace('_', '-')))
             name = name.replace('_', '-')
         self.manager = manager
         self.executor = executor
@@ -61,7 +93,13 @@ class Corr2Sensor(Sensor):
                                           units, params, default,
                                           initial_status)
 
-    def set(self, timestamp=None, status=None, value=None, errif=None, warnif=None):
+    def set(
+            self,
+            timestamp=None,
+            status=None,
+            value=None,
+            errif=None,
+            warnif=None):
         """
         Set the value of a sensor.
         :param timestamp: when was the reading taken? default to time.time()
@@ -71,30 +109,68 @@ class Corr2Sensor(Sensor):
         :param warnif: set status to WARNING if value 'changed' or 'notchanged'.
         :return:
         """
+
+        status_none = 0
         if value is None:
             raise ValueError('Cannot set a sensor to None')
         if timestamp is None:
             timestamp = time.time()
         if status is None:
+            status_none = 1
             status = Sensor.NOMINAL
         (old_timestamp, old_status, old_value) = self.read()
         if (old_status == status) and (old_value == value):
-            LOGGER.debug('Sensor values unchanged, ignoring')
+            self.logger.debug('Sensor values unchanged, ignoring')
             return
+
+        if (value == False):
+            if (errif == 'False'):
+                self.logger.error('Sensor error: {} is False'.format(self.name))
+                if(status_none == 1):
+                    status = Sensor.ERROR
+            elif (warnif == 'False'):
+                self.logger.warn('Sensor warning: {} is False'.format(self.name))
+                if(status_none == 1):
+                    status = Sensor.WARN
+            else:
+                if(status_none == 1):
+                    status = Sensor.NOMINAL
+
+        elif (value):
+            if (errif == 'True'):
+                self.logger.error('Sensor error: {} is True'.format(self.name))
+                if(status_none == 1):
+                    status = Sensor.ERROR
+            elif warnif == 'True':
+                self.logger.warn('Sensor warning: {} is True'.format(self.name))
+                if(status_none == 1):
+                    status = Sensor.WARN
+            else:
+                if(status_none == 1):
+                    status = Sensor.NOMINAL
+
         if old_value != value:
             if errif == 'changed':
-                LOGGER.error('Sensor error: {} changed {} -> {}'.format(self.name,old_value,value))
-                status = Sensor.ERROR
+                self.logger.error(
+                    'Sensor error: {} changed {} -> {}'.format(self.name, old_value, value))
+                if(status_none == 1):
+                    status = Sensor.ERROR
             elif warnif == 'changed':
-                LOGGER.warn('Sensor warning: {} changed {} -> {}'.format(self.name,old_value,value))
-                status = Sensor.WARN
+                self.logger.warn(
+                    'Sensor warning: {} changed {} -> {}'.format(self.name, old_value, value))
+                if(status_none == 1):
+                    status = Sensor.WARN
         else:
             if errif == 'notchanged':
-                status = Sensor.ERROR
-                LOGGER.error('Sensor error: {} not changing {} -> {}'.format(self.name,old_value,value))
+                if(status_none == 1):
+                    status = Sensor.ERROR
+                self.logger.error(
+                    'Sensor error: {} not changing {} -> {}'.format(self.name, old_value, value))
             elif warnif == 'notchanged':
-                status = Sensor.WARN
-                LOGGER.warn('Sensor warning: {} not changing {} -> {}'.format(self.name,old_value,value))
+                if(status_none == 1):
+                    status = Sensor.WARN
+                self.logger.warn(
+                    'Sensor warning: {} not changing {} -> {}'.format(self.name, old_value, value))
         super(Corr2Sensor, self).set(timestamp, status, value)
         if self.manager:
             self.manager.sensor_set_cb(self)
@@ -111,8 +187,10 @@ class SensorManager(object):
     """
     A place to store information and functionality relevant to corr2 sensors.
     """
+
     def __init__(self, katcp_server, instrument,
-                 katcp_sensors=True, kcs_sensors=True):
+                 katcp_sensors=True, kcs_sensors=True,
+                 *args, **kwargs):
         """
         Start a Sensor Manager
         :param katcp_server: a KATCP server instance
@@ -123,6 +201,25 @@ class SensorManager(object):
         """
         self.katcp_server = katcp_server
         self.instrument = instrument
+
+        if instrument is None:
+            # You are a strong, independent SensorManager
+            self.getLogger = getKatcpLogger
+            logger_name = '{}_sens_man'.format(katcp_server.host.host)
+        else:
+            # The instrument already has a getLogger attribute
+            self.getLogger = instrument.getLogger
+            logger_name = '{}_sens_man'.format(instrument.descriptor)
+
+        # Why is logging defaulted to INFO, what if I do not want to see the info logs?
+        logLevel = kwargs.get('logLevel', INFO)
+        result, self.logger = self.getLogger(logger_name=logger_name,
+                                             log_level=logLevel, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format()
+            raise ValueError(errmsg)
+
         self.katcp_sensors = katcp_sensors
         self.kcs_sensors = kcs_sensors
         self._sensors = {}
@@ -215,7 +312,7 @@ class SensorManager(object):
         :return:
         """
         if self._debug_mode:
-            LOGGER.info('SENSOR_DEBUG: sensor-status ' + str(time.time()) +
+            self.logger.info('SENSOR_DEBUG: sensor-status ' + str(time.time()) +
                         ' ' + sensor.name + ' ' +
                         str(sensor.STATUSES[sensor.status()]) + ' ' +
                         str(sensor.value()))
@@ -238,7 +335,7 @@ class SensorManager(object):
         # descr = sensor.description.replace(' ', '\_')
         descr = sensor.description
         if self._debug_mode:
-            LOGGER.info('SENSOR_DEBUG: sensor-list ' + sensor.name + ' ' +
+            self.logger.info('SENSOR_DEBUG: sensor-list ' + sensor.name + ' ' +
                         descr + ' ' + sensor.units + ' ' + str(sensor.type))
             return
         assert self.kcs_sensors
@@ -263,7 +360,7 @@ class SensorManager(object):
         :return:
         """
         if '_' in name:
-            LOGGER.warning(
+            self.logger.warning(
                 'Sensor names cannot have underscores in them, so {name} '
                 'becomes {name_conv}'.format(
                     name=name, name_conv=name.replace('_', '-')))
@@ -297,10 +394,11 @@ class Corr2SensorManager(SensorManager):
                 'The IP, range and port to which data for this stream is sent.')
             sensor.set_value(stream.destination)
 
-            sensor = self.do_sensor(
-                Corr2Sensor.string, '{}-source'.format(stream.name),
-                'The sources from which data is received to create this stream')
-            sensor.set_value(stream.source or '')
+            if stream.category is not data_stream.DIGITISER_ADC_SAMPLES:
+                sensor = self.do_sensor(
+                    Corr2Sensor.string, '{}-source'.format(stream.name),
+                    'The sources from which data is received to create this stream')
+                sensor.set_value(stream.source or '')
 
     def sensors_gbe_interfacing(self):
         """
@@ -319,13 +417,6 @@ class Corr2SensorManager(SensorManager):
                 '{eng}-{iface}-details'.format(eng=eng, iface=iface),
                 '{prf} (MAC,IP,port)'.format(prf=dpref))
             sensor.set_value(sensor_value)
-
-            sensor = self.do_sensor(
-                Corr2Sensor.string,
-                '{eng}-{iface}-multicast-subscriptions'.format(
-                    eng=eng, iface=iface),
-                '{prf} multicast subscriptions'.format(prf=dpref))
-            sensor.set_value(str(host.gbes[iface].multicast_subscriptions))
 
         for ctr, host in enumerate(self.instrument.fhosts):
             for gbe in host.gbes:
@@ -404,7 +495,7 @@ class Corr2SensorManager(SensorManager):
                 'A string showing the output ordering of baseline data '
                 'produced by the X-engines in this instrument, as a list '
                 'of correlation pairs given by input label.')
-            sensor.set_value(self.instrument.baselines)
+            sensor.set_value(self.instrument.xops.get_baseline_ordering())
 
     def sensors_xeng_acc_time(self):
         """
@@ -421,7 +512,7 @@ class Corr2SensorManager(SensorManager):
                 'output.')
             spec_acclen = (self.instrument.accumulation_len *
                            self.instrument.xeng_accumulation_len)
-            sensor.set_value(spec_acclen)
+            sensor.set_value(int(spec_acclen))
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-int-time'.format(strmnm),
                 'The time, in seconds, for which the X-engines accumulate.',
@@ -483,17 +574,11 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(self.instrument.xeng_outbits)
 
             sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-clock-rate'.format(strmnm),
-                'Target clock rate of X-engines.', unit='Hz')
-            sensor.set_value(self.instrument.xeng_clk)
-
-            sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-bls'.format(strmnm),
                 'The number of baselines produced by this correlator '
                 'instrument.')
-            sensor.set_value(len(self.instrument.baselines))
+            sensor.set_value(len(self.instrument.xops.get_baseline_ordering()))
 
-            # TODO - this might not be correct
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in the integration.')
@@ -504,6 +589,12 @@ class Corr2SensorManager(SensorManager):
                 'Number of channels in each x-engine substream.')
             n_xeng = len(self.instrument.xhosts) * self.instrument.x_per_fpga
             sensor.set_value(self.instrument.n_chans / n_xeng)
+
+            sensor = self.do_sensor(
+                sensor_type=Corr2Sensor.integer,
+                name='{}-payload-len'.format(strmnm),
+                description='The payload size of the X-engine data stream pkts')
+            sensor.set_value(self.instrument.x_stream_payload_len)
 
         self.sensors_xeng_acc_time()
         self.sensors_baseline_ordering()
@@ -521,31 +612,25 @@ class Corr2SensorManager(SensorManager):
             for feng in self.instrument.fops.fengines:
                 pref = '{strm}-input{npt}'.format(strm=strmnm,
                                                   npt=feng.input_number)
-                # TODO - this must be per-input, not system-wide
                 sensor = self.do_sensor(
                     Corr2Sensor.integer, '{}-fft0-shift'.format(pref),
                     'The FFT bitshift pattern for the <n>th FFT in the design. '
                     'n=0 is first in the RF chain (closest to source).')
-                sensor.set_value(self.instrument.fft_shift)
+                sensor.set_value(feng.host.get_fft_shift())
 
-    def sensors_feng_eq(self):
+    def sensors_feng_eq(self, feng):
         streams = self.instrument.get_data_streams_by_type(
             data_stream.FENGINE_CHANNELISED_DATA)
         assert len(streams) == 1
-        for stream in streams:
-            strmnm = stream.name
-            for feng in self.instrument.fops.fengines:
-                pref = '{strm}-input{npt}'.format(strm=strmnm,
-                                                  npt=feng.input_number)
-                sensor = self.do_sensor(
-                        Corr2Sensor.string, '{}-eq'.format(pref),
-                        'The unitless, per-channel digital scaling factors '
-                        'implemented prior to requantisation. Complex. If one '
-                        'value has been applied to all channels, only one is '
-                        'shown by the sensor.')
-                sensor.set_value(str(feng.eq_poly))
+        strmnm = streams[0].name
+        pref = '{strm}-input{npt}'.format(strm=strmnm, npt=feng.input_number)
+        sensor = self.do_sensor(
+            Corr2Sensor.string, '{}-eq'.format(pref),
+            'The unitless, per-channel digital scaling factors '
+            'implemented prior to requantisation. Complex.')
+        sensor.set_value(str(feng.last_eq))
 
-    def sensors_feng_delays(self):
+    def sensors_feng_delays(self, feng):
         """
         F-engine delay sensors
         :return:
@@ -553,30 +638,45 @@ class Corr2SensorManager(SensorManager):
         streams = self.instrument.get_data_streams_by_type(
             data_stream.FENGINE_CHANNELISED_DATA)
         if len(streams) != 1:
-            raise RuntimeError('Expecting one stream, got %i?' % (len(streams)))
-        for stream in streams:
-            strmnm = stream.name
-            for feng in self.instrument.fops.fengines:
-                pref = '{strm}-input{npt}'.format(strm=strmnm,
-                                                  npt=feng.input_number)
-                sensor = self.do_sensor(
-                    Corr2Sensor.string, '{}-delay'.format(pref),
-                    'The delay settings for this input: (loadtime, delay, '
-                    'delay-rate, phase, phase-rate)')
-                err_sensor = self.do_sensor(
-                    Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
-                    'Delays for this input are functioning correctly.')
-                if feng.last_delay is not None:
-                    _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
-                        feng.last_delay.load_time,
-                        feng.last_delay.delay,
-                        feng.last_delay.delay_delta,
-                        feng.last_delay.phase_offset,
-                        feng.last_delay.phase_offset_delta
-                    )
-                    sensor.set_value(_val)
-                    err = False if feng.last_delay.error.is_set() else True
-                    err_sensor.set_value(err)
+            raise RuntimeError(
+                'Expecting one Feng stream, got %i?' %
+                (len(streams)))
+        strmnm = streams[0].name
+        pref = '{strm}-input{npt}'.format(strm=strmnm, npt=feng.input_number)
+        sensor = self.do_sensor(
+            Corr2Sensor.string, '{}-delay'.format(pref),
+            'The delay settings for this input: (loadmcnt <ADC sample count when model was loaded>, delay <in seconds>, '
+            'delay-rate <unit-less, or, seconds-per-second>, phase <radians>, phase-rate <radians per second>).')
+       # err_sensor = self.do_sensor(
+       #     Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
+       #     'Delays for this input are functioning correctly.')
+
+        if feng.last_delay is not None:
+            import numpy
+            delay = feng.last_delay.delay / self.instrument.sample_rate_hz
+            delay_delta = feng.last_delay.delay_delta
+            phase_offset = feng.last_delay.phase_offset * numpy.pi
+            phase_offset_delta = feng.last_delay.phase_offset_delta * (
+                numpy.pi * self.instrument.sample_rate_hz)
+            load_mcnt = feng.last_delay.load_mcnt
+            _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
+                load_mcnt, delay, delay_delta, phase_offset, phase_offset_delta)
+            _timestamp = self.instrument.time_from_mcnt(
+                feng.last_delay.load_mcnt)
+            _status = Sensor.NOMINAL if feng.last_delay.last_load_success else Sensor.ERROR
+            sensor.set_value(value=_val, status=_status, timestamp=_timestamp)
+#            err_sensor.set_value(feng.last_delay.last_load_success)
+            load_time = self.instrument.time_from_mcnt(
+                feng.last_delay.load_mcnt)
+            self.logger.debug(
+                '{}: Delay update @mcnt {} ({}), {:.10e}, {:.10e}, {:.10e}, {:.10e}'.format(
+                    feng.name,
+                    load_mcnt,
+                    load_time,
+                    delay,
+                    delay_delta,
+                    phase_offset,
+                    phase_offset_delta))
 
     def sensors_feng_streams(self):
         """
@@ -587,25 +687,22 @@ class Corr2SensorManager(SensorManager):
             data_stream.FENGINE_CHANNELISED_DATA)
 
         assert len(streams) == 1
-
+        import numpy
         for stream in streams:
             strmnm = stream.name
 
-            # TODO - per engine, not just hardcoded
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
                 '{}-feng-out-bits-per-sample'.format(strmnm),
                 'F-engine output bits per sample.')
-            bits = int(self.instrument.quant_format.split('.')[0])
+            bits = int(numpy.floor(self.instrument.quant_format))
             sensor.set_value(bits)
 
-            # TODO - per engine, not just hardcoded
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-center-freq'.format(strmnm),
                 'The CBF center frequency of the digitised band.')
             sensor.set_value(self.instrument.analogue_bandwidth / 2.0)
 
-            # TODO - per engine, not just hardcoded
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in the output spectrum.')
@@ -618,7 +715,8 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(self.instrument.n_chans / n_xeng)
 
             sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-coarse-chans'.format(strmnm),
+                Corr2Sensor.integer,
+                '{}-coarse-chans'.format(strmnm),
                 'Number of channels in the first PFB in a cascaded-PFB design.')
             sensor.set_value(-1)
 
@@ -647,9 +745,16 @@ class Corr2SensorManager(SensorManager):
             self.sensor_create(sensor)
             sensor.set_value(self.instrument.pfb_group_delay)
 
+            sensor = self.do_sensor(
+                sensor_type=Corr2Sensor.integer, name='{}-payload-len'.format(strmnm),
+                description='The payload size of the F-engine data stream pkts')
+            sensor.set_value(self.instrument.f_stream_payload_len)
+
+
         self.sensors_feng_fft_shift()
-        self.sensors_feng_eq()
-        self.sensors_feng_delays()
+        for feng in self.instrument.fops.fengines:
+            self.sensors_feng_eq(feng)
+            self.sensors_feng_delays(feng)
 
     def sensors_beng_weights(self):
         """
@@ -661,13 +766,11 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
             beam = self.instrument.bops.beams[strmnm]
-            for feng in beam.source_streams:
-                pref = '{strm}-input{npt}'.format(strm=strmnm,
-                                                  npt=feng.input_number)
-                sensor = self.do_sensor(
-                    Corr2Sensor.float, '{}-weight'.format(pref),
-                    'The summing weight applied to this input on this beam.')
-                sensor.set_value(beam.source_streams[feng]['weight'])
+            sensor = self.do_sensor(
+                Corr2Sensor.string, '{strm}-weight'.format(strm=strmnm),
+                'The summing weights applied to the inputs of this beam.')
+            sensor.set_value(
+                str(self.instrument.bops.get_beam_weights(strmnm)))
 
     def sensors_beng_gains(self):
         """
@@ -683,31 +786,31 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.float, '{}-quantiser-gain'.format(strmnm),
                 'The non-complex post-summation quantiser gain applied to '
                 'this beam.')
-            sensor.set_value(beam.quant_gain)
+            sensor.set_value(self.instrument.bops.get_beam_quant_gain(strmnm))
 
-    def sensors_beng_passband(self):
-        """
-
-        :return:
-        """
-        streams = self.instrument.get_data_streams_by_type(
-            data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
-        for stream in streams:
-            strmnm = stream.name
-            beam = self.instrument.bops.beams[strmnm]
-            # beam_bw, beam_cf = beam.get_beam_bandwidth()
-            # sensor = self.do_sensor(
-            #     Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
-            #     'Bandwidth of selected beam passband.')
-            # sensor.set_value(beam_bw)
-            # sensor = self.do_sensor(
-            #     Corr2Sensor.float, '{}-center-freq'.format(strmnm),
-            #     'Center frequency of selected beam passband.')
-            # sensor.set_value(beam_cf)
-            sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
-                'Number of channels in selected beam passband.')
-            sensor.set_value(self.instrument.n_chans)
+#    def sensors_beng_passband(self):
+#        """
+#
+#        :return:
+#        """
+#        streams = self.instrument.get_data_streams_by_type(
+#            data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
+#        for stream in streams:
+#            strmnm = stream.name
+#            beam = self.instrument.bops.beams[strmnm]
+#            # beam_bw, beam_cf = beam.get_beam_bandwidth()
+#            # sensor = self.do_sensor(
+#            #     Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
+#            #     'Bandwidth of selected beam passband.')
+#            # sensor.set_value(beam_bw)
+#            # sensor = self.do_sensor(
+#            #     Corr2Sensor.float, '{}-center-freq'.format(strmnm),
+#            #     'Center frequency of selected beam passband.')
+#            # sensor.set_value(beam_cf)
+#            sensor = self.do_sensor(
+#                Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
+#                'Number of channels in selected beam passband.')
+#            sensor.set_value(self.instrument.n_chans)
 
     def sensors_beng_streams(self):
         """
@@ -737,23 +840,32 @@ class Corr2SensorManager(SensorManager):
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
-                'Number of spectrum chunks per heap.')
+                'Number of consecutive spectra in each heap.')
             sensor.set_value(self.instrument.xeng_accumulation_len)
 
             sensor = self.do_sensor(
                 Corr2Sensor.string, '{}-source-indices'.format(strmnm),
                 'The global input indices of the sources summed in this beam.')
-            tmp = [instrument_inputs.index(nm) for nm in beam.source_names]
-            tmp.sort()
-            sensor.set_value(tmp)
+            tmp = beam.source_indices
+            sensor.set_value(str(tmp))
 
-        self.sensors_beng_passband()
+            sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
+                'Number of channels in the stream.')
+            sensor.set_value(self.instrument.n_chans)
+
+            sensor = self.do_sensor(
+                sensor_type=Corr2Sensor.integer,
+                name='{}-payload-len'.format(strmnm),
+                description='The payload size of the B-engine data stream pkts')
+            sensor.set_value(self.instrument.b_stream_payload_len)
+
         self.sensors_beng_weights()
         self.sensors_beng_gains()
 
     def setup_mainloop_sensors(self):
         """
-        Set up compound sensors to be reported to CAM from the main 
+        Set up compound sensors to be reported to CAM from the main
             katcp servlet.
         :return:
         """
@@ -776,7 +888,8 @@ class Corr2SensorManager(SensorManager):
                 raise RuntimeError('IOLoop-containing katcp version required. '
                                    'Can go no further.')
         self.sensors_clear()
-        # sensors from list @ https://docs.google.com/spreadsheets/d/12AWtHXPXmkT5e_VT-H__zHjV8_Cba0Y7iMkRnj2qfS8/edit#gid=0
+        # sensors from list @
+        # https://docs.google.com/spreadsheets/d/12AWtHXPXmkT5e_VT-H__zHjV8_Cba0Y7iMkRnj2qfS8/edit#gid=0
         self.sensors_stream_destinations()
         self.sensors_gbe_interfacing()
         self.sensors_host_mapping()
@@ -835,37 +948,6 @@ class Corr2SensorManager(SensorManager):
 
         self.sensors_input_labels()
 
-        # # DEPRECATED AND MOVED TO FENGINE STREAMS
-        # sensor = Corr2Sensor.integer(
-        #     name='n-samples-between-spectra',
-        #     description='Number of samples between spectra.',
-        #     initial_status=Sensor.UNKNOWN, manager=self)
-        # self.sensor_create(sensor)
-        # sensor.set_value(self.instrument.n_chans * 2)
-
-        # DEPRECATED
-        # sensor = Corr2Sensor.integer(
-        #     name='f-per-fpga', description='The number of F-engines per host.',
-        #     initial_status=Sensor.UNKNOWN, manager=self)
-        # self.sensor_create(sensor)
-        # sensor.set_value(self.instrument.f_per_fpga)
-
-        # DEPRECATED
-        # sensor = Corr2Sensor.integer(
-        #     name='x-per-fpga', description='The number of X-engines per host.',
-        #     initial_status=Sensor.UNKNOWN, manager=self)
-        # self.sensor_create(sensor)
-        # sensor.set_value(self.instrument.x_per_fpga)
-
-        # DEPRECATED
-        # sensor = Corr2Sensor.integer(
-        #     name='b-per-fpga', description='The number of B-engines per host.',
-        #     initial_status=Sensor.UNKNOWN, manager=self)
-        # if self.instrument.found_beamformer:
-        #     sensor.set_value(self.instrument.bops.beng_per_host)
-        # else:
-        #     sensor.set_value(-1)
-
         sensor = Corr2Sensor.integer(
             name='n-fengs',
             description='The number of F-engines in the instrument.',
@@ -889,7 +971,7 @@ class Corr2SensorManager(SensorManager):
         self.sensor_create(sensor)
         if self.instrument.found_beamformer:
             n_bengs = len(self.instrument.bops.hosts) * \
-                      self.instrument.bops.beng_per_host
+                self.instrument.bops.beng_per_host
             sensor.set_value(n_bengs)
         else:
             sensor.set_value(-1)
@@ -919,8 +1001,8 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(-1)
 
         n_chans = self.instrument.n_chans
-        n_xeng = len(self.instrument.xhosts)
-        chans_per_x = n_chans / n_xeng
+        n_xhosts = len(self.instrument.xhosts)
+        chans_per_xhost = n_chans / n_xhosts
         for _x in self.instrument.xhosts:
             bid = self.instrument.xops.board_ids[_x.host]
             sensor = Corr2Sensor.string(
@@ -931,26 +1013,45 @@ class Corr2SensorManager(SensorManager):
                 manager=self)
             self.sensor_create(sensor)
             sensor.set_value('({start},{end})'.format(
-                start=bid*chans_per_x, end=(bid+1)*chans_per_x-1))
+                start=bid * chans_per_xhost, end=(bid + 1) * chans_per_xhost - 1))
 
-        # hosts = [('fengine', self.instrument.fhosts[0]),
-        #          ('xengine', self.instrument.xhosts[0])]
-        # for _htype, _h in hosts:
-        #     if 'git' in _h.rcs_info:
-        #         filectr = 0
-        #         for gitfile, gitparams in _h.rcs_info['git'].items():
-        #             namepref = 'git-' + _htype + '-' + str(filectr)
-        #             for param, value in gitparams.items():
-        #                 sensname = namepref + '-' + param
-        #                 sensname = sensname.replace('_', '-')
-        #                 sensor = Corr2Sensor.string(
-        #                     name=sensname,
-        #                     description='Git info: %s' % sensname,
-        #                     initial_status=Sensor.UNKNOWN,
-        #                     manager=self)
-        #                 self.sensor_create(sensor)
-        #                 sensor.set_value(str(value))
-        #             filectr += 1
+            sensor = Corr2Sensor.string(
+                name='beng-host{}-chan-range'.format(bid),
+                description='The range of frequency channels processed '
+                            'by beng board {brd}, inclusive.'.format(brd=bid),
+                initial_status=Sensor.UNKNOWN,
+                manager=self)
+            self.sensor_create(sensor)
+            sensor.set_value('({start},{end})'.format(
+                start=bid * chans_per_xhost, end=(bid + 1) * chans_per_xhost - 1))
+
+        #TODO: This is a bit nasty. Should detect what type of engines are in
+        #      the build, and get version info for those engines types only.
+        hosts = [('f', self.instrument.fhosts[0]),
+                 ('b', self.instrument.xhosts[0]),
+                 ('x', self.instrument.xhosts[0])]
+
+        for _htype, _h in hosts:
+            if 'git' in _h.rcs_info:
+                filectr = 0
+                for gitfile, gitparams in _h.rcs_info['git'].items():
+                    for param, value in gitparams.items():
+                        if param != "tag":
+                            sensname = 'git-' + _htype + '-' + str(filectr)
+                            sensor = Corr2Sensor.string(
+                                name=sensname, description='Git info.',
+                                initial_status=Sensor.UNKNOWN,
+                                manager=self)
+                            self.sensor_create(sensor)
+                            sensor.set_value(str(param) + ':' + str(value))
+                            filectr += 1
+
+            sensor = Corr2Sensor.string(
+                name="{}engine-bitstream".format(_htype), description="FPGA bitstream file.",
+                initial_status=Sensor.UNKNOWN,
+                manager=self)
+            self.sensor_create(sensor)
+            sensor.set_value(str(_h.bitstream))
 
         self.sensors_xeng_streams()
 
@@ -974,7 +1075,7 @@ def boolean_sensor_do(host, sensor, funclist):
     except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
         sensor.set(value=False)
     except Exception as e:
-        LOGGER.error('Error updating {} for {} - '
+        host.logger.error('Error updating {} for {} - '
                      '{}'.format(sensor.name, host.host, e.message))
         sensor.set(value=False)
 
