@@ -598,6 +598,22 @@ class XEngineOperations(object):
         reenable_timer = False
         if acc_len is not None:
             self.corr.accumulation_len = acc_len
+
+            #Calculates the gap size
+        clock_cycles_per_accumulation = self.corr.accumulation_len * 2 * self.corr.n_chans * self.corr.xeng_accumulation_len/8;#Divide by 8 to accomodate for the 8 samples in parallel 
+        vector_length_bytes = self.corr.n_antennas * (self.corr.n_antennas + 1)/2 * self.corr.n_chans * 8/ (self.corr.n_antennas*self.corr.x_per_fpga) * 4
+        packets_per_accumulation = vector_length_bytes/self.corr.x_stream_payload_len
+        gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation)
+
+        if(gapsize > 2**22-1):
+            gapsize = 2**22-1
+
+        THREADED_FPGA_OP(
+            self.hosts, timeout=10,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.gapsize.write(gap_size=gapsize),))
+
         THREADED_FPGA_OP(
             self.hosts, timeout=10,
             target_function=(
