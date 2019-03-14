@@ -17,72 +17,10 @@ LOGGER = logging.getLogger(__name__)
 
 host_offset_lookup = {}
 
-
-def read_all_counters(fpga_host):
-    """
-
-    :param fpga_host:
-    :return: a dictionary of all the counters in this host
-    """
-    if 'fft_shift' in fpga_host.registers.names():
-        reglist = sensors_fhost.FHOST_REGS
-    else:
-        reglist = sensors_xhost.XHOST_REGS
-    rs = {}
-    for reg in reglist:
-        if reg in fpga_host.registers.names():
-            d = fpga_host.registers[reg].read()['data']
-            rs[reg] = d
-    rvdict = {}
-    for reg in rs:
-        for key in rs[reg]:
-            _regrepr = reg.replace('_', '-')
-            _keyrepr = key.replace('_', '-')
-            sensname = '{host}-{reg}-{key}-change'.format(
-                host=host_offset_lookup[fpga_host.host],
-                reg=_regrepr, key=_keyrepr)
-            rvdict[sensname] = rs[reg][key]
-    return rvdict
-
-
-@gen.coroutine
-def _sensor_cb_system_counters(host, host_executor, manager):
-    """
-    Read all specified counters on this host.
-    :param host:
-    :return:
-    """
-    try:
-        result = yield host_executor.submit(read_all_counters, host)
-        for sens_name in result:
-            sensor = manager.sensor_get(sens_name)
-            oldval = sensor.previous_value
-            sens_value = result[sens_name] != oldval
-            sensor.set_value(sens_value)
-            sensor.previous_value = result[sens_name]
-    except (KatcpRequestError, KatcpRequestFail, KatcpRequestInvalid):
-        for sensor in manager.sensors.values():
-            if ((sensor.name.endswith('-change')) and
-                    (sensor.name.startswith(host_offset_lookup[host.host]))):
-                sensor.set(time.time(), Corr2Sensor.UNKNOWN, 0)
-                sensor.previous_value = 0
-    except Exception as e:
-        LOGGER.error('Error updating counter sensors for {} - '
-                     '{}'.format(host.host, e.message))
-        for sensor in manager.sensors.values():
-            if ((sensor.name.endswith('-change')) and
-                    (sensor.name.startswith(host_offset_lookup[host.host]))):
-                sensor.set(time.time(), Corr2Sensor.UNKNOWN, 0)
-                sensor.previous_value = 0
-    IOLoop.current().call_later(10, _sensor_cb_system_counters,
-                                host, host_executor, manager)
-
-
-def setup_sensors(sensor_manager, enable_counters=False):
+def setup_sensors(sensor_manager):
     """
     INSTRUMENT-STATE-INDEPENDENT sensors to be reported to CAM
     :param sensor_manager: A SensorManager instance
-    :param enable_counters: Enable the counter-value-changed sensors
     :return:
     """
     # make the mapping of hostnames to host offsets
@@ -140,19 +78,5 @@ def setup_sensors(sensor_manager, enable_counters=False):
                 'On which hostname is which functional host?',
                 Corr2Sensor.NOMINAL, '', None)
     sensor.set_value(str(host_offset_lookup))
-
-    # read all relevant counters
-    if enable_counters:
-        for _h in all_hosts:
-            executor = host_executors[_h.host]
-            host_ctrs = read_all_counters(_h)
-            for ctr in host_ctrs:
-                sensor = sens_man.do_sensor(
-                    Corr2Sensor.boolean, '%s' % ctr,
-                    'Counter on %s, True is changed since last read' % _h.host,
-                    Corr2Sensor.UNKNOWN, '', executor)
-                sensor.previous_value = 0
-            ioloop.add_callback(_sensor_cb_system_counters,
-                                _h, executor, sens_man)
 
 # end

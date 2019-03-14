@@ -14,9 +14,6 @@ from sensors import Corr2Sensor, boolean_sensor_do
 
 LOGGER = logging.getLogger(__name__)
 
-XHOST_REGS = ['status']
-#XHOST_REGS.extend(['status%i' % ctr for ctr in range(4)])
-
 host_offset_lookup = {}
 sensor_poll_time = 10
 
@@ -716,7 +713,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 '{}.device-status'.format(pref),
                 'X-engine core status')
             sensors.append(xeng_sensor)
-        ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, sensors, _x, startTime + timeStep*increment + + staggerTime*7)
+        ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, sensors, _x, startTime + timeStep*increment + staggerTime*7)
         increment+=1;
 
 

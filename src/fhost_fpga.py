@@ -196,20 +196,20 @@ class Fengine(object):
         control_reg = self.host.registers['%s_control' % name]
         control0_reg = self.host.registers['%s_control0' % name]
         ao=control0_reg._fields['arm'].offset
-        if mcnt is None:
-            self.logger.info('Loadtime not specified; loading immediately.')
-            lio=control0_reg._fields['load_immediate'].offset
-            control0_reg.write_int((1<<ao)+(1<<lio))
-            control0_reg.write_int(0)
-            return -1
-        else:
-            self.logger.debug('Requested load mcnt %i.'%mcnt)
-            load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
-            load_time_msw = int(mcnt/(2**32))
-            control_reg.write_int(load_time_lsw)
-            control0_reg.write_int((1<<ao)+(load_time_msw))
-            control0_reg.write_int((0<<ao)+(load_time_msw))
-            return mcnt
+        #if mcnt is None:
+        #    self.logger.info('Loadtime not specified; loading immediately.')
+        #    lio=control0_reg._fields['load_immediate'].offset
+        #    control0_reg.write_int((1<<ao)+(1<<lio))
+        #    control0_reg.write_int(0)
+        #    return -1
+        #else:
+        self.logger.debug('Requested load mcnt %i.'%mcnt)
+        load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
+        load_time_msw = int(mcnt/(2**32))
+        control_reg.write_int(load_time_lsw)
+        control0_reg.write_int((1<<ao)+(load_time_msw))
+        control0_reg.write_int((0<<ao)+(load_time_msw))
+        return mcnt
 
 ##TODO reimplement this function.
 ## Won't do for now; doesn't seem like anyone needs it. CAM/SDP use the sensors instead.
@@ -689,7 +689,20 @@ class FpgaFHost(FpgaHost):
         Returns the pfb counters on f-eng
         :return: dict
         """
-        return self.registers.pfb_status.read()['data']
+        rv=self.registers.pfb_status.read()['data']
+        rv['pol0_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr0.read()['data']['reg'])
+        rv['pol1_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr1.read()['data']['reg'])
+        return rv
+
+    def get_quant_status(self):
+        """
+        Returns the EQ/quantiser counters on f-eng
+        :return: dict
+        """
+        rv={}
+        rv['p0_quant_out_dBFS']=10*numpy.log10(self.registers.quant_pwr0.read()['data']['reg'])
+        rv['p1_quant_out_dBFS']=10*numpy.log10(self.registers.quant_pwr1.read()['data']['reg'])
+        return rv
 
     def get_adc_status(self):
         """Return the ADC power levels in dBFS for all polarisations on this host.
@@ -701,9 +714,9 @@ class FpgaFHost(FpgaHost):
             raw=self.registers['adc_dev%i'%feng.offset].read()['data']
             ret['p%i_min'%feng.offset]=raw['min']
             ret['p%i_max'%feng.offset]=raw['max']
-            ret['p%i_pwr'%feng.offset]=10*numpy.log10(self.registers['adc_pwr%i'%feng.offset].read()['data']['reg'])
+            ret['p%i_pwr_dBFS'%feng.offset]=10*numpy.log10(self.registers['adc_pwr%i'%feng.offset].read()['data']['reg'])
+            ret['p%i_dig_clip_cnt'%feng.offset]=self.registers['unpack_adc_clip%i'%feng.offset].read()['data']['sample_cnt']
         return ret
-            
 
     def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10):
         """
