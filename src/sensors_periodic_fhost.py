@@ -197,7 +197,6 @@ def _cb_feng_delays(sensors, f_host, time):
         set_failure()
     LOGGER.debug('_sensor_feng_delays ran on {}'.format(f_host.host))
 
-    #print 'c', f_host, time, '_cb_feng_delays'
     IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_delays, sensors, f_host,time+sensor_poll_time)
 
 
@@ -221,8 +220,8 @@ def _cb_feng_ct(sensors, f_host, time):
             results['hmc_overflow_err_cnt_pol0'] + common_errs
         pol1_errs = results['bank_err_cnt_pol1'] + \
             results['hmc_overflow_err_cnt_pol1'] + common_errs
-        sensors['pol0_err'].set(value=pol0_errs, errif='changed')
-        sensors['pol1_err'].set(value=pol1_errs, errif='changed')
+        sensors['pol0_err_cnt'].set(value=pol0_errs, errif='changed')
+        sensors['pol1_err_cnt'].set(value=pol1_errs, errif='changed')
         pol0_status = Corr2Sensor.NOMINAL if results['hmc_post_pol0'] else Corr2Sensor.ERROR
         pol1_status = Corr2Sensor.NOMINAL if results['hmc_post_pol1'] else Corr2Sensor.ERROR
         sensors['pol0_post'].set(
@@ -241,8 +240,8 @@ def _cb_feng_ct(sensors, f_host, time):
             value=results['hmc_crc_err_cnt_pol1'], status=Corr2Sensor.NOMINAL)
         sensors['reorder_missing_err_cnt'].set(
             value=results['reorder_missing_err_cnt'], errif='changed')
-        if ((sensors['pol0_err'].status() == Corr2Sensor.ERROR) or
-            (sensors['pol1_err'].status() == Corr2Sensor.ERROR) or
+        if ((sensors['pol0_err_cnt'].status() == Corr2Sensor.ERROR) or
+            (sensors['pol1_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol0_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol1_crc_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['pol0_post'].status() == Corr2Sensor.ERROR) or
@@ -264,7 +263,6 @@ def _cb_feng_ct(sensors, f_host, time):
             'Error updating CT sensors for {} - {}.'.format(
                 f_host.host, e.message))
     LOGGER.debug('_cb_feng_ct ran on {}'.format(f_host.host))
-    #print 'd', f_host, time,'_cb_feng_ct'
     IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_ct, sensors, f_host,time+sensor_poll_time)
 
 
@@ -296,7 +294,6 @@ def _cb_feng_pack(sensors, f_host, time):
         sensors['err_cnt'].set(value=-1, status=Corr2Sensor.FAILURE)
     LOGGER.debug('_cb_feng_pack ran on {}'.format(f_host.host))
 
-    #print 'e', f_host, time,'_cb_feng_pack'
     IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_pack, sensors, f_host, time+sensor_poll_time)
 
 @gen.coroutine
@@ -337,7 +334,7 @@ def _cb_feng_adcs(sensors, f_host,time):
             if (results[key] > -22) or (results[key] < -32):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('Input levels low. Adjust the DIG gains on {}'.format(f_host.fengines[int(key[1]].name))
+                LOGGER.warn('Input levels low. Adjust the DIG gains on {}'.format(f_host.fengines[int(key[1])].name))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -383,12 +380,12 @@ def _cb_feng_pfbs(sensors, f_host,time):
             if sensor.status() == Corr2Sensor.WARN:
                 device_status = Corr2Sensor.WARN
 
-        for key in ['pol0_pfb_out_dBFS','pol1_pfb_out_dBFS']
+        for key in ['pol0_pfb_out_dBFS','pol1_pfb_out_dBFS']:
             sensor = sensors[key]
-            if (results[key] > -20) or (results[key] < -30):
+            if (results[key] > -20) or (results[key] < -70):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('PFB output levels low. Adjust your FFT shift on {}.'.format(f_host.host))
+                LOGGER.warn('PFB output levels ({}) are poor. Adjust your FFT shift on {}.'.format(results[key],f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -406,7 +403,6 @@ def _cb_feng_pfbs(sensors, f_host,time):
                 f_host.host, e.message))
         set_failure()
     LOGGER.debug('_sensor_feng_pfbs ran on {}'.format(f_host.host))
-    #print 'f', f_host, time, '_cb_feng_pfbs'
     IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_pfbs, sensors, f_host,time+sensor_poll_time)
 
 @gen.coroutine
@@ -426,12 +422,12 @@ def _cb_feng_quant(sensors, f_host,time):
         results = yield executor.submit(f_host.get_quant_status)
         device_status = Corr2Sensor.NOMINAL
 
-        for key in ['p0_quant_out_dBFS','p1_quant_out_dBFS']
+        for key in ['p0_quant_out_dBFS','p1_quant_out_dBFS']:
             sensor = sensors[key]
             if (results[key] > -10) or (results[key] < -30):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('Quantiser output levels low. Increase your EQ gain on {}.'.format(f_host.host))
+                LOGGER.warn('Quantiser output levels ({}) are poor. If your FFT shift is sane, try increasing your EQ gain on {}.'.format(results[key],f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -527,6 +523,7 @@ def _cb_fhost_check_network(sensors, f_host, time):
         f_host,
         time+sensor_poll_time)
 
+@gen.coroutine
 def _cb_feng_sync(sensors, f_host,time):
     """
     F-engine synchroniser
@@ -538,15 +535,16 @@ def _cb_feng_sync(sensors, f_host,time):
             sensor.set(status=Corr2Sensor.FAILURE,
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
-    executor = sensors['device-status'].executor
+    executor = sensors['device_status'].executor
     device_status = Corr2Sensor.NOMINAL
     try:
+        sensors['device_status'].set(value='ok',status=Corr2Sensor.NOMINAL)
         results = yield executor.submit(f_host.get_sync_status)
 
         if results['synced'] and not results['board_in_fault']:
             sensors['syncd'].set(value=True,status=Corr2Sensor.NOMINAL)
             sensors['device_status'].set(value='ok',status=Corr2Sensor.NOMINAL)
-        else
+        else:
             sensors['syncd'].set(value=False,status=Corr2Sensor.FAILURE)
             sensors['device_status'].set(value='fail',status=Corr2Sensor.FAILURE)
 
@@ -602,7 +600,6 @@ def _cb_feng_rx_spead(sensors, f_host,time):
     LOGGER.debug(
         '_sensor_feng_rx_spead ran on {}: {}'.format(
             f_host.host, results))
-    #print 'h', f_host, time, '_cb_feng_rx_spead'
     IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_rx_spead, sensors, f_host, time+sensor_poll_time)
 
 
@@ -629,7 +626,6 @@ def _cb_feng_rx_reorder(sensors, f_host, time):
             'relock_err_cnt',
                 'overflow_err_cnt']:
             sensor = sensors[key]
-            #print('Processing {},{}: {}'.format(key,sensor.name,results[key]))
             sensor.set(value=results[key], errif='changed')
         for key in [
             'timestep_err_cnt',
@@ -653,7 +649,6 @@ def _cb_feng_rx_reorder(sensors, f_host, time):
 
     LOGGER.debug('_sensor_feng_rx_reorder ran on {}'.format(f_host.host))
 
-    #print 'i', f_host, time,'_cb_feng_rx_reorder'
     IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_rx_reorder, sensors, f_host, time+sensor_poll_time)
 
 
@@ -675,10 +670,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         host_offset_lookup = host_offset_dict.copy()
 
     startTime = tornado.ioloop.time.time() + sensor_poll_time
-    staggerTime = sensor_poll_time/float(12.0);#sensor_poll_time/number_of_loops
-    #print "StartTime:",startTime
-    #print "StaggerTime:",staggerTime,sensor_poll_time
-    #print "Step",timeStep 
+    staggerTime = sensor_poll_time/float(13.0);#sensor_poll_time/number_of_loops
 
     # F-engine received timestamps ok and per-host received timestamps
     sensor_ok = sens_man.do_sensor(
@@ -736,7 +728,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         ioloop.add_callback(_cb_fhost_check_network, network_sensors, _f, startTime + timeStep*increment + staggerTime*1)
 
         # SPEAD counters
-        sensors = {
+        spead_rx_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.spead-rx.device-status'.format(fhost),
                 'F-engine is not encountering SPEAD errors.', executor=executor),
@@ -774,10 +766,10 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 'F-engine RX SPEAD packet timestamp has non-zero lsbs.',
                 executor=executor),
         }
-        ioloop.add_callback(_cb_feng_rx_spead, sensors, _f, startTime + timeStep*increment + staggerTime*2)
+        ioloop.add_callback(_cb_feng_rx_spead, spead_rx_sensors, _f, startTime + timeStep*increment + staggerTime*2)
 
         # Rx reorder counters
-        sensors = {
+        rx_reorder_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.network-reorder.device-status'.format(fhost),
                 'F-engine is receiving a good, clean digitiser data stream.',
@@ -803,10 +795,10 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 'F-engine error reordering packets: input buffer overflow.',
                 executor=executor),
         }
-        ioloop.add_callback(_cb_feng_rx_reorder, sensors, _f, startTime + timeStep*increment + staggerTime*3)
+        ioloop.add_callback(_cb_feng_rx_reorder, rx_reorder_sensors, _f, startTime + timeStep*increment + staggerTime*3)
 
         # CD functionality
-        sensors = {
+        cd_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.cd.device-status'.format(fhost),
                 'F-engine coarse delays ok.', executor=executor),
@@ -840,32 +832,32 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.cd.reord-missing1-err-cnt'.format(fhost),
                 'F-engine coarse delay HMC reorder missing samples error count, pol1.', executor=executor),
         }
-        sensors['delay0_updating'].tempstore = 0
-        sensors['delay1_updating'].tempstore = 0
-        ioloop.add_callback(_cb_feng_delays, sensors, _f, startTime + timeStep*increment + staggerTime*4)
+        cd_sensors['delay0_updating'].tempstore = 0
+        cd_sensors['delay1_updating'].tempstore = 0
+        ioloop.add_callback(_cb_feng_delays, cd_sensors, _f, startTime + timeStep*increment + staggerTime*4)
 
         # DIG ADC counters
-        sensors = {
+        adc_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.dig.device-status'.format(fhost),
                 'F-engine DIG ADC levels ok.', executor=executor),
             'p0_max': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.p0-max'.format(fhost),
-                'F-engine DIG ADC peak value, pol0, over ~70ms period.', executor=executor),
+                Corr2Sensor.float, '{}.dig.p0-max'.format(fhost),
+                'F-engine DIG ADC peak value, pol0, over ~70ms period. range -1 to +1.', executor=executor),
             'p1_max': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.p1-max'.format(fhost),
-                'F-engine DIG ADC peak value, pol1, over ~70ms period.', executor=executor),
+                Corr2Sensor.float, '{}.dig.p1-max'.format(fhost),
+                'F-engine DIG ADC peak value, pol1, over ~70ms period. range -1 to +1.', executor=executor),
             'p0_min': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.p0-min'.format(fhost),
-                'F-engine DIG ADC minimum value, pol0, over ~70ms period.', executor=executor),
+                Corr2Sensor.float, '{}.dig.p0-min'.format(fhost),
+                'F-engine DIG ADC minimum value, pol0, over ~70ms period. range -1 to +1.', executor=executor),
             'p1_min': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.p1-min'.format(fhost),
-                'F-engine DIG ADC minimum value, pol1, over ~70ms period.', executor=executor),
+                Corr2Sensor.float, '{}.dig.p1-min'.format(fhost),
+                'F-engine DIG ADC minimum value, pol1, over ~70ms period. range: -1 to +1.', executor=executor),
             'p0_pwr_dBFS': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.p0-rms-dbfs'.format(fhost),
+                Corr2Sensor.float, '{}.dig.p0-rms-dbfs'.format(fhost),
                 'F-engine DIG ADC RMS average power, dBFS, pol0, over ~70ms period.', executor=executor),
             'p1_pwr_dBFS': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.p1-rms-dbfs'.format(fhost),
+                Corr2Sensor.float, '{}.dig.p1-rms-dbfs'.format(fhost),
                 'F-engine DIG ADC RMS average power, dBFS, pol1, over ~70ms period.', executor=executor),
             'p0_dig_clip_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.dig.p0-dig-clip-cnt'.format(fhost),
@@ -874,10 +866,10 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.dig.p1-dig-clip-cnt'.format(fhost),
                 'F-engine DIG reported overrange counter.', executor=executor),
         }
-        ioloop.add_callback(_cb_feng_adcs, sensors, _f, startTime + timeStep*increment + staggerTime*5)
+        ioloop.add_callback(_cb_feng_adcs, adc_sensors, _f, startTime + timeStep*increment + staggerTime*5)
 
         # PFB counters
-        sensors = {
+        pfb_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.pfb.device-status'.format(fhost),
                 'F-engine PFB ok.', executor=executor),
@@ -888,19 +880,19 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.pfb.or1-err-cnt'.format(fhost),
                 'F-engine PFB over-range counter', executor=executor),
             'pol0_pfb_out_dBFS': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.pfb.pol0-pfb-out-rms-pwr-dbfs'.format(fhost),
+                Corr2Sensor.float, '{}.pfb.pol0-pfb-out-rms-pwr-dbfs'.format(fhost),
                 'F-engine PFB output RMS power in dBFS, pol0.', executor=executor),
             'pol1_pfb_out_dBFS': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.pfb.pol1-pfb-out-rms-pwr-dbfs'.format(fhost),
+                Corr2Sensor.float, '{}.pfb.pol1-pfb-out-rms-pwr-dbfs'.format(fhost),
                 'F-engine PFB output RMS power in dBFS, pol1.', executor=executor),
             'sync_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.pfb.sync-cnt'.format(fhost),
                 'F-engine PFB resync counter', executor=executor),
         }
-        ioloop.add_callback(_cb_feng_pfbs, sensors, _f, startTime + timeStep*increment + staggerTime*6)
+        ioloop.add_callback(_cb_feng_pfbs, pfb_sensors, _f, startTime + timeStep*increment + staggerTime*6)
 
         # CT functionality
-        sensors = {
+        ct_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.ct.device-status'.format(fhost),
                 'F-engine Corner-Turner ok.', executor=executor),
@@ -910,12 +902,12 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             'pol1_post': sens_man.do_sensor(
                 Corr2Sensor.boolean, '{}.ct.post1'.format(fhost),
                 'F-engine corner-turner init&POST, pol1', executor=executor),
-            'pol0_err': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}.ct.err0'.format(fhost),
-                'F-engine corner-turner error occurred, pol0 (latching)', executor=executor),
-            'pol1_err': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}.ct.err1'.format(fhost),
-                'F-engine corner-turner error occurred, pol1 (latching)', executor=executor),
+            'pol0_err_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.ct.err-cnt0'.format(fhost),
+                'F-engine corner-turner error counter, pol0', executor=executor),
+            'pol1_err_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.ct.err-cnt1'.format(fhost),
+                'F-engine corner-turner error counter, pol1', executor=executor),
             'pol0_crc_err_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.ct.crc0-err-cnt'.format(fhost),
                 'F-engine corner-turner HMC CRC error count, pol0.', executor=executor),
@@ -926,10 +918,10 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.ct.reord-missing-err-cnt'.format(fhost),
                 'F-engine corner-turner HMC reorder missing word count.', executor=executor),
         }
-        ioloop.add_callback(_cb_feng_ct, sensors, _f, startTime + timeStep*increment + staggerTime*7)
+        ioloop.add_callback(_cb_feng_ct, ct_sensors, _f, startTime + timeStep*increment + staggerTime*7)
 
         # Pack block
-        sensors = {
+        pack_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.spead-tx.device-status'.format(fhost),
                 'F-engine packetiser (TX) is ok.', executor=executor),
@@ -937,26 +929,26 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.spead-tx.err-cnt'.format(fhost),
                 'F-engine pack (TX) error count', executor=executor)
         }
-        ioloop.add_callback(_cb_feng_pack, sensors, _f, startTime + timeStep*increment + staggerTime*8)
+        ioloop.add_callback(_cb_feng_pack, pack_sensors, _f, startTime + timeStep*increment + staggerTime*8)
 
         
         #EQ quant/gain level sensors
-        sensors = {
+        quant_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.quant.device-status'.format(fhost),
                 'F-engine Quantiser ok.', executor=executor),
             'p0_quant_out_dBFS': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.quant.pol0-quant-out-rms-pwr-dbfs'.format(fhost),
+                Corr2Sensor.float, '{}.quant.pol0-quant-out-rms-pwr-dbfs'.format(fhost),
                 'F-engine Quantiser output RMS power in dBFS, pol0.', executor=executor),
             'p1_quant_out_dBFS': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.quant.pol1-quant-out-rms-pwr-dbfs'.format(fhost),
+                Corr2Sensor.float, '{}.quant.pol1-quant-out-rms-pwr-dbfs'.format(fhost),
                 'F-engine Quantiser output RMS power in dBFS, pol1.', executor=executor),
         }
-        ioloop.add_callback(_cb_feng_quant, sensors, _f, startTime + timeStep*increment + staggerTime*9)
+        ioloop.add_callback(_cb_feng_quant, quant_sensors, _f, startTime + timeStep*increment + staggerTime*9)
 
 
         #Sync status
-        sensors = {
+        sync_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.sync.device-status'.format(fhost),
                 'F-engine synchroniser ok.', executor=executor),
@@ -985,15 +977,14 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.sync.timeout-resync-cnt'.format(fhost),
                 'Count of the number of times the synchronisation process timed-out.', executor=executor),
         }
-        ioloop.add_callback(_cb_feng_quant, sensors, _f, startTime + timeStep*increment + staggerTime*10)
+        ioloop.add_callback(_cb_feng_sync, sync_sensors, _f, startTime + timeStep*increment + staggerTime*10)
 
 
         # Overall LRU ok
-        sensor = sens_man.do_sensor(
+        lru_sensor = sens_man.do_sensor(
             Corr2Sensor.device_status, '{}.device-status'.format(fhost),
             'F-engine %s LRU ok' % _f.host, executor=executor)
-        ioloop.add_callback(_cb_fhost_lru, sens_man, sensor, _f, startTime + timeStep*increment + staggerTime*11)
+        ioloop.add_callback(_cb_fhost_lru, sens_man, lru_sensor, _f, startTime + timeStep*increment + staggerTime*11)
         increment+=1
-
 
 # end

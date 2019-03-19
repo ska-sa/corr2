@@ -689,6 +689,7 @@ class FpgaFHost(FpgaHost):
         Returns the pfb counters on f-eng
         :return: dict
         """
+        import numpy
         rv=self.registers.pfb_status.read()['data']
         rv['pol0_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr0.read()['data']['reg'])
         rv['pol1_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr1.read()['data']['reg'])
@@ -699,6 +700,7 @@ class FpgaFHost(FpgaHost):
         Returns the EQ/quantiser counters on f-eng
         :return: dict
         """
+        import numpy
         rv={}
         rv['p0_quant_out_dBFS']=10*numpy.log10(self.registers.quant_pwr0.read()['data']['reg'])
         rv['p1_quant_out_dBFS']=10*numpy.log10(self.registers.quant_pwr1.read()['data']['reg'])
