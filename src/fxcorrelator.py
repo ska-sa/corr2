@@ -279,6 +279,7 @@ class FxCorrelator(Instrument):
         #Forcefully resync the Fengines once the DIG data is flowing reliably:
         self.fops.sys_reset()
         time.sleep(5)
+        self.fops.auto_rst_enable()
         self.fops.sys_reset()
 
         if self.synchronisation_epoch == -1:
