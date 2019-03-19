@@ -22,7 +22,7 @@ class XengineStream(data_stream.SPEADStream):
     """
     An x-engine SPEAD stream
     """
-    def __init__(self, name, destination, xops, *args, **kwargs):
+    def __init__(self, name, destination, xops, max_pkt_size, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -31,7 +31,7 @@ class XengineStream(data_stream.SPEADStream):
         """
         self.xops = xops
         super(XengineStream, self).__init__(name,
-            data_stream.XENGINE_CROSS_PRODUCTS, destination,
+            data_stream.XENGINE_CROSS_PRODUCTS, destination, max_pkt_size=max_pkt_size,
             instrument_descriptor=self.xops.corr.descriptor,
             *args, **kwargs)
 
@@ -266,7 +266,9 @@ class XEngineOperations(object):
                 'The x-engine\'s given address range (%s) must be one, a '
                 'starting base.' % output_address)
         output_address.ip_range = num_xeng
+        max_pkt_size = self.corr.x_stream_payload_len
         xeng_stream = XengineStream(output_name, output_address, self,
+                                    max_pkt_size=max_pkt_size,
                                     *args, **kwargs)
         self.data_stream = xeng_stream
         self.data_stream.set_source(self.corr.fops.data_stream.destination)
@@ -335,12 +337,16 @@ class XEngineOperations(object):
         """
         rv=THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                   target_function='get_vacc_status')
-
+        acc_len=self.get_acc_len()
         sync=True
         timestamp=rv[rv.keys()[0]][0]['timestamp']
+        #check that they're all in sync; 
+        #allow for reading registers at acc boundary:
         for hostname in rv:
             for vacc in rv[hostname]:
-                if vacc['timestamp'] != timestamp:
+                if ((vacc['timestamp'] != timestamp) and 
+                    (vacc['timestamp'] != (timestamp+acc_len)) and
+                    (vacc['timestamp'] != (timestamp-acc_len))):
                     sync=False
         rv['synchronised']=sync
         return rv
@@ -452,7 +458,10 @@ class XEngineOperations(object):
             for i,status_new in enumerate(vacc_status_new[host.host]): #iterate over vaccs on host
                 if (status_new[check] != vacc_status_initial[host.host][i][check] + 1):
                     errmsg = "xeng_vacc_sync: %s vacc %i's %s did not incrment."%(host.host,i,check)
-                    self.logger.error(errmsg)
+                    if check == 'arm_cnt':
+                        self.logger.warn(errmsg)
+                    else:
+                        self.logger.error(errmsg)
                     rv=False
         if rv: self.logger.info('VACC %s counters incremented successfully.'%check)
         return rv
@@ -593,6 +602,22 @@ class XEngineOperations(object):
         reenable_timer = False
         if acc_len is not None:
             self.corr.accumulation_len = acc_len
+
+            #Calculates the gap size
+        clock_cycles_per_accumulation = self.corr.accumulation_len * 2 * self.corr.n_chans * self.corr.xeng_accumulation_len/8;#Divide by 8 to accomodate for the 8 samples in parallel 
+        vector_length_bytes = self.corr.n_antennas * (self.corr.n_antennas + 1)/2 * self.corr.n_chans * 8/ (self.corr.n_antennas*self.corr.x_per_fpga) * 4
+        packets_per_accumulation = vector_length_bytes/self.corr.x_stream_payload_len
+        gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation)
+
+        if(gapsize > 2**22-1):
+            gapsize = 2**22-1
+
+        THREADED_FPGA_OP(
+            self.hosts, timeout=10,
+            target_function=(
+                lambda fpga_:
+                fpga_.registers.gapsize.write(gap_size=gapsize),))
+
         THREADED_FPGA_OP(
             self.hosts, timeout=10,
             target_function=(

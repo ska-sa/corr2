@@ -11,7 +11,7 @@ class DigitiserStream(SPEADStream):
         self.input_number = input_number
         self.correlator = correlator
         super(DigitiserStream, self).__init__(name,
-            DIGITISER_ADC_SAMPLES, destination,
+            DIGITISER_ADC_SAMPLES, destination, max_pkt_size=4096,
             instrument_descriptor=correlator.descriptor,
             *args, **kwargs)
 
@@ -61,7 +61,7 @@ class DigitiserStream(SPEADStream):
         #     description='Raw 10-bit samples from the Meerkat ADC.',
         #     shape=(512,), dtype='i10')
 
-    def set_destination(self, new_dest):
+    def set_destination(self, new_dest, max_pkt_size):
         """
         Set the destination on this digitiser stream.
         :param new_dest: The new destinaton to set on this device.

@@ -114,27 +114,38 @@ class Fengine(object):
     def log_an_error(self,value):
         self.logger.error("Error logged with value: {}".format(value))
 
-    def get_quant_snapshot(self):
+    def get_quant_snapshot(self, channel_select=-1):
         """
         Read the post-quantisation snapshot for this fengine.
         snapshot data.
-        :return:
+        :param channel_select: If a value is passed here, a time-series of a single channel is returned, if not, a spectrum is returned.
+        :return: a numpy array of complex values
         """
-        snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
-        #calculate number of snapshot reads required:
-        n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
-        compl = []
         import numpy
-        for read_n in range(int(numpy.ceil(n_reads))):
-            offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
-            sdata = snapshot.read(offset=offset)['data']
-            for ctr in range(0, len(sdata['real0'])):
-                compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
-                compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
-                compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
-                compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
-        return compl[0:self.host.n_chans]
-
+        if channel_select != -1:
+            if channel_select < 0 or channel_select >= self.host.n_chans:
+                raise ValueError("channel_select should be between 0 and {}, but received {}!".format(self.host.n_chans, channel_select))
+            chan_group = int(channel_select) / 4
+            which_chan = int(channel_select) % 4
+            self.host.registers.quant_snap_ctrl.write(single_channel=True, channel_select=chan_group)
+            snapshot = self.host.snapshots['snap_quant%i_ss' % self.offset]
+            sdata = snapshot.read()['data']
+            compl = numpy.vectorize(complex)(sdata['real{}'.format(which_chan)], sdata['imag{}'.format(which_chan)])
+            return compl
+        else:
+            snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
+            #calculate number of snapshot reads required:
+            n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
+            compl = []
+            for read_n in range(int(numpy.ceil(n_reads))):
+                offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
+                sdata = snapshot.read(offset=offset)['data']
+                for ctr in range(0, len(sdata['real0'])):
+                    compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))
+                    compl.append(complex(sdata['real1'][ctr], sdata['imag1'][ctr]))
+                    compl.append(complex(sdata['real2'][ctr], sdata['imag2'][ctr]))
+                    compl.append(complex(sdata['real3'][ctr], sdata['imag3'][ctr]))
+            return compl[0:self.host.n_chans]
 
     def delay_set(self, delay_obj):
         """
@@ -185,20 +196,20 @@ class Fengine(object):
         control_reg = self.host.registers['%s_control' % name]
         control0_reg = self.host.registers['%s_control0' % name]
         ao=control0_reg._fields['arm'].offset
-        if mcnt is None:
-            self.logger.info('Loadtime not specified; loading immediately.')
-            lio=control0_reg._fields['load_immediate'].offset
-            control0_reg.write_int((1<<ao)+(1<<lio))
-            control0_reg.write_int(0)
-            return -1
-        else:
-            self.logger.debug('Requested load mcnt %i.'%mcnt)
-            load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
-            load_time_msw = int(mcnt/(2**32))
-            control_reg.write_int(load_time_lsw)
-            control0_reg.write_int((1<<ao)+(load_time_msw))
-            control0_reg.write_int((0<<ao)+(load_time_msw))
-            return mcnt
+        #if mcnt is None:
+        #    self.logger.info('Loadtime not specified; loading immediately.')
+        #    lio=control0_reg._fields['load_immediate'].offset
+        #    control0_reg.write_int((1<<ao)+(1<<lio))
+        #    control0_reg.write_int(0)
+        #    return -1
+        #else:
+        self.logger.debug('Requested load mcnt %i.'%mcnt)
+        load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
+        load_time_msw = int(mcnt/(2**32))
+        control_reg.write_int(load_time_lsw)
+        control0_reg.write_int((1<<ao)+(load_time_msw))
+        control0_reg.write_int((0<<ao)+(load_time_msw))
+        return mcnt
 
 ##TODO reimplement this function.
 ## Won't do for now; doesn't seem like anyone needs it. CAM/SDP use the sensors instead.
@@ -408,12 +419,26 @@ class Fengine(object):
                 coeffs = (self.host.n_chans * 2) * [0]
                 coeffs[0::2] = [eq_poly.real for coeff in range(self.host.n_chans)]
                 coeffs[1::2] = [eq_poly.imag for coeff in range(self.host.n_chans)]
+
+        #Ensure coeffs values can be stored in 16 bits
+        saturated_channels_count=0
+        for i in range(len(coeffs)):
+            if(coeffs[i] > 32767):
+                coeffs[i]=32767
+                saturated_channels_count+=1
+            elif(coeffs[i] < -32767):
+                coeffs[i] =-32767
+                saturated_channels_count+=1
+
         creal = coeffs[0::2]
         cimag = coeffs[1::2]
         ss = struct.pack('>%ih' % (self.host.n_chans * 2), *coeffs)
         self.host.write(self.eq_bram_name, ss, 0)
         self.last_eq=[complex(creal[i],cimag[i]) for i in range(len(creal))]
-        self.logger.info('Updated EQ: %s...'%self.last_eq[0:10])
+        if(saturated_channels_count != 0):
+            self.logger.warn('EQ values adjusted. %i channels saturated.'%saturated_channels_count)
+        self.logger.info('EQ values: %s...'%self.last_eq[0:10])
+
         return self.last_eq
 
     def __repr__(self):
@@ -624,13 +649,13 @@ class FpgaFHost(FpgaHost):
         """
         return self.registers.fft_shift.read()['data']['fft_shift']
 
-    def get_quant_snapshots(self):
+    def get_quant_snapshots(self, channel_select=-1):
         """
         Get the quant snapshots for all the inputs on this host.
         :return:
         """
         return {
-            feng.name: feng.get_quant_snapshot()
+            feng.name: feng.get_quant_snapshot(channel_select=channel_select)
             for feng in self.fengines
         }
 
@@ -664,7 +689,36 @@ class FpgaFHost(FpgaHost):
         Returns the pfb counters on f-eng
         :return: dict
         """
-        return self.registers.pfb_status.read()['data']
+        import numpy
+        rv=self.registers.pfb_status.read()['data']
+        rv['pol0_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr0.read()['data']['reg'])
+        rv['pol1_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr1.read()['data']['reg'])
+        return rv
+
+    def get_quant_status(self):
+        """
+        Returns the EQ/quantiser counters on f-eng
+        :return: dict
+        """
+        import numpy
+        rv={}
+        rv['p0_quant_out_dBFS']=10*numpy.log10(self.registers.quant_pwr0.read()['data']['reg'])
+        rv['p1_quant_out_dBFS']=10*numpy.log10(self.registers.quant_pwr1.read()['data']['reg'])
+        return rv
+
+    def get_adc_status(self):
+        """Return the ADC power levels in dBFS for all polarisations on this host.
+        :return: dict
+        """
+        import numpy
+        ret={}
+        for feng in self.fengines:
+            raw=self.registers['adc_dev%i'%feng.offset].read()['data']
+            ret['p%i_min'%feng.offset]=raw['min']
+            ret['p%i_max'%feng.offset]=raw['max']
+            ret['p%i_pwr_dBFS'%feng.offset]=10*numpy.log10(self.registers['adc_pwr%i'%feng.offset].read()['data']['reg'])
+            ret['p%i_dig_clip_cnt'%feng.offset]=self.registers['unpack_adc_clip%i'%feng.offset].read()['data']['sample_cnt']
+        return ret
 
     def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10):
         """

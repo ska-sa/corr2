@@ -590,6 +590,12 @@ class Corr2SensorManager(SensorManager):
             n_xeng = len(self.instrument.xhosts) * self.instrument.x_per_fpga
             sensor.set_value(self.instrument.n_chans / n_xeng)
 
+            sensor = self.do_sensor(
+                sensor_type=Corr2Sensor.integer,
+                name='{}-payload-len'.format(strmnm),
+                description='The payload size of the X-engine data stream pkts')
+            sensor.set_value(self.instrument.x_stream_payload_len)
+
         self.sensors_xeng_acc_time()
         self.sensors_baseline_ordering()
 
@@ -739,6 +745,12 @@ class Corr2SensorManager(SensorManager):
             self.sensor_create(sensor)
             sensor.set_value(self.instrument.pfb_group_delay)
 
+            sensor = self.do_sensor(
+                sensor_type=Corr2Sensor.integer, name='{}-payload-len'.format(strmnm),
+                description='The payload size of the F-engine data stream pkts')
+            sensor.set_value(self.instrument.f_stream_payload_len)
+
+
         self.sensors_feng_fft_shift()
         for feng in self.instrument.fops.fengines:
             self.sensors_feng_eq(feng)
@@ -841,6 +853,12 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
                 'Number of channels in the stream.')
             sensor.set_value(self.instrument.n_chans)
+
+            sensor = self.do_sensor(
+                sensor_type=Corr2Sensor.integer,
+                name='{}-payload-len'.format(strmnm),
+                description='The payload size of the B-engine data stream pkts')
+            sensor.set_value(self.instrument.b_stream_payload_len)
 
         self.sensors_beng_weights()
         self.sensors_beng_gains()

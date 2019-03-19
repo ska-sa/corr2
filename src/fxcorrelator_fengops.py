@@ -27,7 +27,7 @@ class FengineStream(SPEADStream):
     An f-engine SPEAD stream
     """
 
-    def __init__(self, name, destination, fops, timeout=5, *args, **kwargs):
+    def __init__(self, name, destination, fops, max_pkt_size, timeout=5, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -37,7 +37,7 @@ class FengineStream(SPEADStream):
         self.fops = fops
         self.timeout = timeout
         super(FengineStream, self).__init__(
-            name, FENGINE_CHANNELISED_DATA, destination,
+            name, FENGINE_CHANNELISED_DATA, destination, max_pkt_size=max_pkt_size,
             instrument_descriptor=self.fops.corr.descriptor, **kwargs)
 
     def descriptors_setup(self):
@@ -306,7 +306,8 @@ class FEngineOperations(object):
                 'a starting base address.'.format(output_address))
         num_xeng = len(self.corr.xhosts) * self.corr.x_per_fpga
         output_address.ip_range = num_xeng
-        self.data_stream = FengineStream(output_name, output_address, self, *args, **kwargs)
+        max_pkt_size = self.corr.f_stream_payload_len
+        self.data_stream = FengineStream(output_name, output_address, self, max_pkt_size, *args, **kwargs)
         self.data_stream.set_source([feng.input.destination for feng in self.fengines])
         self.corr.add_data_stream(self.data_stream)
 
@@ -443,18 +444,18 @@ class FEngineOperations(object):
         :param phase_delta: phase rate of change in radians/second.
         :return: True/False
         """
-        if loadtime is None:
-            loadtime = time.time() + self.corr.min_load_time
         sample_rate_hz = self.corr.get_scale_factor()
         loadmcnt = self._delays_check_loadtime(loadtime)
-        delay = delayops.prepare_delay_vals(((delay, delay_delta), (phase, phase_delta)),
-            sample_rate_hz)
-        delay.load_mcnt = loadmcnt
-        feng = self.get_fengine(input_name)
-        rv = feng.delay_set(delay)
-        if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_feng_delays(feng)
-        return rv
+        if not (loadmcnt > 0):
+            self.logger.error("Dropping delay request.")
+        else:
+            delay = delayops.prepare_delay_vals(((delay, delay_delta), (phase, phase_delta)),
+                sample_rate_hz)
+            delay.load_mcnt = loadmcnt
+            feng = self.get_fengine(input_name)
+            feng.delay_set(delay)
+            if self.corr.sensor_manager:
+                self.corr.sensor_manager.sensors_feng_delays(feng)
 
     def delay_set_all(self, loadtime, delay_list):
         """
@@ -465,36 +466,27 @@ class FEngineOperations(object):
                              delay tuples ((delay,rate),(phase,rate))
         :return: True if all success, False otherwise.
         """
-        if loadtime > 0:
-            loadmcnt = self._delays_check_loadtime(loadtime)
-        else:
-            loadmcnt = -1
+        loadmcnt = self._delays_check_loadtime(loadtime)
         self.logger.debug("Received delay model update for {} (mcnt {}) at {}: {}.".format(loadtime,
-            loadmcnt, time.time(),delay_list.__str__()))
-        sample_rate_hz = self.corr.get_scale_factor()
-        delays = delayops.process_list(delay_list, sample_rate_hz)
-        if len(delays) != len(self.fengines):
-            raise ValueError('Have {} F-engines, received {} delay coefficient sets.'.format(
-                len(self.fengines), len(delays)))
-        for delay in delays:
-            delay.load_mcnt = loadmcnt
-
-        rv = self.threaded_feng_operation(timeout=self.timeout,
-            target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
-
-        if len(rv) != len(self.fengines):
-            rv = False
-            self.logger.error("Only got {} delay responses.".format(len(rv)))
+                loadmcnt, time.time(),delay_list.__str__()))
+        if not (loadmcnt > 0):
+            self.logger.error("Dropping delay request.")
         else:
-            for feng, stat in rv.items():
-                if not stat:
-                    rv = False
-
-        if self.corr.sensor_manager:
-            for feng in self.fengines:
-                self.corr.sensor_manager.sensors_feng_delays(feng)
-
-        return rv
+            sample_rate_hz = self.corr.get_scale_factor()
+            delays = delayops.process_list(delay_list, sample_rate_hz)
+            if len(delays) != len(self.fengines):
+                raise ValueError('Have {} F-engines, received {} delay coefficient sets.'.format(
+                    len(self.fengines), len(delays)))
+            for delay in delays:
+                delay.load_mcnt = loadmcnt
+            rv = self.threaded_feng_operation(timeout=self.timeout,
+                target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
+            if len(rv) != len(self.fengines):
+                rv = False
+                self.logger.error("Only got {} delay responses.".format(len(rv)))
+            if self.corr.sensor_manager:
+                for feng in self.fengines:
+                    self.corr.sensor_manager.sensors_feng_delays(feng)
 
 #    def delays_get(self, input_name=None):
 #        """
@@ -516,22 +508,27 @@ class FEngineOperations(object):
         :param loadtime: the UNIX time
         :return: the system sample count
         """
-        # check that load time is not too soon or in the past
         time_now = time.time()
+        if loadtime is None:
+            loadtime = time_now + self.corr.min_load_time + 0.1
+
+        # check that load time is not too soon or in the past
         if loadtime < (time_now + self.corr.min_load_time):
             errmsg = (
                 'Delay model update leadtime ({} s) error. tnow: {}, tload: {}.'.format(
                     self.corr.min_load_time, time_now, loadtime))
             self.logger.error(errmsg)
+            return None
 
-        last_loadtime = self.corr.time_from_mcnt(
-            self.fengines[0].last_delay.load_mcnt)
-        if time.time() < last_loadtime:
-            self.logger.warning(
-                "Received a delay update before the last one had a chance to load! "
-                "Queuing is not supported. The last load command (for time {}) will not be applied, "
-                "and will be overwritten by this command at time {}.".format(last_loadtime,
-                    time.time()))
+        #TODO this logic doesn't work correctly all the time, because this function can be called when setting random Fengines, and so shouldn't hardcode the reference to feng0. disabling for now.
+        #last_loadtime = self.corr.time_from_mcnt(
+        #    self.fengines[0].last_delay.load_mcnt)
+        #if time.time() < last_loadtime:
+        #    self.logger.warning(
+        #        "Received a delay update before the last one had a chance to load! "
+        #        "Queuing is not supported. The last load command (for time {}) will not be applied, "
+        #        "and will be overwritten by this command at time {}.".format(last_loadtime,
+        #            time.time()))
         loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
         return loadtime_mcnt
 
@@ -618,7 +615,7 @@ class FEngineOperations(object):
         if input_name is None:
             self.logger.info('Setting EQ on all inputs to new given EQ.')
             fengs = self.fengines
-            rv = self.threaded_feng_operation(timeout=self.timeout*2,
+            rv = self.threaded_feng_operation(timeout=self.timeout*(self.corr.n_chans/1024),
                 target_function=(lambda feng_: feng_.eq_set(new_eq),))
         else:
             fengs = [self.get_fengine(input_name)]
@@ -701,14 +698,15 @@ class FEngineOperations(object):
         _chan_index = numpy.floor(freq / _hz_per_chan)
         return _chan_index
 
-    def get_quant_snap(self, input_name):
+    def get_quant_snap(self, input_name, channel_select=-1):
         """
         Get the quantiser snapshot for this input_name
         :param input_name:
+        :param channel_select:
         :return:
         """
         feng = self.get_fengine(input_name)
-        return feng.get_quant_snapshot()
+        return feng.get_quant_snapshot(channel_select=channel_select)
 
     def get_adc_snapshot(self, input_name=None, unix_time=-1):
         """
