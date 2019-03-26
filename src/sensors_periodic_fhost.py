@@ -385,7 +385,7 @@ def _cb_feng_pfbs(sensors, f_host,time):
             if (results[key] > -20) or (results[key] < -70):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('PFB output levels ({}) are poor. Adjust your FFT shift on {}.'.format(results[key],f_host.host))
+                LOGGER.warn('PFB output levels ({}: {}) are poor. Consider adjusting your FFT shift on {}.'.format(key,results[key],f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -427,7 +427,7 @@ def _cb_feng_quant(sensors, f_host,time):
             if (results[key] > -10) or (results[key] < -30):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('Quantiser output levels ({}) are poor. If your FFT shift is sane, try increasing your EQ gain on {}.'.format(results[key],f_host.host))
+                LOGGER.warn('Quantiser output levels ({}: {}) are poor. If your FFT shift is sane, try adjusting your EQ gain on {}.'.format(key,results[key],f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
