@@ -556,7 +556,12 @@ class FEngineOperations(object):
         """
         Enable hardware automatic resync upon error detection.
         """
-        max_difference=(self.corr.n_chans*2*256*2)+(self.corr.n_chans*16*2)
+        #feng_pipeline_latency = ct+hmc  +  pfb_fir  +  fft  +  cd+hmc  +  misc
+        max_difference=(self.corr.n_chans*2*256*2 + 50000) + 
+                        (self.corr.n_chans*16*2) +
+                        (self.corr.n_chans*7) + 
+                        (512 + 50000) +
+                        (50000)
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
             target_function=(lambda fpga_: fpga_.registers.time_check.write(max_difference=max_difference), ))
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
