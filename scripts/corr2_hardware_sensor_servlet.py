@@ -64,13 +64,6 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             except Exception as e:
                 self.host.logger.error(
                     'Error retrieving {}s sensors - {}'.format(self.host, e.message))
-            sensordict['location'] = self.rack_location_tuple
-            sensordict['boot_image'] = parse_boot_image_return(self.host.transport.get_virtex7_firmware_version())
-            device_status = 'OK' if (
-                is_sensor_list_status_ok(sensordict)) else 'ERROR'
-
-            sensordict['device-status'] = ('unreachable', '', 'unreachable')
-
 
             for key, value in sensordict.iteritems():
                 try:
@@ -91,14 +84,28 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
                     self.sensor_manager.logger.error(
                         'Unable to add sensor {}-{}. Skipping.'.format(key, value))
                     raise e
+            self.sensors['location'] = sensor_manager.do_sensor(
+                    Corr2Sensor.string,'location',
+                    'Rack location of this SKARAB',
+                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+            self.sensors['location'].set_value(self.rack_location_tuple[0])
+
+            self.sensors['boot_image'] = sensor_manager.do_sensor(
+                    Corr2Sensor.string,'boot-image',
+                    'Currently running FPGA image',
+                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+
+            self.sensors['device_status'] = sensor_manager.do_sensor(
+                    Corr2Sensor.device_status,'device-status',
+                    'Overall SKARAB health')
+
 
     def start_sensor_loop(self):
         IOLoop.current().add_callback(
             _sensor_cb_hw,
             self.executor,
             self.sensors,
-            self.host,
-            self.rack_location_tuple)
+            self.host)
 
     def setup_sensors(self):
         """
@@ -178,12 +185,12 @@ def parse_boot_image_return(tuple):
 def is_sensor_list_status_ok(sensors_dict):
     for key, values in sensors_dict.iteritems():
         if(values[2].upper() == 'ERROR' and key != 'device-status'):
-            return 0
-    return 1
+            return False
+    return True
 
 
 @gen.coroutine
-def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
+def _sensor_cb_hw(executor, sensors, host):
     """
     Sensor call back to check all HW sensors
     :param sensors: per-host dict of sensors
@@ -195,69 +202,54 @@ def _sensor_cb_hw(executor, sensors, host, rack_location_tuple):
             if(key != 'location'):
                 sensor.set(status=Corr2Sensor.UNREACHABLE,
                         value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
+        IOLoop.current().call_later(5, _sensor_cb_hw, executor, sensors, host)
 
-    device_unreachable = True;
+    try:
+        boot_image = parse_boot_image_return(host.transport.get_virtex7_firmware_version())
+        sensors['boot_image'].set(value=boot_image[0],status=Corr2Sensor.NOMINAL)
+    except Exception as e:
+        host.logger.error('Error retrieving boot image state on host {} - {}'.format(host.host, e.message))
+        set_failure()
+        return
+
     try:
         results = yield executor.submit(host.transport.get_sensor_data)
     except Exception as e:
         host.logger.error(
             'Error retrieving {}s sensors - {}'.format(host.host, e.message))
-        results = {}
         set_failure()
-    else:
-
-        #Board Sensors
-        #sensors = {};
-        device_unreachable = False;
-        for key, value in results.iteritems():
-            try:
-                status = Corr2Sensor.NOMINAL if value[2] == 'OK' else Corr2Sensor.ERROR
-                sensors[key].set(value=value[0], status=status)
-            except Exception as e:
-                host.logger.error('Error updating {}-{} sensor '
-                    '- {}'.format(host.host, key, e.message))
-
-    # Server Generated Sensors
-    server_sensors_dict = {}
-    server_sensors_dict['location'] = rack_location_tuple
-    try:
-        server_sensors_dict['boot_image'] = parse_boot_image_return(host.transport.get_virtex7_firmware_version())
-    except Exception as e:
-        host.logger.error('Error connecting to host {} - {}'.format(host.host, e.message))
-        set_failure()
-        IOLoop.current().call_later(10, _sensor_cb_hw,
-            executor, sensors, host, rack_location_tuple)
         return
 
-    onBoardSensorsOk = is_sensor_list_status_ok(results)
-    serverSensorsOk = is_sensor_list_status_ok(server_sensors_dict)
-
-    device_status = 'OK'
-    if(not onBoardSensorsOk or not serverSensorsOk):
-        device_status = 'ERROR'
-
-    if(device_unreachable == False):
-        server_sensors_dict['device-status'] = (device_status.lower(), '', device_status)
-    else:
-        server_sensors_dict['device-status'] = ('unreachable', '', 'unreachable')
-
-    # Determine Device Status
-    for key, value in server_sensors_dict.iteritems():
+    for key, value in results.iteritems():
         try:
-            status = Corr2Sensor.ERROR
-            if value[2] == 'OK': status = Corr2Sensor.NOMINAL
-            if value[2] == 'unreachable': status = Corr2Sensor.UNREACHABLE
+            if value[2] == 'OK':
+                status = Corr2Sensor.NOMINAL
+            elif value[2] == 'WARNING': 
+                status = Corr2Sensor.WARN
+            elif value[2] == 'ERROR': 
+                status = Corr2Sensor.ERROR
+            else:
+                status = Corr2Sensor.UNKNOWN
             sensors[key].set(value=value[0], status=status)
         except Exception as e:
-            host.logger.error('Error updating {}-{} sensor '
-                              '- {}'.format(host.host, key, e.message))
-
+            host.logger.error('Error updating {}-{} sensor - {}'.format(host.host, key, e.message))
+            try:
+                sensors[key].set(status=Corr2Sensor.UNREACHABLE,
+                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensors[key].type]][1])
+            except:
+                pass
+    try:
+        if is_sensor_list_status_ok(results):
+            device_value = 'ok'
+            device_status = Corr2Sensor.NOMINAL
+        else:
+            device_value = 'fail'
+            device_status = Corr2Sensor.ERROR
+        sensors['device_status'].set(value=device_value, status=device_status)
+    except Exception as e:
+        host.logger.error('Error updating {}-device-status sensor - {}'.format(host.host, e.message))
     host.logger.debug('sensorloop ran')
-
-
-    IOLoop.current().call_later(10, _sensor_cb_hw,
-            executor, sensors, host, rack_location_tuple)
-
+    IOLoop.current().call_later(10, _sensor_cb_hw, executor, sensors, host)
 
 @gen.coroutine
 def on_shutdown(ioloop, server):

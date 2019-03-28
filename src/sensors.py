@@ -71,7 +71,7 @@ class Corr2Sensor(Sensor):
                *args, **kwargs):
         return cls(cls.DISCRETE, name=name, description=description, 
                    units=unit, params=['ok','fail','degraded'],
-                   default=default, initial_status='ok', manager=manager, 
+                   default=default, initial_status=Corr2Sensor.UNKNOWN, manager=manager, 
                    executor=executor,*args, **kwargs)
 
     def __init__(self, sensor_type, name, description=None, units='',
