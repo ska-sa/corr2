@@ -323,7 +323,7 @@ def _cb_feng_adcs(sensors, f_host,time):
 
         for key in ['p0_max', 'p1_max']:
             sensor = sensors[key]
-            if results[key] < 0.9:
+            if results[key] > 0.9:
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
             else:
@@ -334,7 +334,7 @@ def _cb_feng_adcs(sensors, f_host,time):
             if (results[key] > -22) or (results[key] < -32):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('Input levels low. Adjust the DIG gains on {}'.format(f_host.fengines[int(key[1])].name))
+                LOGGER.warn('Input levels are poor. Adjust the DIG gains on {}.'.format(f_host.fengines[int(key[1])].name))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -355,7 +355,7 @@ def _cb_feng_adcs(sensors, f_host,time):
             'Error updating DIG ADC sensors for {} - {}.'.format(
                 f_host.host, e.message))
         set_failure()
-    LOGGER.debug('_sensor_feng_adc ran on {}'.format(f_host.host))
+    LOGGER.debug('_sensor_feng_adc ran on {}.'.format(f_host.host))
     IOLoop.current().call_at(time+sensor_poll_time, _cb_feng_adcs, sensors, f_host,time+sensor_poll_time)
 
 @gen.coroutine
@@ -385,7 +385,7 @@ def _cb_feng_pfbs(sensors, f_host,time):
             if (results[key] > -20) or (results[key] < -70):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('PFB output levels ({}: {}) are poor. Consider adjusting your FFT shift on {}.'.format(key,results[key],f_host.host))
+                LOGGER.warn('PFB output levels ({}: {}) are poor. Consider adjusting your FFT shift on {}, fhost[{}], {}.'.format(key,results[key],f_host.fengines[int(key[3])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -427,7 +427,7 @@ def _cb_feng_quant(sensors, f_host,time):
             if (results[key] > -10) or (results[key] < -30):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('Quantiser output levels ({}: {}) are poor. If your FFT shift is sane, try adjusting your EQ gain on {}.'.format(key,results[key],f_host.host))
+                LOGGER.warn('Quantiser output levels ({}: {}) are poor. If your FFT shift is sane, try adjusting your EQ gain on {}, fhost[{}], {}.'.format(key,results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
