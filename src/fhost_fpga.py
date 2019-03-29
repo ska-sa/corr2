@@ -633,26 +633,27 @@ class FpgaFHost(FpgaHost):
         
         if (shift_schedule is None):
             shift_schedule = int(self._config['fft_shift'])
-        elif shift_schedule == 'auto':
-            shift_ok=[]
-            for shift_stages in range(n_stages_total+1):
-                fft_shift=distribute_shifts(n_stages_total,shift_stages)
-                self.registers.fft_shift.write(fft_shift=fft_shift)
-                shift_ok.append(test_shift_schedule())
-            try:
-                shift_stages=min(n_stages_total,shift_ok.index(True)+3)
-                shift_schedule=distribute_shifts(n_stages_total,shift_stages)
-                self.logger.info("FFT shift auto-adj selected %i stages of shift from results: %s"%(shift_stages,str(shift_ok)))
-            except ValueError:
-                self.logger.error("FFT shift auto-adj was unable to find a valid shift from results: %s. Shifting on every stage."%(str(shift_ok)))
-                shift_schedule=(2**(n_stages_total))-1
-        elif (shift_schedule[-1]=='s'):
-            n_stages=int(shift_schedule[0:-1])
-            if n_stages <= n_stages_total:
-                shift_schedule=distribute_shifts(n_stages_total,n_stages)
-            else:
-                self.logger.error("Can't shift on %i stages because there are only %i stages in this design! Shifting on every stage."%(n_stages,n_stages_total))
-                shift_schedule=(2**(n_stages_total))-1
+        elif (type(shift_schedule)==str): 
+            if shift_schedule == 'auto':
+                shift_ok=[]
+                for shift_stages in range(n_stages_total+1):
+                    fft_shift=distribute_shifts(n_stages_total,shift_stages)
+                    self.registers.fft_shift.write(fft_shift=fft_shift)
+                    shift_ok.append(test_shift_schedule())
+                try:
+                    shift_stages=min(n_stages_total,shift_ok.index(True)+3)
+                    shift_schedule=distribute_shifts(n_stages_total,shift_stages)
+                    self.logger.info("FFT shift auto-adj selected %i stages of shift from results: %s"%(shift_stages,str(shift_ok)))
+                except ValueError:
+                    self.logger.error("FFT shift auto-adj was unable to find a valid shift from results: %s. Shifting on every stage."%(str(shift_ok)))
+                    shift_schedule=(2**(n_stages_total))-1
+            elif (shift_schedule[-1]=='s'):
+                n_stages=int(shift_schedule[0:-1])
+                if n_stages <= n_stages_total:
+                    shift_schedule=distribute_shifts(n_stages_total,n_stages)
+                else:
+                    self.logger.error("Can't shift on %i stages because there are only %i stages in this design! Shifting on every stage."%(n_stages,n_stages_total))
+                    shift_schedule=(2**(n_stages_total))-1
         self.logger.info("Setting FFT shift to %i (%i stages)."%(shift_schedule,calc_n_stages(shift_schedule)))
         self.registers.fft_shift.write(fft_shift=shift_schedule)
 

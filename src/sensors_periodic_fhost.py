@@ -334,7 +334,7 @@ def _cb_feng_adcs(sensors, f_host,time):
             if (results[key] > -22) or (results[key] < -32):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('Input levels are poor. Adjust the DIG gains on {}.'.format(f_host.fengines[int(key[1])].name))
+                LOGGER.warn('Input levels ({}dBFS) are poor on the {} digitiser, fhost[{}], {}. Consider adjusting the Digitiser attenuators so Digitiser outputs falls in the range -32 dBFS to -22 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -385,7 +385,7 @@ def _cb_feng_pfbs(sensors, f_host,time):
             if (results[key] > -20) or (results[key] < -70):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('PFB output levels ({}: {}) are poor. Consider adjusting your FFT shift on {}, fhost[{}], {}.'.format(key,results[key],f_host.fengines[int(key[3])].name,f_host.fhost_index,f_host.host))
+                LOGGER.warn('PFB output levels ({}dBFS) are poor on {}, fhost[{}], {}. Consider adjusting your FFT shift so that PFB output falls in range -70 dBFS to -20 dBFS.'.format(results[key],f_host.fengines[int(key[3])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -427,7 +427,7 @@ def _cb_feng_quant(sensors, f_host,time):
             if (results[key] > -10) or (results[key] < -30):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                LOGGER.warn('Quantiser output levels ({}: {}) are poor. If your FFT shift is sane, try adjusting your EQ gain on {}, fhost[{}], {}.'.format(key,results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
+                LOGGER.warn('Quantiser output levels ({}dBFS) are poor on {}, fhost[{}], {}. If your FFT shift is sane, try adjusting your EQ gain so Quantiser output falls in the range -30 dBFS to -10 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
