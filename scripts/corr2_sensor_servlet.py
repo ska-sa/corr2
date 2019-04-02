@@ -49,7 +49,6 @@ class Corr2SensorServer(katcp.DeviceServer):
         :param msg: the error message to log
         :return:
         """
-        import IPython; IPython.embed()
         log_message = '{} \n {}'.format(msg, stack_trace)
         if self.instrument:
             self.instrument.logger.error(log_message)
