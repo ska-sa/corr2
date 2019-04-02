@@ -176,8 +176,10 @@ def plot_hist(figure, sub_plots, pctr):
             fpga.host, ctr, pctr))
         plt[1].grid(True)
         hdata = data['p%i' % ctr]
-        plt[0].hist(numpy.real(hdata), bins=32)
-        plt[1].hist(numpy.imag(hdata), bins=32)
+        plt[0].hist(numpy.real(hdata), range=(-1+1./128,1-1./128), bins=127)
+        plt[1].hist(numpy.imag(hdata), range=(-1+1./128,1-1./128), bins=127)
+        #plt[0].set_xlim((-1+1./128,1-1./128))
+        #plt[1].set_xlim((-1+1./128,1-1./128))
         pctr += 1
     figure.canvas.draw()
     pctr += 1

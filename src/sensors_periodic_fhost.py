@@ -26,7 +26,7 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host,sensor_task):
     """
     
     functionStartTime = time.time();
-    ##print("1 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("1 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     try:
         h = host_offset_lookup[f_host.host]
@@ -75,7 +75,7 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host,sensor_task):
     
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("1 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("1 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(
         sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime),
@@ -144,7 +144,7 @@ def _cb_feng_delays(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    ##print("3 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("3 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['device_status'].executor
     device_status = Corr2Sensor.NOMINAL
@@ -220,7 +220,7 @@ def _cb_feng_delays(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_feng_delays ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("3 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("3 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_delays, sensors, f_host, sensor_manager,sensor_task)
 
@@ -238,7 +238,7 @@ def _cb_feng_ct(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    ##print("4 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("4 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['pol0_post'].executor
     try:
@@ -297,7 +297,7 @@ def _cb_feng_ct(sensors, f_host, sensor_manager,sensor_task):
     functionRunTime = time.time() - functionStartTime;
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_ct, sensors, f_host, sensor_manager,sensor_task)
-    ##print("4 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("4 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
 
 @gen.coroutine
@@ -309,7 +309,7 @@ def _cb_feng_pack(sensors, f_host, sensor_manager,sensor_task):
     """
 
     functionStartTime = time.time();
-    ##print("5 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("5 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['err_cnt'].executor
     try:
@@ -334,7 +334,7 @@ def _cb_feng_pack(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_cb_feng_pack ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("5 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("5 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_pack, sensors, f_host, sensor_manager,sensor_task)
 
@@ -351,7 +351,7 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    ##print("6 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("6 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['device_status'].executor
     try:
@@ -369,7 +369,7 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
 
         for key in ['p0_max', 'p1_max']:
             sensor = sensors[key]
-            if results[key] < 0.9:
+            if results[key] > 0.9:
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
             else:
@@ -380,7 +380,7 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
             if (results[key] > -22) or (results[key] < -32):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                sensor_manager.logger.warn('Input levels low. Adjust the DIG gains on {}'.format(f_host.fengines[int(key[1])].name))
+                sensor_manager.logger.warn('Input levels ({}dBFS) are poor on the {} digitiser, fhost[{}], {}. Consider adjusting the Digitiser attenuators so Digitiser outputs falls in the range -32 dBFS to -22 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -401,10 +401,11 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
             'Error updating DIG ADC sensors for {} - {}.'.format(
                 f_host.host, e.message))
         set_failure()
+
     sensor_manager.logger.debug('_sensor_feng_adc ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("6 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("6 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_adcs, sensors, f_host, sensor_manager,sensor_task)
 
@@ -421,7 +422,7 @@ def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    ##print("7 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("7 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['device_status'].executor
     try:
@@ -439,7 +440,7 @@ def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
             if (results[key] > -20) or (results[key] < -70):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                sensor_manager.logger.warn('PFB output levels ({}: {}) are poor. Consider adjusting your FFT shift on {}.'.format(key,results[key],f_host.host))
+                sensor_manager.logger.warn('PFB output levels ({}dBFS) are poor on {}, fhost[{}], {}. Consider adjusting your FFT shift so that PFB output falls in range -70 dBFS to -20 dBFS.'.format(results[key],f_host.fengines[int(key[3])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -459,7 +460,7 @@ def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_feng_pfbs ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("7 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("7 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_pfbs, sensors, f_host, sensor_manager,sensor_task)
 
@@ -477,7 +478,7 @@ def _cb_feng_quant(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    ##print("8 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("8 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['p0_quant_out_dBFS'].executor
     try:
@@ -491,6 +492,7 @@ def _cb_feng_quant(sensors, f_host, sensor_manager,sensor_task):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
                 sensor_manager.logger.warn('Quantiser output levels ({}: {}) are poor. If your FFT shift is sane, try adjusting your EQ gain on {}.'.format(key,results[key],f_host.host))
+                sensor_manager.logger.warn('Quantiser output levels ({}dBFS) are poor on {}, fhost[{}], {}. If your FFT shift is sane, try adjusting your EQ gain so Quantiser output falls in the range -30 dBFS to -10 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -510,7 +512,7 @@ def _cb_feng_quant(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_feng_quant ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("8 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("8 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_quant, sensors, f_host, sensor_manager,sensor_task)
 
@@ -523,7 +525,7 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
     """
     # GBE CORE
     functionStartTime = time.time();
-    ##print("9 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("9 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['tx_pps'].executor
     device_status = Corr2Sensor.NOMINAL
@@ -589,7 +591,7 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_fhost_check_network ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("9 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("9 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(
         sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime),
@@ -610,7 +612,7 @@ def _cb_feng_sync(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    ##print("10 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("10 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['device_status'].executor
     device_status = Corr2Sensor.NOMINAL
@@ -639,7 +641,7 @@ def _cb_feng_sync(sensors, f_host, sensor_manager,sensor_task):
             f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("10 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("10 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_sync, sensors, f_host, sensor_manager,sensor_task)
 
@@ -657,7 +659,7 @@ def _cb_feng_rx_spead(sensors, f_host, sensor_manager,sensor_task):
 
 
     functionStartTime = time.time();
-    ##print("11 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("11 on %s Started at %f" % (f_host.host ,functionStartTime))
     # SPEAD RX
     executor = sensors['cnt'].executor
     try:
@@ -688,7 +690,7 @@ def _cb_feng_rx_spead(sensors, f_host, sensor_manager,sensor_task):
             f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    ##print("11 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("11 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_rx_spead, sensors, f_host, sensor_manager,sensor_task)
 
@@ -707,7 +709,7 @@ def _cb_feng_rx_reorder(sensors, f_host, sensor_manager,sensor_task):
 
 
     functionStartTime = time.time();
-    ##print("12 on %s Started at %f" % (f_host.host ,functionStartTime))
+    #print("12 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['timestep_err_cnt'].executor
     try:
@@ -744,7 +746,7 @@ def _cb_feng_rx_reorder(sensors, f_host, sensor_manager,sensor_task):
 
     sensor_manager.logger.debug('_sensor_feng_rx_reorder ran on {}'.format(f_host.host))
     functionRunTime = time.time() - functionStartTime;
-    ##print("12 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("12 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_rx_reorder, sensors, f_host, sensor_manager,sensor_task)
 
