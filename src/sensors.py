@@ -16,7 +16,6 @@ import data_stream
 
 # LOGGER = logging.getLogger(__name__)
 
-
 class Corr2Sensor(Sensor):
 
     @classmethod
@@ -1078,5 +1077,6 @@ def boolean_sensor_do(host, sensor, funclist):
         host.logger.error('Error updating {} for {} - '
                      '{}'.format(sensor.name, host.host, e.message))
         sensor.set(value=False)
+    
 
 # end

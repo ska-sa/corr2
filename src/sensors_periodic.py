@@ -7,6 +7,7 @@ from concurrent import futures
 
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
+
 from sensors import Corr2Sensor
 import sensors_periodic_fhost as sensors_fhost
 import sensors_periodic_xhost as sensors_xhost
@@ -23,6 +24,7 @@ def setup_sensors(sensor_manager):
     :param sensor_manager: A SensorManager instance
     :return:
     """
+
     # make the mapping of hostnames to host offsets
     #TODO are these assert statements a wise idea? I think they should be refactored away in favour of something proper.
     for ctr, host in enumerate(sensor_manager.instrument.xhosts):
@@ -42,7 +44,6 @@ def setup_sensors(sensor_manager):
     #     host_offset_lookup[host.host] = 'bhost{:02}'.format(ctr)
 
     sens_man = sensor_manager
-
     # Set up a one-worker pool per host to serialise interactions with each host
     host_executors = {
         host.host: futures.ThreadPoolExecutor(max_workers=1)
@@ -50,20 +51,16 @@ def setup_sensors(sensor_manager):
         sens_man.instrument.xhosts
     }
     general_executor = futures.ThreadPoolExecutor(max_workers=1)
-
     if not sens_man.instrument.initialised():
         raise RuntimeError('Cannot set up sensors until instrument is '
                            'initialised.')
-
     ioloop = getattr(sens_man.instrument, 'ioloop', None)
     if not ioloop:
         ioloop = getattr(sens_man.katcp_server, 'ioloop', None)
     if not ioloop:
         raise RuntimeError('IOLoop-containing katcp version required. Can go '
                            'no further.')
-
     sens_man.sensors_clear()
-
     args = [sens_man, general_executor,
             host_executors, ioloop, host_offset_lookup]
     sensors_fhost.setup_sensors_fengine(*args)

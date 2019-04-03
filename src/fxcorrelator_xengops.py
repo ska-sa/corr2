@@ -609,8 +609,8 @@ class XEngineOperations(object):
         packets_per_accumulation = vector_length_bytes/self.corr.x_stream_payload_len
         gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation)
 
-        if(gapsize > 2**22-1):
-            gapsize = 2**22-1
+        if(gapsize > 2**19-1):
+            gapsize = 2**19
 
         THREADED_FPGA_OP(
             self.hosts, timeout=10,

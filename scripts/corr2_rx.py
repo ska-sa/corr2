@@ -203,6 +203,7 @@ class PlotConsumer(object):
             sbplt[0].grid(True)
             sbplt[1].cla()
             sbplt[1].set_title('phase - %s' % self.plot_counter)
+            sbplt[1].set_ylabel("Radians")
             sbplt[1].grid(True)
         powerdata = plotdata[0]
         phasedata = plotdata[1]
@@ -210,17 +211,19 @@ class PlotConsumer(object):
         names = []
         for pltctr, plot in enumerate(powerdata):
             baseline = plot[0]
-            plotdata = plot[1]
+            plotdata = np.array(plot[1])
             phaseplot = phasedata[pltctr][1]
             if args.log:
                 if np.sum(plotdata) == 0:
                     l, = sbplt[0].plot(plotdata)
                 else:
-                    l, = sbplt[0].semilogy(plotdata)
-                sbplt[1].plot(phaseplot)
+                    l, = sbplt[0].plot(10*np.log10(plotdata/(2.**31)))
+                    sbplt[0].set_ylabel("dBFS")
+                    #l, = sbplt[0].plot(10*np.log10(plotdata))
+                    #sbplt[0].set_ylabel("dB")
             else:
                 l, = sbplt[0].plot(plotdata)
-                sbplt[1].plot(phaseplot)
+            sbplt[1].plot(phaseplot)
             lines.append(l)
             bls_name = self.baselines[baseline]
             names.append(bls_name)
@@ -288,14 +291,17 @@ class CorrReceiver(LoggingClass, threading.Thread):
         except AssertionError:
             self.logger.error("No Config File defined!!!")
             raise
-        else:
+        #else:
             # self.corrVars = DictObject(self.corr_config(self._config_file))
-            self._config_info = self.corr_config(self._config_file, **kwargs)
-        finally:
-            # self.corrVars = DictObject(self.get_sensors(self.servlet_ip, self.servlet_port))
-            self._sensors_info = self.get_sensors(self.servlet_ip, self.servlet_port)
+        self._config_info = self.corr_config(self._config_file, **kwargs)
+        self._sensors_info = {}
+        #finally:
+        #    # self.corrVars = DictObject(self.get_sensors(self.servlet_ip, self.servlet_port))
+        #    self._sensors_info = self.get_sensors(self.servlet_ip, self.servlet_port)
 
         self.corrVars = DictObject(DictObject._dictsMerger(self._sensors_info,  self._config_info))
+        self.corrVars.sync_time=0
+        self.corrVars.scale_factor_timestamp=1712e6
         self._get_plot_limits(baselines, channels)
 
         self.need_print_data = None

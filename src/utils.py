@@ -320,9 +320,36 @@ def script_get_fpga(cmdline_args, host_name=None, host_index=-1,
     return fpga
 
 
+def get_sources(config_file=None, config=None):
+    """
+    Get a list of the sources given by the config.
+    If not found in the config, return a default list.
+    :param config_file: a corr2 config file
+    :param config: a corr2 config dictionary
+    :return:
+    """
+    config = config or parse_ini_file(config_file)
+    sources = []
+    try:
+        sources = config['fengine']['source_names'].split(',')
+        for ctr, src in enumerate(sources):
+            sources[ctr] = src.strip()
+    except KeyError:
+        LOGGER.warn("Input labels not found in config; using defaults.")
+    if len(sources) == (int(config['FxCorrelator']['n_ants'])*2):
+        return sources
+    else:
+        LOGGER.error("Incorrect number of input labels in config; using defaults")
+        sources = []
+        for ctr in range(int(config['FxCorrelator']['n_ants'])):
+            sources.append('ant%ix'%ctr)
+            sources.append('ant%iy'%ctr)
+        return sources
+
+
 def get_default_sources(config_file=None, config=None):
     """
-    Get a list of the sources given by the config
+    Get a default list of sources for this config.
     :param config_file: a corr2 config file
     :param config: a corr2 config dictionary
     :return:

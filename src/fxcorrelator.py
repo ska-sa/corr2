@@ -647,7 +647,7 @@ class FxCorrelator(Instrument):
         assert isinstance(source_mcast, str)
         source_mcast = re.split(r'[,\s]+', source_mcast)
         assert isinstance(source_mcast, list)
-        source_names = utils.get_default_sources(config=self.configd)
+        source_names = utils.get_sources(config=self.configd)
         for ctr, src in enumerate(source_mcast):
             source_mcast[ctr] = src.strip()
         assert len(source_mcast) == len(source_names), (

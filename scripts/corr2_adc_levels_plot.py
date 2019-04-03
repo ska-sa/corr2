@@ -66,7 +66,7 @@ def plot_linear():
     ax.hlines(y, xmin[1], xmax[1], color='g',linewidth=2.0)
     ax.hlines(y, -stdev[1], stdev[1], color='b',linewidth=3.0)
     ax.plot(xmean[1],y,'ro')
-    ax.set_title('Pol 1. Update {}'.format(plt_update))
+    ax.set_title('Pol 1')
     ax.set_xlim(-1,1)
     ax.set_ylim(-1,len(results))
 
@@ -94,7 +94,7 @@ def plot_log():
     ax.clear()
     ax.hlines(y, min_range, xmax[1], color='b',linewidth=2.0)
     ax.hlines(y, min_range, xmean[1], color='g',linewidth=3.0)
-    ax.set_title('Pol 1. Update {}'.format(plt_update))
+    ax.set_title('Pol 1')
     ax.set_xlim(min_range,0)
     ax.set_ylim(-1,len(results))
 
@@ -107,6 +107,7 @@ while(True):
     else: plot_linear()
     #from IPython import embed; embed()
     fig.canvas.draw()
+    print  'Update {}'.format(plt_update)
     time.sleep(0.1)
 
 plt.close(fig)
