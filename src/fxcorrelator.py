@@ -157,10 +157,19 @@ class FxCorrelator(Instrument):
         :return:
         """
         # check that the instrument's synch epoch has been set
-        if require_epoch:
-            if self.synchronisation_epoch == -1:
-                raise RuntimeError(
-                    'System synch epoch has not been set prior to initialisation!')
+        if self.synchronisation_epoch <= 0:
+            try:
+                self.synchronisation_epoch = float(self.configd['FxCorrelator']['synchronisation_epoch'])
+            except ValueError:
+                self.logger.error("Sync epoch malformed in config file, and epoch not pre-set.")
+            except KeyError:
+                self.logger.warn("Sync epoch not found in config file, and epoch not pre-set.")
+        else:
+            self.logger.info("Sync epoch pre-set to %f."%self.synchronisation_epoch)
+        
+        if (require_epoch) and (self.synchronisation_epoch < 0):
+            raise RuntimeError(
+                'System sync epoch has not been set prior to initialisation!')
 
         # clear the data streams. These will be re-added during configuration.
         self.data_streams = []
