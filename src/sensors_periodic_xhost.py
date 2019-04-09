@@ -121,7 +121,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
     device_status = Corr2Sensor.NOMINAL
     try:
         #result = yield executor.submit(x_host.gbes.gbe0.get_stats)
-        result = x_host.get_unpack_status()
+        result = x_host.gbes.gbe0.get_stats()
         sensors['tx_err_cnt'].set(errif='changed', value=result['tx_over'])
         sensors['rx_err_cnt'].set(errif='changed', value=result['rx_bad_pkts'])
         sensors['tx_pps'].set(
