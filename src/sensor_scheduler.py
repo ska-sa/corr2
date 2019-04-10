@@ -41,13 +41,13 @@ class SensorTask:
             self.num_time_overruns=0
         
         if(self.num_time_overruns > 5):
-            print("%s took %fs longer to run than allocated - this occured five times in a row, performing flow control"%(self.name,current_function_runtime-(1+self.flow_control_increments)*sensor_call_gap_time_s))
+            #print("%s took %fs longer to run than allocated - this occured five times in a row, performing flow control"%(self.name,current_function_runtime-(1+self.flow_control_increments)*sensor_call_gap_time_s))
             self.num_time_overruns=0
             self.flow_control_increments+=1
             sensor_loop_flow_control_padding+=1
 
         if(self.num_time_overruns < -5):
-            print("%s took %fs less to run than allocated - this occured five times in a row, performing flow control"%((1+self.flow_control_increments)*sensor_call_gap_time_s)-self.name,current_function_runtime)
+            #print("%s took %fs less to run than allocated - this occured five times in a row, performing flow control"%((1+self.flow_control_increments)*sensor_call_gap_time_s)-self.name,current_function_runtime)
             self.num_time_overruns=0
             self.flow_control_increments-=1
             sensor_loop_flow_control_padding-=1
