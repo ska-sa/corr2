@@ -24,7 +24,7 @@ def setup_sensors(sensor_manager):
     :param sensor_manager: A SensorManager instance
     :return:
     """
-
+    print('asdasd')
     # make the mapping of hostnames to host offsets
     #TODO are these assert statements a wise idea? I think they should be refactored away in favour of something proper.
     for ctr, host in enumerate(sensor_manager.instrument.xhosts):
