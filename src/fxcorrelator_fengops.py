@@ -247,6 +247,9 @@ class FEngineOperations(object):
         assert len(self.corr.fhosts) > 0
         _fengd = self.corr.configd['fengine']
 
+        self.pfb_bits = int(_fengd['pfb_bits'])
+        self.quant_bits = int(_fengd['quant_bits'])
+
         dig_streams = []
         for stream in self.corr.data_streams:
             if stream.category == DIGITISER_ADC_SAMPLES:

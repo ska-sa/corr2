@@ -603,8 +603,6 @@ class FxCorrelator(Instrument):
         self.n_input_streams_per_fengine = int(
             _feng_d.get('n_input_streams_per_fengine', 2))
         assert isinstance(self.n_input_streams_per_fengine, int)
-        self.quant_format = float(_feng_d.get('quant_format', 8.7))
-        assert isinstance(self.quant_format, float)
         self.adc_bitwidth = int(_feng_d.get('sample_bits', 10))
         assert isinstance(self.adc_bitwidth, int)
         self.fft_shift = int(_feng_d.get('fft_shift', 8191))

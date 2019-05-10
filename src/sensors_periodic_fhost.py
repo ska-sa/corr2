@@ -415,7 +415,7 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_adcs, sensors, f_host, sensor_manager,sensor_task)
 
 @gen.coroutine
-def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
+def _cb_feng_pfbs(sensors, f_host, min_pfb_pwr, sensor_manager, sensor_task):
     """
     F-engine PFB check
     :param sensor:
@@ -442,10 +442,10 @@ def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
 
         for key in ['pol0_pfb_out_dBFS','pol1_pfb_out_dBFS']:
             sensor = sensors[key]
-            if (results[key] > -20) or (results[key] < -70):
+            if (results[key] > -24) or (results[key] < min_pfb_pwr):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                sensor_manager.logger.warn('PFB output levels ({}dBFS) are poor on {}, fhost[{}], {}. Consider adjusting your FFT shift so that PFB output falls in range -70 dBFS to -20 dBFS.'.format(results[key],f_host.fengines[int(key[3])].name,f_host.fhost_index,f_host.host))
+                sensor_manager.logger.warn('PFB output levels ({}dBFS) are poor on {}, fhost[{}], {}. Consider adjusting your FFT shift so that PFB output falls in range {} dBFS to -24 dBFS.'.format(results[key],f_host.fengines[int(key[3])].name,f_host.fhost_index,f_host.host,min_pfb_pwr))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -797,7 +797,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
     sensor_task = sensor_scheduler.SensorTask('_cb_feng_rxtime')
     ioloop.add_callback(_cb_feng_rxtime, sensor_ok, sensors_value, sens_man,sensor_task)
 
-
+    min_pfb_pwr = -20*numpy.log10(2**(sens_man.instrument.fops.pfb_bits-4-1))
     # F-engine host sensors
     for _f in sens_man.instrument.fhosts:
         executor = host_executors[_f.host]
@@ -1003,7 +1003,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 'F-engine PFB resync counter', executor=executor),
         }
         sensor_task = sensor_scheduler.SensorTask('_cb_feng_pfbs on '+_f.host)
-        ioloop.add_callback(_cb_feng_pfbs, pfb_sensors, _f, sens_man,sensor_task)
+        ioloop.add_callback(_cb_feng_pfbs, pfb_sensors, _f, min_pfb_pwr, sens_man,sensor_task)
 
 
         # CT functionality
