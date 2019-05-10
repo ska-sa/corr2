@@ -546,9 +546,16 @@ class FxCorrelator(Instrument):
         self._check_bitstreams()
         # =====================================================================
         _fxcorr_d = self.configd.get('FxCorrelator')
+        
         assert isinstance(_fxcorr_d, dict)
-        self.sensor_poll_time = int(_fxcorr_d.get('sensor_poll_time', None))
-        assert isinstance(self.sensor_poll_time, int)
+        #Check that sensor poll interval is in config file
+        if(_fxcorr_d.get('sensor_poll_interval')):
+            self.sensor_poll_interval = float(_fxcorr_d.get('sensor_poll_interval', None))
+            assert isinstance(self.sensor_poll_interval, float)
+        else:
+            self.logger.warn('sensor_poll_interval config file variable is not available, default interval set to: 0.003.')
+            self.sensor_poll_interval = 0.003;
+
         self.katcp_port = int(_fxcorr_d.get('katcp_port', 7147))
         assert isinstance(self.katcp_port, int)
         self.sample_rate_hz = float(

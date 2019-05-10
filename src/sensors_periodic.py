@@ -12,7 +12,7 @@ from sensors import Corr2Sensor
 import sensors_periodic_fhost as sensors_fhost
 import sensors_periodic_xhost as sensors_xhost
 import sensors_periodic_bhost as sensors_bhost
-
+import sensor_scheduler
 
 LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +24,6 @@ def setup_sensors(sensor_manager):
     :param sensor_manager: A SensorManager instance
     :return:
     """
-    print('asdasd')
     # make the mapping of hostnames to host offsets
     #TODO are these assert statements a wise idea? I think they should be refactored away in favour of something proper.
     for ctr, host in enumerate(sensor_manager.instrument.xhosts):
@@ -42,8 +41,12 @@ def setup_sensors(sensor_manager):
     # for ctr, host in enumerate(sensor_manager.instrument.bhosts):
     #     assert host.host not in host_offset_lookup
     #     host_offset_lookup[host.host] = 'bhost{:02}'.format(ctr)
-
+    
+    
     sens_man = sensor_manager
+    sensor_poll_interval = sens_man.instrument.sensor_poll_interval;
+    sensor_scheduler.sensor_call_gap_time_s = sensor_poll_interval;
+        
     # Set up a one-worker pool per host to serialise interactions with each host
     host_executors = {
         host.host: futures.ThreadPoolExecutor(max_workers=1)
