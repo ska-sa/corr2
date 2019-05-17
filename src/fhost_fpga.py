@@ -842,4 +842,4 @@ class FpgaFHost(FpgaHost):
         gbename = self.gbes.names()[0]
         gbe = self.gbes[gbename]
         self.logger.info('Subscribing %s to (%s+%i)' % (gbe.name, ip_str, ip_range - 1))
-        gbe.multicast_receive(ip_str, ip_range)
+        gbe.multicast_receive(ip_str, ip_range-1)
