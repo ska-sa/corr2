@@ -151,8 +151,10 @@ class PlotConsumer(object):
         lines = []
         names = []
         if(self.log):
-            #sbplt[0].set_ylim(bottom = -80, top = 1000)
-            sbplt[0].plot(range(self.channels[0],self.channels[1]+1),20*np.log(plotdata))
+            plotdata[[plotdata==0]]=1
+            plotdata = 20*np.log(plotdata);
+            sbplt[0].set_ylim(bottom = 0, top=np.amax(plotdata)*1.1)
+            sbplt[0].plot(range(self.channels[0],self.channels[1]+1),plotdata)
             sbplt[0].set_ylabel("Log Scale")
         else:
             sbplt[0].plot(range(self.channels[0],self.channels[1]+1),plotdata)
@@ -266,7 +268,7 @@ class CorrReceiver(LoggingClass, threading.Thread):
                 try:
                     offset = self.channels[0]-self._strt_substream*self.n_channels_per_substream
                     length = self.channels[1]-self.channels[0];
-                    #print(offset,length,data[955],data[956],data[957])
+                    #embed()
                     self.plot_queue.put(data[offset:offset+length+1])
                 except Queue.Full:
                     self.plot_queue.get()
