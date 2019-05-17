@@ -113,7 +113,7 @@ class LoggingClass(object):
 
 class PlotConsumer(object):
 
-    def __init__(self, channels, figure=None,log=False):
+    def __init__(self, channels, figure=None,log=False,plot_y_pol=False):
         """
         The Plot consumer - plots the contents it finds in the plot queue
         :param figure:
@@ -128,6 +128,7 @@ class PlotConsumer(object):
         self.plot_counter = 0
         self.log=log
         self.channels=channels
+        self.plot_y_pol = plot_y_pol
         # callbacks could be useful?
         # self.figure.canvas.mpl_connect('close_event', self.on_close)
         # self.figure.canvas.mpl_connect('key_release_event', self.redraw)
@@ -142,7 +143,10 @@ class PlotConsumer(object):
         self.figure.subplots_adjust(hspace=0.5)
         sbplt = self.figure.axes
         sbplt[0].cla()
-        sbplt[0].set_title('Average Power - %s' % self.plot_counter)
+        if(self.plot_y_pol):
+            sbplt[0].set_title('Y Polarisation Average Power - %s' % self.plot_counter)
+        else:
+            sbplt[0].set_title('X Polarisation Average Power - %s' % self.plot_counter)
         sbplt[0].grid(True)
         lines = []
         names = []
@@ -166,7 +170,7 @@ class CorrReceiver(LoggingClass, threading.Thread):
     """
 
     def __init__(
-        self, servlet="127.0.0.1:7601", config_file=None, channels=(0, 4095),
+        self, servlet="127.0.0.1:7601", config_file=None, channels=(0, 4095),plot_y_pol=False,
         **kwargs
     ):
         """
@@ -212,7 +216,7 @@ class CorrReceiver(LoggingClass, threading.Thread):
         self.corrVars.scale_factor_timestamp=1712e6
         self._get_plot_limits(channels)
         self.n_channels_per_substream=-1
-
+        self.plot_y_pol=plot_y_pol;
         self.need_plot_data = None
 
         threading.Thread.__init__(self)
@@ -286,7 +290,11 @@ class CorrReceiver(LoggingClass, threading.Thread):
         -------
 
         """
-        base_ip = self.corrVars.tied_array_channelised_voltage_0x_destination
+        if(self.plot_y_pol):
+            base_ip = self.corrVars.tied_array_channelised_voltage_0y_destination
+        else:
+            base_ip = self.corrVars.tied_array_channelised_voltage_0x_destination
+
         self._interface_address = ''.join([ethx for ethx in self.network_interfaces()
                                            if ethx.startswith(interface_prefix)])
 
@@ -564,7 +572,7 @@ class CorrReceiver(LoggingClass, threading.Thread):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
-        description='Receive data from a corr2 correlator.',
+        description='Receive beamformer data from a corr2 correlator.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '--config', dest='config', action='store', default='',
@@ -578,6 +586,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--log', dest='log', action='store_true', default=False,
         help='Logarithmic y axis.')
+    parser.add_argument(
+        '-x','--x_pol', dest='x_pol', action='store_true', default=False,
+        help='Plot the x polarisation.')
+    parser.add_argument(
+        '-y','--y_pol', dest='y_pol', action='store_true', default=False,
+        help='Plot the y polarisation.')
     parser.add_argument(
         '--loglevel', dest='log_level', action='store', default='INFO',
         help='log level to use, default INFO, options INFO, DEBUG, ERROR')
@@ -600,21 +614,31 @@ if __name__ == '__main__':
         spead_log_level = args.spead_log_level.strip().upper()
         spead2._logger.setLevel(getattr(logging, spead_log_level))
 
+    plot_y_pol = False;
+    if(args.x_pol == True and args.y_pol == True):
+        logger.info('Both X and Y polarisations specified, plotting X polarisation only.')
+    elif(args.y_pol == False):
+        logger.info('Plotting X polarisation')
+    else:
+        logger.info('Plotting Y polarisation')
+        plot_y_pol = True;
+
     # start the receiver thread
     logger.info('Initialising SPEAD transports for data:')
     corr_rx = CorrReceiver(
         config_file=args.config,
         channels=args.channels,
         log_level=log_level,
+        plot_y_pol=plot_y_pol,
     )
 
     plotsumer = None
     figure = plt.figure()
     figure.add_subplot(1, 1, 1)
-    plotsumer = PlotConsumer(corr_rx.channels,figure=figure,log=args.log)
+    plotsumer = PlotConsumer(corr_rx.channels,figure=figure,log=args.log,plot_y_pol=plot_y_pol)
     plt.show(block=False)
     logger.info('Plot started, waiting for data.')
-    corr_rx.set_plot_queue(plotsumer.data_queue, plotsumer.need_data_flag)
+    corr_rx.set_plot_queue(plotsumer.data_queue, plotsumer.need_data_flag)       
 
     #try:
     corr_rx.daemon = True
