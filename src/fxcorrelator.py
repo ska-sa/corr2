@@ -157,10 +157,19 @@ class FxCorrelator(Instrument):
         :return:
         """
         # check that the instrument's synch epoch has been set
-        if require_epoch:
-            if self.synchronisation_epoch == -1:
-                raise RuntimeError(
-                    'System synch epoch has not been set prior to initialisation!')
+        if self.synchronisation_epoch <= 0:
+            try:
+                self.synchronisation_epoch = float(self.configd['FxCorrelator']['synchronisation_epoch'])
+            except ValueError:
+                self.logger.error("Sync epoch malformed in config file, and epoch not pre-set.")
+            except KeyError:
+                self.logger.warn("Sync epoch not found in config file, and epoch not pre-set.")
+        else:
+            self.logger.info("Sync epoch pre-set to %f."%self.synchronisation_epoch)
+        
+        if (require_epoch) and (self.synchronisation_epoch < 0):
+            raise RuntimeError(
+                'System sync epoch has not been set prior to initialisation!')
 
         # clear the data streams. These will be re-added during configuration.
         self.data_streams = []
@@ -537,9 +546,16 @@ class FxCorrelator(Instrument):
         self._check_bitstreams()
         # =====================================================================
         _fxcorr_d = self.configd.get('FxCorrelator')
+        
         assert isinstance(_fxcorr_d, dict)
-        self.sensor_poll_time = int(_fxcorr_d.get('sensor_poll_time', None))
-        assert isinstance(self.sensor_poll_time, int)
+        #Check that sensor poll interval is in config file
+        if(_fxcorr_d.get('sensor_poll_interval')):
+            self.sensor_poll_interval = float(_fxcorr_d.get('sensor_poll_interval', None))
+            assert isinstance(self.sensor_poll_interval, float)
+        else:
+            self.logger.warn('sensor_poll_interval config file variable is not available, default interval set to: 0.003.')
+            self.sensor_poll_interval = 0.003;
+
         self.katcp_port = int(_fxcorr_d.get('katcp_port', 7147))
         assert isinstance(self.katcp_port, int)
         self.sample_rate_hz = float(
@@ -587,8 +603,6 @@ class FxCorrelator(Instrument):
         self.n_input_streams_per_fengine = int(
             _feng_d.get('n_input_streams_per_fengine', 2))
         assert isinstance(self.n_input_streams_per_fengine, int)
-        self.quant_format = float(_feng_d.get('quant_format', 8.7))
-        assert isinstance(self.quant_format, float)
         self.adc_bitwidth = int(_feng_d.get('sample_bits', 10))
         assert isinstance(self.adc_bitwidth, int)
         self.fft_shift = int(_feng_d.get('fft_shift', 8191))

@@ -26,7 +26,7 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host,sensor_task):
     """
     
     functionStartTime = time.time();
-    #print("1 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("1 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     try:
         h = host_offset_lookup[f_host.host]
@@ -75,7 +75,8 @@ def _cb_fhost_lru(sensor_manager, sensor, f_host,sensor_task):
     
 
     functionRunTime = time.time() - functionStartTime;
-    #print("1 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("1 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'1'))
 
     IOLoop.current().call_at(
         sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime),
@@ -95,7 +96,7 @@ def _cb_feng_rxtime(sensor_ok, sensors_value, sensor_manager,sensor_task):
     """
 
     functionStartTime = time.time();
-    #print("2 on all Started at %f" % (functionStartTime))
+    ##print("2 on all Started at %f" % (functionStartTime))
 
     executor = sensor_ok.executor
     instrument = sensor_ok.manager.instrument
@@ -125,7 +126,8 @@ def _cb_feng_rxtime(sensor_ok, sensors_value, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_cb_feng_rxtime ran')
     
     functionRunTime = time.time() - functionStartTime;
-    #print("2 on all Ended End Time %f, Run Time %f" % (time.time(), functionRunTime))
+    ##print("2 on all Ended End Time %f, Run Time %f" % (time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,'2'))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_rxtime,
                                 sensor_ok, sensors_value, sensor_manager,sensor_task)
@@ -144,7 +146,7 @@ def _cb_feng_delays(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    #print("3 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("3 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['device_status'].executor
     device_status = Corr2Sensor.NOMINAL
@@ -220,7 +222,8 @@ def _cb_feng_delays(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_feng_delays ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    #print("3 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("3 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'3'))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_delays, sensors, f_host, sensor_manager,sensor_task)
 
@@ -238,7 +241,7 @@ def _cb_feng_ct(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    #print("4 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("4 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['pol0_post'].executor
     try:
@@ -295,9 +298,9 @@ def _cb_feng_ct(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_cb_feng_ct ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'4'))
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_ct, sensors, f_host, sensor_manager,sensor_task)
-    #print("4 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("4 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
 
 
 @gen.coroutine
@@ -309,7 +312,7 @@ def _cb_feng_pack(sensors, f_host, sensor_manager,sensor_task):
     """
 
     functionStartTime = time.time();
-    #print("5 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("5 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['err_cnt'].executor
     try:
@@ -334,7 +337,8 @@ def _cb_feng_pack(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_cb_feng_pack ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    #print("5 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("5 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'5'))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_pack, sensors, f_host, sensor_manager,sensor_task)
 
@@ -351,7 +355,7 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    #print("6 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("6 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['device_status'].executor
     try:
@@ -405,12 +409,13 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_feng_adc ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    #print("6 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("6 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'6'))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_adcs, sensors, f_host, sensor_manager,sensor_task)
 
 @gen.coroutine
-def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
+def _cb_feng_pfbs(sensors, f_host, min_pfb_pwr, sensor_manager, sensor_task):
     """
     F-engine PFB check
     :param sensor:
@@ -422,7 +427,7 @@ def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    #print("7 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("7 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['device_status'].executor
     try:
@@ -437,10 +442,10 @@ def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
 
         for key in ['pol0_pfb_out_dBFS','pol1_pfb_out_dBFS']:
             sensor = sensors[key]
-            if (results[key] > -20) or (results[key] < -70):
+            if (results[key] > -24) or (results[key] < min_pfb_pwr):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                sensor_manager.logger.warn('PFB output levels ({}dBFS) are poor on {}, fhost[{}], {}. Consider adjusting your FFT shift so that PFB output falls in range -70 dBFS to -20 dBFS.'.format(results[key],f_host.fengines[int(key[3])].name,f_host.fhost_index,f_host.host))
+                sensor_manager.logger.warn('PFB output levels ({}dBFS) are poor on {}, fhost[{}], {}. Consider adjusting your FFT shift so that PFB output falls in range {} dBFS to -24 dBFS.'.format(results[key],f_host.fengines[int(key[3])].name,f_host.fhost_index,f_host.host,min_pfb_pwr))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -460,9 +465,9 @@ def _cb_feng_pfbs(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_feng_pfbs ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    #print("7 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
-
-    IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_pfbs, sensors, f_host, sensor_manager,sensor_task)
+    ##print("7 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'7'))
+    IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_pfbs, sensors, f_host, min_pfb_pwr, sensor_manager,sensor_task)
 
 
 @gen.coroutine
@@ -478,7 +483,7 @@ def _cb_feng_quant(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    #print("8 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("8 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['p0_quant_out_dBFS'].executor
     try:
@@ -512,8 +517,8 @@ def _cb_feng_quant(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_feng_quant ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    #print("8 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
-
+    ##print("8 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'8'))
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_quant, sensors, f_host, sensor_manager,sensor_task)
 
 @gen.coroutine
@@ -525,7 +530,7 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
     """
     # GBE CORE
     functionStartTime = time.time();
-    #print("9 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("9 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['tx_pps'].executor
     device_status = Corr2Sensor.NOMINAL
@@ -591,7 +596,8 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_sensor_fhost_check_network ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    #print("9 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("9 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'9'))
 
     IOLoop.current().call_at(
         sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime),
@@ -612,7 +618,7 @@ def _cb_feng_sync(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
     functionStartTime = time.time();
-    #print("10 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("10 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['device_status'].executor
     device_status = Corr2Sensor.NOMINAL
@@ -641,7 +647,8 @@ def _cb_feng_sync(sensors, f_host, sensor_manager,sensor_task):
             f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    #print("10 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("10 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'10'))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_sync, sensors, f_host, sensor_manager,sensor_task)
 
@@ -659,7 +666,7 @@ def _cb_feng_rx_spead(sensors, f_host, sensor_manager,sensor_task):
 
 
     functionStartTime = time.time();
-    #print("11 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("11 on %s Started at %f" % (f_host.host ,functionStartTime))
     # SPEAD RX
     executor = sensors['cnt'].executor
     try:
@@ -690,7 +697,8 @@ def _cb_feng_rx_spead(sensors, f_host, sensor_manager,sensor_task):
             f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
-    #print("11 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("11 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'11'))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_rx_spead, sensors, f_host, sensor_manager,sensor_task)
 
@@ -709,7 +717,7 @@ def _cb_feng_rx_reorder(sensors, f_host, sensor_manager,sensor_task):
 
 
     functionStartTime = time.time();
-    #print("12 on %s Started at %f" % (f_host.host ,functionStartTime))
+    ##print("12 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     executor = sensors['timestep_err_cnt'].executor
     try:
@@ -746,7 +754,8 @@ def _cb_feng_rx_reorder(sensors, f_host, sensor_manager,sensor_task):
 
     sensor_manager.logger.debug('_sensor_feng_rx_reorder ran on {}'.format(f_host.host))
     functionRunTime = time.time() - functionStartTime;
-    #print("12 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    ##print("12 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'12'))
 
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_rx_reorder, sensors, f_host, sensor_manager,sensor_task)
 
@@ -786,8 +795,8 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensors_value[_f.host] = (sensor, sensor_u)
     sensor_task = sensor_scheduler.SensorTask('_cb_feng_rxtime')
     ioloop.add_callback(_cb_feng_rxtime, sensor_ok, sensors_value, sens_man,sensor_task)
-
-
+    import numpy
+    min_pfb_pwr = -20*numpy.log10(2**(sens_man.instrument.fops.pfb_bits-4-1))
     # F-engine host sensors
     for _f in sens_man.instrument.fhosts:
         executor = host_executors[_f.host]
@@ -819,7 +828,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.network.rx-err-cnt'.format(fhost),
                 'RX network error count (bad packets received)', executor=executor),
         }
-        #sensor_task = sensor_scheduler.SensorTask('_cb_fhost_check_network'+_f.host)
+        #sensor_task = sensor_scheduler.SensorTask('_cb_fhost_check_network on '+_f.host)
         #ioloop.add_callback(_cb_fhost_check_network, network_sensors, _f, sens_man,sensor_task)
 
         # SPEAD counters
@@ -861,7 +870,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 'F-engine RX SPEAD packet timestamp has non-zero lsbs.',
                 executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_rx_spead'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_rx_spead on '+_f.host)
         ioloop.add_callback(_cb_feng_rx_spead, spead_rx_sensors, _f, sens_man,sensor_task)
 
 
@@ -892,7 +901,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 'F-engine error reordering packets: input buffer overflow.',
                 executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_rx_reorder'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_rx_reorder on '+_f.host)
         ioloop.add_callback(_cb_feng_rx_reorder, rx_reorder_sensors, _f, sens_man,sensor_task)
 
 
@@ -933,7 +942,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         }
         cd_sensors['delay0_updating'].tempstore = 0
         cd_sensors['delay1_updating'].tempstore = 0
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_delays'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_delays on '+_f.host)
         ioloop.add_callback(_cb_feng_delays, cd_sensors, _f, sens_man,sensor_task)
 
 
@@ -967,7 +976,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.dig.p1-dig-clip-cnt'.format(fhost),
                 'F-engine DIG reported overrange counter.', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_adcs'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_adcs on '+_f.host)
         ioloop.add_callback(_cb_feng_adcs, adc_sensors, _f, sens_man,sensor_task)
 
 
@@ -992,8 +1001,8 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.pfb.sync-cnt'.format(fhost),
                 'F-engine PFB resync counter', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_pfbs'+_f.host)
-        ioloop.add_callback(_cb_feng_pfbs, pfb_sensors, _f, sens_man,sensor_task)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_pfbs on '+_f.host)
+        ioloop.add_callback(_cb_feng_pfbs, pfb_sensors, _f, min_pfb_pwr, sens_man,sensor_task)
 
 
         # CT functionality
@@ -1023,7 +1032,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.ct.reord-missing-err-cnt'.format(fhost),
                 'F-engine corner-turner HMC reorder missing word count.', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_ct'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_ct on '+_f.host)
         ioloop.add_callback(_cb_feng_ct, ct_sensors, _f, sens_man,sensor_task)
 
 
@@ -1036,7 +1045,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.spead-tx.err-cnt'.format(fhost),
                 'F-engine pack (TX) error count', executor=executor)
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_pack'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_pack on '+_f.host)
         ioloop.add_callback(_cb_feng_pack, pack_sensors, _f, sens_man,sensor_task)
 
 
@@ -1053,7 +1062,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.float, '{}.quant.pol1-quant-out-rms-pwr-dbfs'.format(fhost),
                 'F-engine Quantiser output RMS power in dBFS, pol1.', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_quant'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_quant on '+_f.host)
         ioloop.add_callback(_cb_feng_quant, quant_sensors, _f, sens_man,sensor_task)
 
 
@@ -1088,7 +1097,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.sync.timeout-resync-cnt'.format(fhost),
                 'Count of the number of times the synchronisation process timed-out.', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_feng_sync'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_feng_sync on '+_f.host)
         ioloop.add_callback(_cb_feng_sync, sync_sensors, _f, sens_man,sensor_task)
 
 
@@ -1097,7 +1106,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         lru_sensor = sens_man.do_sensor(
             Corr2Sensor.device_status, '{}.device-status'.format(fhost),
             'F-engine %s LRU ok' % _f.host, executor=executor)
-        sensor_task = sensor_scheduler.SensorTask('_cb_fhost_lru'+_f.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_fhost_lru on '+_f.host)
         ioloop.add_callback(_cb_fhost_lru, sens_man, lru_sensor, _f,sensor_task)
 
 

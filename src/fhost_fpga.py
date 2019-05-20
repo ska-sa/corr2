@@ -707,8 +707,10 @@ class FpgaFHost(FpgaHost):
         """
         import numpy
         rv=self.registers.pfb_status.read()['data']
-        rv['pol0_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr0.read()['data']['reg'])
-        rv['pol1_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr1.read()['data']['reg'])
+        names=self.registers.pfb_pwr0.block_info['names']
+        scale_factor=int(names[5:])
+        rv['pol0_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr0.read()['data'][names]/scale_factor)
+        rv['pol1_pfb_out_dBFS']=10*numpy.log10(self.registers.pfb_pwr1.read()['data'][names]/scale_factor)
         return rv
 
     def get_quant_status(self):
@@ -840,4 +842,4 @@ class FpgaFHost(FpgaHost):
         gbename = self.gbes.names()[0]
         gbe = self.gbes[gbename]
         self.logger.info('Subscribing %s to (%s+%i)' % (gbe.name, ip_str, ip_range - 1))
-        gbe.multicast_receive(ip_str, ip_range)
+        gbe.multicast_receive(ip_str, ip_range-1)

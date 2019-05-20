@@ -309,15 +309,17 @@ class XEngineOperations(object):
         source_ctr = 0
         num_x_hosts = len(self.hosts)
         num_gbes_per_x = len(self.hosts[0].gbes)
-        num_ips_total = source_range + 1
+        num_ips_total = float(source_range)
         addresses_per_gbe = num_ips_total / (num_x_hosts * num_gbes_per_x)
+        if ((addresses_per_gbe%1) != 0):
+            raise RuntimeError("Impossible situation: Trying to subscribe to {} addresses per gbe port?".format(addresses_per_gbe))
         for host_ctr, host in enumerate(self.hosts):
             for gbe in host.gbes:
                 rxaddress = '%s%d' % (source_prefix,
                                       source_base + source_ctr)
-                gbe.multicast_receive(rxaddress, addresses_per_gbe)
+                gbe.multicast_receive(rxaddress, addresses_per_gbe-1)
                 source_ctr += addresses_per_gbe
-                self.logger.info('\t%s: %s(%s+%i)' % (
+                self.logger.info('\tXhost %2i, %s: %s(%s+%i)' % (host.index,
                     host.host, gbe.name, rxaddress, addresses_per_gbe - 1))
 
     def get_rx_reorder_status(self):

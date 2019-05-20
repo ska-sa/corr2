@@ -98,6 +98,7 @@ def _cb_xhost_lru(sensor_manager, sensor, sensors, x_host,sensor_task):
 
     functionRunTime = time.time() - functionStartTime;
     #print("13 on %s Ended End Time %f, Run Time %f" % (x_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,x_host.host,'13'))
     IOLoop.current().call_at(
         sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime),
         _cb_xhost_lru,
@@ -121,7 +122,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
     device_status = Corr2Sensor.NOMINAL
     try:
         #result = yield executor.submit(x_host.gbes.gbe0.get_stats)
-        results = x_host.get_unpack_status()
+        result = x_host.gbes.gbe0.get_stats()
         sensors['tx_err_cnt'].set(errif='changed', value=result['tx_over'])
         sensors['rx_err_cnt'].set(errif='changed', value=result['rx_bad_pkts'])
         sensors['tx_pps'].set(
@@ -176,6 +177,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
 
     functionRunTime = time.time() - functionStartTime;
     #print("14 on %s Ended End Time %f, Run Time %f" % (x_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,x_host.host,'14'))
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_xeng_network, sensors, x_host, sensor_manager,sensor_task)
 
 
@@ -217,7 +219,7 @@ def _cb_xeng_rx_spead(sensors, x_host, sensor_manager,sensor_task):
     sensor_manager.logger.debug('_cb_xeng_rx_spead ran')
 
     functionRunTime = time.time() - functionStartTime;
-    #print("15 on %s Ended End Time %f, Run Time %f" % (x_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,x_host.host,'15'))
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_xeng_rx_spead, sensors, x_host, sensor_manager,sensor_task)
 
 
@@ -286,6 +288,7 @@ def _cb_xeng_hmc_reorder(sensors, x_host, sensor_manager,sensor_task):
 
     functionRunTime = time.time() - functionStartTime;
     #print("16 on %s Ended End Time %f, Run Time %f" % (x_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,x_host.host,'16'))
     IOLoop.current().call_at(
         sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime),
         _cb_xeng_hmc_reorder,
@@ -330,6 +333,7 @@ def _cb_xeng_missing_ants(sensors, sensor_top, x_host, sensor_manager,sensor_tas
 
     functionRunTime = time.time() - functionStartTime;
     #print("17 on %s Ended End Time %f, Run Time %f" % (x_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,x_host.host,'17'))
     IOLoop.current().call_at(
         sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime),
         _cb_xeng_missing_ants,
@@ -386,6 +390,7 @@ def _cb_xeng_rx_reorder(sensors, x_host, sensor_manager,sensor_task):
 
     functionRunTime = time.time() - functionStartTime;
     #print("18 on %s Ended End Time %f, Run Time %f" % (x_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,x_host.host,'18'))
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_xeng_rx_reorder, sensors, x_host, sensor_manager,sensor_task)
 
 
@@ -459,6 +464,7 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
 
     functionRunTime = time.time() - functionStartTime;
     #print("19 on %s Ended, Run Time %f" % (time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,'19'))
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_xeng_vacc, sensors_value, sensor_manager,sensor_task)
 
 
@@ -500,6 +506,7 @@ def _cb_xeng_pack(sensors, x_host, sensor_manager,sensor_task):
 
     functionRunTime = time.time() - functionStartTime;
     #print("20 on %s Ended End Time %f, Run Time %f" % (x_host.host,time.time(), functionRunTime))
+    #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,x_host.host,'20'))
     IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_xeng_pack, sensors, x_host, sensor_manager,sensor_task)
 
 
@@ -547,8 +554,8 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.rx-err-cnt'.format(pref),
                 'RX network error count (bad packets received)', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_network'+_x.host)
-        ioloop.add_callback(_cb_xeng_network, network_sensors, _x, sens_man,sensor_task)
+        #sensor_task = sensor_scheduler.SensorTask('_cb_xeng_network on '+_x.host)
+        #ioloop.add_callback(_cb_xeng_network, network_sensors, _x, sens_man,sensor_task)
 
     # SPEAD counters
 
@@ -593,7 +600,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 'X-engine RX SPEAD packet timestamp has non-zero lsbs.',
                 executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_rx_spead'+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_rx_spead on '+_x.host)
         ioloop.add_callback(_cb_xeng_rx_spead, sensors, _x, sens_man,sensor_task)
 
 
@@ -629,7 +636,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.hmc-err-cnt'.format(pref),
                 'HMC hardware memory error counters.', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_hmc_reorder'+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_hmc_reorder on '+_x.host)
         ioloop.add_callback(_cb_xeng_hmc_reorder, sensors, _x, sens_man,sensor_task)
 
     # missing antennas
@@ -645,7 +652,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             sensors.append(sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.missing-pkts.fhost{:02}-cnt'.format(xhost, ant),
                 'Missing packet count for antenna %i.' % ant, executor=executor))
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_missing_ants'+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_missing_ants on '+_x.host)
         ioloop.add_callback(_cb_xeng_missing_ants, sensors, sensor_top, _x, sens_man,sensor_task)
 
     # BRAM reorders
@@ -671,7 +678,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{pref}.missing-err-cnt'.format(pref=pref),
                 'BRAM Reorder block missing data words error counter.', executor=executor)
             sensors.append(sensordict)
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_rx_reorder'+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_rx_reorder on '+_x.host)
         ioloop.add_callback(_cb_xeng_rx_reorder, sensors, _x, sens_man,sensor_task)
 
 
@@ -716,7 +723,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{pref}.timestamp'.format(pref=pref),
                 'Current VACC timestamp.')
             sensors_value[_x.host].append(sensordict)
-    sensor_task = sensor_scheduler.SensorTask('_cb_xeng_vacc'+_x.host)
+    sensor_task = sensor_scheduler.SensorTask('_cb_xeng_vacc on '+_x.host)
     ioloop.add_callback(_cb_xeng_vacc, sensors_value, sens_man,sensor_task)
 
     # Xeng Packetiser block
@@ -745,7 +752,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                     'X-engine pack (TX) fifo overflow error count',
                     executor=executor)}
             sensors.append(sensordict)
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_pack'+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_pack on '+_x.host)
         ioloop.add_callback(_cb_xeng_pack, sensors, _x, sens_man,sensor_task)
 
 
@@ -761,7 +768,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 '{}.device-status'.format(pref),
                 'X-engine core status')
             sensors.append(xeng_sensor)
-        sensor_task = sensor_scheduler.SensorTask('_cb_xhost_lru'+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('_cb_xhost_lru on '+_x.host)
         ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, sensors, _x,sensor_task)
 
 
