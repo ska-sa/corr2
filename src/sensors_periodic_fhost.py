@@ -467,8 +467,7 @@ def _cb_feng_pfbs(sensors, f_host, min_pfb_pwr, sensor_manager, sensor_task):
     functionRunTime = time.time() - functionStartTime;
     ##print("7 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
     #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'7'))
-
-    IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_pfbs, sensors, f_host, sensor_manager,sensor_task)
+    IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_pfbs, sensors, f_host, min_pfb_pwr, sensor_manager,sensor_task)
 
 
 @gen.coroutine
@@ -796,7 +795,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensors_value[_f.host] = (sensor, sensor_u)
     sensor_task = sensor_scheduler.SensorTask('_cb_feng_rxtime')
     ioloop.add_callback(_cb_feng_rxtime, sensor_ok, sensors_value, sens_man,sensor_task)
-
+    import numpy
     min_pfb_pwr = -20*numpy.log10(2**(sens_man.instrument.fops.pfb_bits-4-1))
     # F-engine host sensors
     for _f in sens_man.instrument.fhosts:
