@@ -82,7 +82,7 @@ class Corr2SensorServer(katcp.DeviceServer):
             log_filename = '{}_{}_sensor_servlet.log'.format(ini_filename, start_time)
 
             self.instrument = fxcorrelator.FxCorrelator(
-                                'dummy fx correlator for sensors', config_source=config,
+                                'snsrs', config_source=config,
                                 mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
                                 log_filename=log_filename, log_file_dir=log_file_dir)
             self.instrument.initialise(program=False, configure=False, require_epoch=False,

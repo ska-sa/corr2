@@ -734,7 +734,7 @@ class Corr2SensorManager(SensorManager):
                 unit='samples',
                 initial_status=Sensor.UNKNOWN, manager=self)
             self.sensor_create(sensor)
-            sensor.set_value(self.instrument.n_chans * 2)
+            sensor.set_value(self.instrument.n_chans * 2 * self.instrument.fops.decimation_factor)
 
             sensor = Corr2Sensor.integer(
                 name='{}-pfb-group-delay'.format(strmnm),
@@ -919,6 +919,14 @@ class Corr2SensorManager(SensorManager):
             unit='Hz', initial_status=Sensor.UNKNOWN, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(self.instrument.get_scale_factor())
+
+        sensor = Corr2Sensor.float(
+            name='decimation-factor',
+            description='Factor by which incoming digitiser stream '
+                        'is decimated.',
+            unit='Unitless', initial_status=Sensor.UNKNOWN, manager=self)
+        self.sensor_create(sensor)
+        sensor.set_value(self.instrument.fops.decimation_factor)
 
         self.sensors_sync_time()
         self.sensors_transient_buffer_ready()
