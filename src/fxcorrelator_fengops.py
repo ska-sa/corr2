@@ -249,6 +249,7 @@ class FEngineOperations(object):
 
         self.pfb_bits = int(_fengd['pfb_bits'])
         self.quant_bits = int(_fengd['quant_bits'])
+        self.decimation_factor = int(self.corr.configd['fengine']['decimation_factor'])
 
         dig_streams = []
         for stream in self.corr.data_streams:
@@ -560,7 +561,7 @@ class FEngineOperations(object):
         Enable hardware automatic resync upon error detection.
         """
         #feng_pipeline_latency = ct+hmc  +  pfb_fir  +  fft  +  cd+hmc  +  misc
-        max_difference=(self.corr.n_chans*2*256*2 + 50000) + (self.corr.n_chans*16*2) + (self.corr.n_chans*7) +  (512 + 50000) + (50000)
+        max_difference=(self.corr.n_chans*2*self.corr.xeng_accumulation_len*2*self.decimation_factor + 50000) + (self.decimation_factor*self.corr.n_chans*16*2) + (self.decimation_factor*self.corr.n_chans*7) +  (512 + 50000) + (50000)
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
             target_function=(lambda fpga_: fpga_.registers.time_check.write(max_difference=max_difference), ))
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
