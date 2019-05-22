@@ -232,46 +232,82 @@ class Fengine(object):
 #
     def _delay_write_delay(self, delay):
         """
-        delay is in samples.
+        delay is in samples. Can be fractional.
         """
-        delay_reg = self.host.registers['delay%i' % self.offset]
+        
+        """
+        Split out whole and fractional part
+        """
+        
+        print 'Running delay_write'
+        delay_whole = int(delay)
+        delay_frac = delay - int(delay)
+        
+        delay_reg_whole = self.host.registers['delay_whole%i' % self.offset]
+        delay_reg_frac = self.host.registers['delay_frac%i' % self.offset]
 
         #figure out register offsets and widths
-        reg_bp = delay_reg._fields['initial'].binary_pt
-        reg_bw = delay_reg._fields['initial'].width_bits
+        reg_bp = delay_reg_frac._fields['initial'].binary_pt + 1
+        reg_bw = delay_reg_whole._fields['initial'].width_bits + reg_bp
 
         max_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
         if delay < 0:
-            self.logger.warn('Setting smallest delay of 0. Requested %f samples.' %
-                (delay))
-            delay = 0
+            self.logger.warn('Setting smallest delay of 0. Requested %f samples(whole) and %f samples(frac).' %
+                (delay_whole,delay_frac))
+            delay_whole = 0
+            delay_frac = 0
         elif delay > max_delay:
-            self.logger.warn('Setting largest possible delay. Requested %f samples, set %f.' %
-                (delay,max_delay))
-            delay = max_delay
+            self.logger.warn('Setting largest possible delay. Requested %f samples, set delay_whole %f and delay_frac %f.' %
+                (delay_whole,max_delay,delay_frac))
+            delay_whole = max_delay
+            delay_frac = 0;
 
         #prepare the register:
-        prep_int=int(delay*(2**reg_bp))&((2**reg_bw)-1)
-        act_value = (float(prep_int)/(2**reg_bp))
-        self.logger.debug('Setting delay to %f samples, from request for %f samples.' % (act_value,delay))
-        delay_reg.write_int(prep_int)
+        #prep_int=int(delay*(2**reg_bp))&((2**reg_bw)-1)
+
+        prep_int_frac=int(delay_frac*(2**(reg_bw-reg_bp-1)))&(2**(reg_bp-1)-1)
+        act_value_frac = (float(prep_int_frac)/(2**(reg_bw-reg_bp-1)))
+        
+        prep_int_whole=int(delay_whole)&((2**(reg_bw-reg_bp))-1)
+        act_value_whole = float(prep_int_whole)        
+        self.logger.debug('Setting delay_whole to %f samples, from request for %f samples.' % (act_value_whole,delay_whole))
+        self.logger.debug('Setting delay_frac to %f samples, from request for %f samples.' % (act_value_frac,delay_frac))
+        
+        delay_reg_whole.write_int(prep_int_whole)
+        delay_reg_frac.write_int(prep_int_frac)
+        
+        act_value = act_value_whole + act_value_frac
+
         return act_value
 
     def _delay_write_delay_rate(self, delay_rate):
         """
+        Split out whole and fractional part
         """
+        delay_rate_whole = int(delay_rate)
+        delay_rate_frac = delay_rate - int(delay_rate)
+        
         bitshift = delay_get_bitshift(bitshift_schedule=23)
-        delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
+        delay_delta_reg_whole = self.host.registers['delta_delay_whole%i' % self.offset]
+        delay_delta_reg_frac = self.host.registers['delta_delay_frac%i' % self.offset]
+        
         # shift up by amount shifted down by on fpga
+        # Use input value
         delta_delay_shifted = float(delay_rate) * bitshift
-
+        #delta_delay_shifted_whole = float(delay_rate_whole) * bitshift
+        #delta_delay_shifted_frac = float(delay_rate_frac) * bitshift
+        delta_delay_shifted_whole = float(delay_rate_whole)
+        delta_delay_shifted_frac = float(delay_rate_frac)
+        
+       
         #figure out register offsets and widths
-        reg_bp = delay_delta_reg._fields['delta'].binary_pt
-        reg_bw = delay_delta_reg._fields['delta'].width_bits
+        reg_bp = delay_delta_reg_frac._fields['initial'].binary_pt + 1
+        reg_bw = delay_delta_reg_whole._fields['initial'].width_bits + reg_bp
+
 
         #figure out maximum range, and clip if necessary:
-        max_positive_delta_delay = 2 ** (reg_bw - reg_bp - 1) - 1 / float(2 ** reg_bp)
-        max_negative_delta_delay = -2 ** (reg_bw - reg_bp - 1) + 1 / float(2 ** reg_bp)
+        max_positive_delta_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
+        max_negative_delta_delay = -2 ** (reg_bw - reg_bp) + 1 / float(2 ** reg_bp)
         if delta_delay_shifted > max_positive_delta_delay:
             delta_delay_shifted = max_positive_delta_delay
             self.logger.warn('Setting largest possible positive delay delta. ' \
@@ -283,10 +319,25 @@ class Fengine(object):
                              'Requested: %e samples/sample, set %e.'%
                              (delay_rate,max_negative_delta_delay/bitshift))
 
-        prep_int=int(delta_delay_shifted*(2**reg_bp))
-        act_value = (float(prep_int)/(2**reg_bp))/bitshift
-        self.logger.debug('Setting delay delta to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value, prep_int,delay_rate))
-        delay_delta_reg.write_int(prep_int)
+        
+   
+        #prep_int=int(delta_delay_shifted*(2**reg_bp))
+        #act_value = (float(prep_int)/(2**reg_bp))/bitshift
+                
+        prep_int_whole=int(delta_delay_shifted_whole)
+        act_value_whole = (float(prep_int_whole))
+        
+        prep_int_frac=int(delta_delay_shifted_frac*(2**(reg_bp-1)))&(2**(reg_bp)-1)
+        act_value_frac = (float(prep_int_frac)/(2**(reg_bp-1)))
+        
+        self.logger.debug('Setting delay delta whole to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value_whole, prep_int_whole,delay_rate_whole))
+        self.logger.debug('Setting delay delta frac to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value_frac, prep_int_frac,delay_rate_frac))
+        
+        delay_delta_reg_whole.write_int(prep_int_whole)
+        delay_delta_reg_frac.write_int(prep_int_frac)
+                
+        act_value = act_value_whole + act_value_frac
+        
         return act_value
 
 
