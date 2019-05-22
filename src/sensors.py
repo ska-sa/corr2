@@ -1,6 +1,6 @@
 # import logging
 # Yes, I know it's just an integer value
-from logging import INFO
+from logging import INFO,DEBUG,WARN,ERROR
 import time
 
 
@@ -211,7 +211,7 @@ class SensorManager(object):
             logger_name = '{}_sens_man'.format(instrument.descriptor)
 
         # Why is logging defaulted to INFO, what if I do not want to see the info logs?
-        logLevel = kwargs.get('logLevel', INFO)
+        logLevel = kwargs.get('logLevel', ERROR)
         result, self.logger = self.getLogger(logger_name=logger_name,
                                              log_level=logLevel, **kwargs)
         if not result:

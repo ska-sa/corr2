@@ -554,7 +554,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.rx-err-cnt'.format(pref),
                 'RX network error count (bad packets received)', executor=executor),
         }
-        #sensor_task = sensor_scheduler.SensorTask('_cb_xeng_network on '+_x.host)
+        #sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_network',_x.host))
         #ioloop.add_callback(_cb_xeng_network, network_sensors, _x, sens_man,sensor_task)
 
     # SPEAD counters
@@ -600,7 +600,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 'X-engine RX SPEAD packet timestamp has non-zero lsbs.',
                 executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_rx_spead on '+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_rx_spead',_x.host))
         ioloop.add_callback(_cb_xeng_rx_spead, sensors, _x, sens_man,sensor_task)
 
 
@@ -636,7 +636,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.hmc-err-cnt'.format(pref),
                 'HMC hardware memory error counters.', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_hmc_reorder on '+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_hmc_reorder',_x.host))
         ioloop.add_callback(_cb_xeng_hmc_reorder, sensors, _x, sens_man,sensor_task)
 
     # missing antennas
@@ -652,7 +652,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             sensors.append(sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.missing-pkts.fhost{:02}-cnt'.format(xhost, ant),
                 'Missing packet count for antenna %i.' % ant, executor=executor))
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_missing_ants on '+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_missing_ants',_x.host))
         ioloop.add_callback(_cb_xeng_missing_ants, sensors, sensor_top, _x, sens_man,sensor_task)
 
     # BRAM reorders
@@ -678,7 +678,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{pref}.missing-err-cnt'.format(pref=pref),
                 'BRAM Reorder block missing data words error counter.', executor=executor)
             sensors.append(sensordict)
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_rx_reorder on '+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_rx_reorder',_x.host))
         ioloop.add_callback(_cb_xeng_rx_reorder, sensors, _x, sens_man,sensor_task)
 
 
@@ -723,7 +723,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{pref}.timestamp'.format(pref=pref),
                 'Current VACC timestamp.')
             sensors_value[_x.host].append(sensordict)
-    sensor_task = sensor_scheduler.SensorTask('_cb_xeng_vacc on '+_x.host)
+    sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_vacc',_x.host))
     ioloop.add_callback(_cb_xeng_vacc, sensors_value, sens_man,sensor_task)
 
     # Xeng Packetiser block
@@ -752,7 +752,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                     'X-engine pack (TX) fifo overflow error count',
                     executor=executor)}
             sensors.append(sensordict)
-        sensor_task = sensor_scheduler.SensorTask('_cb_xeng_pack on '+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_pack',_x.host))
         ioloop.add_callback(_cb_xeng_pack, sensors, _x, sens_man,sensor_task)
 
 
@@ -768,7 +768,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 '{}.device-status'.format(pref),
                 'X-engine core status')
             sensors.append(xeng_sensor)
-        sensor_task = sensor_scheduler.SensorTask('_cb_xhost_lru on '+_x.host)
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xhost_lru',_x.host))
         ioloop.add_callback(_cb_xhost_lru, sens_man, sensor, sensors, _x,sensor_task)
 
 

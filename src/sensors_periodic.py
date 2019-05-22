@@ -46,6 +46,7 @@ def setup_sensors(sensor_manager):
     sens_man = sensor_manager
     sensor_poll_interval = sens_man.instrument.sensor_poll_interval;
     sensor_scheduler.sensor_call_gap_time_s = sensor_poll_interval;
+    sensor_scheduler.logger = sens_man.logger;
         
     # Set up a one-worker pool per host to serialise interactions with each host
     host_executors = {
@@ -63,6 +64,7 @@ def setup_sensors(sensor_manager):
     if not ioloop:
         raise RuntimeError('IOLoop-containing katcp version required. Can go '
                            'no further.')
+    
     sens_man.sensors_clear()
     args = [sens_man, general_executor,
             host_executors, ioloop, host_offset_lookup]
