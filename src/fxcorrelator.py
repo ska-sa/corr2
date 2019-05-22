@@ -590,6 +590,7 @@ class FxCorrelator(Instrument):
         # =====================================================================
         _feng_d = self.configd.get('fengine')
         assert isinstance(_feng_d, dict)
+        self.decimation_factor = int(_feng_d.get('decimation_factor', 1))
         self.ct_readgap = int(_feng_d.get('ct_readgap', 45))
         assert isinstance(self.ct_readgap, int)
         self.n_chans = int(_feng_d.get('n_chans'))

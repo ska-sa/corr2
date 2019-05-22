@@ -554,7 +554,7 @@ class XEngineOperations(object):
         :return:
         """
         return (acc_len_cycles * self.corr.xeng_accumulation_len *
-                self.corr.n_chans * 2.0 / self.corr.sample_rate_hz)
+                self.corr.n_chans * 2.0 / self.corr.sample_rate_hz * self.corr.fops.decimation_factor)
 
     def set_acc_time(self, acc_time_s, vacc_resync=True):
         """
