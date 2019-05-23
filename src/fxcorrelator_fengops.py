@@ -331,6 +331,55 @@ class FEngineOperations(object):
         if sleeptime > 0:
             time.sleep(sleeptime)
 
+    def set_center_freq(self,freq,band=0):
+        """Set the DDC's center frequency in Hz. 
+            For compiles with multiple bands, specify which one you want to set."""
+        self.logger.info("Attempting to set the center frequency to {10.5} MHz on band %i".format(freq/1e6,band))
+        if (band > 0):
+            raise NotImplementedError('This is not implemented for anything other than the default band.')
+        if (self.decimation_factor==1):
+            self.logger.info("No point setting the center frequency in wideband modes.")
+            return self.corr.sample_rate_hz/4.
+        offset = self.corr.sample_rate_hz/4./self.decimation_factor
+        min_freq=offset
+        max_freq=(self.corr.sample_rate_hz/2.) - offset
+        if (freq < min_freq):
+            freq=min_freq
+        if (freq>max_freq):
+            freq=max_freq
+        self._set_osc_freq(freq-offset,band)
+        return self.get_center_freq(band)
+
+    def get_center_freq(self,band=0):
+        """Fetch the tuned center-frequency of the DDC for the given band."""
+        if (band > 0):
+            raise NotImplementedError('This is not implemented for anything other than the default band.')
+        if (self.decimation_factor==1):
+            return self.corr.sample_rate_hz/4.
+        offset = self.corr.sample_rate_hz/4./self.decimation_factor
+        osc_freq=self._get_osc_freq(band)
+        self.logger.info("Center frequency is {10.5} MHz on band %i".format((osc_freq+offset)/1e6,band))
+        return osc_freq+offset
+
+    def _set_osc_freq(self,freq,band=0):
+        """Set the DDC oscillator frequency to "freq" Hz."""
+        if (band > 0):
+            raise NotImplementedError('This is not implemented for anything other than the default band.')
+        self.logger.info('Setting DDC oscillator freq to {} MHz'.format(freq/1.e6))
+        reg_value = freq*(2**22)/self.corr.sample_rate_hz
+        THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
+            target_function=(lambda fpga_: fpga_.registers.freq_cwb_osc.write(frequency=reg_value),))
+
+    def _get_osc_freq(self,freq,band=0):
+        """Return the hardware configured oscillator frequency, in Hz."""
+        if (band > 0):
+            raise NotImplementedError('This is not implemented for anything other than the default band.')
+        rv =THREADED_FPGA_OP(c.fops.hosts,timeout=1,target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.read()['data']['frequency'],)) 
+        if min(rv.values()) != max(rv.values()): 
+            self.logger.warning("Fhosts have different tuning frequencies!")
+            raise RuntimeError("Fhosts have different tuning frequencies!")
+        return rv.values()[0]*self.corr.sample_rate_hz/(2**22)
+
     def get_rx_timestamps(self, src=0):
         """
         Are the timestamps being received by the F-engines okay?
