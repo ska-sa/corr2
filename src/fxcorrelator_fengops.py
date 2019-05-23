@@ -331,12 +331,11 @@ class FEngineOperations(object):
         if sleeptime > 0:
             time.sleep(sleeptime)
 
-    def set_center_freq(self,freq,band=0):
-        """Set the DDC's center frequency in Hz. 
-            For compiles with multiple bands, specify which one you want to set."""
-        self.logger.info("Attempting to set the center frequency to {10.5} MHz on band %i".format(freq/1e6,band))
-        if (band > 0):
-            raise NotImplementedError('This is not implemented for anything other than the default band.')
+    def set_center_freq(self,freq):
+        """Set the DDC's center frequency in Hz. """
+        self.logger.info("Attempting to set the center frequency to {:.5f} MHz".format(freq/1e6))
+        #if (band > 0):
+        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         if (self.decimation_factor==1):
             self.logger.info("No point setting the center frequency in wideband modes.")
             return self.corr.sample_rate_hz/4.
@@ -347,38 +346,43 @@ class FEngineOperations(object):
             freq=min_freq
         if (freq>max_freq):
             freq=max_freq
-        self._set_osc_freq(freq-offset,band)
-        return self.get_center_freq(band)
+        self._set_osc_freq(freq-offset)
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_center_freq()
+        return self.get_center_freq()
 
-    def get_center_freq(self,band=0):
-        """Fetch the tuned center-frequency of the DDC for the given band."""
-        if (band > 0):
-            raise NotImplementedError('This is not implemented for anything other than the default band.')
+    def get_center_freq(self):
+        """Fetch the tuned center-frequency of the DDC."""
+        #if (band > 0):
+        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         if (self.decimation_factor==1):
             return self.corr.sample_rate_hz/4.
         offset = self.corr.sample_rate_hz/4./self.decimation_factor
-        osc_freq=self._get_osc_freq(band)
-        self.logger.info("Center frequency is {10.5} MHz on band %i".format((osc_freq+offset)/1e6,band))
+        osc_freq=self._get_osc_freq()
+        self.logger.info("Center frequency is {:.5f} MHz".format((osc_freq+offset)/1e6))
         return osc_freq+offset
 
-    def _set_osc_freq(self,freq,band=0):
+    def _set_osc_freq(self,freq):
         """Set the DDC oscillator frequency to "freq" Hz."""
-        if (band > 0):
-            raise NotImplementedError('This is not implemented for anything other than the default band.')
-        self.logger.info('Setting DDC oscillator freq to {} MHz'.format(freq/1.e6))
+        #if (band > 0):
+        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
+        self.logger.info('Setting DDC oscillator freq to {:.3f} MHz'.format(freq/1.e6))
         reg_value = freq*(2**22)/self.corr.sample_rate_hz
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
-            target_function=(lambda fpga_: fpga_.registers.freq_cwb_osc.write(frequency=reg_value),))
+            target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.write(frequency=reg_value),))
+        return self._get_osc_freq()
 
-    def _get_osc_freq(self,freq,band=0):
+    def _get_osc_freq(self):
         """Return the hardware configured oscillator frequency, in Hz."""
-        if (band > 0):
-            raise NotImplementedError('This is not implemented for anything other than the default band.')
-        rv =THREADED_FPGA_OP(c.fops.hosts,timeout=1,target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.read()['data']['frequency'],)) 
+        #if (band > 0):
+        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
+        rv =THREADED_FPGA_OP(self.hosts,timeout=1,target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.read()['data']['frequency'],)) 
         if min(rv.values()) != max(rv.values()): 
             self.logger.warning("Fhosts have different tuning frequencies!")
             raise RuntimeError("Fhosts have different tuning frequencies!")
-        return rv.values()[0]*self.corr.sample_rate_hz/(2**22)
+        rv=rv.values()[0]*self.corr.sample_rate_hz/(2**22)
+        self.logger.info('DDC oscillator freq is {:.3f} MHz'.format(rv/1.e6))
+        return rv
 
     def get_rx_timestamps(self, src=0):
         """
@@ -497,7 +501,7 @@ class FEngineOperations(object):
         :param phase_delta: phase rate of change in radians/second.
         :return: True/False
         """
-        sample_rate_hz = self.corr.get_scale_factor()
+        sample_rate_hz = self.corr.sample_rate_hz
         loadmcnt = self._delays_check_loadtime(loadtime)
         if not (loadmcnt > 0):
             self.logger.error("Dropping delay request.")
@@ -747,12 +751,15 @@ class FEngineOperations(object):
         :param freq: frequency, in Hz, float
         :return: the fft channel, integer
         """
-        _band = self.corr.sample_rate_hz / 2.0
-        if (freq > _band) or (freq <= 0):
-            raise RuntimeError('frequency {:.3f} is not in our band'.format(freq))
+        center = self.get_center_freq()
+        _bw = self.corr.sample_rate_hz / 2.0 / self.decimation_factor
+        _band_min = center_freq - _bw/2
+        _band_max = center_freq + bw/2
+        if (freq > _band_max) or (freq <= _band_min):
+            raise RuntimeError('frequency {:.3f}MHz is not in our band ({:.3f} to {:.3f} MHz).'.format(freq/1e6,_band_min/1e6,_band_max/1e6))
         import numpy
         _hz_per_chan = _band / self.corr.n_chans
-        _chan_index = numpy.floor(freq / _hz_per_chan)
+        _chan_index = numpy.floor((freq-_band_min) / _hz_per_chan)
         return _chan_index
 
     def get_quant_snap(self, input_name, channel_select=-1):
