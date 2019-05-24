@@ -51,7 +51,7 @@ class XengineStream(data_stream.SPEADStream):
             'frequency to highest frequency. Each frequency channel contains '
             'the data for all baselines (n_bls given by SPEAD ID 0x100b). '
             'Each value is a complex number - two (real and imaginary) '
-            'unsigned integers.' % n_xengs,
+            'signed integers.' % n_xengs,
             dtype=numpy.dtype('>i4'),
             shape=[self.xops.corr.n_chans/n_xengs,
                    len(self.xops.get_baseline_ordering()), 2])
