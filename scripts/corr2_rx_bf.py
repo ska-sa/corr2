@@ -153,9 +153,11 @@ class PlotConsumer(object):
         if(self.log):
             plotdata[[plotdata==0]]=1
             plotdata = 20*np.log(plotdata);
-            sbplt[0].set_ylim(bottom = 0, top=np.amax(plotdata)*1.1)
+            dataMax = np.amax(plotdata)
+            plotdata = plotdata - dataMax;
+            sbplt[0].set_ylim(bottom = -100, top=0)
             sbplt[0].plot(range(self.channels[0],self.channels[1]+1),plotdata)
-            sbplt[0].set_ylabel("Log Scale")
+            sbplt[0].set_ylabel("dB")
         else:
             sbplt[0].plot(range(self.channels[0],self.channels[1]+1),plotdata)
             sbplt[0].set_ylabel("Linear Scale")
