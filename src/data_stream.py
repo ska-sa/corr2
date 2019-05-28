@@ -275,9 +275,12 @@ class SPEADStream(object):
         if (index < 0 or index >= self.destination.ip_range):
             self.logger.error('%s: Tried to issue discriptor out of range (%i descriptors, index: %i).' % (self.name, dest_ctr, index))
             return
-
-        self.tx_sockets[index].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
-        self.logger.debug('SPEADStream %s: sent descriptor %i of %i destinations' % (self.name, index, dest_ctr))
+        
+        if(self.tx_enabled):
+            self.tx_sockets[index].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
+            self.logger.debug('SPEADStream %s: sent descriptor %i of %i destinations' % (self.name, index, dest_ctr))
+        else:
+            self.logger.debug('SPEADStream %s: DId not send descriptor %i of %i destinations, beam disabled' % (self.name, index, dest_ctr))
 
     def get_num_descriptors(self):
         """
