@@ -61,7 +61,7 @@ class DigitiserStream(SPEADStream):
         #     description='Raw 10-bit samples from the Meerkat ADC.',
         #     shape=(512,), dtype='i10')
 
-    def set_destination(self, new_dest, max_pkt_size):
+    def set_destination(self, new_dest):
         """
         Set the destination on this digitiser stream.
         :param new_dest: The new destinaton to set on this device.
