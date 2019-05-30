@@ -148,7 +148,7 @@ if __name__ == '__main__':
                         default=1235, type=int,
                         help='bind to this port to receive KATCP messages')
     parser.add_argument('--log_level', dest='loglevel', action='store',
-                        default=logging.WARN, help='log level to set')
+                        default='WARN', help='log level to set')
     parser.add_argument('--log_format_katcp', dest='lfm', action='store_true',
                         default=False, help='format log messsages for katcp')
     parser.add_argument('--config', dest='config', type=str, action='store',
@@ -159,16 +159,17 @@ if __name__ == '__main__':
 
     try:
         log_level = getattr(logging, args.loglevel)
-        if(args.loglevel == "WARN"):
+        if(args.loglevel.upper() == "WARN"):
             log_level = logging.WARN;
-        elif(args.loglevel == "DEBUG"):
+        elif(args.loglevel.upper() == "DEBUG"):
             log_level = logging.DEBUG;
-        elif(args.loglevel == "INFO"):
+        elif(args.loglevel.upper() == "INFO"):
             log_level = logging.INFO;
-        elif(args.loglevel == "ERROR"):
+        elif(args.loglevel.upper() == "ERROR"):
             log_level = logging.ERROR;
-    except AttributeError:
-        raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
+    except:
+        print("Log level not understood. Defaulting to WARN.")
+        log_level = logging.WARN;
 
     # def boop():
     #     raise KeyboardInterrupt

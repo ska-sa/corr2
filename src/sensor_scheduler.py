@@ -15,7 +15,7 @@ class SensorTask:
         self.num_time_overruns = 0;
         self.flow_control_increments = 0;
         logger.debug(self.name)
-        print(function_name)
+        #print(function_name)
 
     def getNextSensorCallTime(self,current_function_runtime=0):
         global sensor_loop_runtime;
@@ -25,13 +25,13 @@ class SensorTask:
         global sensor_loop_flow_control_padding;
         global logger
         
-        printTime = False;
+        #printTime = False;
         last_runtime_length = self.last_runtime_length;
         if(self.executed == False):
             self.executed = True;
             sensor_loop_running_tasks+=1
             self.last_runtime_utc = sensor_loop_start_time;
-            printTime = True;
+        #    printTime = True;
 
         self.last_runtime_length = current_function_runtime
         
@@ -59,8 +59,8 @@ class SensorTask:
             sensor_loop_flow_control_padding-=1
 
         logger.debug('{0:} finished at {1:.4f}. Next Call:{2:.4f} Runtime: {3:.5f}.'.format(self.name,time.time(),next_sensor_call_time,current_function_runtime))
-        if(printTime):
-            print ("Sensor function: {0:} First Call: {1:.4f} Next Call: {2:.4f}".format(self.name,time.time(),next_sensor_call_time))
+        #if(printTime):
+        #    print ("Sensor function: {0:} First Call: {1:.4f} Next Call: {2:.4f}".format(self.name,time.time(),next_sensor_call_time))
         return next_sensor_call_time
 
         
