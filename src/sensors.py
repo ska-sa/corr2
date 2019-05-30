@@ -560,10 +560,10 @@ class Corr2SensorManager(SensorManager):
 
         for stream in streams:
             strmnm = stream.name
-            sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-xeng-acc-len'.format(strmnm),
-                'Number of accumulations performed internal to the X-engine.')
-            sensor.set_value(self.instrument.xeng_accumulation_len)
+#            sensor = self.do_sensor(
+#                Corr2Sensor.integer, '{}-xeng-acc-len'.format(strmnm),
+#                'Number of accumulations performed internal to the X-engine.')
+#            sensor.set_value(self.instrument.xeng_accumulation_len)
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
@@ -735,6 +735,11 @@ class Corr2SensorManager(SensorManager):
                 initial_status=Sensor.UNKNOWN, manager=self)
             self.sensor_create(sensor)
             sensor.set_value(self.instrument.n_chans * 2)
+
+            sensor = self.do_sensor(
+                Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
+                'Number of consecutive spectra in each heap.')
+            sensor.set_value(self.instrument.xeng_accumulation_len)
 
             sensor = Corr2Sensor.integer(
                 name='{}-pfb-group-delay'.format(strmnm),
