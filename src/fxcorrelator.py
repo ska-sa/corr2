@@ -27,7 +27,6 @@ from fxcorrelator_xengops import XEngineOperations
 from fxcorrelator_bengops import BEngineOperations
 from fxcorrelator_filterops import FilterOperations
 from data_stream import StreamAddress
-from digitiser import DigitiserStream
 
 from corr2LogHandlers import getLogger
 
@@ -173,13 +172,6 @@ class FxCorrelator(Instrument):
 
         # clear the data streams. These will be re-added during configuration.
         self.data_streams = []
-        # what digitiser data streams have we been allocated?
-
-        if 'getLogger' in kwargs:
-            self._create_digitiser_streams(**kwargs)
-        else:
-            self._create_digitiser_streams(
-                getLogger=self.getLogger, *args, **kwargs)
 
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self, timeout=self.timeout, **kwargs)
@@ -649,29 +641,6 @@ class FxCorrelator(Instrument):
 
         except Exception:
             self.logger.info('No beamfomer found in the config.')
-
-    def _create_digitiser_streams(self, *args, **kwargs):
-        """
-        Parse the config of the given digitiser streams.
-        :return:
-        """
-        _fengd = self.configd.get('fengine', None)
-        assert isinstance(_fengd, dict)
-        source_mcast = _fengd.get('source_mcast_ips', None)
-        assert isinstance(source_mcast, str)
-        source_mcast = re.split(r'[,\s]+', source_mcast)
-        assert isinstance(source_mcast, list)
-        source_names = utils.get_sources(config=self.configd)
-        for ctr, src in enumerate(source_mcast):
-            source_mcast[ctr] = src.strip()
-        assert len(source_mcast) == len(source_names), (
-            'Source names ({}) must be paired with multicast source '
-            'addresses ({})'.format(len(source_names), len(source_mcast)))
-        for ctr, source in enumerate(source_names):
-            addr = StreamAddress.from_address_string(source_mcast[ctr])
-            dig_src = DigitiserStream(source, addr, ctr, self, *args, **kwargs)
-            dig_src.tx_enabled = True
-            self.add_data_stream(dig_src)
 
     def _read_config_file(self):
         """

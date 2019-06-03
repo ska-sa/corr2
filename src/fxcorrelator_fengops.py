@@ -1,6 +1,7 @@
 import Queue
 import threading
 import time
+import re
 
 import utils
 import fhost_fpga
@@ -12,10 +13,10 @@ from casperfpga import CasperLogHandlers
 
 from data_stream import SPEADStream
 from data_stream import FENGINE_CHANNELISED_DATA
-from data_stream import DIGITISER_ADC_SAMPLES
+from data_stream import StreamAddress
 
 from logging import INFO
-# from corr2LogHandlers import getLogger
+
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -251,18 +252,29 @@ class FEngineOperations(object):
         self.quant_bits = int(_fengd['quant_bits'])
 
         dig_streams = []
-        for stream in self.corr.data_streams:
-            if stream.category == DIGITISER_ADC_SAMPLES:
-                dig_streams.append((stream.name, stream.input_number))
-        dig_streams = sorted(dig_streams, key=lambda stream: stream[1])
+
+        source_mcast = _fengd.get('source_mcast_ips', None)
+        assert isinstance(source_mcast, str)
+        source_mcast = re.split(r'[,\s]+', source_mcast)
+        assert isinstance(source_mcast, list)
+        source_names = utils.get_sources(config=self.corr.configd)
+        for ctr, src in enumerate(source_mcast):
+            source_mcast[ctr] = src.strip()
+        assert len(source_mcast) == len(source_names), (
+            'Source names ({}) must be paired with multicast source '
+            'addresses ({})'.format(len(source_names), len(source_mcast)))
+        for ctr, source in enumerate(source_names):
+            addr = StreamAddress.from_address_string(source_mcast[ctr])
+            dig_src = fhost_fpga.InputStreamDetails(source, addr, ctr)
+            dig_streams.append(dig_src);
 
         # assemble the inputs given into a list
         _feng_temp = []
-        for stream_index, stream_value in enumerate(dig_streams):
+        for stream_index, stream_object in enumerate(dig_streams):
             new_feng = fhost_fpga.Fengine(
-                input_stream=self.corr.get_data_stream(stream_value[0]),
+                input_stream=stream_object,
                 host=None,
-                offset=stream_value[1] % self.corr.f_per_fpga,
+                offset=stream_object.input_number % self.corr.f_per_fpga,
                 feng_id=stream_index, descriptor=self.corr.descriptor, *args, **kwargs)
             new_feng.eq_bram_name = 'eq{}'.format(new_feng.offset)
             dest_ip_range = new_feng.input.destination.ip_range

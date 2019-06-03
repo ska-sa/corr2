@@ -8,13 +8,17 @@ from casperfpga.transport_skarab import SkarabTransport
 import delay as delayops
 from utils import parse_slx_params
 from host_fpga import FpgaHost
-# from digitiser_receiver import DigitiserStreamReceiver
 # from corr2LogHandlers import getLogger
 
 #TODO: move snapshots from fhost obj to feng obj?
 #   -> not sensible while trig_time registers are shared for adc snapshots.
 
 
+class InputStreamDetails():
+    def __init__(self,name,destination,input_number):
+        self.name=name;
+        self.input_number = input_number;
+        self.destination = destination;
 
 class InputNotFoundError(ValueError):
     pass
@@ -53,7 +57,7 @@ class Fengine(object):
                  offset=-1, *args, **kwargs):
         """
 
-        :param input_stream: the DigitiserStream input for this F-engine
+        :param input_stream: an InputStreamDetails object with the details to the input for this F-engine
         :param host: the Fpga host on which this input is received
         :param offset: which input on that host is this?
         :return:
