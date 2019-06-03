@@ -609,8 +609,7 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
             for feng in self.instrument.fops.fengines:
-                pref = '{strm}-input{npt}'.format(strm=strmnm,
-                                                  npt=feng.input_number)
+                pref = '{strm}-{npt}'.format(strm=strmnm,npt=feng.name)
                 sensor = self.do_sensor(
                     Corr2Sensor.integer, '{}-fft0-shift'.format(pref),
                     'The FFT bitshift pattern for the <n>th FFT in the design. '
@@ -622,7 +621,7 @@ class Corr2SensorManager(SensorManager):
             data_stream.FENGINE_CHANNELISED_DATA)
         assert len(streams) == 1
         strmnm = streams[0].name
-        pref = '{strm}-input{npt}'.format(strm=strmnm, npt=feng.input_number)
+        pref = '{strm}-{npt}'.format(strm=strmnm, npt=feng.name)
         sensor = self.do_sensor(
             Corr2Sensor.string, '{}-eq'.format(pref),
             'The unitless, per-channel digital scaling factors '
@@ -641,7 +640,7 @@ class Corr2SensorManager(SensorManager):
                 'Expecting one Feng stream, got %i?' %
                 (len(streams)))
         strmnm = streams[0].name
-        pref = '{strm}-input{npt}'.format(strm=strmnm, npt=feng.input_number)
+        pref = '{strm}-{npt}'.format(strm=strmnm, npt=feng.name)
         sensor = self.do_sensor(
             Corr2Sensor.string, '{}-delay'.format(pref),
             'The delay settings for this input: (loadmcnt <ADC sample count when model was loaded>, delay <in seconds>, '
