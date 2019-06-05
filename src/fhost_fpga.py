@@ -302,6 +302,7 @@ class Fengine(object):
        
         #figure out register offsets and widths
         reg_bp = delay_delta_reg_frac._fields['initial'].binary_pt + 1
+
         reg_bw = delay_delta_reg_whole._fields['initial'].width_bits + reg_bp
 
 
@@ -324,8 +325,8 @@ class Fengine(object):
         #prep_int=int(delta_delay_shifted*(2**reg_bp))
         #act_value = (float(prep_int)/(2**reg_bp))/bitshift
                 
-        prep_int_whole=int(delta_delay_shifted_whole)
-        act_value_whole = (float(prep_int_whole))
+        prep_int_whole=int(delta_delay_shifted_whole*(2**reg_bp))
+        act_value_whole = (float(prep_int_whole)/(2**reg_bp))
         
         prep_int_frac=int(delta_delay_shifted_frac*(2**(reg_bp-1)))&(2**(reg_bp)-1)
         act_value_frac = (float(prep_int_frac)/(2**(reg_bp-1)))
