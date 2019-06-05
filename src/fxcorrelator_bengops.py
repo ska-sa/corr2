@@ -180,6 +180,8 @@ class BEngineOperations(object):
         else:
             new_weights=weights
 
+        self.logger.debug('Received weights for beam %s: %s'%(str(beam_name),str(weights)))
+
         assert len(new_weights)==self.corr.n_antennas,'Need to specify %i values; you offered %i.'%(self.corr.n_antennas,len(new_weights))
         beam_index = self.get_beam_by_name(beam_name).index
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set',
