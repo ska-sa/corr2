@@ -574,14 +574,9 @@ class XEngineOperations(object):
     def get_acc_time(self):
         """
         Get the dump time currently being used.
-
-        Note: Will only be correct if accumulation time was set using this
-        correlator
-        object instance since cached values are used for the calculation.
-        I.e., the number of accumulations are _not_ read from the FPGAs.
         :return:
         """
-        return self.acc_time_from_len(self.corr.accumulation_len)
+        return self.acc_time_from_len(self.get_acc_len())
 
     def get_acc_len(self):
         """
