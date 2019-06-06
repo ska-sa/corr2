@@ -577,12 +577,13 @@ class FxCorrelator(Instrument):
         # =====================================================================
         _feng_d = self.configd.get('fengine')
         assert isinstance(_feng_d, dict)
+        self.decimation_factor = int(_feng_d.get('decimation_factor', 1))
+        self.ct_readgap = int(_feng_d.get('ct_readgap', 45))
+        assert isinstance(self.ct_readgap, int)
         self.n_chans = int(_feng_d.get('n_chans'))
         assert isinstance(self.n_chans, int)
         ## There must be a better way
         #assert self.n_chans in [1024, 4096, 32768]
-        self.ct_readgap = int(_feng_d.get('ct_readgap', 45))
-        assert isinstance(self.ct_readgap, int)
         self.min_load_time = float(_feng_d.get('min_load_time', 0.2))
         assert isinstance(self.min_load_time, float)
         self.f_per_fpga = int(_feng_d.get('f_per_fpga', 2))

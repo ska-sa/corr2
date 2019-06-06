@@ -51,7 +51,7 @@ class XengineStream(data_stream.SPEADStream):
             'frequency to highest frequency. Each frequency channel contains '
             'the data for all baselines (n_bls given by SPEAD ID 0x100b). '
             'Each value is a complex number - two (real and imaginary) '
-            'unsigned integers.' % n_xengs,
+            'signed integers.' % n_xengs,
             dtype=numpy.dtype('>i4'),
             shape=[self.xops.corr.n_chans/n_xengs,
                    len(self.xops.get_baseline_ordering()), 2])
@@ -556,7 +556,7 @@ class XEngineOperations(object):
         :return:
         """
         return (acc_len_cycles * self.xeng_acc_len *
-                self.corr.n_chans * 2.0 / self.corr.sample_rate_hz)
+                self.corr.n_chans * 2.0 / self.corr.sample_rate_hz * self.corr.fops.decimation_factor)
 
     def set_acc_time(self, acc_time_s, vacc_resync=True):
         """

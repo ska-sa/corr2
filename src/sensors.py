@@ -564,13 +564,18 @@ class Corr2SensorManager(SensorManager):
 #                Corr2Sensor.integer, '{}-xeng-acc-len'.format(strmnm),
 #                'Number of accumulations performed internal to the X-engine.')
 #            sensor.set_value(self.instrument.xops.xeng_acc_len)
-
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
                 '{}-xeng-out-bits-per-sample'.format(strmnm),
                 'X-engine output bits per sample. Per number, not complex '
                 'pair. Real and imaginary parts are both this wide.')
             sensor.set_value(self.instrument.xeng_outbits)
+
+            sensor = self.do_sensor(
+                Corr2Sensor.integer,
+                '{}-xeng-vacc-bits-per-sample'.format(strmnm),
+                'X-engine Vector-accumulator bits per sample. Real and imaginary parts are each this wide. Used to figure out what the maximum value is you could get out the Xengines.')
+            sensor.set_value(self.instrument.xeng_outbits-1)
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-bls'.format(strmnm),
@@ -597,6 +602,21 @@ class Corr2SensorManager(SensorManager):
 
         self.sensors_xeng_acc_time()
         self.sensors_baseline_ordering()
+
+    def sensors_center_freq(self):
+        """
+        Update the fengine center frequency sensors
+        """
+        streams = self.instrument.get_data_streams_by_type(
+            data_stream.FENGINE_CHANNELISED_DATA)
+        assert len(streams) == 1
+        for stream in streams:
+            strmnm = stream.name
+            sensor = self.do_sensor(
+                    Corr2Sensor.float, '{}-center-freq'.format(strmnm),
+                    'The CBF center frequency of the digitised band.',unit='Hz')
+            sensor.set_value(self.instrument.fops.get_center_freq()) 
+
 
     def sensors_feng_fft_shift(self):
         """
@@ -692,13 +712,18 @@ class Corr2SensorManager(SensorManager):
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
                 '{}-feng-out-bits-per-sample'.format(strmnm),
-                'F-engine output bits per sample.')
+                'F-engine output bits per sample.',unit='bits')
             sensor.set_value(self.instrument.fops.quant_bits)
 
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-center-freq'.format(strmnm),
-                'The CBF center frequency of the digitised band.')
-            sensor.set_value(self.instrument.analogue_bandwidth / 2.0)
+                'The CBF center frequency of the digitised band.',unit='Hz')
+            sensor.set_value(self.instrument.fops.get_center_freq()) 
+
+            sensor = self.do_sensor(
+                Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
+                'The analogue bandwidth of this stream, in Hz.',unit='Hz')
+            sensor.set_value(self.instrument.analogue_bandwidth / 2.0 / self.instrument.fops.decimation_factor) 
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
@@ -711,21 +736,21 @@ class Corr2SensorManager(SensorManager):
             n_xeng = len(self.instrument.xhosts) * self.instrument.x_per_fpga
             sensor.set_value(self.instrument.n_chans / n_xeng)
 
-            sensor = self.do_sensor(
-                Corr2Sensor.integer,
-                '{}-coarse-chans'.format(strmnm),
-                'Number of channels in the first PFB in a cascaded-PFB design.')
-            sensor.set_value(-1)
+#            sensor = self.do_sensor(
+#                Corr2Sensor.integer,
+#                '{}-coarse-chans'.format(strmnm),
+#                'Number of channels in the first PFB in a cascaded-PFB design.')
+#            sensor.set_value(-1)
 
-            sensor = self.do_sensor(
-                Corr2Sensor.integer, '{}-current-coarse-chan'.format(strmnm),
-                'The selected coarse channel in a cascaded-PFB design.')
-            sensor.set_value(-1)
+#            sensor = self.do_sensor(
+#                Corr2Sensor.integer, '{}-current-coarse-chan'.format(strmnm),
+#                'The selected coarse channel in a cascaded-PFB design.')
+#            sensor.set_value(-1)
 
-            sensor = self.do_sensor(
-                Corr2Sensor.float, '{}-ddc-mix-freq'.format(strmnm),
-                'The F-engine DDC mixer frequency, where used. 1 when n/a.')
-            sensor.set_value(1)
+#            sensor = self.do_sensor(
+#                Corr2Sensor.float, '{}-ddc-mix-freq'.format(strmnm),
+#                'The F-engine DDC mixer frequency, where used. 1 when n/a.')
+#            sensor.set_value(self.instrument.fops._get_osc_freq())
 
             sensor = Corr2Sensor.integer(
                 name='{}-n-samples-between-spectra'.format(strmnm),
@@ -733,7 +758,7 @@ class Corr2SensorManager(SensorManager):
                 unit='samples',
                 initial_status=Sensor.UNKNOWN, manager=self)
             self.sensor_create(sensor)
-            sensor.set_value(self.instrument.n_chans * 2)
+            sensor.set_value(self.instrument.n_chans * 2 * self.instrument.fops.decimation_factor)
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
@@ -911,7 +936,7 @@ class Corr2SensorManager(SensorManager):
 
         sensor = Corr2Sensor.float(
             name='bandwidth',
-            description='The analogue bandwidth of the digitised band.',
+            description='The analogue input bandwidth of the digitised band.',
             unit='Hz', initial_status=Sensor.UNKNOWN, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(self.instrument.analogue_bandwidth)
@@ -923,6 +948,14 @@ class Corr2SensorManager(SensorManager):
             unit='Hz', initial_status=Sensor.UNKNOWN, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(self.instrument.get_scale_factor())
+
+        sensor = Corr2Sensor.float(
+            name='decimation-factor',
+            description='Factor by which incoming digitiser stream '
+                        'is decimated.',
+            unit='Unitless', initial_status=Sensor.UNKNOWN, manager=self)
+        self.sensor_create(sensor)
+        sensor.set_value(self.instrument.fops.decimation_factor)
 
         self.sensors_sync_time()
         self.sensors_transient_buffer_ready()
