@@ -39,10 +39,8 @@ class FpgaXHost(FpgaHost):
 
         self.config = config
         self.index = index
-        self.acc_len = None
         self.n_ants = None
         self.x_per_fpga = None
-        self.xeng_accumulation_len = None
         self.n_chans = None
         self.sample_rate_hz = None
         if self.config is not None:
@@ -50,8 +48,6 @@ class FpgaXHost(FpgaHost):
             fcfg = self.config['fengine']
             ccfg = self.config['FxCorrelator']
             self.x_per_fpga = int(xcfg['x_per_fpga'])
-            self.acc_len = int(xcfg['accumulation_len'])
-            self.xeng_accumulation_len = int(xcfg['xeng_accumulation_len'])
             self.n_chans = int(fcfg['n_chans'])
             self.n_ants = int(ccfg['n_ants'])
             self.sample_rate_hz = int(ccfg['sample_rate_hz'])
@@ -220,10 +216,6 @@ class FpgaXHost(FpgaHost):
             vals[xidx] = tic - toc
         return [v / timediff for v in vals]
 
-    def _get_checktime(self):
-        return self.acc_len * self.xeng_accumulation_len * \
-            self.n_chans * 2.0 / self.sample_rate_hz * 1.1
-
     def vacc_arm(self):
         """
         Arm the vaccs on this host
@@ -257,7 +249,6 @@ class FpgaXHost(FpgaHost):
         :param acc_len:
         :return:
         """
-        self.acc_len = acc_len
         self.registers.acc_len.write_int(acc_len)
 
     def vacc_get_acc_len(self):

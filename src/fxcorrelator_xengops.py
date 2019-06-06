@@ -133,6 +133,8 @@ class XEngineOperations(object):
         self.corr = corr_obj
         self.hosts = corr_obj.xhosts
         self.data_stream = None
+        self.vacc_acc_len = int(self.corr.configd['xengine']['accumulation_len'])
+        self.xeng_acc_len = int(self.corr.configd['xengine']['xeng_accumulation_len'])
 
         self._board_ids = {}
 
@@ -204,7 +206,7 @@ class XEngineOperations(object):
         board_id = 0
         self.logger.info("Setting TX offsets.")
         for f in self.hosts:
-            offset=f.x_per_fpga*board_id*self.corr.n_antennas*self.corr.xeng_accumulation_len/(256/32)
+            offset=f.x_per_fpga*board_id*self.corr.n_antennas*self.xeng_acc_len/(256/32)
             f.registers.hmc_pkt_reord_rd_offset.write(rd_offset=offset)
             board_id += 1
 
@@ -339,7 +341,7 @@ class XEngineOperations(object):
         """
         rv=THREADED_FPGA_FUNC(self.hosts, timeout=10,
                                   target_function='get_vacc_status')
-        acc_len=self.get_acc_len()
+        acc_len=int(self.vacc_acc_len)
         sync=True
         timestamp=rv[rv.keys()[0]][0]['timestamp']
         #check that they're all in sync; 
@@ -369,7 +371,7 @@ class XEngineOperations(object):
         :param load_time:
         :return: the vacc load time, in seconds since the UNIX epoch
         """
-        min_loadtime = self.get_acc_time() + 2.0
+        min_loadtime = self.acc_time_from_len(self.vacc_acc_len) + 2.0
         # min_loadtime = 2
         t_now = time.time()
         if load_time is None:
@@ -408,12 +410,12 @@ class XEngineOperations(object):
         _ldmcnt_orig = ldmcnt
         quantisation_bits = int(
             numpy.log2(self.corr.n_chans) + 1 +
-            numpy.log2(self.corr.xeng_accumulation_len))
+            numpy.log2(self.xeng_acc_len))
 
         if phase_sync:
             last_loadmcnt=self.get_vacc_loadtime()
             if last_loadmcnt>0:
-                acc_len=self.get_acc_len()
+                acc_len=int(self.vacc_acc_len)
                 n_accs=int(((ldmcnt-last_loadmcnt)>>(quantisation_bits))/acc_len)+1
                 self.logger.info("Attempting to phase-up VACC at acc_cnt {} since {}.".format(n_accs,last_loadmcnt))
                 ldmcnt=last_loadmcnt+(((n_accs)*acc_len-1)<<quantisation_bits)
@@ -476,7 +478,7 @@ class XEngineOperations(object):
         """
         t_now = time.time()
         time_from_mcnt = self.corr.time_from_mcnt(load_mcount)
-        wait_time = time_from_mcnt - t_now + self.get_acc_time() + 1.2
+        wait_time = time_from_mcnt - t_now + self.acc_time_from_len(self.vacc_acc_len) + 1.2
         if wait_time <= 0:
             self.logger.error('\tTime passed %i seconds ago.'%wait_time)
             self.logger.error('\tcorr synch epoch: %i' %
@@ -544,7 +546,7 @@ class XEngineOperations(object):
         :return:
         """
         new_acc_len = (self.corr.sample_rate_hz * acc_time_s) / (
-                self.corr.xeng_accumulation_len * self.corr.n_chans * 2.0)
+                self.xeng_acc_len * self.corr.n_chans * 2.0)
         return round(new_acc_len)
 
     def acc_time_from_len(self, acc_len_cycles):
@@ -553,7 +555,7 @@ class XEngineOperations(object):
         :param acc_len_cycles: number of clock cycles for which to accumulate
         :return:
         """
-        return (acc_len_cycles * self.corr.xeng_accumulation_len *
+        return (acc_len_cycles * self.xeng_acc_len *
                 self.corr.n_chans * 2.0 / self.corr.sample_rate_hz)
 
     def set_acc_time(self, acc_time_s, vacc_resync=True):
@@ -583,7 +585,10 @@ class XEngineOperations(object):
         Read the acc len currently programmed into the FPGA.
         :return:
         """
-        return self.hosts[0].vacc_get_acc_len()
+        self.vacc_acc_len = int(self.hosts[0].vacc_get_acc_len())
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_xeng_acc_time()
+        return self.vacc_acc_len
 
     def set_acc_len(self, acc_len=None, vacc_resync=True):
         """
@@ -598,10 +603,10 @@ class XEngineOperations(object):
             raise RuntimeError(errmsg)
         reenable_timer = False
         if acc_len is not None:
-            self.corr.accumulation_len = acc_len
+            self.vacc_acc_len = int(acc_len)
 
             #Calculates the gap size
-        clock_cycles_per_accumulation = self.corr.accumulation_len * 2 * self.corr.n_chans * self.corr.xeng_accumulation_len/8;#Divide by 8 to accomodate for the 8 samples in parallel 
+        clock_cycles_per_accumulation = self.vacc_acc_len * 2 * self.corr.n_chans * self.xeng_acc_len/8;#Divide by 8 to accomodate for the 8 samples in parallel 
         vector_length_bytes = self.corr.n_antennas * (self.corr.n_antennas + 1)/2 * self.corr.n_chans * 8/ (self.corr.n_antennas*self.corr.x_per_fpga) * 4
         packets_per_accumulation = vector_length_bytes/self.corr.x_stream_payload_len
         gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation)
@@ -619,12 +624,12 @@ class XEngineOperations(object):
             self.hosts, timeout=10,
             target_function=(
                 lambda fpga_:
-                fpga_.vacc_set_acc_len(self.corr.accumulation_len),))
+                fpga_.vacc_set_acc_len(self.vacc_acc_len),))
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_xeng_acc_time()
         self.logger.info('Set vacc accumulation length %d system-wide '
                          '(%.2f seconds)' %
-                         (self.corr.accumulation_len, self.get_acc_time()))
+                         (self.vacc_acc_len,self.acc_time_from_len(self.vacc_acc_len)))
         if vacc_resync:
             self.vacc_sync()
 

@@ -122,8 +122,6 @@ class FxCorrelator(Instrument):
         self.katcp_port = None
         self.f_per_fpga = None
         self.x_per_fpga = None
-        self.accumulation_len = None
-        self.xeng_accumulation_len = None
         self.timeout = None
 
         # parent constructor - this invokes reading the config file already
@@ -553,7 +551,7 @@ class FxCorrelator(Instrument):
         self.sample_rate_hz = float(
             _fxcorr_d.get(
                 'sample_rate_hz',
-                1712000000))
+                None))
         assert isinstance(self.sample_rate_hz, float)
         self.timestamp_bits = int(_fxcorr_d.get('timestamp_bits', None))
         assert isinstance(self.timestamp_bits, int)
@@ -561,7 +559,7 @@ class FxCorrelator(Instrument):
             _fxcorr_d.get('time_jitter_allowed', 0.5))
         assert isinstance(self.time_jitter_allowed, float)
         self.time_offset_allowed = float(
-            _fxcorr_d.get('time_offset_allowed', 5))
+            _fxcorr_d.get('time_offset_allowed', 1))
         assert isinstance(self.time_offset_allowed, float)
         self.timeout = int(_fxcorr_d.get('default_timeout', 15))
         assert isinstance(self.timeout, int)
@@ -569,10 +567,7 @@ class FxCorrelator(Instrument):
         assert isinstance(self.post_switch_delay, int)
         self.n_antennas = int(_fxcorr_d.get('n_ants', None))
         assert isinstance(self.n_antennas, int)
-        self.analogue_bandwidth = float(
-            _fxcorr_d.get(
-                'sample_rate_hz',
-                1712000000.0)) / 2
+        self.analogue_bandwidth = self.sample_rate_hz/2
         if 'spead_metapacket_ttl' in _fxcorr_d:
             import data_stream
             data_stream.SPEAD_PKT_TTL = int(
@@ -582,24 +577,24 @@ class FxCorrelator(Instrument):
         # =====================================================================
         _feng_d = self.configd.get('fengine')
         assert isinstance(_feng_d, dict)
-        self.ct_readgap = int(_feng_d.get('ct_readgap', 45))
-        assert isinstance(self.ct_readgap, int)
         self.n_chans = int(_feng_d.get('n_chans'))
         assert isinstance(self.n_chans, int)
-        # There must be a better way
-        assert self.n_chans in [1024, 4096, 32768]
+        ## There must be a better way
+        #assert self.n_chans in [1024, 4096, 32768]
+        self.ct_readgap = int(_feng_d.get('ct_readgap', 45))
+        assert isinstance(self.ct_readgap, int)
         self.min_load_time = float(_feng_d.get('min_load_time', 0.2))
         assert isinstance(self.min_load_time, float)
         self.f_per_fpga = int(_feng_d.get('f_per_fpga', 2))
         assert isinstance(self.f_per_fpga, int)
         self.n_input_streams_per_fengine = int(
-            _feng_d.get('n_input_streams_per_fengine', 2))
+            _feng_d.get('n_input_streams_per_fengine', None))
         assert isinstance(self.n_input_streams_per_fengine, int)
         self.adc_bitwidth = int(_feng_d.get('sample_bits', 10))
         assert isinstance(self.adc_bitwidth, int)
-        self.fft_shift = int(_feng_d.get('fft_shift', 8191))
+        self.fft_shift = int(_feng_d.get('fft_shift', None))
         assert isinstance(self.fft_shift, int)
-        self.pfb_group_delay = int(_feng_d.get('pfb_group_delay', -1))
+        self.pfb_group_delay = int(_feng_d.get('pfb_group_delay', 0))
         assert isinstance(self.pfb_group_delay, int)
         self.f_stream_payload_len = int(_feng_d.get('feng_stream_payload_len',
                                                     1024))
@@ -610,11 +605,6 @@ class FxCorrelator(Instrument):
         assert isinstance(_xeng_d, dict)
         self.x_per_fpga = int(_xeng_d.get('x_per_fpga', 4))
         assert isinstance(self.x_per_fpga, int)
-        self.accumulation_len = int(_xeng_d.get('accumulation_len', 408))
-        assert isinstance(self.accumulation_len, int)
-        self.xeng_accumulation_len = int(
-            _xeng_d.get('xeng_accumulation_len', 256))
-        assert isinstance(self.xeng_accumulation_len, int)
         self.xeng_outbits = int(_xeng_d.get('xeng_outbits', 32))
         assert isinstance(self.xeng_outbits, int)
         self.x_stream_payload_len = int(_xeng_d.get('xeng_stream_payload_len',

@@ -509,14 +509,14 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.integer, '{}-n-accs'.format(strmnm),
                 'The number of spectra that are accumulated per X-engine '
                 'output.')
-            spec_acclen = (self.instrument.accumulation_len *
-                           self.instrument.xeng_accumulation_len)
+            spec_acclen = (self.instrument.xops.xeng_acc_len *
+                           self.instrument.xops.vacc_acc_len)
             sensor.set_value(int(spec_acclen))
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-int-time'.format(strmnm),
                 'The time, in seconds, for which the X-engines accumulate.',
                 unit='s')
-            sensor.set_value(self.instrument.xops.get_acc_time())
+            sensor.set_value(self.instrument.xops.acc_time_from_len(self.instrument.xops.vacc_acc_len))
 
     # def sensors_xeng_stream_destination(self):
     #     """
@@ -563,7 +563,7 @@ class Corr2SensorManager(SensorManager):
 #            sensor = self.do_sensor(
 #                Corr2Sensor.integer, '{}-xeng-acc-len'.format(strmnm),
 #                'Number of accumulations performed internal to the X-engine.')
-#            sensor.set_value(self.instrument.xeng_accumulation_len)
+#            sensor.set_value(self.instrument.xops.xeng_acc_len)
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
@@ -738,7 +738,7 @@ class Corr2SensorManager(SensorManager):
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
                 'Number of consecutive spectra in each heap.')
-            sensor.set_value(self.instrument.xeng_accumulation_len)
+            sensor.set_value(self.instrument.xops.xeng_acc_len)
 
             sensor = Corr2Sensor.integer(
                 name='{}-pfb-group-delay'.format(strmnm),
@@ -843,7 +843,7 @@ class Corr2SensorManager(SensorManager):
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-spectra-per-heap'.format(strmnm),
                 'Number of consecutive spectra in each heap.')
-            sensor.set_value(self.instrument.xeng_accumulation_len)
+            sensor.set_value(self.instrument.xops.xeng_acc_len)
 
             sensor = self.do_sensor(
                 Corr2Sensor.string, '{}-source-indices'.format(strmnm),
