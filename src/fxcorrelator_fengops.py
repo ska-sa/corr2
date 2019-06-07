@@ -327,10 +327,6 @@ class FEngineOperations(object):
         self.data_stream.set_source([feng.input.destination for feng in self.fengines])
         self.corr.add_data_stream(self.data_stream)
 
-        # set the sample rate on the Fhosts
-        for host in self.hosts:
-            host.rx_data_sample_rate_hz = self.corr.sample_rate_hz
-
     def sys_reset(self, sleeptime=0):
         """
         Pulse the sys_rst line on all F-engine hosts
@@ -626,7 +622,7 @@ class FEngineOperations(object):
         Enable hardware automatic resync upon error detection.
         """
         #feng_pipeline_latency = ct+hmc  +  pfb_fir  +  fft  +  cd+hmc  +  misc
-        max_difference=(self.corr.n_chans*2*self.corr.xeng_accumulation_len*2*self.decimation_factor + 50000) + (self.decimation_factor*self.corr.n_chans*16*2) + (self.decimation_factor*self.corr.n_chans*7) +  (512 + 50000) + (50000)
+        max_difference=(self.corr.n_chans*2*self.corr.xops.xeng_acc_len*2*self.decimation_factor + 50000) + (self.decimation_factor*self.corr.n_chans*16*2) + (self.decimation_factor*self.corr.n_chans*7) +  (512 + 50000) + (50000)
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
             target_function=(lambda fpga_: fpga_.registers.time_check.write(max_difference=max_difference), ))
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
