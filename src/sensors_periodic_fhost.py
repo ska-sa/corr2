@@ -384,7 +384,7 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
             if (results[key] > -22) or (results[key] < -32):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                sensor_manager.logger.warn('Input levels ({}dBFS) are poor on the {} digitiser, fhost[{}], {}. Consider adjusting the Digitiser attenuators so Digitiser outputs falls in the range -32 dBFS to -22 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
+                sensor_manager.logger.warn('Input levels ({:.1f}dBFS) are poor on the {} digitiser, fhost[{}], {}. Consider adjusting the Digitiser attenuators so Digitiser outputs falls in the range -32 dBFS to -22 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 

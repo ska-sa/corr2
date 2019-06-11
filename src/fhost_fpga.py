@@ -20,6 +20,12 @@ class InputStreamDetails():
         self.input_number = input_number;
         self.destination = destination;
 
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return '{} {}'.format(self.name,self.destination)
+
 class InputNotFoundError(ValueError):
     pass
 
