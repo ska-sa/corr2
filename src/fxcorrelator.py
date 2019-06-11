@@ -276,8 +276,8 @@ class FxCorrelator(Instrument):
         time.sleep(self.post_switch_delay)
 
         #Forcefully resync the Fengines once the DIG data is flowing reliably:
-        self.fops.sys_reset()
-        time.sleep(5)
+        #self.fops.sys_reset()
+        #time.sleep(5)
         self.fops.auto_rst_enable()
         self.fops.sys_reset()
 
@@ -318,14 +318,14 @@ class FxCorrelator(Instrument):
         """
         return self.sample_rate_hz
 
-    def est_synch_epoch(self):
+    def est_synch_epoch(self,f_index=0):
         """
         Estimates the synchronisation epoch based on current F-engine
         timestamp, and the system time.
         """
         self.logger.info('Estimating synchronisation epoch:')
         # get current time from an F-engine
-        feng_mcnt = self.fhosts[0].get_local_time()
+        feng_mcnt = self.fhosts[f_index].get_local_time()
         self.logger.info('\tcurrent F-engine mcnt: {}'.format(feng_mcnt))
         if feng_mcnt & 0xfff != 0:
             errmsg = (
