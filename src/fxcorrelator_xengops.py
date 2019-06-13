@@ -546,7 +546,7 @@ class XEngineOperations(object):
         :return:
         """
         new_acc_len = (self.corr.sample_rate_hz * acc_time_s) / (
-                self.xeng_acc_len * self.corr.n_chans * 2.0)
+                self.xeng_acc_len * self.corr.n_chans * 2.0 * self.corr.fops.decimation_factor)
         return round(new_acc_len)
 
     def acc_time_from_len(self, acc_len_cycles):
