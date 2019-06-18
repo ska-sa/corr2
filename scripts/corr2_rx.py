@@ -763,7 +763,7 @@ class CorrReceiver(LoggingClass, threading.Thread):
         config_info["{}-n-chans".format(output_products)] = int(fengine_conf.get('n_chans'))
         config_info["{}-n-chans-per-substream".format(output_products)] = int(int(
             fengine_conf.get('n_chans')) / config_info["n-xengs"])
-        config_info['n-accs'] = corr_instance.xeng_accumulation_len * corr_instance.accumulation_len
+        config_info['n-accs'] = corr_instance.xops.xeng_acc_len * corr_instance.xops.vacc_acc_len
         config_info['output_products'] = output_products
         config_info = {key.replace('-', '_'): value for key, value in config_info.items()}
         return config_info

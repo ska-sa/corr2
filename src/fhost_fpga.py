@@ -283,7 +283,6 @@ class Fengine(object):
         Split out whole and fractional part
         """
         
-        print 'Running delay_write'
         delay_whole = int(delay)
         delay_frac = delay - int(delay)
         
