@@ -9,6 +9,7 @@ Created on Feb 28, 2013
 import re
 import time
 import katcp
+import signal
 # Yes, I know it's just an integer value
 from logging import INFO
 
@@ -32,7 +33,6 @@ from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
-
 
 def _disable_write(*args, **kwargs):
     """
@@ -190,6 +190,7 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=self.timeout,
                            target_function='connect')
 
+
         # if we need to program the FPGAs, do so
         xbof = self.xhosts[0].bitstream
         fbof = self.fhosts[0].bitstream
@@ -197,15 +198,39 @@ class FxCorrelator(Instrument):
             # skfops = casperfpga.skarab_fileops
             # force the new programming method
             try:
+		function_call = ""
+                def progska_timeout_handler(signum, frame):
+	            raise Exception("Function: {} timed out.".format(function_call))
+		
+		#Setting up timeout signal
+		signal.signal(signal.SIGALRM, progska_timeout_handler)
+
+		function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
+		signal.alarm(self.timeout * len(self.fhosts))
                 skfops.upload_to_ram_progska(fbof, self.fhosts)
+		function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
                 skfops.reboot_skarabs_from_sdram(self.fhosts)
+
+		signal.alarm(self.timeout * len(self.xhosts))
+		function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
                 skfops.upload_to_ram_progska(xbof, self.xhosts)
+		function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
                 skfops.reboot_skarabs_from_sdram(self.xhosts)
+		signal.alarm(0)		
+
+		#This signal.alarm is probably not necessary. This is just a catch-all in case things get stuck
+		signal.alarm(self.timeout * (len(self.fhosts) + len(self.xhosts)))
+		function_call = "skfops.wait_after_reboot(self.fhosts + self.xhosts... "
                 skfops.wait_after_reboot(self.fhosts +
                                          self.xhosts, timeout=self.timeout *
                                          (len(self.fhosts) + len(self.xhosts)))
+
+		#Cancel all timeout sigals
+                signal.alarm(0)	
+		
             except Exception as err:
                 errmsg = 'Failed to program the boards: %s' % str(err)
+		signal.alarm(0)
                 self.logger.error(errmsg)
                 raise RuntimeError(errmsg)
 
