@@ -208,13 +208,15 @@ class FxCorrelator(Instrument):
 		function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
 		signal.alarm(self.timeout * len(self.fhosts))
                 skfops.upload_to_ram_progska(fbof, self.fhosts)
-		function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
+		function_call = "skfops.reboot_skarabs_from_sdram(self.fhosts)"
+                signal.alarm(self.timeout * len(self.fhosts))
                 skfops.reboot_skarabs_from_sdram(self.fhosts)
 
 		signal.alarm(self.timeout * len(self.xhosts))
 		function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
                 skfops.upload_to_ram_progska(xbof, self.xhosts)
-		function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
+		signal.alarm(self.timeout * len(self.xhosts))
+		function_call = "skfops.reboot_skarabs_from_sdram(self.xhosts)"
                 skfops.reboot_skarabs_from_sdram(self.xhosts)
 		signal.alarm(0)		
 
