@@ -162,6 +162,9 @@ class FEngineOperations(object):
         num_x_hosts = len(self.corr.xhosts)
         x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
         num_x = num_x_hosts * x_per_fpga
+        chans_per_x = self.corr.n_chans * 1.0 / num_x
+        chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
+        ct_num_accs = self.corr.xops.xeng_acc_len
         if 'x_setup' in self.hosts[0].registers.names():
             self.logger.info('Found num_x independent F-engines')
             # set up the x-engine information in the F-engine hosts
@@ -178,11 +181,10 @@ class FEngineOperations(object):
         reg_error = False
         host_ctr = 0
         for f in self.hosts:
+            xeng_start = (host_ctr * (num_x_hosts + 1) + host_ctr / 4) % num_x
             # f.registers.ct_control0.write(tvg_en=True, tag_insert=False)
-            f.registers.ct_control0.write(obuf_read_gap=self.corr.ct_readgap)
-            chans_per_x = self.corr.n_chans * 1.0 / num_x
-            chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
             try:
+                f.registers.ct_control0.write(obuf_read_gap=self.corr.ct_readgap)
                 f.registers.ct_control1.write(
                     num_x=num_x,
                     num_x_recip=1.0 / num_x,
@@ -195,14 +197,33 @@ class FEngineOperations(object):
                     num_x_boards=num_x_hosts,
                     num_x_boards_recip=1.0 / num_x_hosts,
                     chans_per_x_recip=1.0 / chans_per_x, )
-                xeng_start = (host_ctr * (num_x_hosts + 1) + host_ctr / 4) % num_x
-                ct_num_accs = 256
                 f.registers.ct_control4.write(ct_board_offset=(xeng_start * ct_num_accs))
                 # the 8 and the 32 below are hardware limits.
                 # 8 packets in a row to one x-engine, and 32 256-bit
                 # words in an outgoing packet
                 f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (16 * 32)))
                 #https://docs.google.com/spreadsheets/d/1wBXsfUCxf5hzC0G8Vz7emh3qIeYMBLdObgv9pOe_Zgc/edit#gid=1568192830
+            except ValueError:
+                #couldn't find the appropriate fields in the registers. Trying another mapping.
+                f.registers.ct_control0.write(
+                    obuf_read_gap=self.corr.ct_readgap,
+                    chans_per_x_recip=1.0 / chans_per_x,)
+                f.registers.ct_control1.write(
+                    num_x=num_x,
+                    num_x_recip=1.0 / num_x,
+                    x_per_board=x_per_fpga,
+                    x_per_board_recip=1.0 / x_per_fpga,)
+                f.registers.ct_control2.write(
+                    chans_per_x=chans_per_x,
+                    chans_per_board=chans_per_board,)
+                f.registers.ct_control3.write(
+                    num_x_boards=num_x_hosts,
+                    num_x_boards_recip=1.0 / num_x_hosts,)
+                f.registers.ct_control4.write(ct_board_offset=(xeng_start * ct_num_accs))
+                # the 8 and the 32 below are hardware limits.
+                # 8 packets in a row to one x-engine, and 32 256-bit
+                # words in an outgoing packet
+                f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (16 * 32)))
             except AttributeError:
                 reg_error = True
             host_ctr += 1
@@ -354,7 +375,7 @@ class FEngineOperations(object):
             freq=min_freq
         if (freq>max_freq):
             freq=max_freq
-        self._set_osc_freq(freq-offset)
+        self._set_osc_freq(freq)
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_center_freq()
         return self.get_center_freq()
@@ -365,16 +386,16 @@ class FEngineOperations(object):
         #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         if (self.decimation_factor==1):
             return self.corr.sample_rate_hz/4.
-        offset = self.corr.sample_rate_hz/4./self.decimation_factor
+        #offset = self.corr.sample_rate_hz/4./self.decimation_factor
         osc_freq=self._get_osc_freq()
-        self.logger.info("Center frequency is {:.5f} MHz".format((osc_freq+offset)/1e6))
-        return osc_freq+offset
+        self.logger.info("Center frequency is {:.5f} MHz".format((osc_freq)/1e6))
+        return osc_freq
 
     def _set_osc_freq(self,freq):
         """Set the DDC oscillator frequency to "freq" Hz."""
         #if (band > 0):
         #    raise NotImplementedError('This is not implemented for anything other than the default band.')
-        self.logger.info('Setting DDC oscillator freq to {:.3f} MHz'.format(freq/1.e6))
+        self.logger.debug('Setting DDC oscillator freq to {:.3f} MHz'.format(freq/1.e6))
         reg_value = freq*(2**22)/self.corr.sample_rate_hz
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
             target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.write(frequency=reg_value),))
@@ -389,7 +410,7 @@ class FEngineOperations(object):
             self.logger.warning("Fhosts have different tuning frequencies!")
             raise RuntimeError("Fhosts have different tuning frequencies!")
         rv=rv.values()[0]*self.corr.sample_rate_hz/(2**22)
-        self.logger.info('DDC oscillator freq is {:.3f} MHz'.format(rv/1.e6))
+        self.logger.debug('DDC oscillator freq is {:.3f} MHz'.format(rv/1.e6))
         return rv
 
     def get_rx_timestamps(self, src=0):
