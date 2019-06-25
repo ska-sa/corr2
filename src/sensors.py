@@ -723,7 +723,7 @@ class Corr2SensorManager(SensorManager):
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
                 'The analogue bandwidth of this stream, in Hz.',unit='Hz')
-            sensor.set_value(self.instrument.analogue_bandwidth / 2.0 / self.instrument.fops.decimation_factor) 
+            sensor.set_value(float(self.instrument.analogue_bandwidth) / self.instrument.fops.decimation_factor) 
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
@@ -939,7 +939,7 @@ class Corr2SensorManager(SensorManager):
             description='The analogue input bandwidth of the digitised band.',
             unit='Hz', initial_status=Sensor.UNKNOWN, manager=self)
         self.sensor_create(sensor)
-        sensor.set_value(self.instrument.analogue_bandwidth)
+        sensor.set_value(float(self.instrument.analogue_bandwidth))
 
         sensor = Corr2Sensor.float(
             name='scale-factor-timestamp',
