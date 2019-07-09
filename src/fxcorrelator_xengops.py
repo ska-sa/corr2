@@ -524,8 +524,9 @@ class XEngineOperations(object):
         THREADED_FPGA_FUNC(
             self.hosts, timeout=10, target_function='vacc_arm')
 
-        # did the arm count increase?
-        self._vacc_sync_check_armload_increment(initial_status,check='arm_cnt')
+        ## did the arm count increase?
+        #JM 2019-07-08 Don't bother checking this anymore.
+        #self._vacc_sync_check_armload_increment(initial_status,check='arm_cnt')
 
         # wait for the vaccs to trigger
         self._vacc_sync_wait_for_mcnt(load_mcount)

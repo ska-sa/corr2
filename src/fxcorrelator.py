@@ -417,8 +417,11 @@ class FxCorrelator(Instrument):
             return
 
         # match old labels to input streams
-        for ctr, old_label in enumerate(old_labels):
-            self.get_data_stream(old_label).name = new_labels[ctr]
+#        fengsorted = sorted(
+#            self.fops.fengines,
+#            key=lambda fengine: fengine.input_number)
+        for ctr, feng in enumerate(self.fops.fengines):
+            feng.name = new_labels[ctr]
 
         if self.sensor_manager:
             self.sensor_manager.sensors_input_labels()
@@ -433,21 +436,21 @@ class FxCorrelator(Instrument):
         Get a more complete input mapping of inputs to positions and boards
         :return:
         """
-        fengsorted = sorted(
-            self.fops.fengines,
-            key=lambda fengine: fengine.input_number)
+#        fengsorted = sorted(
+#            self.fops.fengines,
+#            key=lambda fengine: fengine.input_number)
         return [(f.input.name, f.input_number, f.host.host, f.offset)
-                for f in fengsorted]
+                for f in self.fops.fengines]
 
     def get_input_labels(self):
         """
         Get the current fengine source labels as a list of label names.
         :return:
         """
-        fengsorted = sorted(
-            self.fops.fengines,
-            key=lambda fengine: fengine.input_number)
-        return [feng.name for feng in fengsorted]
+#        fengsorted = sorted(
+#            self.fops.fengines,
+#            key=lambda fengine: fengine.input_number)
+        return [feng.name for feng in self.fops.fengines]
 
     def _check_bitstreams(self):
         """
