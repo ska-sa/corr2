@@ -3,6 +3,17 @@ from pip import _internal as pip
 from setuptools import setup
 from subprocess import check_output
 
+#imports for determining the git hash and time of build
+import time
+import git
+
+repo = git.Repo('./');
+repo_state = "clean"
+if(repo.is_dirty()):
+	repo_state = "dirty"
+git_hash = repo.head.object.hexsha.strip()
+git_branch_name = repo.active_branch.name;
+
 try:
     branch = check_output(['git', 'symbolic-ref', '--short', 'HEAD'])
     assert not (branch == 'HEAD')
@@ -35,8 +46,9 @@ setup(
     description='Interfaces to MeerKAT CBF',
     long_description=open('README.md').read(),
     license='GPL',
-    author='Paul Prozesky',
+    author='Paul Prozeskyaa',
     author_email='paulp at ska.ac.za',
+    version="{}-{}-{}-{}".format(time.strftime('%Y-%m-%d_%H%M'),git_branch_name,git_hash,repo_state),
     url='https://github.com/ska-sa/corr2',
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -53,7 +65,12 @@ setup(
     package_dir={'corr2': 'src'},
     scripts=glob('scripts/*'),
     setup_requires=['katversion'],
-    use_katversion=True,
+    #use_katversion=True,
+    entry_points={
+        "metadata": [
+            "foo_bar = setuptools.dist:assert_string_list",
+        ],
+    },
 )
 
 # end
