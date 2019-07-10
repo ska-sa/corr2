@@ -222,11 +222,11 @@ def _sensor_cb_hw(executor, sensors, host):
 
     for key, value in results.iteritems():
         try:
-            if value[2] == 'OK':
+            if ((value[2].lower() == 'ok') or (value[2].lower() == 'nominal')):
                 status = Corr2Sensor.NOMINAL
-            elif value[2] == 'WARNING': 
+            elif value[2].lower() == 'warning': 
                 status = Corr2Sensor.WARN
-            elif value[2] == 'ERROR': 
+            elif value[2].lower() == 'error': 
                 status = Corr2Sensor.ERROR
             else:
                 status = Corr2Sensor.UNKNOWN
