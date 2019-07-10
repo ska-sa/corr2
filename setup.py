@@ -25,6 +25,7 @@ _dependencies = 'https://github.com/ska-sa/casperfpga/archive/{branch}.zip#egg=c
     **locals())
 _install_requires = [
     'casperfpga',
+    'pkginfo',
     'h5py',
     'iniparse',
     'katcp>=0.6.2',
@@ -48,7 +49,7 @@ setup(
     license='GPL',
     author='Paul Prozeskyaa',
     author_email='paulp at ska.ac.za',
-    version="{}-{}-{}-{}".format(time.strftime('%Y-%m-%d_%H%M'),git_branch_name,git_hash,repo_state),
+    version="{}-{}-{}-{}".format(time.strftime('%Y-%m-%d_%Hh%M'),git_branch_name,git_hash,repo_state),
     url='https://github.com/ska-sa/corr2',
     classifiers=[
         'Development Status :: 3 - Alpha',

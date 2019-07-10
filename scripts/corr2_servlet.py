@@ -14,8 +14,11 @@ from tornado.ioloop import IOLoop
 import Queue
 import time
 from concurrent import futures
+import pkginfo
 
+import corr2
 from corr2 import fxcorrelator, sensors, utils
+from corr2.sensors import Corr2Sensor
 
 from corr2.corr2LogHandlers import getKatcpLogger, servlet_log_level_request
 from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
@@ -223,6 +226,46 @@ class Corr2Server(katcp.DeviceServer):
             # set up the main loop sensors
             sensor_manager.sensors_clear()
             sensor_manager.setup_mainloop_sensors()
+ 
+            #Add build time sensors
+	    self.sensors = {}
+            corr2_version = pkginfo.BDist(corr2.__path__[0][:-5]).version;
+            corr2_compile_time_string = corr2_version[0:16]
+
+            corr2_compile_date = int(time.mktime(time.strptime(corr2_compile_time_string, '%Y-%m-%d-%Hh%M')))
+            xhost_builddate =  int(time.mktime(time.strptime(self.instrument.xhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+            fhost_builddate =  int(time.mktime(time.strptime(self.instrument.fhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+
+            self.sensors['corr2_version'] = sensor_manager.do_sensor(
+                    Corr2Sensor.string,'corr2_version',
+                    'Version of corr2 install',
+                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+            self.sensors['corr2_version'].set_value(corr2_version)
+
+            self.sensors['compile_date_corr2'] = sensor_manager.do_sensor(
+                    Corr2Sensor.string,'compile_date_corr2',
+                    'Compile date of corr2',
+                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+            self.sensors['compile_date_corr2'].set_value(corr2_compile_date)
+
+            self.sensors['compile_date_feng'] = sensor_manager.do_sensor(
+                    Corr2Sensor.string,'compile_date_feng',
+                    'Compile date of F-Engines',
+                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+            self.sensors['compile_date_feng'].set_value(fhost_builddate)
+
+            self.sensors['compile_date_xeng'] = sensor_manager.do_sensor(
+                    Corr2Sensor.string,'compile_date_xeng',
+                    'Compile date of X-Engines',
+                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+            self.sensors['compile_date_xeng'].set_value(xhost_builddate)
+
+            #self.sensors['compile_date_beng'] = sensor_manager.do_sensor(
+            #        Corr2Sensor.string,'compile_date_beng',
+            #        'Compile date of B-Engines',
+            #        initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+            #self.sensors['compile_date_beng'].set_value(xhost_builddate)
+
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
             if monitor_instrument:
