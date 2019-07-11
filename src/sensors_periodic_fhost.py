@@ -496,7 +496,6 @@ def _cb_feng_quant(sensors, f_host, sensor_manager,sensor_task):
             if (results[key] > -10) or (results[key] < -30):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                sensor_manager.logger.warn('Quantiser output levels ({}: {}) are poor. If your FFT shift is sane, try adjusting your EQ gain on {}.'.format(key,results[key],f_host.host))
                 sensor_manager.logger.warn('Quantiser output levels ({}dBFS) are poor on {}, fhost[{}], {}. If your FFT shift is sane, try adjusting your EQ gain so Quantiser output falls in the range -30 dBFS to -10 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name,f_host.fhost_index,f_host.host))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
