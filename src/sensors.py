@@ -961,13 +961,6 @@ class Corr2SensorManager(SensorManager):
         self.sensors_transient_buffer_ready()
 
         sensor = Corr2Sensor.integer(
-            name='n-chans',
-            description='The number of frequency channels in an integration.',
-            initial_status=Sensor.UNKNOWN, manager=self)
-        self.sensor_create(sensor)
-        sensor.set_value(self.instrument.n_chans)
-
-        sensor = Corr2Sensor.integer(
             name='n-ants',
             description='The number of antennas in the instrument.',
             initial_status=Sensor.UNKNOWN, manager=self)
