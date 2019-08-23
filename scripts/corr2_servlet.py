@@ -232,33 +232,48 @@ class Corr2Server(katcp.DeviceServer):
             corr2_version = pkginfo.BDist(corr2.__path__[0][:-5]).version;
             corr2_compile_time_string = corr2_version[0:16]
 
-            corr2_compile_date = int(time.mktime(time.strptime(corr2_compile_time_string, '%Y-%m-%d-%Hh%M')))
-            xhost_builddate =  int(time.mktime(time.strptime(self.instrument.xhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
-            fhost_builddate =  int(time.mktime(time.strptime(self.instrument.fhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+            corr2_compile_date = (time.mktime(time.strptime(corr2_compile_time_string, '%Y-%m-%d-%Hh%M')))
+            xhost_builddate =  (time.mktime(time.strptime(self.instrument.xhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+            fhost_builddate =  (time.mktime(time.strptime(self.instrument.fhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+
+            xhost_md5_bitstream =  self.instrument.xhosts[0].system_info['md5_bitstream']
+            fhost_md5_bitstream =  self.instrument.fhosts[0].system_info['md5_bitstream']
 
             self.sensors['corr2_version'] = sensor_manager.do_sensor(
                     Corr2Sensor.string,'corr2_version',
                     'Version of corr2 install',
-                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+                    initial_status=Corr2Sensor.NOMINAL)
             self.sensors['corr2_version'].set_value(corr2_version)
 
             self.sensors['compile_date_corr2'] = sensor_manager.do_sensor(
-                    Corr2Sensor.string,'compile_date_corr2',
+                    Corr2Sensor.timestamp,'compile_date_corr2',
                     'Compile date of corr2',
-                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+                    initial_status=Corr2Sensor.NOMINAL)
             self.sensors['compile_date_corr2'].set_value(corr2_compile_date)
 
             self.sensors['compile_date_feng'] = sensor_manager.do_sensor(
-                    Corr2Sensor.string,'compile_date_feng',
+                    Corr2Sensor.timestamp,'compile_date_feng',
                     'Compile date of F-Engines',
-                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+                    initial_status=Corr2Sensor.NOMINAL)
             self.sensors['compile_date_feng'].set_value(fhost_builddate)
 
             self.sensors['compile_date_xeng'] = sensor_manager.do_sensor(
-                    Corr2Sensor.string,'compile_date_xeng',
+                    Corr2Sensor.timestamp,'compile_date_xeng',
                     'Compile date of X-Engines',
-                    initial_status=Corr2Sensor.NOMINAL,unit='unitless')
+                    initial_status=Corr2Sensor.NOMINAL)
             self.sensors['compile_date_xeng'].set_value(xhost_builddate)
+
+            self.sensors['md5_bitstream_xeng'] = sensor_manager.do_sensor(
+                    Corr2Sensor.string,'md5_bitstream_xeng',
+                    'MD5 hash of X-Engine bitstream',
+                    initial_status=Corr2Sensor.NOMINAL)
+            self.sensors['md5_bitstream_xeng'].set_value(xhost_md5_bitstream)
+
+            self.sensors['md5_bitstream_feng'] = sensor_manager.do_sensor(
+                    Corr2Sensor.string,'md5_bitstream_feng',
+                    'MD5 hash of F-Engine bitstream',
+                    initial_status=Corr2Sensor.NOMINAL)
+            self.sensors['md5_bitstream_feng'].set_value(fhost_md5_bitstream)
 
             #self.sensors['compile_date_beng'] = sensor_manager.do_sensor(
             #        Corr2Sensor.string,'compile_date_beng',

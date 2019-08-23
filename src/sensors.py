@@ -28,6 +28,15 @@ class Corr2Sensor(Sensor):
                    *args, **kwargs)
 
     @classmethod
+    def timestamp(cls, name, description=None, unit='', params=None,
+                default=None, initial_status=None,
+                manager=None, executor=None,
+                *args, **kwargs):
+        return cls(cls.TIMESTAMP, name, description, unit, params,
+                   default, initial_status, manager, executor,
+                   *args, **kwargs)
+
+    @classmethod
     def float(cls, name, description=None, unit='', params=None,
               default=None, initial_status=None,
               manager=None, executor=None,
