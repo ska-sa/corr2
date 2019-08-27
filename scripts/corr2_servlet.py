@@ -569,6 +569,9 @@ class Corr2Server(katcp.DeviceServer):
             elif eq_vals[0] == '':
                 neweqvals=None
                 self.instrument.logger.info('Applying default gains')
+            elif eq_vals[0] == 'default':
+                neweqvals=None
+                self.instrument.logger.info('Applying default gains')
             elif eq_vals[0] == 'auto':
                 neweqvals='auto'
                 self.instrument.logger.info('Trying to set gains automatically')
