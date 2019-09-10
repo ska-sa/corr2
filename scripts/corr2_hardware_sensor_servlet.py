@@ -21,6 +21,9 @@ import corr2
 from corr2 import sensors
 from corr2.sensors import Corr2Sensor
 
+#This variable exists because of problems with kcs - the rack location sensor needs to be transmitted a few times
+reportRackLocation = 0;
+
 class Corr2HardwareSensorServer(katcp.DeviceServer):
 
     # Interface version information.
@@ -211,6 +214,17 @@ def _sensor_cb_hw(executor, sensors, host):
         host.logger.error('Error retrieving boot image state on host {} - {}'.format(host.host, e.message))
         set_failure()
         return
+
+    global reportRackLocation;
+    if(reportRackLocation<3):
+	reportRackLocation+=1
+    	rack_location_tuple = get_physical_location(socket.gethostbyname(host.transport.host))
+	sensors['location'].set(value=rack_location_tuple[0],status=Corr2Sensor.WARN,timestamp=time.time())
+    elif(reportRackLocation==3):
+        reportRackLocation+=1
+        rack_location_tuple = get_physical_location(socket.gethostbyname(host.transport.host))
+	sensors['location'].set(value=rack_location_tuple[0],status=Corr2Sensor.NOMINAL,timestamp=time.time())
+
 
     try:
         results = yield executor.submit(host.transport.get_sensor_data)
