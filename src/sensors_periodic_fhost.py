@@ -941,7 +941,7 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         }
         cd_sensors['delay0_updating'].tempstore = 0
         cd_sensors['delay1_updating'].tempstore = 0
-        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_delay',_f.host))
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_delay',_f.host),minimum_time_between_calls_s=6)
         ioloop.add_callback(_cb_feng_delays, cd_sensors, _f, sens_man,sensor_task)
 
 

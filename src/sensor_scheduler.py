@@ -1,4 +1,7 @@
 import time;
+import math;
+
+
 sensor_call_gap_time_s = 0.003;
 sensor_loop_runtime = 0;
 sensor_loop_running_tasks = 0;
@@ -7,15 +10,15 @@ sensor_loop_flow_control_padding = 0;
 logger = None;
 
 class SensorTask:
-    def __init__(self,function_name):
+    def __init__(self,function_name,minimum_time_between_calls_s=0):
         self.last_runtime_length = 0
         self.last_runtime_utc = 0;
         self.executed = False;
         self.name = function_name;
         self.num_time_overruns = 0;
         self.flow_control_increments = 0;
+        self.minimum_time_between_calls_ms = minimum_time_between_calls_s;
         logger.debug(self.name)
-        #print(function_name)
 
     def getNextSensorCallTime(self,current_function_runtime=0):
         global sensor_loop_runtime;
@@ -35,7 +38,17 @@ class SensorTask:
 
         self.last_runtime_length = current_function_runtime
         
-        next_sensor_call_time = self.last_runtime_utc + (sensor_loop_running_tasks+sensor_loop_flow_control_padding)*sensor_call_gap_time_s
+	time_increment = (sensor_loop_running_tasks+sensor_loop_flow_control_padding)*sensor_call_gap_time_s
+
+	#This ensures that a sensor is not called within a specified minimum time - this ensures we play nicely with some CAM
+	if(time_increment<self.minimum_time_between_calls_ms):
+		num_time_increments_required = math.ceil(self.minimum_time_between_calls_ms/time_increment)
+		time_increment = time_increment * num_time_increments_required
+		#print( time.time()," Time increments required: ",num_time_increments_required)
+		#print( time.time()," Total Time Incrementing: ",time_increment)
+
+
+        next_sensor_call_time = self.last_runtime_utc + time_increment
         self.last_runtime_utc = next_sensor_call_time
 
         #Network Flow Control
