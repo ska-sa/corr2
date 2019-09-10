@@ -10,6 +10,7 @@ from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
 
 from katcp import Sensor, Message
 
+import corr2
 from corr2.corr2LogHandlers import getKatcpLogger
 
 import data_stream
@@ -929,6 +930,71 @@ class Corr2SensorManager(SensorManager):
         self.sensors_stream_destinations()
         self.sensors_gbe_interfacing()
         self.sensors_host_mapping()
+
+
+        corr2_version = ""
+
+        #This try except is here because when a clean corr2 install is done, the egg file is saved as a directory, when a dirty install is done, the egg file is saved as a compressed file. pkginfo.BDist requires a compressed directory but file reading requires the folder to not be compressed. Hence both methods required.
+        try:
+            corr2_version = pkginfo.BDist(corr2.__path__[0][:-5]).version;
+        except:
+            path = corr2.__path__[0][:-5]+"/EGG-INFO/PKG-INFO"
+            f=open(path,'r')
+            f.readline()
+            f.readline()
+            corr2_version = f.readline()[9:-1]
+
+
+        corr2_compile_time_string = corr2_version[0:16]
+
+        corr2_compile_date = (time.mktime(time.strptime(corr2_compile_time_string, '%Y-%m-%d-%Hh%M')))
+        xhost_builddate =  (time.mktime(time.strptime(self.instrument.xhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+        fhost_builddate =  (time.mktime(time.strptime(self.instrument.fhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+
+        xhost_md5_bitstream =  self.instrument.xhosts[0].system_info['md5_bitstream']
+        fhost_md5_bitstream =  self.instrument.fhosts[0].system_info['md5_bitstream']
+
+        sensor = Corr2Sensor.string(
+                name='corr2_version',
+                description='Version of corr2 install',
+                initial_status=Corr2Sensor.NOMINAL, manager=self)
+        self.sensor_create(sensor)
+        sensor.set_value(corr2_version)
+
+        sensor = Corr2Sensor.timestamp(
+                name='compile_date_corr2',
+                description='Compile date of corr2',
+                initial_status=Corr2Sensor.NOMINAL, manager=self)
+        self.sensor_create(sensor)
+        sensor.set_value(corr2_compile_date)
+
+        sensor = Corr2Sensor.timestamp(
+                name='compile_date_feng',
+                description='Compile date of F-Engines',
+                initial_status=Corr2Sensor.NOMINAL, manager=self)
+        self.sensor_create(sensor)
+        sensor.set_value(fhost_builddate)
+
+        sensor = Corr2Sensor.timestamp(
+                name='compile_date_xeng',
+                description='Compile date of X-Engines',
+                initial_status=Corr2Sensor.NOMINAL, manager=self)
+        self.sensor_create(sensor)
+        sensor.set_value(xhost_builddate)
+
+        sensor = Corr2Sensor.string(
+                name='md5_bitstream_xeng',
+                description='MD5 hash of X-Engine bitstream',
+                initial_status=Corr2Sensor.NOMINAL, manager=self)
+        self.sensor_create(sensor)
+        sensor.set_value(xhost_md5_bitstream)
+
+        sensor = Corr2Sensor.string(
+                name='md5_bitstream_feng',
+                description='MD5 hash of F-Engine bitstream',
+                initial_status=Corr2Sensor.NOMINAL, manager=self)
+        self.sensor_create(sensor)
+        sensor.set_value(fhost_md5_bitstream)
 
         sensor = Corr2Sensor.integer(
             name='adc-bits', description='ADC sample bitwidth.',
