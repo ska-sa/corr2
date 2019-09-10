@@ -229,7 +229,19 @@ class Corr2Server(katcp.DeviceServer):
  
             #Add build time sensors
 	    self.sensors = {}
-            corr2_version = pkginfo.BDist(corr2.__path__[0][:-5]).version;
+            corr2_version = ""
+            
+            #This try except is here because when a clean corr2 install is done, the egg file is saved as a directory, when a dirty install is done, the egg file is saved as a compressed file. pkginfo.BDist requires a compressed directory but file reading requires the folder to not be compressed. Hence both methods required.
+            try:
+                corr2_version = pkginfo.BDist(corr2.__path__[0][:-5]).version;
+            except:
+                path = corr2.__path__[0][:-5]+"/EGG-INFO/PKG-INFO"
+                f=open(p,'r')
+		f.readline()
+                f.readline()
+                corr2_version = f.readline()[9:-1]
+
+
             corr2_compile_time_string = corr2_version[0:16]
 
             corr2_compile_date = (time.mktime(time.strptime(corr2_compile_time_string, '%Y-%m-%d-%Hh%M')))
