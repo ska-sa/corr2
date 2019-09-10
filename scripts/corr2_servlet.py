@@ -505,7 +505,8 @@ class Corr2Server(katcp.DeviceServer):
         """
         if not self.instrument.check_data_stream(stream_name):
             return 'fail', -1.0
-        return 'ok', self.instrument.analogue_bandwidth / 2.0
+        self.instrument.fops.set_center_freq(centrefreq)
+        return 'ok', self.instrument.fops.get_center_freq()
 
     @request(Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
