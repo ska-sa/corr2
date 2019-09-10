@@ -236,7 +236,7 @@ class Corr2Server(katcp.DeviceServer):
                 corr2_version = pkginfo.BDist(corr2.__path__[0][:-5]).version;
             except:
                 path = corr2.__path__[0][:-5]+"/EGG-INFO/PKG-INFO"
-                f=open(p,'r')
+                f=open(path,'r')
 		f.readline()
                 f.readline()
                 corr2_version = f.readline()[9:-1]
