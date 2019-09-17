@@ -68,17 +68,20 @@ def setup_sensors(sensor_manager):
     sens_man.sensors_clear()
     args = [sens_man, general_executor,
             host_executors, ioloop, host_offset_lookup]
-    sensors_fhost.setup_sensors_fengine(*args)
-    sensors_xhost.setup_sensors_xengine(*args)
-    sensors_bhost.setup_sensors_bengine(*args)
 
-    all_hosts = sens_man.instrument.fhosts + sens_man.instrument.xhosts
-
+    # create 'static' sensors
     sensor = sens_man.do_sensor(
                 Corr2Sensor.string,
                 'hostname-functional-mapping',
                 'On which hostname is which functional host?',
                 Corr2Sensor.NOMINAL, '', None)
     sensor.set_value(str(host_offset_lookup))
+
+    # setup periodic sensors
+    sensors_fhost.setup_sensors_fengine(*args)
+    sensors_xhost.setup_sensors_xengine(*args)
+    sensors_bhost.setup_sensors_bengine(*args)
+
+    all_hosts = sens_man.instrument.fhosts + sens_man.instrument.xhosts
 
 # end
