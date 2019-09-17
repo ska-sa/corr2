@@ -123,7 +123,7 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
     #TODO: update the docstring once it's clearly understood what everything actually *does*.
 
     global host_offset_lookup
-    sensor_poll_time = sens_man.instrument.sensor_poll_time
+    # sensor_poll_time = sens_man.instrument.sensor_poll_time
     if len(host_offset_lookup) == 0:
         host_offset_lookup = host_offset_dict.copy()
 
