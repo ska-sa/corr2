@@ -46,6 +46,11 @@ class MonitoringLoop(object):
         self.n_chans = self.instrument.n_chans
         self.chans_per_xhost = self.n_chans / self.num_xhosts
 
+        # list of hosts that need HMC reg dump (use as fifo)
+        self.get_hmc_reg_dump = []
+
+        self.start_time = time.time()
+
     def start(self):
         """
         Start the monitoring loop
@@ -117,6 +122,21 @@ class MonitoringLoop(object):
         # select a new host
         host = self.hosts[self.host_index]
         board_monitoring_dict_current = {}
+
+        # at 2-second intervals
+        # check if there are hosts that need an hmc reg dump
+        if time.time() - self.start_time > 2:
+            if self.get_hmc_reg_dump:
+                # get host from the list
+                host_for_hmc_dump = self.get_hmc_reg_dump.pop(0)
+
+                # get another hmc dump
+                self._get_host_hmc_status_reg_dump(host_for_hmc_dump)
+            else:
+                # no hosts require another hmc reg dump
+                pass
+
+            self.start_time = time.time()
 
         # check host type
         if host.host_type == 'fhost':
@@ -254,6 +274,13 @@ class MonitoringLoop(object):
                 self.disabled_fhosts.append(host)
                 self._disable_feng_ouput(fhost=host)
 
+            # errors were detected on the board, so dump hmc status registers
+            self._get_host_hmc_status_reg_dump(host)
+
+            # append host to list of boards that need to be checked again
+            if host not in self.get_hmc_reg_dump:
+                self.get_hmc_reg_dump.append(host)
+
         elif action['reenable_output']:
             # after checking, we already know that this board was
             # disabled prior
@@ -329,6 +356,12 @@ class MonitoringLoop(object):
                 self.disabled_xhosts.append(host)
                 self._disable_xeng_ouput(xhost=host)
 
+            # errors were detected on the board, so dump hmc status registers
+            self._get_host_hmc_status_reg_dump(host)
+
+            # append host to list of boards that need to be checked again
+            self.get_hmc_reg_dump.append(host)
+
         elif action['reenable_output']:
             # after checking, we already know that this board was
             # disabled prior
@@ -338,9 +371,6 @@ class MonitoringLoop(object):
         else:
             # no action taken
             pass
-
-        self.x_eng_board_monitoring_dict_prev[host] = \
-            board_monitoring_dict_current[host]
 
     def _check_xeng_rx_reorder_errs(self, x_eng_status_dict, xhost):
         """
@@ -751,4 +781,22 @@ class MonitoringLoop(object):
 
         return self.disabled_bhosts
 
+    def _get_host_hmc_status_reg_dump(self, host):
+        """
+        Get the status of the HMCs on the host.
+        :param host: an object for the host in question
+        :return: dict: none
+        """
+
+        temp_hmc_reg_dict = {}
+
+        for hmc in host.hmcs:
+            hmc_stats = hmc.get_hmc_status()
+            hmc_stats['mezz_site'] = hmc.mezz_site
+            temp_hmc_reg_dict[repr(hmc)] = hmc_stats
+
+        host_hmc_status = {host.host: temp_hmc_reg_dict}
+        self.instrument.logger.warning('%s %s hmc-status: %s'
+                                       % (host.host_type, host.host,
+                                          host_hmc_status))
 # end
