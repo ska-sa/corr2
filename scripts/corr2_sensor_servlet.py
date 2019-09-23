@@ -4,21 +4,20 @@ from __future__ import print_function
 import logging
 import traceback2 as traceback
 import sys
-import argparse
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import os
-import katcp
+from katcp import DeviceServer
 import signal
 from tornado.ioloop import IOLoop
 import tornado.gen
 import time
-from ConfigParser import ConfigParser
 
 from corr2 import sensors, sensors_periodic, fxcorrelator
 from corr2.corr2LogHandlers import getKatcpLogger, reassign_log_handlers
 from corr2.utils import parse_ini_file
 
 
-class Corr2SensorServer(katcp.DeviceServer):
+class Corr2SensorServer(DeviceServer):
 
     def __init__(self,*args, **kwargs):
         super(Corr2SensorServer, self).__init__(*args, **kwargs)
@@ -141,9 +140,9 @@ def boop():
     IOLoop.current().call_at(nextTime,boop)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
         description='Start a corr2 sensor server.',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('-p', '--port', dest='port', action='store',
                         default=1235, type=int,
                         help='bind to this port to receive KATCP messages')

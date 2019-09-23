@@ -5,8 +5,8 @@ import os
 import logging
 import traceback2 as traceback
 import sys
-import argparse
-import katcp
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from katcp import DeviceServer
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
 import signal
 from tornado import gen
@@ -16,7 +16,6 @@ import time
 from concurrent import futures
 import pkginfo
 
-import corr2
 from corr2 import fxcorrelator, sensors, utils
 from corr2.sensors import Corr2Sensor
 
@@ -28,7 +27,7 @@ from corr2 import corr_monitoring_loop as corr_mon_loop
 
 from casperfpga.utils import get_git_info_from_fpg
 
-class Corr2Server(katcp.DeviceServer):
+class Corr2Server(DeviceServer):
 
     # Interface version information.
     VERSION_INFO = ('corr2 instrument servlet', 0, 1)
@@ -1233,9 +1232,9 @@ def on_shutdown(ioloop, server):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
         description='Start a corr2 instrument server.',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '-p', '--port', dest='port', action='store', default=1235, type=int,
         help='bind to this port to receive KATCP messages')
