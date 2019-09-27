@@ -108,8 +108,7 @@ class FpgaXHost(FpgaHost):
         Clear the status registers and counters on this x-engine host
         :return:
         """
-        self.registers.control.write(status_clr='pulse', cnt_rst='pulse',
-                                     gbe_debug_rst='pulse')
+        self.registers.control.write(cnt_rst='pulse',gbe_debug_rst='pulse')
 
     def get_status_registers(self):
         """
