@@ -20,10 +20,11 @@ from corr2.utils import parse_ini_file
 
 class Corr2SensorServer(katcp.DeviceServer):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self,*args, **kwargs):
         super(Corr2SensorServer, self).__init__(*args, **kwargs)
         self.set_concurrency_options(thread_safe=False, handler_thread=False)
         self.instrument = None
+        self.logLevel = logging.WARN;
 
     def _log_excep(self, excep, msg=''):
         """
@@ -49,7 +50,6 @@ class Corr2SensorServer(katcp.DeviceServer):
         :param msg: the error message to log
         :return:
         """
-        import IPython; IPython.embed()
         log_message = '{} \n {}'.format(msg, stack_trace)
         if self.instrument:
             self.instrument.logger.error(log_message)
@@ -63,6 +63,12 @@ class Corr2SensorServer(katcp.DeviceServer):
         :return: nothing
         """
         pass
+
+    def _set_log_level(self,logLevel):
+        """
+        Sets the log level, not implemented properly, do not use if you dont know what you are doing
+        """
+        self.logLevel = logLevel;
 
     def initialise(self, config, name):
         """
@@ -83,20 +89,20 @@ class Corr2SensorServer(katcp.DeviceServer):
             log_filename = '{}_{}_sensor_servlet.log'.format(ini_filename, start_time)
 
             self.instrument = fxcorrelator.FxCorrelator(
-                                'dummy fx correlator for sensors', config_source=config,
+                                'snsrs', config_source=config,
                                 mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
                                 log_filename=log_filename, log_file_dir=log_file_dir)
             self.instrument.initialise(program=False, configure=False, require_epoch=False,
                                     mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
-                                    log_filename=log_filename, log_file_dir=log_file_dir)
+                                    log_filename=log_filename, log_file_dir=log_file_dir,logLevel=self.logLevel)
             
             #disable manually-issued sensor update informs (aka 'kcs' sensors):
             sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False,
                                                     mass_inform_func=self.mass_inform,
                                                     log_filename=log_filename,
-                                                    log_file_dir=log_file_dir)
+                                                    log_file_dir=log_file_dir,logLevel=self.logLevel)
             self.instrument.sensor_manager = sensor_manager
-            sensors_periodic.setup_sensors(sensor_manager,enable_counters=False)
+            sensors_periodic.setup_sensors(sensor_manager)
 
             # Function created to reassign all non-conforming log-handlers
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
@@ -153,12 +159,20 @@ if __name__ == '__main__':
 
     try:
         log_level = getattr(logging, args.loglevel)
-    except AttributeError:
-        raise RuntimeError('Received nonsensical log level %s' % args.loglevel)
+        if(args.loglevel.upper() == "WARN"):
+            log_level = logging.WARN;
+        elif(args.loglevel.upper() == "DEBUG"):
+            log_level = logging.DEBUG;
+        elif(args.loglevel.upper() == "INFO"):
+            log_level = logging.INFO;
+        elif(args.loglevel.upper() == "ERROR"):
+            log_level = logging.ERROR;
+    except:
+        print("Log level not understood. Defaulting to WARN.")
+        log_level = logging.WARN;
 
     # def boop():
     #     raise KeyboardInterrupt
-
     
     if 'CORR2INI' in os.environ.keys() and args.config == '':
         args.config = os.environ['CORR2INI']
@@ -179,6 +193,7 @@ if __name__ == '__main__':
 
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port)
+    sensor_server._set_log_level(log_level);
     signal.signal(signal.SIGINT,
                   lambda sig, frame: ioloop.add_callback_from_signal(
                       on_shutdown, ioloop, sensor_server))

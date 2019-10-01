@@ -510,13 +510,13 @@ class MonitoringLoop(object):
                     action_dict['disable_output'] = True
                 if rx_reorder_dict['relock_err_cnt'] != rx_reorder_dict_prev[
                     'relock_err_cnt']:
-                    self.instrument.logger.warning(
+                    self.instrument.logger.error(
                         'fhost %s rx reorder has relock errors' %
                         fhost.host)
                     action_dict['disable_output'] = True
                 if rx_reorder_dict['timestep_err_cnt'] != rx_reorder_dict_prev[
                                                             'timestep_err_cnt']:
-                    self.instrument.logger.warning(
+                    self.instrument.logger.error(
                         'fhost %s rx reorder has timestep errors' %
                         fhost.host)
                     action_dict['disable_output'] = True

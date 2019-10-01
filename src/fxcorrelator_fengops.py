@@ -1,6 +1,7 @@
 import Queue
 import threading
 import time
+import re
 
 import utils
 import fhost_fpga
@@ -12,10 +13,10 @@ from casperfpga import CasperLogHandlers
 
 from data_stream import SPEADStream
 from data_stream import FENGINE_CHANNELISED_DATA
-from data_stream import DIGITISER_ADC_SAMPLES
+from data_stream import StreamAddress
 
 from logging import INFO
-# from corr2LogHandlers import getLogger
+
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -161,6 +162,9 @@ class FEngineOperations(object):
         num_x_hosts = len(self.corr.xhosts)
         x_per_fpga = int(self.corr.configd['xengine']['x_per_fpga'])
         num_x = num_x_hosts * x_per_fpga
+        chans_per_x = self.corr.n_chans * 1.0 / num_x
+        chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
+        ct_num_accs = self.corr.xops.xeng_acc_len
         if 'x_setup' in self.hosts[0].registers.names():
             self.logger.info('Found num_x independent F-engines')
             # set up the x-engine information in the F-engine hosts
@@ -177,11 +181,10 @@ class FEngineOperations(object):
         reg_error = False
         host_ctr = 0
         for f in self.hosts:
+            xeng_start = (host_ctr * (num_x_hosts + 1) + host_ctr / 4) % num_x
             # f.registers.ct_control0.write(tvg_en=True, tag_insert=False)
-            f.registers.ct_control0.write(obuf_read_gap=self.corr.ct_readgap)
-            chans_per_x = self.corr.n_chans * 1.0 / num_x
-            chans_per_board = self.corr.n_chans * 1.0 / num_x_hosts
             try:
+                f.registers.ct_control0.write(obuf_read_gap=self.corr.ct_readgap)
                 f.registers.ct_control1.write(
                     num_x=num_x,
                     num_x_recip=1.0 / num_x,
@@ -194,14 +197,33 @@ class FEngineOperations(object):
                     num_x_boards=num_x_hosts,
                     num_x_boards_recip=1.0 / num_x_hosts,
                     chans_per_x_recip=1.0 / chans_per_x, )
-                xeng_start = (host_ctr * (num_x_hosts + 1) + host_ctr / 4) % num_x
-                ct_num_accs = 256
                 f.registers.ct_control4.write(ct_board_offset=(xeng_start * ct_num_accs))
                 # the 8 and the 32 below are hardware limits.
                 # 8 packets in a row to one x-engine, and 32 256-bit
                 # words in an outgoing packet
                 f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (16 * 32)))
                 #https://docs.google.com/spreadsheets/d/1wBXsfUCxf5hzC0G8Vz7emh3qIeYMBLdObgv9pOe_Zgc/edit#gid=1568192830
+            except ValueError:
+                #couldn't find the appropriate fields in the registers. Trying another mapping.
+                f.registers.ct_control0.write(
+                    obuf_read_gap=self.corr.ct_readgap,
+                    chans_per_x_recip=1.0 / chans_per_x,)
+                f.registers.ct_control1.write(
+                    num_x=num_x,
+                    num_x_recip=1.0 / num_x,
+                    x_per_board=x_per_fpga,
+                    x_per_board_recip=1.0 / x_per_fpga,)
+                f.registers.ct_control2.write(
+                    chans_per_x=chans_per_x,
+                    chans_per_board=chans_per_board,)
+                f.registers.ct_control3.write(
+                    num_x_boards=num_x_hosts,
+                    num_x_boards_recip=1.0 / num_x_hosts,)
+                f.registers.ct_control4.write(ct_board_offset=(xeng_start * ct_num_accs))
+                # the 8 and the 32 below are hardware limits.
+                # 8 packets in a row to one x-engine, and 32 256-bit
+                # words in an outgoing packet
+                f.registers.ct_control5.write(ct_freq_gen_offset=(xeng_start * (16 * 32)))
             except AttributeError:
                 reg_error = True
             host_ctr += 1
@@ -247,19 +269,34 @@ class FEngineOperations(object):
         assert len(self.corr.fhosts) > 0
         _fengd = self.corr.configd['fengine']
 
+        self.pfb_bits = int(_fengd['pfb_bits'])
+        self.quant_bits = int(_fengd['quant_bits'])
+        self.decimation_factor = int(self.corr.configd['fengine']['decimation_factor'])
+
         dig_streams = []
-        for stream in self.corr.data_streams:
-            if stream.category == DIGITISER_ADC_SAMPLES:
-                dig_streams.append((stream.name, stream.input_number))
-        dig_streams = sorted(dig_streams, key=lambda stream: stream[1])
+
+        source_mcast = _fengd.get('source_mcast_ips', None)
+        assert isinstance(source_mcast, str)
+        source_mcast = re.split(r'[,\s]+', source_mcast)
+        assert isinstance(source_mcast, list)
+        source_names = utils.get_sources(config=self.corr.configd)
+        for ctr, src in enumerate(source_mcast):
+            source_mcast[ctr] = src.strip()
+        assert len(source_mcast) == len(source_names), (
+            'Source names ({}) must be paired with multicast source '
+            'addresses ({})'.format(len(source_names), len(source_mcast)))
+        for ctr, source in enumerate(source_names):
+            addr = StreamAddress.from_address_string(source_mcast[ctr])
+            dig_src = fhost_fpga.InputStreamDetails(source, addr, ctr)
+            dig_streams.append(dig_src);
 
         # assemble the inputs given into a list
         _feng_temp = []
-        for stream_index, stream_value in enumerate(dig_streams):
+        for stream_index, stream_object in enumerate(dig_streams):
             new_feng = fhost_fpga.Fengine(
-                input_stream=self.corr.get_data_stream(stream_value[0]),
+                input_stream=stream_object,
                 host=None,
-                offset=stream_value[1] % self.corr.f_per_fpga,
+                offset=stream_object.input_number % self.corr.f_per_fpga,
                 feng_id=stream_index, descriptor=self.corr.descriptor, *args, **kwargs)
             new_feng.eq_bram_name = 'eq{}'.format(new_feng.offset)
             dest_ip_range = new_feng.input.destination.ip_range
@@ -311,10 +348,6 @@ class FEngineOperations(object):
         self.data_stream.set_source([feng.input.destination for feng in self.fengines])
         self.corr.add_data_stream(self.data_stream)
 
-        # set the sample rate on the Fhosts
-        for host in self.hosts:
-            host.rx_data_sample_rate_hz = self.corr.sample_rate_hz
-
     def sys_reset(self, sleeptime=0):
         """
         Pulse the sys_rst line on all F-engine hosts
@@ -326,6 +359,59 @@ class FEngineOperations(object):
             target_function=(lambda fpga_: fpga_.registers.control.write(sys_rst='pulse'),))
         if sleeptime > 0:
             time.sleep(sleeptime)
+
+    def set_center_freq(self,freq):
+        """Set the DDC's center frequency in Hz. """
+        self.logger.info("Attempting to set the center frequency to {:.5f} MHz".format(freq/1e6))
+        #if (band > 0):
+        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
+        if (self.decimation_factor==1):
+            self.logger.info("No point setting the center frequency in wideband modes.")
+            return self.corr.sample_rate_hz/4.
+        offset = self.corr.sample_rate_hz/4./self.decimation_factor
+        min_freq=offset
+        max_freq=(self.corr.sample_rate_hz/2.) - offset
+        if (freq < min_freq):
+            freq=min_freq
+        if (freq>max_freq):
+            freq=max_freq
+        self._set_osc_freq(freq)
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_center_freq()
+        return self.get_center_freq()
+
+    def get_center_freq(self):
+        """Fetch the tuned center-frequency of the DDC."""
+        #if (band > 0):
+        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
+        if (self.decimation_factor==1):
+            return self.corr.sample_rate_hz/4.
+        #offset = self.corr.sample_rate_hz/4./self.decimation_factor
+        osc_freq=self._get_osc_freq()
+        self.logger.info("Center frequency is {:.5f} MHz".format((osc_freq)/1e6))
+        return osc_freq
+
+    def _set_osc_freq(self,freq):
+        """Set the DDC oscillator frequency to "freq" Hz."""
+        #if (band > 0):
+        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
+        self.logger.debug('Setting DDC oscillator freq to {:.3f} MHz'.format(freq/1.e6))
+        reg_value = freq*(2**22)/self.corr.sample_rate_hz
+        THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
+            target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.write(frequency=reg_value),))
+        return self._get_osc_freq()
+
+    def _get_osc_freq(self):
+        """Return the hardware configured oscillator frequency, in Hz."""
+        #if (band > 0):
+        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
+        rv =THREADED_FPGA_OP(self.hosts,timeout=1,target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.read()['data']['frequency'],)) 
+        if min(rv.values()) != max(rv.values()): 
+            self.logger.warning("Fhosts have different tuning frequencies!")
+            raise RuntimeError("Fhosts have different tuning frequencies!")
+        rv=rv.values()[0]*self.corr.sample_rate_hz/(2**22)
+        self.logger.debug('DDC oscillator freq is {:.3f} MHz'.format(rv/1.e6))
+        return rv
 
     def get_rx_timestamps(self, src=0):
         """
@@ -444,18 +530,18 @@ class FEngineOperations(object):
         :param phase_delta: phase rate of change in radians/second.
         :return: True/False
         """
-        if loadtime is None:
-            loadtime = time.time() + self.corr.min_load_time
-        sample_rate_hz = self.corr.get_scale_factor()
+        sample_rate_hz = self.corr.sample_rate_hz
         loadmcnt = self._delays_check_loadtime(loadtime)
-        delay = delayops.prepare_delay_vals(((delay, delay_delta), (phase, phase_delta)),
-            sample_rate_hz)
-        delay.load_mcnt = loadmcnt
-        feng = self.get_fengine(input_name)
-        rv = feng.delay_set(delay)
-        if self.corr.sensor_manager:
-            self.corr.sensor_manager.sensors_feng_delays(feng)
-        return rv
+        if not (loadmcnt > 0):
+            self.logger.error("Dropping delay request.")
+        else:
+            delay = delayops.prepare_delay_vals(((delay, delay_delta), (phase, phase_delta)),
+                sample_rate_hz)
+            delay.load_mcnt = loadmcnt
+            feng = self.get_fengine(input_name)
+            feng.delay_set(delay)
+            if self.corr.sensor_manager:
+                self.corr.sensor_manager.sensors_feng_delays(feng)
 
     def delay_set_all(self, loadtime, delay_list):
         """
@@ -466,36 +552,27 @@ class FEngineOperations(object):
                              delay tuples ((delay,rate),(phase,rate))
         :return: True if all success, False otherwise.
         """
-        if loadtime > 0:
-            loadmcnt = self._delays_check_loadtime(loadtime)
-        else:
-            loadmcnt = -1
+        loadmcnt = self._delays_check_loadtime(loadtime)
         self.logger.debug("Received delay model update for {} (mcnt {}) at {}: {}.".format(loadtime,
-            loadmcnt, time.time(),delay_list.__str__()))
-        sample_rate_hz = self.corr.get_scale_factor()
-        delays = delayops.process_list(delay_list, sample_rate_hz)
-        if len(delays) != len(self.fengines):
-            raise ValueError('Have {} F-engines, received {} delay coefficient sets.'.format(
-                len(self.fengines), len(delays)))
-        for delay in delays:
-            delay.load_mcnt = loadmcnt
-
-        rv = self.threaded_feng_operation(timeout=self.timeout,
-            target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
-
-        if len(rv) != len(self.fengines):
-            rv = False
-            self.logger.error("Only got {} delay responses.".format(len(rv)))
+                loadmcnt, time.time(),delay_list.__str__()))
+        if not (loadmcnt > 0):
+            self.logger.error("Dropping delay request.")
         else:
-            for feng, stat in rv.items():
-                if not stat:
-                    rv = False
-
-        if self.corr.sensor_manager:
-            for feng in self.fengines:
-                self.corr.sensor_manager.sensors_feng_delays(feng)
-
-        return rv
+            sample_rate_hz = self.corr.get_scale_factor()
+            delays = delayops.process_list(delay_list, sample_rate_hz)
+            if len(delays) != len(self.fengines):
+                raise ValueError('Have {} F-engines, received {} delay coefficient sets.'.format(
+                    len(self.fengines), len(delays)))
+            for delay in delays:
+                delay.load_mcnt = loadmcnt
+            rv = self.threaded_feng_operation(timeout=self.timeout,
+                target_function=(lambda feng_: feng_.delay_set(delays[feng_.input_number]),))
+            if len(rv) != len(self.fengines):
+                rv = False
+                self.logger.error("Only got {} delay responses.".format(len(rv)))
+            if self.corr.sensor_manager:
+                for feng in self.fengines:
+                    self.corr.sensor_manager.sensors_feng_delays(feng)
 
 #    def delays_get(self, input_name=None):
 #        """
@@ -517,22 +594,27 @@ class FEngineOperations(object):
         :param loadtime: the UNIX time
         :return: the system sample count
         """
-        # check that load time is not too soon or in the past
         time_now = time.time()
+        if loadtime is None:
+            loadtime = time_now + self.corr.min_load_time + 0.1
+
+        # check that load time is not too soon or in the past
         if loadtime < (time_now + self.corr.min_load_time):
             errmsg = (
                 'Delay model update leadtime ({} s) error. tnow: {}, tload: {}.'.format(
                     self.corr.min_load_time, time_now, loadtime))
             self.logger.error(errmsg)
+            return None
 
-        last_loadtime = self.corr.time_from_mcnt(
-            self.fengines[0].last_delay.load_mcnt)
-        if time.time() < last_loadtime:
-            self.logger.warning(
-                "Received a delay update before the last one had a chance to load! "
-                "Queuing is not supported. The last load command (for time {}) will not be applied, "
-                "and will be overwritten by this command at time {}.".format(last_loadtime,
-                    time.time()))
+        #TODO this logic doesn't work correctly all the time, because this function can be called when setting random Fengines, and so shouldn't hardcode the reference to feng0. disabling for now.
+        #last_loadtime = self.corr.time_from_mcnt(
+        #    self.fengines[0].last_delay.load_mcnt)
+        #if time.time() < last_loadtime:
+        #    self.logger.warning(
+        #        "Received a delay update before the last one had a chance to load! "
+        #        "Queuing is not supported. The last load command (for time {}) will not be applied, "
+        #        "and will be overwritten by this command at time {}.".format(last_loadtime,
+        #            time.time()))
         loadtime_mcnt = self.corr.mcnt_from_time(loadtime)
         return loadtime_mcnt
 
@@ -560,8 +642,12 @@ class FEngineOperations(object):
         """
         Enable hardware automatic resync upon error detection.
         """
+        #feng_pipeline_latency = ct+hmc  +  pfb_fir  +  fft  +  cd+hmc  +  misc
+        max_difference=(self.corr.n_chans*2*self.corr.xops.xeng_acc_len*2*self.decimation_factor + 50000) + (self.decimation_factor*self.corr.n_chans*16*2) + (self.decimation_factor*self.corr.n_chans*7) +  (512 + 50000) + (50000)
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
-            target_function=(lambda fpga_: fpga_.registers.control.write(auto_rst_enable=True), ))
+            target_function=(lambda fpga_: fpga_.registers.time_check.write(max_difference=max_difference), ))
+        THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
+            target_function=(lambda fpga_: fpga_.registers.control.write(auto_rst_enable=True,time_diff_check_en=True), ))
         self.logger.info('F-engine hardware auto rst/resync mechanism enabled.')
 
     def auto_rst_disable(self):
@@ -694,12 +780,15 @@ class FEngineOperations(object):
         :param freq: frequency, in Hz, float
         :return: the fft channel, integer
         """
-        _band = self.corr.sample_rate_hz / 2.0
-        if (freq > _band) or (freq <= 0):
-            raise RuntimeError('frequency {:.3f} is not in our band'.format(freq))
+        center = self.get_center_freq()
+        _bw = self.corr.sample_rate_hz / 2.0 / self.decimation_factor
+        _band_min = center_freq - _bw/2
+        _band_max = center_freq + bw/2
+        if (freq > _band_max) or (freq <= _band_min):
+            raise RuntimeError('frequency {:.3f}MHz is not in our band ({:.3f} to {:.3f} MHz).'.format(freq/1e6,_band_min/1e6,_band_max/1e6))
         import numpy
         _hz_per_chan = _band / self.corr.n_chans
-        _chan_index = numpy.floor(freq / _hz_per_chan)
+        _chan_index = numpy.floor((freq-_band_min) / _hz_per_chan)
         return _chan_index
 
     def get_quant_snap(self, input_name, channel_select=-1):

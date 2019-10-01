@@ -4,6 +4,7 @@ from tornado.ioloop import IOLoop
 
 import sys
 import traceback as tb
+import sensor_scheduler
 
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
@@ -13,8 +14,6 @@ from sensors import Corr2Sensor, boolean_sensor_do
 LOGGER = logging.getLogger(__name__)
 
 host_offset_lookup = {}
-sensor_poll_time = 10
-
 
 @gen.coroutine
 def _cb_bhost_lru(sensor_manager, sensor, b_host, time):
@@ -106,7 +105,8 @@ def _cb_beng_pack(sensors, general_executor, sens_man, time):
         #TODO This logger stuff doesn't seem to actually work. Not sure why.
         LOGGER.error('Error updating beng pack sensors - '
                      '{}'.format(e.message))
-    IOLoop.current().call_at(sensor_poll_time + time, _cb_beng_pack, sensors, general_executor, sens_man, time + sensor_poll_time)
+
+    IOLoop.current().add_callback(_cb_beng_pack, sensors, general_executor, sens_man)
 
 
 def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
@@ -123,8 +123,7 @@ def setup_sensors_bengine(sens_man, general_executor, host_executors, ioloop,
     #TODO: update the docstring once it's clearly understood what everything actually *does*.
 
     global host_offset_lookup
-    global sensor_poll_time
-    sensor_poll_time = sens_man.instrument.sensor_poll_time
+    # sensor_poll_time = sens_man.instrument.sensor_poll_time
     if len(host_offset_lookup) == 0:
         host_offset_lookup = host_offset_dict.copy()
 

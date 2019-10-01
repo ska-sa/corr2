@@ -175,7 +175,8 @@ class SPEADStream(object):
         self.descr_ig = spead2.send.ItemGroup(
             flavour=spead2.Flavour(4, 64, SPEAD_ADDRSIZE))
         self.descriptors_setup()
-        self.set_destination(new_dest=destination, max_pkt_size=max_pkt_size)
+        self.max_pkt_size = max_pkt_size;
+        self.set_destination(new_dest=destination)
 
     def descriptors_setup(self):
         """
@@ -201,11 +202,10 @@ class SPEADStream(object):
                 srcs.append(StreamAddress.from_address_string(src))
         self.source = srcs
 
-    def set_destination(self, new_dest, max_pkt_size):
+    def set_destination(self, new_dest):
         """
         Set the destination for this stream
         :param new_dest: the new destination to use
-        :param max_pkt_size: maximum packet size for this stream
         :return:
         """
         if new_dest is None:
@@ -221,7 +221,7 @@ class SPEADStream(object):
             self.tx_sockets.append(_setup_spead_tx(threadpool=self.threadpool,
                                                    ip_string=ip,
                                                    port=self.destination.port,
-                                                   max_pkt_size=max_pkt_size))
+                                                   max_pkt_size=self.max_pkt_size))
             #################Determining Packet ID start location#################
             #IP Component of Packet ID
             ip_arr = ip.split('.')
@@ -275,9 +275,12 @@ class SPEADStream(object):
         if (index < 0 or index >= self.destination.ip_range):
             self.logger.error('%s: Tried to issue discriptor out of range (%i descriptors, index: %i).' % (self.name, dest_ctr, index))
             return
-
-        self.tx_sockets[index].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
-        self.logger.debug('SPEADStream %s: sent descriptor %i of %i destinations' % (self.name, index, dest_ctr))
+        
+        if(self.tx_enabled):
+            self.tx_sockets[index].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
+            self.logger.debug('SPEADStream %s: sent descriptor %i of %i destinations' % (self.name, index, dest_ctr))
+        else:
+            self.logger.debug('SPEADStream %s: DId not send descriptor %i of %i destinations, beam disabled' % (self.name, index, dest_ctr))
 
     def get_num_descriptors(self):
         """

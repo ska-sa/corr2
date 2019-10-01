@@ -14,8 +14,11 @@ from tornado.ioloop import IOLoop
 import Queue
 import time
 from concurrent import futures
+import pkginfo
 
+import corr2
 from corr2 import fxcorrelator, sensors, utils
+from corr2.sensors import Corr2Sensor
 
 from corr2.corr2LogHandlers import getKatcpLogger, servlet_log_level_request
 from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
@@ -223,6 +226,10 @@ class Corr2Server(katcp.DeviceServer):
             # set up the main loop sensors
             sensor_manager.sensors_clear()
             sensor_manager.setup_mainloop_sensors()
+ 
+            #Add build time sensors
+	    self.sensors = {}
+
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
             if monitor_instrument:
@@ -274,7 +281,6 @@ class Corr2Server(katcp.DeviceServer):
         print(multiargs)
         return self._log_excep(None, 'A test failure, like it should')
 
-    # TODO: deprecate above and instate this once CBF-CAM ICD Rev6 is fully implemented
     @request(Float(default=-1.0))
     @return_reply(Float())
     def request_sync_epoch(self, sock, synch_time):
@@ -284,11 +290,6 @@ class Corr2Server(katcp.DeviceServer):
         :param synch_time: unix time float
         :return: the currently set synch time
         """
-        # if not self.instrument.initialised():
-        #     logging.warn('request %s before initialised... refusing.' %
-        #                  'request_sync_epoch')
-        #     return 'fail', 'request %s before initialised... refusing.' % \
-        #            'request_sync_epoch'
         if synch_time > -1.0:
             try:
                 self.instrument.synchronisation_epoch = synch_time
@@ -453,7 +454,8 @@ class Corr2Server(katcp.DeviceServer):
         """
         if not self.instrument.check_data_stream(stream_name):
             return 'fail', -1.0
-        return 'ok', self.instrument.analogue_bandwidth / 2.0
+        self.instrument.fops.set_center_freq(centrefreq)
+        return 'ok', self.instrument.fops.get_center_freq()
 
     @request(Str(default='', multiple=True))
     @return_reply(Str(multiple=True))
@@ -517,6 +519,9 @@ class Corr2Server(katcp.DeviceServer):
             elif eq_vals[0] == '':
                 neweqvals=None
                 self.instrument.logger.info('Applying default gains')
+            elif eq_vals[0] == 'default':
+                neweqvals=None
+                self.instrument.logger.info('Applying default gains')
             elif eq_vals[0] == 'auto':
                 neweqvals='auto'
                 self.instrument.logger.info('Trying to set gains automatically')
@@ -570,6 +575,23 @@ class Corr2Server(katcp.DeviceServer):
                 stack_trace = traceback.format_exc()
                 return self._log_stacktrace(stack_trace, 'Failed to set accumulation length.')
         return 'ok', self.instrument.xops.get_acc_time()
+
+    @request(Int())
+    @return_reply()
+    def request_xeng_interpacket_gap(self, sock, new_interpacket_gap):
+        """
+        Set the Xengine interpacket gap to the specified value.
+        :param sock:
+        :param new_interpacket_gap: 
+        :return:
+        """
+        try:
+            for f in self.instrument.xhosts:
+                f.registers.gapsize.write(gap_size=new_interpacket_gap)
+        except Exception as ex:
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed to set interpacket gap size.')
+        return 'ok', 
 
     @request(Str())
     # @return_reply(Str(multiple=True))

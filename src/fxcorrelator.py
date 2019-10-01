@@ -9,6 +9,7 @@ Created on Feb 28, 2013
 import re
 import time
 import katcp
+import signal
 # Yes, I know it's just an integer value
 from logging import INFO
 
@@ -27,13 +28,11 @@ from fxcorrelator_xengops import XEngineOperations
 from fxcorrelator_bengops import BEngineOperations
 from fxcorrelator_filterops import FilterOperations
 from data_stream import StreamAddress
-from digitiser import DigitiserStream
 
 from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
-
 
 def _disable_write(*args, **kwargs):
     """
@@ -123,8 +122,6 @@ class FxCorrelator(Instrument):
         self.katcp_port = None
         self.f_per_fpga = None
         self.x_per_fpga = None
-        self.accumulation_len = None
-        self.xeng_accumulation_len = None
         self.timeout = None
 
         # parent constructor - this invokes reading the config file already
@@ -157,20 +154,22 @@ class FxCorrelator(Instrument):
         :return:
         """
         # check that the instrument's synch epoch has been set
-        if require_epoch:
-            if self.synchronisation_epoch == -1:
-                raise RuntimeError(
-                    'System synch epoch has not been set prior to initialisation!')
+        if self.synchronisation_epoch <= 0:
+            try:
+                self.synchronisation_epoch = float(self.configd['FxCorrelator']['synchronisation_epoch'])
+            except ValueError:
+                self.logger.error("Sync epoch malformed in config file, and epoch not pre-set.")
+            except KeyError:
+                self.logger.warn("Sync epoch not found in config file, and epoch not pre-set.")
+        else:
+            self.logger.info("Sync epoch pre-set to %f."%self.synchronisation_epoch)
+        
+        if (require_epoch) and (self.synchronisation_epoch < 0):
+            raise RuntimeError(
+                'System sync epoch has not been set prior to initialisation!')
 
         # clear the data streams. These will be re-added during configuration.
         self.data_streams = []
-        # what digitiser data streams have we been allocated?
-
-        if 'getLogger' in kwargs:
-            self._create_digitiser_streams(**kwargs)
-        else:
-            self._create_digitiser_streams(
-                getLogger=self.getLogger, *args, **kwargs)
 
         # set up the F, X, B and filter handlers
         self.fops = FEngineOperations(self, timeout=self.timeout, **kwargs)
@@ -191,6 +190,7 @@ class FxCorrelator(Instrument):
         THREADED_FPGA_FUNC(self.fhosts + self.xhosts, timeout=self.timeout,
                            target_function='connect')
 
+
         # if we need to program the FPGAs, do so
         xbof = self.xhosts[0].bitstream
         fbof = self.fhosts[0].bitstream
@@ -198,15 +198,41 @@ class FxCorrelator(Instrument):
             # skfops = casperfpga.skarab_fileops
             # force the new programming method
             try:
+		function_call = ""
+                def progska_timeout_handler(signum, frame):
+	            raise Exception("Function: {} timed out.".format(function_call))
+		
+		#Setting up timeout signal
+		signal.signal(signal.SIGALRM, progska_timeout_handler)
+
+		function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
+		signal.alarm(int(self.timeout * (len(self.fhosts)**0.5) + 60))
                 skfops.upload_to_ram_progska(fbof, self.fhosts)
+		function_call = "skfops.reboot_skarabs_from_sdram(self.fhosts)"
+                signal.alarm(int(self.timeout))
                 skfops.reboot_skarabs_from_sdram(self.fhosts)
+
+		signal.alarm(int(self.timeout * (len(self.xhosts)**0.5) + 60))
+		function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
                 skfops.upload_to_ram_progska(xbof, self.xhosts)
+		signal.alarm(int(self.timeout))
+		function_call = "skfops.reboot_skarabs_from_sdram(self.xhosts)"
                 skfops.reboot_skarabs_from_sdram(self.xhosts)
+		signal.alarm(0)		
+
+		#This signal.alarm is probably not necessary. This is just a catch-all in case things get stuck
+		signal.alarm(self.timeout * (len(self.fhosts) + len(self.xhosts)))
+		function_call = "skfops.wait_after_reboot(self.fhosts + self.xhosts... "
                 skfops.wait_after_reboot(self.fhosts +
                                          self.xhosts, timeout=self.timeout *
                                          (len(self.fhosts) + len(self.xhosts)))
+
+		#Cancel all timeout sigals
+                signal.alarm(0)	
+		
             except Exception as err:
                 errmsg = 'Failed to program the boards: %s' % str(err)
+		signal.alarm(0)
                 self.logger.error(errmsg)
                 raise RuntimeError(errmsg)
 
@@ -273,17 +299,25 @@ class FxCorrelator(Instrument):
 
         # wait for switches to learn, um, stuff
         self.logger.info(
-            'post mess-with-the-switch delay of {}s'.format(self.post_switch_delay))
-        time.sleep(self.post_switch_delay)
+            'post mess-with-the-switch delay of {}s'.format(self.post_switch_delay/2))
+        time.sleep(self.post_switch_delay/2)
 
         #Forcefully resync the Fengines once the DIG data is flowing reliably:
+        #self.fops.sys_reset()
+        #time.sleep(5)
+        self.fops.auto_rst_enable()
         self.fops.sys_reset()
+        self.logger.info(
+            'post feng rst delay of {}s'.format(self.post_switch_delay/2))
+        time.sleep(self.post_switch_delay/2)
 
         if self.synchronisation_epoch == -1:
             self.est_synch_epoch()
 
         # arm the vaccs on the x-engines
         if self.xops.vacc_sync() > 0:
+            #self.fops.sys_reset()
+            #time.sleep(1)
             # reset all counters on fhosts and xhosts
             self.fops.clear_status_all()
             self.xops.clear_status_all()
@@ -314,14 +348,14 @@ class FxCorrelator(Instrument):
         """
         return self.sample_rate_hz
 
-    def est_synch_epoch(self):
+    def est_synch_epoch(self,f_index=0):
         """
         Estimates the synchronisation epoch based on current F-engine
         timestamp, and the system time.
         """
         self.logger.info('Estimating synchronisation epoch:')
         # get current time from an F-engine
-        feng_mcnt = self.fhosts[0].get_local_time()
+        feng_mcnt = self.fhosts[f_index].get_local_time()
         self.logger.info('\tcurrent F-engine mcnt: {}'.format(feng_mcnt))
         if feng_mcnt & 0xfff != 0:
             errmsg = (
@@ -386,8 +420,11 @@ class FxCorrelator(Instrument):
             return
 
         # match old labels to input streams
-        for ctr, old_label in enumerate(old_labels):
-            self.get_data_stream(old_label).name = new_labels[ctr]
+#        fengsorted = sorted(
+#            self.fops.fengines,
+#            key=lambda fengine: fengine.input_number)
+        for ctr, feng in enumerate(self.fops.fengines):
+            feng.name = new_labels[ctr]
 
         if self.sensor_manager:
             self.sensor_manager.sensors_input_labels()
@@ -402,21 +439,21 @@ class FxCorrelator(Instrument):
         Get a more complete input mapping of inputs to positions and boards
         :return:
         """
-        fengsorted = sorted(
-            self.fops.fengines,
-            key=lambda fengine: fengine.input_number)
+#        fengsorted = sorted(
+#            self.fops.fengines,
+#            key=lambda fengine: fengine.input_number)
         return [(f.input.name, f.input_number, f.host.host, f.offset)
-                for f in fengsorted]
+                for f in self.fops.fengines]
 
     def get_input_labels(self):
         """
         Get the current fengine source labels as a list of label names.
         :return:
         """
-        fengsorted = sorted(
-            self.fops.fengines,
-            key=lambda fengine: fengine.input_number)
-        return [feng.name for feng in fengsorted]
+#        fengsorted = sorted(
+#            self.fops.fengines,
+#            key=lambda fengine: fengine.input_number)
+        return [feng.name for feng in self.fops.fengines]
 
     def _check_bitstreams(self):
         """
@@ -532,15 +569,22 @@ class FxCorrelator(Instrument):
         self._check_bitstreams()
         # =====================================================================
         _fxcorr_d = self.configd.get('FxCorrelator')
+        
         assert isinstance(_fxcorr_d, dict)
-        self.sensor_poll_time = int(_fxcorr_d.get('sensor_poll_time', None))
-        assert isinstance(self.sensor_poll_time, int)
+        #Check that sensor poll interval is in config file
+        if(_fxcorr_d.get('sensor_poll_interval')):
+            self.sensor_poll_interval = float(_fxcorr_d.get('sensor_poll_interval', None))
+            assert isinstance(self.sensor_poll_interval, float)
+        else:
+            self.logger.warn('sensor_poll_interval config file variable is not available, default interval set to: 0.003.')
+            self.sensor_poll_interval = 0.003;
+
         self.katcp_port = int(_fxcorr_d.get('katcp_port', 7147))
         assert isinstance(self.katcp_port, int)
         self.sample_rate_hz = float(
             _fxcorr_d.get(
                 'sample_rate_hz',
-                1712000000))
+                None))
         assert isinstance(self.sample_rate_hz, float)
         self.timestamp_bits = int(_fxcorr_d.get('timestamp_bits', None))
         assert isinstance(self.timestamp_bits, int)
@@ -548,7 +592,7 @@ class FxCorrelator(Instrument):
             _fxcorr_d.get('time_jitter_allowed', 0.5))
         assert isinstance(self.time_jitter_allowed, float)
         self.time_offset_allowed = float(
-            _fxcorr_d.get('time_offset_allowed', 5))
+            _fxcorr_d.get('time_offset_allowed', 1))
         assert isinstance(self.time_offset_allowed, float)
         self.timeout = int(_fxcorr_d.get('default_timeout', 15))
         assert isinstance(self.timeout, int)
@@ -556,10 +600,7 @@ class FxCorrelator(Instrument):
         assert isinstance(self.post_switch_delay, int)
         self.n_antennas = int(_fxcorr_d.get('n_ants', None))
         assert isinstance(self.n_antennas, int)
-        self.analogue_bandwidth = float(
-            _fxcorr_d.get(
-                'sample_rate_hz',
-                1712000000.0)) / 2
+        self.analogue_bandwidth = self.sample_rate_hz/2
         if 'spead_metapacket_ttl' in _fxcorr_d:
             import data_stream
             data_stream.SPEAD_PKT_TTL = int(
@@ -569,26 +610,25 @@ class FxCorrelator(Instrument):
         # =====================================================================
         _feng_d = self.configd.get('fengine')
         assert isinstance(_feng_d, dict)
+        self.decimation_factor = int(_feng_d.get('decimation_factor', 1))
         self.ct_readgap = int(_feng_d.get('ct_readgap', 45))
         assert isinstance(self.ct_readgap, int)
         self.n_chans = int(_feng_d.get('n_chans'))
         assert isinstance(self.n_chans, int)
-        # There must be a better way
-        assert self.n_chans in [1024, 4096, 32768]
+        ## There must be a better way
+        #assert self.n_chans in [1024, 4096, 32768]
         self.min_load_time = float(_feng_d.get('min_load_time', 0.2))
         assert isinstance(self.min_load_time, float)
         self.f_per_fpga = int(_feng_d.get('f_per_fpga', 2))
         assert isinstance(self.f_per_fpga, int)
         self.n_input_streams_per_fengine = int(
-            _feng_d.get('n_input_streams_per_fengine', 2))
+            _feng_d.get('n_input_streams_per_fengine', None))
         assert isinstance(self.n_input_streams_per_fengine, int)
-        self.quant_format = float(_feng_d.get('quant_format', 8.7))
-        assert isinstance(self.quant_format, float)
         self.adc_bitwidth = int(_feng_d.get('sample_bits', 10))
         assert isinstance(self.adc_bitwidth, int)
-        self.fft_shift = int(_feng_d.get('fft_shift', 8191))
+        self.fft_shift = int(_feng_d.get('fft_shift', None))
         assert isinstance(self.fft_shift, int)
-        self.pfb_group_delay = int(_feng_d.get('pfb_group_delay', -1))
+        self.pfb_group_delay = int(_feng_d.get('pfb_group_delay', 0))
         assert isinstance(self.pfb_group_delay, int)
         self.f_stream_payload_len = int(_feng_d.get('feng_stream_payload_len',
                                                     1024))
@@ -599,11 +639,6 @@ class FxCorrelator(Instrument):
         assert isinstance(_xeng_d, dict)
         self.x_per_fpga = int(_xeng_d.get('x_per_fpga', 4))
         assert isinstance(self.x_per_fpga, int)
-        self.accumulation_len = int(_xeng_d.get('accumulation_len', 408))
-        assert isinstance(self.accumulation_len, int)
-        self.xeng_accumulation_len = int(
-            _xeng_d.get('xeng_accumulation_len', 256))
-        assert isinstance(self.xeng_accumulation_len, int)
         self.xeng_outbits = int(_xeng_d.get('xeng_outbits', 32))
         assert isinstance(self.xeng_outbits, int)
         self.x_stream_payload_len = int(_xeng_d.get('xeng_stream_payload_len',
@@ -630,29 +665,6 @@ class FxCorrelator(Instrument):
 
         except Exception:
             self.logger.info('No beamfomer found in the config.')
-
-    def _create_digitiser_streams(self, *args, **kwargs):
-        """
-        Parse the config of the given digitiser streams.
-        :return:
-        """
-        _fengd = self.configd.get('fengine', None)
-        assert isinstance(_fengd, dict)
-        source_mcast = _fengd.get('source_mcast_ips', None)
-        assert isinstance(source_mcast, str)
-        source_mcast = re.split(r'[,\s]+', source_mcast)
-        assert isinstance(source_mcast, list)
-        source_names = utils.get_default_sources(config=self.configd)
-        for ctr, src in enumerate(source_mcast):
-            source_mcast[ctr] = src.strip()
-        assert len(source_mcast) == len(source_names), (
-            'Source names ({}) must be paired with multicast source '
-            'addresses ({})'.format(len(source_names), len(source_mcast)))
-        for ctr, source in enumerate(source_names):
-            addr = StreamAddress.from_address_string(source_mcast[ctr])
-            dig_src = DigitiserStream(source, addr, ctr, self, *args, **kwargs)
-            dig_src.tx_enabled = True
-            self.add_data_stream(dig_src)
 
     def _read_config_file(self):
         """
