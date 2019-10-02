@@ -182,10 +182,11 @@ class FpgaXHost(FpgaHost):
         stats = []
         regs = self.registers
         for xnum in x_indices:
-            temp = regs['sys%i_vacc_status' % xnum].read()['data']
-            temp.update(timestamp = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp'])
-#            temp.update(regs['sys%i_vacc_hmc_vacc_fifo_status' % xnum].read()['data'])
-            temp.update(regs['sys%i_vacc_hmc_vacc_err_status' % xnum].read()['data'])
+            temp={}
+            temp['timestamp'] = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp']
+            temp.update(regs['sys%i_vacc_status' % xnum].read()['data'])
+            for stat_reg_idx in range(2):
+                temp.update(regs['sys%i_vacc_hmc_vacc_status%i' %(xnum,stat_reg_idx)].read()['data'])
             stats.append(temp)
         return stats
 
