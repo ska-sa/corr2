@@ -1,31 +1,30 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-import os
-import logging
+import os, sys, logging, time
+import signal, pkginfo, Queue
 import traceback2 as traceback
-import sys
+
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from katcp import DeviceServer
 from katcp.kattypes import request, return_reply, Float, Int, Str, Bool
-import signal
 from tornado import gen
 from tornado.ioloop import IOLoop
-import Queue
-import time
 from concurrent import futures
-import pkginfo
 
-from corr2 import fxcorrelator, sensors, utils
-from corr2.sensors import Corr2Sensor
-
-from corr2.corr2LogHandlers import getKatcpLogger, servlet_log_level_request
-from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
-from corr2.utils import parse_ini_file
-
+from corr2.fxcorrelator import FxCorrelator
+from corr2.sensors import Corr2Sensor, Corr2SensorManager
+from corr2.utils import parse_ini_file, process_new_eq
 from corr2 import corr_monitoring_loop as corr_mon_loop
 
+from corr2.corr2LogHandlers import getKatcpLogger, \
+                                servlet_log_level_request, \
+                                create_katcp_and_file_handlers
+from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
+
 from casperfpga.utils import get_git_info_from_fpg
+
+_DEFAULT_LOG_DIR = '/var/log/corr'
 
 class Corr2Server(DeviceServer):
 
@@ -36,20 +35,51 @@ class Corr2Server(DeviceServer):
     BUILD_INFO = ('corr2', 0, 1, 'alpha')
 
     def __init__(self, *args, **kwargs):
-        use_tornado = kwargs.pop('tornado')
-        super(Corr2Server, self).__init__(*args, **kwargs)
-        if use_tornado:
-            self.set_concurrency_options(thread_safe=False, handler_thread=False)
-        self.instrument = None
-        self.metadata_cadence = 5
-        self.descriptor_cadence = 5
-        self.executor = futures.ThreadPoolExecutor(max_workers=1)
-        self._created = False
-        self._initialised = False
-        self.delays_disabled = False
+        try:
+            start_time_str = str(time.time())
+            
+            use_tornado = kwargs.pop('tornado')
 
-        self.mon_loop = None
-        self.mon_loop_running = None
+            self.config_filename = kwargs.pop('config', None)
+            
+            config_file_dict = parse_ini_file(self.config_filename)
+            self.log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir', _DEFAULT_LOG_DIR)
+            assert os.path.isdir(self.log_file_dir)
+            
+            if 'ini' in os.path.basename(self.config_filename):
+                self.config_filename = os.path.basename(self.config_filename).rsplit('.', 1)[0]
+            # else: Continue!
+            self.log_filename = '{}_{}_servlet.log'.format(
+                                    os.path.basename(self.config_filename), start_time_str)
+            self.log_level = kwargs.pop('log_level', logging.WARN)
+
+            super(Corr2Server, self).__init__(*args, **kwargs)
+            if use_tornado:
+                self.set_concurrency_options(thread_safe=False, handler_thread=False)
+            
+            create_katcp_and_file_handlers(self._logger, self.mass_inform,
+                                            self.log_filename, self.log_file_dir,
+                                            self.log_level)
+
+            self.instrument = None
+            self.metadata_cadence = 5
+            self.descriptor_cadence = 5
+            self.executor = futures.ThreadPoolExecutor(max_workers=1)
+            self._created = False
+            self._initialised = False
+            self.delays_disabled = False
+
+            self.mon_loop = None
+            self.mon_loop_running = None
+
+        except AssertionError as ex:
+            stack_trace = traceback.format_exc()
+            errmsg = 'Logging directory does not exist: {}'.format(self.log_file_dir)
+            self._log_stacktrace(stack_trace, errmsg)
+        except Exception as ex:
+            # Oh dear
+            stack_trace = traceback.format_exc()
+            self._log_stacktrace(stack_trace, 'Failed to create servlet')
 
     def _log_excep(self, excep, msg=''):
         """
@@ -62,10 +92,7 @@ class Corr2Server(DeviceServer):
         if excep is not None:
             template = '\nAn exception of type {0} occured. Arguments: {1!r}'
             message += template.format(type(excep).__name__, excep.args)
-        if self.instrument:
-            self.instrument.logger.error(message)
-        else:
-            logging.error(message)
+        self._logger.error(message)
         return 'fail', message
 
     def _log_stacktrace(self, stack_trace, msg=''):
@@ -79,10 +106,7 @@ class Corr2Server(DeviceServer):
         :return:
         """
         log_message = '{} \n {}'.format(msg, stack_trace)
-        if self.instrument:
-            self.instrument.logger.error(log_message)
-        else:
-            logging.error(log_message)
+        self._logger.error(log_message)
         return 'fail', log_message
 
     @request()
@@ -121,22 +145,9 @@ class Corr2Server(DeviceServer):
             time_str = str(time.time())
             iname = instrument_name or 'corr_{}'.format(time_str)
 
-            # Changing the getLogger function to add Katcp and File Handlers
-            self.log_filename = '{}_{}_servlet.log'.format(iname.strip().replace(' ', '_'), time_str)
             # Parse ini file to check for log_file_dir
             config_file_dict = parse_ini_file(config_file)
-            try:
-                _default_log_dir = '/var/log/corr'
-                self.log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir',
-                    _default_log_dir)
-                assert os.path.exists(_default_log_dir)
-            except KeyError:
-                self.log_file_dir = '.'
-            except AssertionError as ex:
-                stack_trace = traceback.format_exc()
-                self._log_stacktrace(stack_trace, "Logging dir {} does not exist".format(
-                                                                                _default_log_dir))
-
+            
             # While we have the config-file parsed:
             # - To be used when initialising log-levels of instrument groups
             self.log_level_dict = config_file_dict.get('log-level', None)
@@ -155,9 +166,7 @@ class Corr2Server(DeviceServer):
             for filename in fpg_files:
                 bitstream_dict[filename] = get_git_info_from_fpg(filename)
 
-            # Unfortunately can only log against the instrument.logger 
-            # AFTER the instrument has been created
-            self.instrument = fxcorrelator.FxCorrelator(iname, config_source=config_file,
+            self.instrument = FxCorrelator(iname, config_source=config_file,
                               getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
@@ -170,7 +179,7 @@ class Corr2Server(DeviceServer):
                 for git_repo, git_version in git_info.items():
                     bitstream_info_str += '\t {} \n \t {} \n\n'.format(git_repo, git_version)
             
-            self.instrument.logger.info(bitstream_info_str)
+            self._logger.info(bitstream_info_str)
 
             # Function created to reassign all non-conforming log-handlers
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,
@@ -181,7 +190,7 @@ class Corr2Server(DeviceServer):
             return 'ok',
         except Exception as ex:
             stack_trace = traceback.format_exc()
-            return self._log_stacktrace(ex, 'Failed to create instrument.')
+            return self._log_stacktrace(stack_trace, 'Failed to create instrument.')
      
     
     def setup_sensors(self):
@@ -217,15 +226,16 @@ class Corr2Server(DeviceServer):
             # from the running firmware
             self.extra_versions.update(self.instrument.get_version_info())
             # add a sensor manager
-            sensor_manager = sensors.Corr2SensorManager(self, self.instrument,
+            sensor_manager = Corr2SensorManager(self, self.instrument,
                                         mass_inform_func=self.mass_inform,
                                         log_filename=self.log_filename,
                                         log_file_dir=self.log_file_dir)
+
             self.instrument.set_sensor_manager(sensor_manager)
             # set up the main loop sensors
             sensor_manager.setup_mainloop_sensors()
  
-            #Add build time sensors
+            # Add build time sensors
             self.sensors = {}
 
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
@@ -487,7 +497,7 @@ class Corr2Server(DeviceServer):
             return self._log_excep(None, 'No source name given.')
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                neweqvals = utils.process_new_eq(list(eq_vals))
+                neweqvals = process_new_eq(list(eq_vals))
                 self.instrument.fops.eq_set(new_eq=neweqvals, input_name=source_name)
                 return ('ok', 'gain set for input {}.'.format(source_name))
             except Exception as ex:
@@ -522,7 +532,7 @@ class Corr2Server(DeviceServer):
                 neweqvals='auto'
                 self.instrument.logger.info('Trying to set gains automatically')
             else:
-                neweqvals = utils.process_new_eq(list(eq_vals))
+                neweqvals = process_new_eq(list(eq_vals))
             self.instrument.fops.eq_set(new_eq=neweqvals, input_name=None)
         except Exception as ex:
             return self._log_excep(ex, 'Failed setting eq for all sources')
@@ -668,10 +678,8 @@ class Corr2Server(DeviceServer):
                 message = "Delay model updates disabled."
             else:
                 message = "Delay model updates re-enabled."
-            if self.instrument:
-                self.instrument.logger.info(message)
-            else:
-                logging.info(message)
+            
+            self._logger.info(message)
             return 'ok',
         except ValueError as ex:
             stack_trace = traceback.format_exc()
@@ -1236,23 +1244,32 @@ if __name__ == '__main__':
         '-p', '--port', dest='port', action='store', default=1235, type=int,
         help='bind to this port to receive KATCP messages')
     parser.add_argument(
-        '--log_level', dest='loglevel', action='store', default='INFO',
+        '--log_level', dest='log_level', action='store', default='INFO',
         help='log level to set')
     parser.add_argument(
         '--log_format_katcp', dest='lfm', action='store_true', default=False,
         help='format log messsages for katcp')
+    parser.add_argument(
+        '--config', dest='config', type=str, action='store', default=None,
+        help='a corr2 config file')
     parser.add_argument(
         '--no_tornado', dest='no_tornado', action='store_true', default=False,
         help='do NOT use the tornado version of the Katcp server')
     args = parser.parse_args()
 
     try:
-        log_level = getattr(logging, args.loglevel)
+        log_level = getattr(logging, args.log_level)
     except Exception:
-        raise RuntimeError('Received nonsensical log level {}'.format(args.loglevel))
+        raise RuntimeError('Received nonsensical log level {}'.format(args.log_level))
+    
+    if args.config is None:
+        # Problem
+        errmsg = 'No config file specified!'
+        raise ValueError(errmsg)
 
+    server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado),
+                        config=args.config, log_level=args.log_level)
 
-    server = Corr2Server('127.0.0.1', args.port, tornado=(not args.no_tornado))
     print('Server listening on port {} '.format(args.port, end=''))
 
     # def boop():
