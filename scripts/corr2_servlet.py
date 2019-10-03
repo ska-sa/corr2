@@ -223,11 +223,10 @@ class Corr2Server(DeviceServer):
                                         log_file_dir=self.log_file_dir)
             self.instrument.set_sensor_manager(sensor_manager)
             # set up the main loop sensors
-            sensor_manager.sensors_clear()
             sensor_manager.setup_mainloop_sensors()
  
             #Add build time sensors
-	    self.sensors = {}
+            self.sensors = {}
 
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
@@ -238,8 +237,6 @@ class Corr2Server(DeviceServer):
                 # start the monitoring loop
                 self.mon_loop.start()
                 self.mon_loop_running = True
-                # enable auto reset / resync for the f-engines (in hardware)
-                self.instrument.fops.auto_rst_enable()
             self._initialised = True
 
             # Once more, for completeness

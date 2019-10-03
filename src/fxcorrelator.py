@@ -316,11 +316,11 @@ class FxCorrelator(Instrument):
 
         # arm the vaccs on the x-engines
         if self.xops.vacc_sync() > 0:
-            #self.fops.sys_reset()
-            #time.sleep(1)
             # reset all counters on fhosts and xhosts
             self.fops.clear_status_all()
             self.xops.clear_status_all()
+        self.xops.auto_rst_enable()
+
 
     def configure(self, *args, **kwargs):
         """
