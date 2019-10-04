@@ -12,8 +12,10 @@ repo_state = "clean"
 if(repo.is_dirty()):
 	repo_state = "dirty"
 git_hash = repo.head.object.hexsha.strip()
-git_branch_name = repo.active_branch.name;
-
+try:
+    git_branch_name = repo.active_branch.name;
+except TypeError:
+    git_branch_name = 'DETACHED'
 try:
     branch = check_output(['git', 'symbolic-ref', '--short', 'HEAD'])
     assert not (branch == 'HEAD')
