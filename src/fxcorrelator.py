@@ -198,41 +198,41 @@ class FxCorrelator(Instrument):
             # skfops = casperfpga.skarab_fileops
             # force the new programming method
             try:
-		function_call = ""
+                function_call = ""
                 def progska_timeout_handler(signum, frame):
-	            raise Exception("Function: {} timed out.".format(function_call))
-		
-		#Setting up timeout signal
-		signal.signal(signal.SIGALRM, progska_timeout_handler)
+                    raise Exception("Function: {} timed out.".format(function_call))
+    
+                #Setting up timeout signal
+                signal.signal(signal.SIGALRM, progska_timeout_handler)
 
-		function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
-		signal.alarm(int(self.timeout * (len(self.fhosts)**0.5) + 60))
+                function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
+                signal.alarm(int(self.timeout * (len(self.fhosts)**0.5) + 60))
                 skfops.upload_to_ram_progska(fbof, self.fhosts)
-		function_call = "skfops.reboot_skarabs_from_sdram(self.fhosts)"
+                function_call = "skfops.reboot_skarabs_from_sdram(self.fhosts)"
                 signal.alarm(int(self.timeout))
                 skfops.reboot_skarabs_from_sdram(self.fhosts)
 
-		signal.alarm(int(self.timeout * (len(self.xhosts)**0.5) + 60))
-		function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
+                signal.alarm(int(self.timeout * (len(self.xhosts)**0.5) + 60))
+                function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
                 skfops.upload_to_ram_progska(xbof, self.xhosts)
-		signal.alarm(int(self.timeout))
-		function_call = "skfops.reboot_skarabs_from_sdram(self.xhosts)"
+                signal.alarm(int(self.timeout))
+                function_call = "skfops.reboot_skarabs_from_sdram(self.xhosts)"
                 skfops.reboot_skarabs_from_sdram(self.xhosts)
-		signal.alarm(0)		
+                signal.alarm(0)
 
-		#This signal.alarm is probably not necessary. This is just a catch-all in case things get stuck
-		signal.alarm(self.timeout * (len(self.fhosts) + len(self.xhosts)))
-		function_call = "skfops.wait_after_reboot(self.fhosts + self.xhosts... "
+                #This signal.alarm is probably not necessary. This is just a catch-all in case things get stuck
+                signal.alarm(self.timeout * (len(self.fhosts) + len(self.xhosts)))
+                function_call = "skfops.wait_after_reboot(self.fhosts + self.xhosts... "
                 skfops.wait_after_reboot(self.fhosts +
-                                         self.xhosts, timeout=self.timeout *
-                                         (len(self.fhosts) + len(self.xhosts)))
+                            self.xhosts, timeout=self.timeout *
+                (len(self.fhosts) + len(self.xhosts)))
+    
+                #Cancel all timeout sigals
+                signal.alarm(0)
 
-		#Cancel all timeout sigals
-                signal.alarm(0)	
-		
             except Exception as err:
                 errmsg = 'Failed to program the boards: %s' % str(err)
-		signal.alarm(0)
+                signal.alarm(0)
                 self.logger.error(errmsg)
                 raise RuntimeError(errmsg)
 
