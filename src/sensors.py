@@ -1,7 +1,7 @@
 # import logging
 # Yes, I know it's just an integer value
 from logging import INFO,DEBUG,WARN,ERROR
-import time, copy
+import time
 
 
 
@@ -656,8 +656,7 @@ class Corr2SensorManager(SensorManager):
             Corr2Sensor.string, '{}-eq'.format(pref),
             'The unitless, per-channel digital scaling factors '
             'implemented prior to requantisation. Complex.')
-        eq_val = copy.copy(feng.last_eq)
-        sensor.set_value(str(eq_val))
+        sensor.set_value(str(feng.last_eq))
 
     def sensors_feng_delays(self, feng):
         """
@@ -682,15 +681,12 @@ class Corr2SensorManager(SensorManager):
 
         if feng.last_delay is not None:
             import numpy
-            delay_val = copy.copy(feng.last_delay.delay)
-            delay = delay_val / self.instrument.sample_rate_hz
-            delay_delta = copy.copy(feng.last_delay.delay_delta)
-            phase_offset_val = copy.copy(feng.last_delay.phase_offset)
-            phase_offset = phase_offset_val * numpy.pi
-            phase_offset_delta_val = copy.copy(feng.last_delay.phase_offset_delta)
-            phase_offset_delta = phase_offset_delta_val * (
+            delay = feng.last_delay.delay / self.instrument.sample_rate_hz
+            delay_delta = feng.last_delay.delay_delta
+            phase_offset = feng.last_delay.phase_offset * numpy.pi
+            phase_offset_delta = feng.last_delay.phase_offset_delta * (
                 numpy.pi * self.instrument.sample_rate_hz)
-            load_mcnt = copy.copy(feng.last_delay.load_mcnt)
+            load_mcnt = feng.last_delay.load_mcnt
             _val = '({:d}, {:.10e}, {:.10e}, {:.10e}, {:.10e})'.format(
                 load_mcnt, delay, delay_delta, phase_offset, phase_offset_delta)
             _timestamp = self.instrument.time_from_mcnt(
