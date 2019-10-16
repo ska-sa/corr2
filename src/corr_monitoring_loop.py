@@ -799,4 +799,10 @@ class MonitoringLoop(object):
         self.instrument.logger.warning('%s %s hmc-status: %s'
                                        % (host.host_type, host.host,
                                           host_hmc_status))
+
+        # get hmc reconfiguration stats
+        hmc_reconfig_stats = host.transport.get_hmc_reconfigure_stats(range(len(host.hmcs)))
+        self.instrument.logger.warning('%s %s hmc-reconfig-stats: %s'
+                                       % (host.host_type, host.host,
+                                          hmc_reconfig_stats))
 # end
