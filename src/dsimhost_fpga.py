@@ -343,7 +343,6 @@ class FpgaDsimHost(FpgaHost):
             gbe.set_port(port)
 
         self.write_int('gbe_porttx', port)
-        n_polstreams = 8
         for pol in [0, 1]:
             addr = StreamAddress.from_address_string(self.config['pol%1i_destination_ips' % pol].strip())
             port = addr.port
