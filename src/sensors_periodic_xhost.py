@@ -413,6 +413,8 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
                         status=Corr2Sensor.FAILURE, value=-1)
                     sensordict['acc_cnt'].set(
                         status=Corr2Sensor.FAILURE, value=-1)
+                    sensordict['resync_cnt'].set(
+                        status=Corr2Sensor.FAILURE, value=-1)
                     sensordict['err_cnt'].set(
                         status=Corr2Sensor.FAILURE, value=-1)
                     sensordict['ld_cnt'].set(
@@ -440,6 +442,7 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
                     sensordict['timestamp'].set(
                         value=rv[_x][xctr]['timestamp'])
                     sensordict['acc_cnt'].set(value=rv[_x][xctr]['acc_cnt'])
+                    sensordict['resync_cnt'].set(value=rv[_x][xctr]['rst_cnt'])
                     sensordict['err_cnt'].set(
                         value=rv[_x][xctr]['err_cnt'], errif='changed')
                     sensordict['arm_cnt'].set(
@@ -713,6 +716,9 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             sensordict['acc_cnt'] = sens_man.do_sensor(
                 Corr2Sensor.integer, '{pref}.cnt'.format(pref=pref),
                 'Number of accumulations this VACC has performed.')
+            sensordict['resync_cnt'] = sens_man.do_sensor(
+                Corr2Sensor.integer, '{pref}.resync-cnt'.format(pref=pref),
+                'Number of times this VACC has reset itself.')
             sensordict['err_cnt'] = sens_man.do_sensor(
                 Corr2Sensor.integer, '{pref}.err-cnt'.format(pref=pref),
                 'Number of VACC errors.')

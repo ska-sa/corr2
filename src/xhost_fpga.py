@@ -129,6 +129,10 @@ class FpgaXHost(FpgaHost):
         """
         rv = self.registers.spead_status0.read()['data']
         rv.update(self.registers.spead_status1.read()['data'])
+        try:
+            rv.update(self.registers.spead_status2.read()['data'])
+        except:
+            pass
         return rv
 
     def get_hmc_reorder_status(self):
@@ -143,6 +147,10 @@ class FpgaXHost(FpgaHost):
                 rv.update(self.registers['hmc_pkt_reord_status%i'%i].read()['data'])
         except:
             pass
+        try:
+                rv.update(self.hmcs.hmc_pkt_reord_hmc.get_hmc_status())
+        except:
+            pass
         return rv
 
     def get_rx_reorder_status(self):
@@ -152,7 +160,11 @@ class FpgaXHost(FpgaHost):
         """
         data = []
         for ctr in range(0, self.x_per_fpga):
-            tmp = self.registers['sys%i_pkt_reord_status' % ctr].read()['data']
+            tmp = self.registers['sys%i_pkt_reord_status0' % ctr].read()['data']
+            try:
+                tmp.update(self.registers['sys%i_pkt_reord_status1' % ctr].read()['data'])
+            except:
+                pass
             data.append(tmp)
         return data
 
@@ -181,11 +193,24 @@ class FpgaXHost(FpgaHost):
             x_indices = range(self.x_per_fpga)
         stats = []
         regs = self.registers
+        #get the HMC statii:
+        hmc_statii=[]
+        hmc_statii.append(self.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())
+        hmc_statii.append(self.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())
+        #vacc0 uses hmc0, link2
+        #vacc1 uses hmc0, link3
+        #vacc2 uses hmc1, link2
+        #vacc3 uses hmc1, link3
+        not_link_lookup=[3,2,3,2]
         for xnum in x_indices:
-            temp = regs['sys%i_vacc_status' % xnum].read()['data']
-            temp.update(timestamp = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp'])
-#            temp.update(regs['sys%i_vacc_hmc_vacc_fifo_status' % xnum].read()['data'])
-            temp.update(regs['sys%i_vacc_hmc_vacc_err_status' % xnum].read()['data'])
+            temp={}
+            temp['timestamp'] = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp']
+            temp.update(regs['sys%i_vacc_status' % xnum].read()['data'])
+            for stat_reg_idx in range(2):
+                temp.update(regs['sys%i_vacc_hmc_vacc_status%i' %(xnum,stat_reg_idx)].read()['data'])
+            #append the relevant HMC stuff; all the global, and the relevant link:
+            for key,value in hmc_statii[int(xnum/2)].items():
+                if not key.endswith('link%i'%not_link_lookup[xnum]): temp[key]=value
             stats.append(temp)
         return stats
 
