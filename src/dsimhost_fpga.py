@@ -14,6 +14,7 @@ from casperfpga.transport_skarab import SkarabTransport
 
 from host_fpga import FpgaHost
 from utils import parse_ini_file
+from data_stream import StreamAddress
 
 LOGGER = logging.getLogger(__name__)
 
@@ -336,20 +337,18 @@ class FpgaDsimHost(FpgaHost):
         Set up the 40gbe core on a SKARAB DSIM
         :return:
         """
-        port = int(self.config['10gbe_port'])
+        port = StreamAddress.from_address_string(self.config['pol0_destination_ips'].strip()).port
         gbe = self.gbes[self.gbes.names()[0]]
         if gbe.get_port() != port:
             gbe.set_port(port)
+
         self.write_int('gbe_porttx', port)
         for pol in [0, 1]:
-            pol_start = self.config['pol%1i_destination_start_ip' % pol]
-            pol_bits = pol_start.split('.')
-            pol_base = int(pol_bits[3])
-            pol_prefix = '.'.join(pol_bits[0:3])
-            for polstream in [0, 1]:
-                txip = pol_base + polstream
-                txid = (pol * 2) + polstream
-                self.write_int('gbe_iptx%1i' % txid, IpAddress.str2ip('{}.{}'.format(pol_prefix, txip)))
+            addr = StreamAddress.from_address_string(self.config['pol%1i_destination_ips' % pol].strip())
+            port = addr.port
+            for index in range(addr.ip_range):
+                self.write_int('gbe_iptx%1i' % (pol*addr.ip_range + index), addr.ip_address.ip_int + index)
+
         self.registers.control.write(gbe_rst=False)
 
     def setup_gbes(self):
