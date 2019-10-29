@@ -855,8 +855,10 @@ class FpgaFHost(FpgaHost):
                     shift_schedule=(2**(n_stages_total))-1
             else:
                 self.logger.error("FFT shift string %s not understood. Not changing."%str(shift_schedule))
+                shift_schedule = self.get_fft_shift()
         else:
             self.logger.error("FFT shift setting %s not understood. Not changing."%str(shift_schedule))
+            shift_schedule = self.get_fft_shift()
         self.logger.info("Setting FFT shift to %i (%i stages)."%(shift_schedule,calc_n_stages(shift_schedule)))
         self.registers.fft_shift.write(fft_shift=shift_schedule)
 

@@ -252,6 +252,7 @@ class FEngineOperations(object):
         # set eq and shift
         self.set_fft_shift_all()
         self.eq_set()
+        self.set_center_freq(self.corr.sample_rate_hz/4.)
 
         # configure the ethernet cores.
         THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
@@ -363,8 +364,6 @@ class FEngineOperations(object):
     def set_center_freq(self,freq):
         """Set the DDC's center frequency in Hz. """
         self.logger.info("Attempting to set the center frequency to {:.5f} MHz".format(freq/1e6))
-        #if (band > 0):
-        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         if (self.decimation_factor==1):
             self.logger.info("No point setting the center frequency in wideband modes.")
             return self.corr.sample_rate_hz/4.
