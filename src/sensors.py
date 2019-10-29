@@ -79,7 +79,7 @@ class Corr2Sensor(Sensor):
                manager=None, executor=None,
                *args, **kwargs):
         return cls(cls.DISCRETE, name=name, description=description, 
-                   units=unit, params=['ok','fail','degraded'],
+                   units=unit, params=['ok','fail','degraded','unknown'],
                    default=default, initial_status=Corr2Sensor.UNKNOWN, manager=manager, 
                    executor=executor,*args, **kwargs)
 
@@ -1138,16 +1138,14 @@ class Corr2SensorManager(SensorManager):
             if 'git' in _h.rcs_info:
                 filectr = 0
                 for gitfile, gitparams in _h.rcs_info['git'].items():
-                    for param, value in gitparams.items():
-                        if param != "tag":
-                            sensname = 'git-' + _htype + '-' + str(filectr)
-                            sensor = Corr2Sensor.string(
-                                name=sensname, description='Git info.',
-                                initial_status=Sensor.UNKNOWN,
-                                manager=self)
-                            self.sensor_create(sensor)
-                            sensor.set_value(str(param) + ':' + str(value))
-                            filectr += 1
+                    sensname = 'git-' + _htype + '-' + str(filectr)
+                    sensor = Corr2Sensor.string(
+                        name=sensname, description='Git info.',
+                        initial_status=Sensor.UNKNOWN,
+                        manager=self)
+                    self.sensor_create(sensor)
+                    sensor.set_value(str(gitfile) + ':' + str(gitparams))
+                    filectr += 1
 
             sensor = Corr2Sensor.string(
                 name="{}engine-bitstream".format(_htype), description="FPGA bitstream file.",

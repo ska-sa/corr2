@@ -205,6 +205,7 @@ def _sensor_cb_hw(executor, sensors, host):
             if(key != 'location'):
                 sensor.set(status=Corr2Sensor.UNREACHABLE,
                         value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
+        time.sleep(0.5)
         IOLoop.current().call_later(5, _sensor_cb_hw, executor, sensors, host)
 
     try:
@@ -247,6 +248,7 @@ def _sensor_cb_hw(executor, sensors, host):
             sensors[key].set(value=value[0], status=status)
         except Exception as e:
             host.logger.error('Error updating {}-{} sensor - {}'.format(host.host, key, e.message))
+            time.sleep(0.5)
             try:
                 sensors[key].set(status=Corr2Sensor.UNREACHABLE,
                         value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensors[key].type]][1])
@@ -263,6 +265,7 @@ def _sensor_cb_hw(executor, sensors, host):
     except Exception as e:
         host.logger.error('Error updating {}-device-status sensor - {}'.format(host.host, e.message))
     host.logger.debug('sensorloop ran')
+    time.sleep(0.5)
     IOLoop.current().call_later(10, _sensor_cb_hw, executor, sensors, host)
 
 @gen.coroutine
@@ -335,6 +338,7 @@ def main():
             'exit however you see fit.')
         try:
             while True:
+                time.sleep(0.5)
                 try:
                     device = queue.get(timeout=0.5)
                 except Queue.Empty:

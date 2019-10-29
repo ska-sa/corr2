@@ -22,8 +22,6 @@ from corr2.corr2LogHandlers import getKatcpLogger, \
                                 create_katcp_and_file_handlers
 from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
 
-from casperfpga.utils import get_git_info_from_fpg
-
 _DEFAULT_LOG_DIR = '/var/log/corr'
 
 class Corr2Server(DeviceServer):
@@ -152,34 +150,10 @@ class Corr2Server(DeviceServer):
             # - To be used when initialising log-levels of instrument groups
             self.log_level_dict = config_file_dict.get('log-level', None)
 
-            # - Get the bitstream filenames and corresponding git-info(s)
-            fpg_files = []
-            for key_1, value_1 in config_file_dict.items():
-                for key_2, value_2 in value_1.items():
-                    if key_2 == 'bitstream':
-                        fpg_files.append(value_2)
-            
-            # - Now, get the git-info
-            #   - Dictionary: Key = bitstream location
-            #                 Value = dictionary of git-info
-            bitstream_dict = {}
-            for filename in fpg_files:
-                bitstream_dict[filename] = get_git_info_from_fpg(filename)
-
             self.instrument = FxCorrelator(iname, config_source=config_file,
                               getLogger=getKatcpLogger, mass_inform_func=self.mass_inform,
                               log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self._created = True
-
-            # Better to stitch a log-string together
-            # than to log in a for-loop
-            bitstream_info_str = ''
-            for fpg_filename, git_info in bitstream_dict.items():
-                bitstream_info_str += '{}\n'.format(fpg_filename)
-                for git_repo, git_version in git_info.items():
-                    bitstream_info_str += '\t {} \n \t {} \n\n'.format(git_repo, git_version)
-            
-            self._logger.info(bitstream_info_str)
 
             # Function created to reassign all non-conforming log-handlers
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform,

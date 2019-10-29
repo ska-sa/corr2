@@ -169,14 +169,18 @@ class Fengine(object):
         self.last_delay.last_load_success=False
         # set up the delays and update the stored values
 
-        if (self.host.decimation_factor > 1):
-            self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
-            self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
-            self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset_delta)
-        else:
-            self.last_delay.delay = self._delay_write_delay_legacy(delay_obj.delay)
-            self.last_delay.delay_delta = self._delay_write_delay_rate_legacy(delay_obj.delay_delta)
-            self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase_legacy(delay_obj.phase_offset, delay_obj.phase_offset_delta)
+#        if (self.host.decimation_factor > 1):
+#            self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
+#            self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
+#            self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset_delta)
+#        else:
+#            self.last_delay.delay = self._delay_write_delay_legacy(delay_obj.delay)
+#            self.last_delay.delay_delta = self._delay_write_delay_rate_legacy(delay_obj.delay_delta)
+#            self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase_legacy(delay_obj.phase_offset, delay_obj.phase_offset_delta)
+#
+        self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
+        self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
+        self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset, delay_obj.phase_offset_delta)
 
         # arm the timed load latches
         cd_tl_name = 'tl_cd%i' % self.offset
@@ -827,7 +831,9 @@ class FpgaFHost(FpgaHost):
         if (shift_schedule is None):
             shift_schedule = int(self._config['fft_shift'])
         elif (type(shift_schedule)==str): 
-            if shift_schedule == 'auto':
+            if ((shift_schedule.lower() == 'default') or (shift_schedule.lower() == 'defaults')):
+                shift_schedule = int(self._config['fft_shift'])
+            elif shift_schedule == 'auto':
                 shift_ok=[]
                 for shift_stages in range(n_stages_total+1):
                     fft_shift=distribute_shifts(n_stages_total,shift_stages)
@@ -847,6 +853,10 @@ class FpgaFHost(FpgaHost):
                 else:
                     self.logger.error("Can't shift on %i stages because there are only %i stages in this design! Shifting on every stage."%(n_stages,n_stages_total))
                     shift_schedule=(2**(n_stages_total))-1
+            else:
+                self.logger.error("FFT shift string %s not understood. Not changing."%str(shift_schedule))
+        else:
+            self.logger.error("FFT shift setting %s not understood. Not changing."%str(shift_schedule))
         self.logger.info("Setting FFT shift to %i (%i stages)."%(shift_schedule,calc_n_stages(shift_schedule)))
         self.registers.fft_shift.write(fft_shift=shift_schedule)
 

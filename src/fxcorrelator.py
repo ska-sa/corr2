@@ -249,6 +249,17 @@ class FxCorrelator(Instrument):
             THREADED_FPGA_FUNC(
                 self.xhosts, timeout=self.timeout * 10,
                 target_function=('get_system_information', [xbof], {}))
+
+        #Log the bitstreams we're using...
+        # Better to stitch a log-string together
+        # than to log in a for-loop
+        for _h in [self.fhosts[0],self.xhosts[0]]:
+            bitstream_info_str = _h.bitstream + ':\n'
+            if 'git' in _h.rcs_info:
+                for gitfile, gitparams in _h.rcs_info['git'].items():
+                    bitstream_info_str += (str(gitfile) + ':' + str(gitparams)+'\n')
+            self.logger.info(bitstream_info_str)
+
         # remove test hardware from designs
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
