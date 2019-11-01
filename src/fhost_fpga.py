@@ -180,7 +180,7 @@ class Fengine(object):
 #
         self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
         self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
-        self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset, delay_obj.phase_offset_delta)
+        self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset_delta)
 
         # arm the timed load latches
         cd_tl_name = 'tl_cd%i' % self.offset
@@ -364,62 +364,24 @@ class Fengine(object):
         """
         Split out whole and fractional part
         """
-        delay_rate_whole = int(delay_rate)
-        delay_rate_frac = delay_rate - int(delay_rate)
-        
+        import numpy
+        reg_bw = 64
+        reg_bp = 32
         bitshift = delay_get_bitshift(bitshift_schedule=23)
         delay_delta_reg_whole = self.host.registers['delta_delay_whole%i' % self.offset]
         delay_delta_reg_frac = self.host.registers['delta_delay_frac%i' % self.offset]
         
-        # shift up by amount shifted down by on fpga
-        # Use input value
+        # shift up by amount shifted down by fpga
         delta_delay_shifted = float(delay_rate) * bitshift
-        #delta_delay_shifted_whole = float(delay_rate_whole) * bitshift
-        #delta_delay_shifted_frac = float(delay_rate_frac) * bitshift
-        delta_delay_shifted_whole = float(delay_rate_whole)
-        delta_delay_shifted_frac = float(delay_rate_frac)
+        frac,whole=numpy.modf(delta_delay_shifted)
+
+        self.logger.debug('Setting delay delta whole to %e>>%i samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(whole, bitshift, int(whole),delay_rate))
+        self.logger.debug('Setting delay delta frac to %e>>%i samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(frac, bitshift, int(frac*(2**32)),delay_rate))
         
-       
-        #figure out register offsets and widths
-        reg_bp = delay_delta_reg_frac._fields['initial'].binary_pt + 1
-
-        reg_bw = delay_delta_reg_whole._fields['initial'].width_bits + reg_bp
-
-
-        #figure out maximum range, and clip if necessary:
-        max_positive_delta_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
-        max_negative_delta_delay = -2 ** (reg_bw - reg_bp) + 1 / float(2 ** reg_bp)
-        if delta_delay_shifted > max_positive_delta_delay:
-            delta_delay_shifted = max_positive_delta_delay
-            self.logger.warn('Setting largest possible positive delay delta. ' \
-                             'Requested: %e samples/sample, set %e.'%
-                             (delay_rate,max_positive_delta_delay/bitshift))
-        elif delta_delay_shifted < max_negative_delta_delay:
-            delta_delay_shifted = max_negative_delta_delay
-            self.logger.warn('Setting largest possible negative delay delta. ' \
-                             'Requested: %e samples/sample, set %e.'%
-                             (delay_rate,max_negative_delta_delay/bitshift))
-
-        
-   
-        #prep_int=int(delta_delay_shifted*(2**reg_bp))
-        #act_value = (float(prep_int)/(2**reg_bp))/bitshift
+        delay_delta_reg_whole.write(initial=whole)
+        delay_delta_reg_frac.write(initial=frac)
                 
-        prep_int_whole=int(delta_delay_shifted_whole*(2**reg_bp))
-        act_value_whole = (float(prep_int_whole)/(2**reg_bp))
-        
-        prep_int_frac=int(delta_delay_shifted_frac*(2**(reg_bp-1)))&(2**(reg_bp)-1)
-        act_value_frac = (float(prep_int_frac)/(2**(reg_bp-1)))
-        
-        self.logger.debug('Setting delay delta whole to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value_whole, prep_int_whole,delay_rate_whole))
-        self.logger.debug('Setting delay delta frac to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value_frac, prep_int_frac,delay_rate_frac))
-        
-        delay_delta_reg_whole.write_int(prep_int_whole)
-        delay_delta_reg_frac.write_int(prep_int_frac)
-                
-        act_value = act_value_whole + act_value_frac
-        
-        return act_value
+        return whole+frac
 
     def _delay_write_phase_legacy(self, phase, phase_rate):
         """
