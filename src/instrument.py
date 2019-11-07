@@ -27,10 +27,12 @@ class Instrument(object):
         :return: <nothing>
         """
         self.classname = self.__class__.__name__
-        if descriptor is None:
-            raise RuntimeError('Cannot instantiate an Instrument without a '
-                               'meaningful descriptor.')
-        self.descriptor = descriptor
+        try:
+            # Just in case some numpty decides to give a descriptor that isn't a string.
+            self.descriptor = descriptor.strip().replace(' ', '_').lower()
+        except AttributeError:
+            raise RuntimeError('Cannot instantiate an Instrument without a meaningful (string) descriptor.')
+
         self.identifier = identifier
         self.config_source = config_source
         self.configd = None

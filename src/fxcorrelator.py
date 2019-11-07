@@ -84,9 +84,6 @@ class FxCorrelator(Instrument):
         :return: <nothing>
         """
         assert isinstance(config_source, str), 'Missing instrument config file'
-        assert isinstance(
-            descriptor, str), 'What do you want to call your instrument?'
-        self.descriptor = descriptor.strip().replace(' ', '_').lower()
 
         # To make sure the given getLogger propagates all the way through
         try:
