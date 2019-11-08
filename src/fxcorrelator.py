@@ -174,8 +174,7 @@ class FxCorrelator(Instrument):
         if program:
             # skfops = casperfpga.skarab_fileops
             # force the new programming method
-            #try:
-            if True:
+            try:
                 function_call = ""
                 def progska_timeout_handler(signum, frame):
                     raise Exception("Function: {} timed out.".format(function_call))
@@ -208,11 +207,11 @@ class FxCorrelator(Instrument):
                 #Cancel all timeout sigals
                 signal.alarm(0)
 
-            #except Exception as err:
-            #    errmsg = 'Failed to program the boards: %s' % str(err)
-            #    signal.alarm(0)
-            #    self.logger.error(errmsg)
-            #    raise RuntimeError(errmsg)
+            except Exception as err:
+                errmsg = 'Failed to program the boards: %s' % str(err)
+                signal.alarm(0)
+                self.logger.error(errmsg)
+                raise RuntimeError(errmsg)
 
         fisskarab = True
         xisskarab = True
