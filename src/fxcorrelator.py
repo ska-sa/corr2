@@ -4,6 +4,8 @@ Created on Feb 28, 2013
 @author: paulp
 """
 
+from __future__ import print_function
+
 # things all fxcorrelators Instruments do
 
 import re
@@ -131,7 +133,6 @@ class FxCorrelator(Instrument):
         # since spead2 needs a separate socket per destination
         # (it uses send rather than sendto).
         fd_limit = int(self.configd['FxCorrelator'].get('max_fd', 4096))
-        assert isinstance(fd_limit, int)
         resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
 
         # create the host objects
@@ -686,7 +687,7 @@ class FxCorrelator(Instrument):
         Get instance-specific setup information from a given katcp server.
         :return:
         """
-        print type(self.config_source)
+        print(type(self.config_source))
         server = eval(self.config_source)[0]
         port = eval(self.config_source)[1]
         client = katcp.CallbackClient(server, port, auto_reconnect=True)
