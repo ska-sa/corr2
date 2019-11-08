@@ -95,6 +95,8 @@ class FxCorrelator(Instrument):
             # Why is logging defaulted to INFO, what if I do not want to see the info logs?
             logLevel = kwargs.get('logLevel', INFO)
 
+        self.descriptor = descriptor  # Temporary fix. Got a bit of a circular issue around the logger and the descriptor
+                                      # needing each other.
         # All 'Instrument-level' objects will log at level INFO
         result, self.logger = self.getLogger(logger_name=self.descriptor,
                                              log_level=logLevel, **kwargs)
