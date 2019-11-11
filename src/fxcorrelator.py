@@ -114,7 +114,7 @@ class FxCorrelator(Instrument):
         resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
 
         # create the host objects
-        self._create_hosts(**kwargs)
+        #self._create_hosts(**kwargs)
 
         new_connection_string = '\n==========================================\n'
         self.logger.info('{0}Successfully created Instrument: {1}{0}'.format(new_connection_string, self.descriptor))
@@ -468,10 +468,6 @@ class FxCorrelator(Instrument):
         """
         _target_class = fhost_fpga.FpgaFHost
 
-        # Temp fix because it's still being passed as part of **kwargs. Need to think of a better way to do this.
-        _getLogger = kwargs.get('getLogger', self.getLogger)
-        kwargs['getLogger'] = _getLogger
-
         _feng_d = self.configd.get('fengine')
         assert isinstance(_feng_d, dict)
         fhostlist = re.split(r'[,\s]+', _feng_d.get('hosts'))
@@ -486,7 +482,7 @@ class FxCorrelator(Instrument):
                     config_source=_feng_d,
                     host_id=hostindex,
                     descriptor=self.descriptor,
-                    #getLogger=self.getLogger,
+                    getLogger=self.getLogger,
                     **kwargs)
             except Exception as exc:
                 self.logger.error(
@@ -513,7 +509,7 @@ class FxCorrelator(Instrument):
                     self.katcp_port,
                     self.configd,
                     descriptor=self.descriptor,
-                    #getLogger=self.getLogger,
+                    getLogger=self.getLogger,
                     **kwargs)
             except Exception as exc:
                 errmsg = 'Could not create xhost {}: {}'.format(host, str(exc))
