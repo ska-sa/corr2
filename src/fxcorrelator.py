@@ -4,6 +4,8 @@ Created on Feb 28, 2013
 @author: paulp
 """
 
+from __future__ import print_function
+
 # things all fxcorrelators Instruments do
 
 import re
@@ -29,7 +31,7 @@ from fxcorrelator_bengops import BEngineOperations
 from fxcorrelator_filterops import FilterOperations
 from data_stream import StreamAddress
 
-from corr2LogHandlers import getLogger
+from corr2LogHandlers import getLogger as _getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -83,29 +85,8 @@ class FxCorrelator(Instrument):
         :param identifier: An optional integer identifier.
         :return: <nothing>
         """
-        assert isinstance(config_source, str), 'Missing instrument config file'
-
-        # To make sure the given getLogger propagates all the way through
-        try:
-            self.getLogger = kwargs['getLogger']
-        except KeyError:
-            self.getLogger = getLogger
-            kwargs['getLogger'] = self.getLogger
-        finally:
-            # Why is logging defaulted to INFO, what if I do not want to see the info logs?
-            logLevel = kwargs.get('logLevel', INFO)
-
-        self.descriptor = descriptor  # Temporary fix. Got a bit of a circular issue around the logger and the descriptor
-                                      # needing each other.
-        # All 'Instrument-level' objects will log at level INFO
-        result, self.logger = self.getLogger(logger_name=self.descriptor,
-                                             log_level=logLevel, **kwargs)
-        if not result:
-            # Problem
-            errmsg = 'Unable to create logger for {}'.format(self.descriptor)
-            raise ValueError(errmsg)
-
         # we know about f and x hosts and engines, not just engines and hosts
+        # TODO: these things should be in the _read_config() method. Do we really want to initialise them to None here?
         self.fhosts = []
         self.xhosts = []
         self.filthosts = None
@@ -123,24 +104,21 @@ class FxCorrelator(Instrument):
         self.x_per_fpga = None
         self.timeout = None
 
-        # parent constructor - this invokes reading the config file already
-        Instrument.__init__(self, descriptor, identifier, config_source)
+        # Parent constructor invokes reading the config file, generic hosts, data streams and logging.
+        Instrument.__init__(self, descriptor, config_source, identifier, **kwargs)
 
         # up the filedescriptors so we can handle bigger arrays.
         # 64A needs ~1100, mainly for spead descriptor sockets,
         # since spead2 needs a separate socket per destination
         # (it uses send rather than sendto).
         fd_limit = int(self.configd['FxCorrelator'].get('max_fd', 4096))
-        assert isinstance(fd_limit, int)
         resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
 
         # create the host objects
         self._create_hosts(*args, **kwargs)
 
         new_connection_string = '\n==========================================\n'
-        infomsg = '{0}Successfully created Instrument: {1} {0}'.format(
-            new_connection_string, descriptor)
-        self.logger.info(infomsg)
+        self.logger.info('{0}Successfully created Instrument: {1}{0}'.format(new_connection_string, self.descriptor))
 
     # @profile
     def initialise(self, program=True, configure=True,
@@ -505,6 +483,7 @@ class FxCorrelator(Instrument):
                     config_source=_feng_d,
                     host_id=hostindex,
                     descriptor=self.descriptor,
+                    getLogger=self.getLogger,
                     **kwargs)
             except Exception as exc:
                 self.logger.error(
@@ -531,6 +510,7 @@ class FxCorrelator(Instrument):
                     self.katcp_port,
                     self.configd,
                     descriptor=self.descriptor,
+                    getLogger=self.getLogger,
                     **kwargs)
             except Exception as exc:
                 errmsg = 'Could not create xhost {}: {}'.format(host, str(exc))
@@ -554,24 +534,25 @@ class FxCorrelator(Instrument):
         if self.config_source is None:
             raise RuntimeError(
                 'Running _read_config with no config source. Explosions!!!')
-        self.configd = None
         errmsg = ''
         try:
             self._read_config_file()
         except (IOError, ValueError) as excep:
             errmsg += str(excep) + '\n'
             try:
-                self._read_config_server()  # Error is here.
+                self._read_config_server()
             except katcp.KatcpClientError as excep:
                 errmsg += str(excep) + '\n'
+            # If a file-path is given, but the file doesn't exist, then it will try to find a server
+            # but obviously it's not going to work, so we'll get a SyntaxError. This just catches it
+            # in a sane manner.
             except SyntaxError:
                 pass
 
         if self.configd is None:
             self.logger.error(errmsg)
-            raise RuntimeError(
-                'Supplied config_source {} is invalid.'.format(
-                    self.config_source))
+            raise RuntimeError('Supplied config_source {} is invalid.'.format(self.config_source))
+
         # do the bitstreams exist?
         self._check_bitstreams()
         # =====================================================================
@@ -686,7 +667,7 @@ class FxCorrelator(Instrument):
         Get instance-specific setup information from a given katcp server.
         :return:
         """
-        print type(self.config_source)
+        print(type(self.config_source))
         server = eval(self.config_source)[0]
         port = eval(self.config_source)[1]
         client = katcp.CallbackClient(server, port, auto_reconnect=True)
