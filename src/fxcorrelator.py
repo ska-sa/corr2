@@ -138,7 +138,7 @@ class FxCorrelator(Instrument):
             except KeyError:
                 self.logger.warn("Sync epoch not found in config file, and epoch not pre-set.")
         else:
-            self.logger.info("Sync epoch pre-set to %f."%self.synchronisation_epoch)
+            self.logger.info("Sync epoch pre-set to {}.".format(self.synchronisation_epoch))
         
         if (require_epoch) and (self.synchronisation_epoch < 0):
             raise RuntimeError(
