@@ -75,7 +75,6 @@ class FxCorrelator(Instrument):
             descriptor,
             config_source=None,
             identifier=-1,
-            *args,
             **kwargs):
         """
         An abstract base class for instruments.
@@ -115,7 +114,7 @@ class FxCorrelator(Instrument):
         resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
 
         # create the host objects
-        self._create_hosts(*args, **kwargs)
+        self._create_hosts(**kwargs)
 
         new_connection_string = '\n==========================================\n'
         self.logger.info('{0}Successfully created Instrument: {1}{0}'.format(new_connection_string, self.descriptor))
@@ -462,12 +461,15 @@ class FxCorrelator(Instrument):
             self.logger.error(errmsg)
             raise IOError(errmsg)
 
-    def _create_hosts(self, *args, **kwargs):
+    def _create_hosts(self, **kwargs):
         """
         Set up the different kind of hosts that make up this correlator.
         :return:
         """
         _target_class = fhost_fpga.FpgaFHost
+
+        # Temp fix because it's still being passed as part of **kwargs. Need to think of a better way to do this.
+        _getLogger = kwargs.get('getLogger', self.getLogger)
 
         _feng_d = self.configd.get('fengine')
         assert isinstance(_feng_d, dict)
