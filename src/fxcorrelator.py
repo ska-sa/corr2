@@ -470,6 +470,7 @@ class FxCorrelator(Instrument):
 
         # Temp fix because it's still being passed as part of **kwargs. Need to think of a better way to do this.
         _getLogger = kwargs.get('getLogger', self.getLogger)
+        kwargs['getLogger'] = _getLogger
 
         _feng_d = self.configd.get('fengine')
         assert isinstance(_feng_d, dict)
@@ -485,7 +486,7 @@ class FxCorrelator(Instrument):
                     config_source=_feng_d,
                     host_id=hostindex,
                     descriptor=self.descriptor,
-                    getLogger=self.getLogger,
+                    #getLogger=self.getLogger,
                     **kwargs)
             except Exception as exc:
                 self.logger.error(
@@ -512,7 +513,7 @@ class FxCorrelator(Instrument):
                     self.katcp_port,
                     self.configd,
                     descriptor=self.descriptor,
-                    getLogger=self.getLogger,
+                    #getLogger=self.getLogger,
                     **kwargs)
             except Exception as exc:
                 errmsg = 'Could not create xhost {}: {}'.format(host, str(exc))
