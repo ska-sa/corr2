@@ -64,6 +64,9 @@ class Instrument(object):
 
         self.logger.info('%s %s created.' % (self.classname, self.descriptor))
 
+        # an instrument has hosts
+        self._create_hosts(**kwargs)
+
     def _read_config(self):
         """
         Read the instrument configuration from self.config_source.
@@ -83,6 +86,13 @@ class Instrument(object):
         """
         To be implemented by the child class.
         :return: True if we read the config successfully, False if not
+        """
+        raise NotImplementedError
+
+    def _create_hosts(self, **kwargs):
+        """
+        To be implemented by the child class.
+        :return:
         """
         raise NotImplementedError
 
