@@ -243,34 +243,30 @@ def _cb_xeng_hmc_reorder(sensors, x_host, sensor_manager,sensor_task):
         #results = yield executor.submit(x_host.get_hmc_reorder_status)
         results = x_host.get_hmc_reorder_status()
         device_status = Corr2Sensor.NOMINAL
+        sens_val = 'ok'
         for key in ['miss_err_cnt']:
             sensors[key].set(value=results[key], warnif='changed')
         for key in ['dest_err_cnt', 'ts_err_cnt', 'hmc_err_cnt']:
             sensors[key].set(value=results[key], errif='changed')
-        if results['hmc_status']==0x7:
-            sensors['post_ok'].set(value=True, status=Corr2Sensor.NOMINAL)
-        else:
-            sensors['post_ok'].set(value=False, status=Corr2Sensor.ERROR)
         overflows = results['lnk2_nrdy_err_cnt'] + results['lnk3_nrdy_err_cnt']
         sensors['hmc_overflow_err_cnt'].set(value=overflows, errif='changed')
 
         for key in ['miss_err_cnt']:
             if sensors[key].status() != Corr2Sensor.NOMINAL:
                 device_status = Corr2Sensor.WARN
+                sens_val = 'degraded'
         for key in [
             'dest_err_cnt',
             'ts_err_cnt',
-            'post_ok',
             'hmc_overflow_err_cnt',
                 'hmc_err_cnt']:
             if sensors[key].status() == Corr2Sensor.ERROR:
                 device_status = Corr2Sensor.ERROR
+                sens_val = 'fail'
 
-        sens_val = 'fail'
-        if(device_status == Corr2Sensor.NOMINAL):
-            sens_val = 'ok'
-        elif(device_status == Corr2Sensor.WARN):
-            sens_val = 'degraded'
+        if device_status == Corr2Sensor.ERROR:
+            x_host.logger.error("HMC Reorder error: %s"%str(results))
+            x_host.logger.error("HMC Reorder HMC status: %s"%str(x_host.hmcs.hmc_pkt_reord_hmc.get_hmc_status()))
 
         sensors['device_status'].set(
             value=sens_val,
@@ -451,11 +447,16 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
                         (sensordict['arm_cnt'].status() == Corr2Sensor.ERROR) or
                             (sensordict['ld_cnt'].status() == Corr2Sensor.ERROR)):
                         status = Corr2Sensor.ERROR
-                        LOGGER.error('%s VACC%i error status: %s'%(_x,xctr,str(sensordict)))
+                        faulty_host_idx=instrument.xops.board_ids[_x]
+                        faulty_host=instrument.xhosts[faulty_host_idx]
+                        faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(sensordict)))
                         value = 'fail'
                     else:
                         status = Corr2Sensor.NOMINAL
                         value = 'ok'
+                    if status == Corr2Sensor.ERROR:
+                        faulty_host.logger.error('VACC HMC0 error status: %s'%(str(faulty_host.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())))
+                        faulty_host.logger.error('VACC HMC1 error status: %s'%(str(faulty_host.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())))
                     sensordict['device_status'].set(value=value, status=status)
     except Exception as e:
         LOGGER.error('Error updating VACC sensors '
@@ -621,9 +622,6 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.dest-err-cnt'.format(pref),
                 'X-engine is receiving packets for a different X-engine.',
                 executor=executor),
-            'post_ok': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}.hmc-post'.format(pref),
-                'X-engine error reordering packets: HMC POST status.', executor=executor),
             'ts_err_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.timestep-err-cnt'.format(pref),
                 'X-engine RX timestamps not incrementing correctly.', executor=executor),

@@ -98,12 +98,8 @@ def _cb_feng_rxtime(sensor_ok, sensors_value, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("2 on all Started at %f" % (functionStartTime))
 
-    executor = sensor_ok.executor
     instrument = sensor_ok.manager.instrument
     try:
-        #result, counts, times = yield executor.submit(
-        #    instrument.fops.get_rx_timestamps)
-
         result, counts, times = instrument.fops.get_rx_timestamps()
         if result:
             sensor_ok.set(value=result, status=Corr2Sensor.NOMINAL)
@@ -148,7 +144,6 @@ def _cb_feng_delays(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("3 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['device_status'].executor
     device_status = Corr2Sensor.NOMINAL
     device_status_value = 'ok'
     try:
@@ -227,18 +222,16 @@ def _cb_feng_ct(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("4 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['pol0_post'].executor
     try:
-        #results = yield executor.submit(f_host.get_ct_status)
         results = f_host.get_ct_status()
         common_errs = results['obuff_bank_err_cnt'] + results['rd_go_err_cnt'] + \
             results['sync_in_err_cnt'] + results['fifo_full_err_cnt']
         pol0_errs = results['bank_err_cnt_pol0'] + \
             results['hmc_overflow_err_cnt_pol0'] + common_errs + \
-            results['hmcerr_cnt0'] + results['reorder_missing_err_cnt']
+            results['hmc_err_cnt0'] + results['reorder_missing_err_cnt']
         pol1_errs = results['bank_err_cnt_pol1'] + \
             results['hmc_overflow_err_cnt_pol1'] + common_errs + \
-            results['hmcerr_cnt1'] + results['reorder_missing_err_cnt1']
+            results['hmc_err_cnt1'] + results['reorder_missing_err_cnt1']
         sensors['pol0_err_cnt'].set(value=pol0_errs, errif='changed')
         sensors['pol1_err_cnt'].set(value=pol1_errs, errif='changed')
 
@@ -278,9 +271,7 @@ def _cb_feng_pack(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("5 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['err_cnt'].executor
     try:
-        #results = yield executor.submit(f_host.get_pack_status)
         results = f_host.get_pack_status()
         sensors['err_cnt'].set(
             value=results['dvblock_err_cnt'],
@@ -321,9 +312,7 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("6 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['device_status'].executor
     try:
-        #results = yield executor.submit(f_host.get_adc_status)
         results = f_host.get_adc_status()
         device_status = Corr2Sensor.NOMINAL
 
@@ -393,9 +382,7 @@ def _cb_feng_pfbs(sensors, f_host, min_pfb_pwr, sensor_manager, sensor_task):
     functionStartTime = time.time();
     ##print("7 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['device_status'].executor
     try:
-        #results = yield executor.submit(f_host.get_pfb_status)
         results = f_host.get_pfb_status()
         device_status = Corr2Sensor.NOMINAL
         for key in ['pol0_or_err_cnt', 'pol1_or_err_cnt', 'sync_cnt']:
@@ -449,9 +436,7 @@ def _cb_feng_quant(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("8 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['p0_quant_out_dBFS'].executor
     try:
-        #results = yield executor.submit(f_host.get_quant_status)
         results = f_host.get_quant_status()
         device_status = Corr2Sensor.NOMINAL
 
@@ -495,7 +480,6 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("9 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['tx_pps'].executor
     device_status = Corr2Sensor.NOMINAL
 
     def set_failure():
@@ -504,7 +488,6 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
             # heck dictionary
     try:
-        #result = yield executor.submit(f_host.gbes.gbe0.get_stats)#
         result = f_host.gbes.gbe0.get_stats()
         tx_enabled = f_host.registers.control.read()['data']['gbe_txen']
         sensors['tx_enabled'].set(errif='False', value=tx_enabled)
@@ -583,11 +566,9 @@ def _cb_feng_sync(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("10 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['device_status'].executor
     device_status = Corr2Sensor.NOMINAL
     try:
         sensors['device_status'].set(value='ok',status=Corr2Sensor.NOMINAL)
-        #results = yield executor.submit(f_host.get_sync_status)
         results = f_host.get_sync_status()
 
         if results['synced'] and not results['board_in_fault']:
@@ -631,9 +612,7 @@ def _cb_feng_rx_spead(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("11 on %s Started at %f" % (f_host.host ,functionStartTime))
     # SPEAD RX
-    executor = sensors['cnt'].executor
     try:
-        #results = yield executor.submit(f_host.get_unpack_status)
         results = f_host.get_unpack_status()
 #        accum_errors=0
 #        for key in ['header_err_cnt','magic_err_cnt','pad_err_cnt','pkt_len_err_cnt','time_err_cnt']:
@@ -682,9 +661,7 @@ def _cb_feng_rx_reorder(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("12 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    executor = sensors['timestep_err_cnt'].executor
     try:
-        #results = yield executor.submit(f_host.get_rx_reorder_status)
         results = f_host.get_rx_reorder_status()
         device_status = True
         for key in [

@@ -696,8 +696,8 @@ class FpgaFHost(FpgaHost):
         rv={}
         for i in range(4):
             rv.update(self.registers['cd_hmc_hmc_delay_status%i'%i].read()['data'])
-        rv['current_cd0']=self.registers['cd_hmc_req_hmc_cd0'].read()['data']
-        rv['current_cd1']=self.registers['cd_hmc_req_hmc_cd1'].read()['data']
+        rv['current_cd0']=self.registers['cd_hmc_req_hmc_cd0'].read()['data']['reg']
+        rv['current_cd1']=self.registers['cd_hmc_req_hmc_cd1'].read()['data']['reg']
         return rv
 
     def get_ct_status(self):
