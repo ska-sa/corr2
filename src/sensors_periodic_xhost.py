@@ -245,17 +245,14 @@ def _cb_xeng_hmc_reorder(sensors, x_host, sensor_manager,sensor_task):
         device_status = Corr2Sensor.NOMINAL
         for key in ['miss_err_cnt']:
             sensors[key].set(value=results[key], warnif='changed')
-        for key in ['dest_err_cnt', 'ts_err_cnt']:
+        for key in ['dest_err_cnt', 'ts_err_cnt', 'hmc_err_cnt']:
             sensors[key].set(value=results[key], errif='changed')
-        if results['post_ok']:
+        if results['hmc_status']==0x7:
             sensors['post_ok'].set(value=True, status=Corr2Sensor.NOMINAL)
         else:
             sensors['post_ok'].set(value=False, status=Corr2Sensor.ERROR)
         overflows = results['lnk2_nrdy_err_cnt'] + results['lnk3_nrdy_err_cnt']
         sensors['hmc_overflow_err_cnt'].set(value=overflows, errif='changed')
-        errs = results['err_cnt_link3'] + results['err_cnt_link2']
-        sensors['hmc_err_cnt'].set(value=errs, status=Corr2Sensor.NOMINAL)
-        #sensors['hmc_err_cnt'].set(value=errs, errif='changed')
 
         for key in ['miss_err_cnt']:
             if sensors[key].status() != Corr2Sensor.NOMINAL:
@@ -450,9 +447,11 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
                     sensordict['ld_cnt'].set(
                         value=rv[_x][xctr]['ld_cnt'], errif='changed')
                     if ((sensordict['err_cnt'].status() == Corr2Sensor.ERROR) or
+                        (sensordict['resync_cnt'].status() == Corr2Sensor.ERROR) or
                         (sensordict['arm_cnt'].status() == Corr2Sensor.ERROR) or
                             (sensordict['ld_cnt'].status() == Corr2Sensor.ERROR)):
                         status = Corr2Sensor.ERROR
+                        LOGGER.error('%s VACC%i error status: %s'%(_x,xctr,str(sensordict)))
                         value = 'fail'
                     else:
                         status = Corr2Sensor.NOMINAL
