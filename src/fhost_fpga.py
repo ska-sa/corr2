@@ -694,8 +694,10 @@ class FpgaFHost(FpgaHost):
         Retrieves all the Coarse Delay status registers.
         """
         rv={}
-        for i in range(6):
+        for i in range(4):
             rv.update(self.registers['cd_hmc_hmc_delay_status%i'%i].read()['data'])
+        rv['current_cd0']=self.registers['cd_hmc_req_hmc_cd0'].read()['data']['reg']
+        rv['current_cd1']=self.registers['cd_hmc_req_hmc_cd1'].read()['data']['reg']
         return rv
 
     def get_ct_status(self):
@@ -704,8 +706,10 @@ class FpgaFHost(FpgaHost):
         returns a list (one per pol on board) of status dictionaries.
         """
         rv={}
-        for i in range(5):
+        for i in range(3):
             rv.update(self.registers['hmc_ct_status%i' %i].read()['data'])
+        #rv['hmc0']=self.hmcs.hmc_ct_hmc.get_hmc_status()
+        #rv['hmc1']=self.hmcs.hmc_ct_hmc1.get_hmc_status()
         return rv
 
     def get_pfb_status(self):
