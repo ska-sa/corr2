@@ -558,7 +558,7 @@ class FxCorrelator(Instrument):
         _fxcorr_d = self.configd.get('FxCorrelator')
         
         # Can't continue if these values are not present in config file.
-        self.sample_rate_hz = float(_fxcorr_d.['sample_rate_hz'])
+        self.sample_rate_hz = float(_fxcorr_d['sample_rate_hz'])
         self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
         self.n_antennas = int(_fxcorr_d['n_ants'])
 
