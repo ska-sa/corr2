@@ -606,44 +606,33 @@ class FxCorrelator(Instrument):
         self.f_stream_payload_len = int(_feng_d.get('feng_stream_payload_len', 1024))
 
         # =====================================================================
-        _xeng_d = self.configd.get('xengine', None)
-        assert isinstance(_xeng_d, dict)
+        _xeng_d = self.configd['xengine']
+
+        # Missing values here can be replaced with defaults.
         self.x_per_fpga = int(_xeng_d.get('x_per_fpga', 4))
-        assert isinstance(self.x_per_fpga, int)
         self.xeng_outbits = int(_xeng_d.get('xeng_outbits', 32))
-        assert isinstance(self.xeng_outbits, int)
-        self.x_stream_payload_len = int(_xeng_d.get('xeng_stream_payload_len',
-                                                    2048))
-        assert isinstance(self.x_stream_payload_len, int)
+        self.x_stream_payload_len = int(_xeng_d.get('xeng_stream_payload_len', 2048))
 
         # check if beamformer exists with x-engines
-        self.found_beamformer = False
         try:
-            assert 'beam0' in self.configd.keys()
-            _beam_d = self.configd.get('beam0', None)
-            assert isinstance(_beam_d, dict)
+            _beam_d = self.configd['beam0']
+        except KeyError:
+            self.found_beamformer = False
+            self.logger.info('No beamfomer found in the config.')
+        else:
             self.found_beamformer = True
-            self.beng_outbits = int(_beam_d.get('beng_outbits'))
-            assert isinstance(self.beng_outbits, int)
+            self.beng_outbits = int(_beam_d['beng_outbits'])
 
             # currently, 64A1K beam has a different payload size
             _sixty_four_1k = (self.n_antennas == 64 and self.n_chans == 1024)
             default_b_eng_pkt_size = 2048 if _sixty_four_1k else 4096
-            self.b_stream_payload_len = int(
-                    _beam_d.get('beam0_stream_payload_len',
-                                default_b_eng_pkt_size))
-            assert isinstance(self.b_stream_payload_len, int)
-
-        except Exception:
-            self.logger.info('No beamfomer found in the config.')
+            self.b_stream_payload_len = int(_beam_d.get('beam0_stream_payload_len', default_b_eng_pkt_size))
 
     def _read_config_file(self):
         """
         Read the instrument configuration from self.config_source.
         """
-        tempdict = ReadOnlyDict(utils.parse_ini_file(self.config_source))
-        assert isinstance(tempdict, dict)
-        self.configd = tempdict
+        self.configd = ReadOnlyDict(utils.parse_ini_file(self.config_source))
 
     def _read_config_server(self):
         """
