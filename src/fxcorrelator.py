@@ -210,7 +210,7 @@ class FxCorrelator(Instrument):
                 errmsg = 'Failed to program the boards: %s' % str(err)
                 signal.alarm(0)
                 self.logger.error(errmsg)
-                raise RuntimeError(errmsg)
+                raise
 
         fisskarab = True
         xisskarab = True
@@ -514,7 +514,7 @@ class FxCorrelator(Instrument):
             except Exception as exc:
                 errmsg = 'Could not create xhost {}: {}'.format(host, str(exc))
                 self.logger.error(errmsg)
-                raise RuntimeError(errmsg)
+                raise
             self.xhosts.append(fpgahost)
         # check that no hosts overlap
         for _fh in self.fhosts:
@@ -557,42 +557,31 @@ class FxCorrelator(Instrument):
         # =====================================================================
         _fxcorr_d = self.configd.get('FxCorrelator')
         
-        assert isinstance(_fxcorr_d, dict)
-        #Check that sensor poll interval is in config file
-        if(_fxcorr_d.get('sensor_poll_interval')):
-            self.sensor_poll_interval = float(_fxcorr_d.get('sensor_poll_interval', None))
-            assert isinstance(self.sensor_poll_interval, float)
-        else:
-            self.logger.warn('sensor_poll_interval config file variable is not available, default interval set to: 0.003.')
-            self.sensor_poll_interval = 0.003;
+        # Can't continue if these values are not present in config file.
+        self.sample_rate_hz = float(_fxcorr_d.['sample_rate_hz'])
+        self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
+        self.n_antennas = int(_fxcorr_d['n_ants'])
 
+        # Warn user if sensor poll interval is not in config file and default is set.
+        try:
+            self.sensor_poll_interval = float(_fxcorr_d['sensor_poll_interval'])
+        except KeyError:
+            self.logger.warn('sensor_poll_interval config file variable is not available, default interval set to: 0.003.')
+            self.sensor_poll_interval = 0.003
+
+        # These ones are fine, we'll just use a default if they're not there.
         self.katcp_port = int(_fxcorr_d.get('katcp_port', 7147))
-        assert isinstance(self.katcp_port, int)
-        self.sample_rate_hz = float(
-            _fxcorr_d.get(
-                'sample_rate_hz',
-                None))
-        assert isinstance(self.sample_rate_hz, float)
-        self.timestamp_bits = int(_fxcorr_d.get('timestamp_bits', None))
-        assert isinstance(self.timestamp_bits, int)
-        self.time_jitter_allowed = float(
-            _fxcorr_d.get('time_jitter_allowed', 0.5))
-        assert isinstance(self.time_jitter_allowed, float)
-        self.time_offset_allowed = float(
-            _fxcorr_d.get('time_offset_allowed', 1))
-        assert isinstance(self.time_offset_allowed, float)
+        self.time_jitter_allowed = float(_fxcorr_d.get('time_jitter_allowed', 0.5))
+        self.time_offset_allowed = float(_fxcorr_d.get('time_offset_allowed', 1))
         self.timeout = int(_fxcorr_d.get('default_timeout', 15))
-        assert isinstance(self.timeout, int)
         self.post_switch_delay = int(_fxcorr_d.get('switch_delay', 10))
-        assert isinstance(self.post_switch_delay, int)
-        self.n_antennas = int(_fxcorr_d.get('n_ants', None))
-        assert isinstance(self.n_antennas, int)
-        self.analogue_bandwidth = self.sample_rate_hz/2
+
         if 'spead_metapacket_ttl' in _fxcorr_d:
             import data_stream
-            data_stream.SPEAD_PKT_TTL = int(
-                _fxcorr_d.get('spead_metapacket_ttl'))
-            assert isinstance(data_stream.SPEAD_PKT_TTL, int)
+            data_stream.SPEAD_PKT_TTL = int(_fxcorr_d['spead_metapacket_ttl'])
+
+        # Derived values.
+        self.analogue_bandwidth = self.sample_rate_hz/2
 
         # =====================================================================
         _feng_d = self.configd.get('fengine')

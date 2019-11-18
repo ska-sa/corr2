@@ -345,7 +345,8 @@ class FpgaDsimHost(FpgaHost):
         self.write_int('gbe_porttx', port)
         for pol in [0, 1]:
             addr = StreamAddress.from_address_string(self.config['pol%1i_destination_ips' % pol].strip())
-            for index in range(addr.ip_range):  # pol*addr.ip_range + index
+            for index in range(addr.ip_range):
+                # The interleave-by-pairs of IP addresses is implemented by this formula.
                 self.write_int('gbe_iptx%1i' % (2*index - index % 2 + 2*pol), addr.ip_address.ip_int + index)
 
         self.registers.control.write(gbe_rst=False)
