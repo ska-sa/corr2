@@ -555,7 +555,7 @@ class FxCorrelator(Instrument):
         # do the bitstreams exist?
         self._check_bitstreams()
         # =====================================================================
-        _fxcorr_d = self.configd.get('FxCorrelator')
+        _fxcorr_d = self.configd['FxCorrelator']
         
         # Can't continue if these values are not present in config file.
         self.sample_rate_hz = float(_fxcorr_d['sample_rate_hz'])
@@ -584,31 +584,26 @@ class FxCorrelator(Instrument):
         self.analogue_bandwidth = self.sample_rate_hz/2
 
         # =====================================================================
-        _feng_d = self.configd.get('fengine')
-        assert isinstance(_feng_d, dict)
+        _feng_d = self.configd['fengine']
+
+        # Can't continue without these values present.
+        self.n_chans = int(_feng_d['n_chans'])
+        # Not good enough that it's an int, has to actually be a supported mode.
+        if self.n_chans not in [1024, 4096, 32768]:
+            errmsg = "fengine n_chans - received invalid number: {}".format(self.n_chans)
+            self.logger.error(errmsg)
+            raise ValueError(errmsg)
+        self.n_input_streams_per_fengine = int(_feng_d['n_input_streams_per_fengine'])
+        self.fft_shift = int(_feng_d.get('fft_shift', None))
+
+        # If these are not present, fill in defaults.
         self.decimation_factor = int(_feng_d.get('decimation_factor', 1))
         self.ct_readgap = int(_feng_d.get('ct_readgap', 45))
-        assert isinstance(self.ct_readgap, int)
-        self.n_chans = int(_feng_d.get('n_chans'))
-        assert isinstance(self.n_chans, int)
-        ## There must be a better way
-        #assert self.n_chans in [1024, 4096, 32768]
         self.min_load_time = float(_feng_d.get('min_load_time', 0.2))
-        assert isinstance(self.min_load_time, float)
         self.f_per_fpga = int(_feng_d.get('f_per_fpga', 2))
-        assert isinstance(self.f_per_fpga, int)
-        self.n_input_streams_per_fengine = int(
-            _feng_d.get('n_input_streams_per_fengine', None))
-        assert isinstance(self.n_input_streams_per_fengine, int)
         self.adc_bitwidth = int(_feng_d.get('sample_bits', 10))
-        assert isinstance(self.adc_bitwidth, int)
-        self.fft_shift = int(_feng_d.get('fft_shift', None))
-        assert isinstance(self.fft_shift, int)
         self.pfb_group_delay = int(_feng_d.get('pfb_group_delay', 0))
-        assert isinstance(self.pfb_group_delay, int)
-        self.f_stream_payload_len = int(_feng_d.get('feng_stream_payload_len',
-                                                    1024))
-        assert isinstance(self.f_stream_payload_len, int)
+        self.f_stream_payload_len = int(_feng_d.get('feng_stream_payload_len', 1024))
 
         # =====================================================================
         _xeng_d = self.configd.get('xengine', None)
