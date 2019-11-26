@@ -248,7 +248,7 @@ class Fengine(object):
         #figure out register offsets and widths
         #reg_bp = delay_delta_reg._fields['delta'].binary_pt
         #reg_bw = delay_delta_reg._fields['delta'].width_bits
-        reg_bp = 32
+        reg_bp = 31
         reg_bw = 32
 
         #figure out maximum range, and clip if necessary:
