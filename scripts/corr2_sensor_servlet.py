@@ -207,7 +207,7 @@ if __name__ == '__main__':
 
     if args.name is None:
         # default to config file name?
-        args.name = os,path.basename(args.config).rsplit('.', 1)[0]
+        args.name = os.path.basename(args.config).rsplit('.', 1)[0]
         
     ioloop = IOLoop.current()
     sensor_server = Corr2SensorServer('127.0.0.1', args.port, config=args.config,
