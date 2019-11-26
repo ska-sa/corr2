@@ -385,30 +385,25 @@ class FEngineOperations(object):
         #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         if (self.decimation_factor==1):
             return self.corr.sample_rate_hz/4.
-        #offset = self.corr.sample_rate_hz/4./self.decimation_factor
         osc_freq=self._get_osc_freq()
         self.logger.info("Center frequency is {:.5f} MHz".format((osc_freq)/1e6))
         return osc_freq
 
     def _set_osc_freq(self,freq):
         """Set the DDC oscillator frequency to "freq" Hz."""
-        #if (band > 0):
-        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         self.logger.debug('Setting DDC oscillator freq to {:.3f} MHz'.format(freq/1.e6))
-        reg_value = freq*(2**22)/self.corr.sample_rate_hz
+        reg_value = float(freq)/self.corr.sample_rate_hz
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
             target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.write(frequency=reg_value),))
         return self._get_osc_freq()
 
     def _get_osc_freq(self):
         """Return the hardware configured oscillator frequency, in Hz."""
-        #if (band > 0):
-        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         rv =THREADED_FPGA_OP(self.hosts,timeout=1,target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.read()['data']['frequency'],)) 
         if min(rv.values()) != max(rv.values()): 
             self.logger.warning("Fhosts have different tuning frequencies!")
             raise RuntimeError("Fhosts have different tuning frequencies!")
-        rv=rv.values()[0]*self.corr.sample_rate_hz/(2**22)
+        rv=rv.values()[0]*self.corr.sample_rate_hz
         self.logger.debug('DDC oscillator freq is {:.3f} MHz'.format(rv/1.e6))
         return rv
 

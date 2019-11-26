@@ -214,13 +214,13 @@ class Corr2Server(DeviceServer):
 
             IOLoop.current().add_callback(self.periodic_issue_descriptors)
             # IOLoop.current().add_callback(self.periodic_issue_metadata)
-            if monitor_instrument:
+            #if monitor_instrument:
                 # create the monitoring loop object
-                self.mon_loop = corr_mon_loop.MonitoringLoop(check_time=-1,
-                                                             fx_correlator_object=self.instrument)
-                # start the monitoring loop
-                self.mon_loop.start()
-                self.mon_loop_running = True
+                #self.mon_loop = corr_mon_loop.MonitoringLoop(check_time=-1,
+                #                                             fx_correlator_object=self.instrument)
+                ## start the monitoring loop
+                #self.mon_loop.start()
+                #self.mon_loop_running = True
             self._initialised = True
 
             # Once more, for completeness

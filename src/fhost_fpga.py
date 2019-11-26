@@ -169,15 +169,6 @@ class Fengine(object):
         self.last_delay.last_load_success=False
         # set up the delays and update the stored values
 
-#        if (self.host.decimation_factor > 1):
-#            self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
-#            self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
-#            self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset_delta)
-#        else:
-#            self.last_delay.delay = self._delay_write_delay_legacy(delay_obj.delay)
-#            self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
-#            self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase_legacy(delay_obj.phase_offset, delay_obj.phase_offset_delta)
-#
         self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
         self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
         self.last_delay.phase_offset = self._delay_write_phase(delay_obj.phase_offset)
@@ -210,7 +201,7 @@ class Fengine(object):
         Arms the delay correction timed latch.
         Optimisations bypass normal register bitfield operations.
         :param names: name of latch to trigger
-        :param mcnt: sample mcnt to trigger at. If None triggers immediately
+        :param mcnt: sample mcnt to trigger at.
         :return ::
         """
         control1_reg = self.host.registers['delay%i_tl_control1' % self.offset]
@@ -240,7 +231,7 @@ class Fengine(object):
         self.logger.debug('Setting delay_whole register to 0x%08x, from request for %i samples.' % (prep_whole,delay_whole))
         self.logger.debug('Setting delay_frac register to 0x%08x, from request for %f samples.' % (prep_frac,delay_frac))
         
-        act_value = prep_whole + (prep_frac/(2**32))
+        act_value = prep_whole + (prep_frac/(2.0**32))
 
         return act_value
 
@@ -311,7 +302,7 @@ class Fengine(object):
 
         act_value_initial = (float(prep_int_initial)/(2**initial_reg_bp))
         #if phase<0: act_value_initial-=(2**initial_reg_bw)  # Seems to me as though this shouldn't be here. (JS)
-        self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
+        self.logger.debug('Writing initial phase to %e*pi radians (reg: 0x%08X), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
         # actually write the values to the register
         phase_reg.write(initial=phase)
         return act_value_initial
@@ -346,7 +337,7 @@ class Fengine(object):
 
         prep_int_delta=int(delta_phase_shifted*(2**delta_reg_bp))
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
-        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
+        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: 0x%08X), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
         phase_rate_reg.write(delta=delta_phase_shifted)
         return act_value_delta
 
