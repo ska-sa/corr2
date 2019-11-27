@@ -413,58 +413,53 @@ class FEngineOperations(object):
         :return: (a boolean, the F-engine times as 48-bit counts,
         their unix representations)
         """
-        self.logger.debug('Checking timestamps on F hosts...')
+        self.logger.debug('Checking timestamps on F hosts.')
         start_time = time.time()
         results = THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
             target_function=('get_local_time', [src], {}))
         read_time = time.time()
         elapsed_time = read_time - start_time
-        feng_mcnts = {}
         feng_times = {}
         rv = True
         for host in self.hosts:
             feng_mcnt = results[host.host]
-            feng_mcnts[host.host] = feng_mcnt
-            feng_times[host.host] = self.corr.time_from_mcnt(feng_mcnt)
-
-        for host in self.hosts:
-            feng_mcnt = results[host.host]
             feng_time = self.corr.time_from_mcnt(feng_mcnt)
-            # are the count bits okay?
-            if feng_mcnt & 0xfff != 0:
-                errmsg = (
-                    '{},{}: bottom 12 bits of timestamp from F-engine are '
-                    'not zero?! feng_mcnt({:012X})'.format(host.host, host.fengines[0].input.name,
-                        feng_mcnt))
-                self.logger.error(errmsg)
-                rv = False
+            feng_time_ok = True
+            # are the count bits okay? 
+            # JM commented this out 2019-11-27; it's checked by the hardware spead unpack block anyway.
+#            if feng_mcnt & 0xfff != 0:
+#                self.logger.error('{},{}: bottom 12 bits of timestamp from F-engine are '
+#                    'not zero?! feng_mcnt({:012X})'.format(host.host, host.fengines[0].input.name,
+#                        feng_mcnt))
+#                feng_time_ok = False
+#                rv = False
             # is the time in the future?
             if feng_time > (read_time + (self.corr.time_jitter_allowed)):
-                errmsg = (
-                    '{}, {}: F-engine time cannot be in the future? '
+                self.logger.error('{}, {}: F-engine time cannot be in the future? '
                     'now({:.3f}) feng_time({:.3f})'.format(host.host, host.fengines[0].input.name,
                         read_time, feng_time))
-                self.logger.error(errmsg)
+                feng_time_ok = False
                 rv = False
             # is the time close enough to local time?
             if abs(read_time - feng_time) > self.corr.time_offset_allowed:
-                errmsg = (
-                    '{}, {}: time calculated from board cannot be so '
+                self.logger.error('{}, {}: time calculated from board cannot be so '
                     'far from local time: now({:.3f}) feng_time({:.3f}) diff({:.3f})'.format(
                         host.host, host.fengines[0].input.name, read_time, feng_time,
                         read_time - feng_time))
-                self.logger.error(errmsg)
+                feng_time_ok = False
                 rv = False
-        # are they all within 500ms of one another?
-        diff = max(feng_times.values()) - min(feng_times.values())
+            feng_times[host.host] = [feng_mcnt, feng_time, feng_time_ok]
+
+#        # are they all within 500ms of one another?
+        times_u = [row[2] for row in feng_times.values()]
+        diff = max(times_u) - min(times_u)
         if diff > (self.corr.time_jitter_allowed + elapsed_time):
             errmsg = (
                 'F-engine timestamps are too far apart: {:.3f}. Took {:.3f}. to read all boards.'.format(
                     diff, elapsed_time))
             self.logger.error(errmsg)
             rv = False
-        self.logger.debug('\tdone.')
-        return rv, feng_mcnts, feng_times
+        return rv, feng_times
 
     def threaded_feng_operation(self, timeout, target_function):
         """

@@ -100,18 +100,20 @@ def _cb_feng_rxtime(sensor_ok, sensors_value, sensor_manager,sensor_task):
 
     instrument = sensor_ok.manager.instrument
     try:
-        result, counts, times = instrument.fops.get_rx_timestamps()
+        result, times = instrument.fops.get_rx_timestamps()
         if result:
             sensor_ok.set(value=result, status=Corr2Sensor.NOMINAL)
         else:
             sensor_ok.set(value=result, status=Corr2Sensor.ERROR)
-        for host in counts:
+        for host in times:
             sensor, sensor_u = sensors_value[host]
-            sensor.set(value=counts[host], errif='notchanged')
-            if times[host] > 0:
-                sensor_u.set(value=times[host], errif='notchanged')
+            sensor.set(value=times[host][0], errif='notchanged')
+            if (times[host] <= 0):
+                sensor_u.set(value=times[host][1], status=Corr2Sensor.FAILURE)
+            elif (times[host][2]):
+                sensor_u.set(value=times[host][1], status=Corr2Sensor.NOMINAL)
             else:
-                sensor_u.set(value=times[host], status=Corr2Sensor.FAILURE)
+                sensor_u.set(value=times[host][1], status=Corr2Sensor.ERROR)
     except Exception as e:
         sensor_ok.set(value=False, status=Corr2Sensor.FAILURE)
         for sensor, sensor_u in sensors_value.values():
@@ -152,16 +154,12 @@ def _cb_feng_delays(sensors, f_host, sensor_manager,sensor_task):
         if cd0_cnt == sensors['delay0_updating'].tempstore:
             sensors['delay0_updating'].set(
                 value=False, status=Corr2Sensor.WARN)
-            device_status = Corr2Sensor.WARN
-            device_status_value = 'degraded'
         else:
             sensors['delay0_updating'].set(
                 value=True, status=Corr2Sensor.NOMINAL)
         if cd1_cnt == sensors['delay1_updating'].tempstore:
             sensors['delay1_updating'].set(
                 value=False, status=Corr2Sensor.WARN)
-            device_status = Corr2Sensor.WARN
-            device_status_value = 'degraded'
         else:
             sensors['delay1_updating'].set(
                 value=True, status=Corr2Sensor.NOMINAL)
@@ -187,7 +185,7 @@ def _cb_feng_delays(sensors, f_host, sensor_manager,sensor_task):
             (sensors['pol1_err_cnt'].status() == Corr2Sensor.ERROR)):
             device_status = Corr2Sensor.ERROR
             device_status_value = 'fail'
-            f_host.logger.error("CD error: %s"%str(sensors))
+            f_host.logger.error("CD error: %s"%str(results))
             f_host.logger.error("CD HMC status: %s"%str(f_host.hmcs.cd_hmc_hmc_delay_hmc.get_hmc_status()))
 
         sensors['device_status'].set(value=device_status_value,
@@ -239,12 +237,14 @@ def _cb_feng_ct(sensors, f_host, sensor_manager,sensor_task):
         device_value = 'ok'
         if (sensors['pol0_err_cnt'].status() == Corr2Sensor.ERROR):
             device_value = 'fail'
-            f_host.logger.error("CT error: %s"%str(results))
-            f_host.logger.error("CT hmc0 status: %s"%str(f_host.hmcs.hmc_ct_hmc.get_hmc_status()))
+            device_status = Corr2Sensor.ERROR
+            f_host.logger.error("CT pol0 error: %s"%str(results))
+            f_host.logger.error("CT HMC pol0 status: %s"%str(f_host.hmcs.hmc_ct_hmc.get_hmc_status()))
         if (sensors['pol1_err_cnt'].status() == Corr2Sensor.ERROR):
             device_value = 'fail'
-            f_host.logger.error("CT error: %s"%str(results))
-            f_host.logger.error("CT hmc1 status: %s"%str(f_host.hmcs.hmc_ct_hmc.get_hmc_status()))
+            device_status = Corr2Sensor.ERROR
+            f_host.logger.error("CT pol1 error: %s"%str(results))
+            f_host.logger.error("CT HMC pol1 status: %s"%str(f_host.hmcs.hmc_ct_hmc.get_hmc_status()))
         #if(device_status == Corr2Sensor.WARN):
         #    device_value = 'degraded'
         sensors['device_status'].set(value=device_value, status=device_status)
@@ -385,7 +385,7 @@ def _cb_feng_pfbs(sensors, f_host, min_pfb_pwr, sensor_manager, sensor_task):
     try:
         results = f_host.get_pfb_status()
         device_status = Corr2Sensor.NOMINAL
-        for key in ['pol0_or_err_cnt', 'pol1_or_err_cnt', 'sync_cnt']:
+        for key in ['pol0_or_err_cnt', 'pol1_or_err_cnt']:
             sensor = sensors[key]
             sensor.set(value=results[key], warnif='changed')
             if sensor.status() == Corr2Sensor.WARN:
@@ -568,18 +568,13 @@ def _cb_feng_sync(sensors, f_host, sensor_manager,sensor_task):
 
     device_status = Corr2Sensor.NOMINAL
     try:
-        sensors['device_status'].set(value='ok',status=Corr2Sensor.NOMINAL)
         results = f_host.get_sync_status()
-
-        if results['synced'] and not results['board_in_fault']:
-            sensors['syncd'].set(value=True,status=Corr2Sensor.NOMINAL)
+        sensors['resync_cnt'].set(value=results['sync80_cnt'],errif='changed')
+        if ((results['synced']) and not (results['board_in_fault']) and (sensors['resync_cnt'].status() == Corr2Sensor.NOMINAL)):
             sensors['device_status'].set(value='ok',status=Corr2Sensor.NOMINAL)
         else:
-            sensors['syncd'].set(value=False,status=Corr2Sensor.FAILURE)
             sensors['device_status'].set(value='fail',status=Corr2Sensor.FAILURE)
-
-        for ret in ['cd_resync_cnt', 'ct_resync_cnt', 'fault_clear_timeout_cnt', 'fault_present_timeout_cnt', 'time_diff_resync_cnt', 'timestep_resync_cnt','timeout_resync_cnt']:
-            sensors[ret].set(value=results[ret],errif='changed')
+            f_host.logger.error("Sync error: %s"%str(results)) 
 
     except Exception as e:
         sensor_manager.logger.error(
@@ -928,9 +923,9 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             'pol1_pfb_out_dBFS': sens_man.do_sensor(
                 Corr2Sensor.float, '{}.pfb.pol1-pfb-out-rms-pwr-dbfs'.format(fhost),
                 'F-engine PFB output RMS power in dBFS, pol1.', executor=executor),
-            'sync_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.pfb.sync-cnt'.format(fhost),
-                'F-engine PFB resync counter', executor=executor),
+            #'sync_cnt': sens_man.do_sensor(
+            #    Corr2Sensor.integer, '{}.pfb.sync-cnt'.format(fhost),
+            #    'F-engine PFB resync counter', executor=executor),
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_pfbs',_f.host))
         ioloop.add_callback(_cb_feng_pfbs, pfb_sensors, _f, min_pfb_pwr, sens_man,sensor_task)
@@ -987,31 +982,34 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sync_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.sync.device-status'.format(fhost),
-                'F-engine synchroniser ok.', executor=executor),
-            'cd_resync_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.sync.cd-resync-cnt'.format(fhost),
-                'Count of F-engine coarse delay faults causing system resync.', executor=executor),
-            'ct_resync_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.sync.ct-resync-cnt'.format(fhost),
-                'Count of F-engine corner-turner faults causing system resync', executor=executor),
-            'fault_clear_timeout_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.sync.fault-clear-timeout-cnt'.format(fhost),
-                'Count of F-engine fault clear timeouts (faults have all cleared, but system hasnt resyncd).', executor=executor),
-            'fault_present_timeout_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.sync.fault-present-timeout-cnt'.format(fhost),
-                'Count of F-engine fault present timeout (a fault was continuously present for a long time)', executor=executor),
-            'syncd': sens_man.do_sensor(
-                Corr2Sensor.boolean, '{}.sync.syncd'.format(fhost),
-                'F-engine is synchronised to digitiser stream.', executor=executor),
-            'time_diff_resync_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.sync.time-diff-resync-cnt'.format(fhost),
-                'Count of F-engine timestamp faults causing host to resync.', executor=executor),
-            'timestep_resync_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.sync.timestep-resync-cnt'.format(fhost),
-                'Count of the number of times jumps in the digitiser streams timestamps were seen.', executor=executor),
-            'timeout_resync_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.sync.timeout-resync-cnt'.format(fhost),
-                'Count of the number of times the synchronisation process timed-out.', executor=executor),
+                'F-engine is synchronised.', executor=executor),
+            'resync_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.sync.resync-cnt'.format(fhost),
+                'Count of F-engine sync losses (or attempts to resynchronise).', executor=executor),
+            #'cd_resync_cnt': sens_man.do_sensor(
+            #    Corr2Sensor.integer, '{}.sync.cd-resync-cnt'.format(fhost),
+            #    'Count of F-engine coarse delay faults causing system resync.', executor=executor),
+            #'ct_resync_cnt': sens_man.do_sensor(
+            #    Corr2Sensor.integer, '{}.sync.ct-resync-cnt'.format(fhost),
+            #    'Count of F-engine corner-turner faults causing system resync', executor=executor),
+            #'fault_clear_timeout_cnt': sens_man.do_sensor(
+            #    Corr2Sensor.integer, '{}.sync.fault-clear-timeout-cnt'.format(fhost),
+            #    'Count of F-engine fault clear timeouts (faults have all cleared, but system hasnt resyncd).', executor=executor),
+            #'fault_present_timeout_cnt': sens_man.do_sensor(
+            #    Corr2Sensor.integer, '{}.sync.fault-present-timeout-cnt'.format(fhost),
+            #    'Count of F-engine fault present timeout (a fault was continuously present for a long time)', executor=executor),
+            #'syncd': sens_man.do_sensor(
+            #    Corr2Sensor.boolean, '{}.sync.syncd'.format(fhost),
+            #    'F-engine is synchronised to digitiser stream.', executor=executor),
+            #'time_diff_resync_cnt': sens_man.do_sensor(
+            #    Corr2Sensor.integer, '{}.sync.time-diff-resync-cnt'.format(fhost),
+            #    'Count of F-engine timestamp faults causing host to resync.', executor=executor),
+            #'timestep_resync_cnt': sens_man.do_sensor(
+            #    Corr2Sensor.integer, '{}.sync.timestep-resync-cnt'.format(fhost),
+            #    'Count of the number of times jumps in the digitiser streams timestamps were seen.', executor=executor),
+            #'timeout_resync_cnt': sens_man.do_sensor(
+            #    Corr2Sensor.integer, '{}.sync.timeout-resync-cnt'.format(fhost),
+            #    'Count of the number of times the synchronisation process timed-out.', executor=executor),
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_sync',_f.host))
         ioloop.add_callback(_cb_feng_sync, sync_sensors, _f, sens_man,sensor_task)

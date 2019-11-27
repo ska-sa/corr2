@@ -447,16 +447,18 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
                         (sensordict['arm_cnt'].status() == Corr2Sensor.ERROR) or
                             (sensordict['ld_cnt'].status() == Corr2Sensor.ERROR)):
                         status = Corr2Sensor.ERROR
+                        value = 'fail'
                         faulty_host_idx=instrument.xops.board_ids[_x]
                         faulty_host=instrument.xhosts[faulty_host_idx]
-                        faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(sensordict)))
-                        value = 'fail'
+                        faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(rv)))
                     else:
                         status = Corr2Sensor.NOMINAL
                         value = 'ok'
                     if status == Corr2Sensor.ERROR:
-                        faulty_host.logger.error('VACC HMC0 error status: %s'%(str(faulty_host.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())))
-                        faulty_host.logger.error('VACC HMC1 error status: %s'%(str(faulty_host.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())))
+                        if (xctr < 2):
+                            faulty_host.logger.error('VACC HMC0 error status: %s'%(str(faulty_host.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())))
+                        else:
+                            faulty_host.logger.error('VACC HMC1 error status: %s'%(str(faulty_host.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())))
                     sensordict['device_status'].set(value=value, status=status)
     except Exception as e:
         LOGGER.error('Error updating VACC sensors '
@@ -537,7 +539,7 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         network_sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{pref}.device-status'.format(pref=pref),
-                'Overall status of this HMC-reorder.', executor=executor),
+                'Overall status of this network interface.', executor=executor),
             'tx_pps': sens_man.do_sensor(
                 Corr2Sensor.float, '{}.tx-pps'.format(pref),
                 'X-engine network raw TX packets per second', executor=executor),
@@ -628,10 +630,10 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             'miss_err_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.miss-err-cnt'.format(pref),
                 'X-engine error reordering packets: missing packet.', executor=executor),
-            'hmc_overflow_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.hmc-overflow-err-cnt'.format(pref),
-                'X-engine error reordering packets: HMC link not ready.',
-                executor=executor),
+          #  'hmc_overflow_err_cnt': sens_man.do_sensor(
+          #      Corr2Sensor.integer, '{}.hmc-overflow-err-cnt'.format(pref),
+          #      'X-engine error reordering packets: HMC link not ready.',
+          #      executor=executor),
             'hmc_err_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.hmc-err-cnt'.format(pref),
                 'HMC hardware memory error counters.', executor=executor),

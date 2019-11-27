@@ -341,11 +341,6 @@ class FxCorrelator(Instrument):
         # get current time from an F-engine
         feng_mcnt = self.fhosts[f_index].get_local_time()
         self.logger.info('\tcurrent F-engine mcnt: {}'.format(feng_mcnt))
-        if feng_mcnt & 0xfff != 0:
-            errmsg = (
-                'Bottom 12 bits of timestamp from F-engine are not zero?! '
-                'feng_mcnt(0x{:012X})'.format(feng_mcnt))
-            self.logger.warning(errmsg)
         t_now = time.time()
         self.synchronisation_epoch = t_now - feng_mcnt / self.sample_rate_hz
         self.logger.info(
