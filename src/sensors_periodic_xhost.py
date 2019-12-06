@@ -197,14 +197,11 @@ def _cb_xeng_rx_spead(sensors, x_host, sensor_manager,sensor_task):
     try:
         #results = yield executor.submit(x_host.get_unpack_status)
         results = x_host.get_unpack_status()
-#        accum_errors=0
-#        for key in ['header_err_cnt','magic_err_cnt','pad_err_cnt','pkt_len_err_cnt','time_err_cnt']:
-#            accum_errors+=results[key]
-        sensors['time_err_cnt'].set(
+        sensors['err_cnt'].set(
             value=results['time_err_cnt'],
             errif='changed')
         sensors['cnt'].set(value=results['valid_pkt_cnt'], warnif='notchanged')
-        if sensors['time_err_cnt'].status() == Corr2Sensor.ERROR:
+        if sensors['err_cnt'].status() == Corr2Sensor.ERROR:
             status = Corr2Sensor.ERROR
             value = 'fail'
         elif sensors['cnt'].status() == Corr2Sensor.WARN:
@@ -244,25 +241,19 @@ def _cb_xeng_hmc_reorder(sensors, x_host, sensor_manager,sensor_task):
         results = x_host.get_hmc_reorder_status()
         device_status = Corr2Sensor.NOMINAL
         sens_val = 'ok'
-        for key in ['miss_err_cnt']:
-            sensors[key].set(value=results[key], warnif='changed')
-        for key in ['dest_err_cnt', 'ts_err_cnt', 'hmc_err_cnt']:
-            sensors[key].set(value=results[key], errif='changed')
-        overflows = results['lnk2_nrdy_err_cnt'] + results['lnk3_nrdy_err_cnt']
-        sensors['hmc_overflow_err_cnt'].set(value=overflows, errif='changed')
+        sensors['miss_err_cnt'].set(value=results['miss_err_cnt'], warnif='changed')
+        total_errors=results['dest_err_cnt'] + results['ts_err_cnt'] + results['hmc_err_cnt'] + results['lnk2_nrdy_err_cnt'] + results['lnk3_nrdy_err_cnt'] + results['mcnt_timeout_cnt']
+        sensors['err_cnt'].set(value=total_errors, errif='changed')
 
-        for key in ['miss_err_cnt']:
-            if sensors[key].status() != Corr2Sensor.NOMINAL:
-                device_status = Corr2Sensor.WARN
-                sens_val = 'degraded'
-        for key in [
-            'dest_err_cnt',
-            'ts_err_cnt',
-            'hmc_overflow_err_cnt',
-                'hmc_err_cnt']:
-            if sensors[key].status() == Corr2Sensor.ERROR:
+        if sensors['err_cnt'].status() != Corr2Sensor.NOMINAL:
                 device_status = Corr2Sensor.ERROR
                 sens_val = 'fail'
+        elif sensors['miss_err_cnt'].status() == Corr2Sensor.WARN:
+            device_status = Corr2Sensor.WARN
+            sens_val = 'degraded'
+        else:
+            device_status = Corr2Sensor.NOMINAL
+            sens_val = 'ok'
 
         if device_status == Corr2Sensor.ERROR:
             x_host.logger.error("HMC Reorder error: %s"%str(results))
@@ -315,7 +306,7 @@ def _cb_xeng_missing_ants(sensors, sensor_top, x_host, sensor_manager,sensor_tas
             sensors[n_ant].set(value=missing, warnif='changed')
             if sensors[n_ant].status() == Corr2Sensor.WARN:
                 status = Corr2Sensor.WARN
-                value = 'fail'
+                value = 'degraded'
         sensor_top.set(status=status, value=value)
     except Exception as e:
         LOGGER.error('Error updating RX reorder sensors for {} - '
@@ -346,34 +337,30 @@ def _cb_xeng_rx_reorder(sensors, x_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     #print("18 on %s Started at %f" % (x_host.host ,functionStartTime))
 
-    executor = sensors[0]['discard_err_cnt'].executor
     try:
-        #rv = yield executor.submit(x_host.get_rx_reorder_status)
         rv = x_host.get_rx_reorder_status()
-        device_status = Corr2Sensor.NOMINAL
+        is_ok=True
         for n_xengcore, sensordict in enumerate(sensors):
-            sensordict['timeout_err_cnt'].set(
-                value=rv[n_xengcore]['timeout_err_cnt'], errif='changed')
-            sensordict['discard_err_cnt'].set(
-                value=rv[n_xengcore]['discard_err_cnt'], warnif='changed')
-            sensordict['missed_err_cnt'].set(
-                value=rv[n_xengcore]['missed_err_cnt'], errif='changed')
+            sens_val = 'ok'
+            device_status = Corr2Sensor.NOMINAL
 
-            for key in ['discard_err_cnt', 'missed_err_cnt']:
-                if sensordict[key].status() == Corr2Sensor.WARN:
+            accumulated_errors = rv[n_xengcore]['timeout_err_cnt'] + rv[n_xengcore]['discard_err_cnt'] + rv[n_xengcore]['missed_err_cnt']
+            sensordict['err_cnt'].set(value=accumulated_errors, errif='changed')
+
+            if sensordict['err_cnt'].status() == Corr2Sensor.WARN:
                     device_status = Corr2Sensor.WARN
-            for key in ['timeout_err_cnt']:
-                if sensordict[key].status() == Corr2Sensor.ERROR:
+                    sens_val = 'degraded'
+                    is_ok=False
+            elif sensordict['err_cnt'].status() == Corr2Sensor.ERROR:
                     device_status = Corr2Sensor.ERROR
-
-            sens_val = 'fail'
-            if(device_status == Corr2Sensor.NOMINAL):
-                sens_val = 'ok'
-            elif(device_status == Corr2Sensor.WARN):
-                sens_val = 'degraded'
+                    sens_val = 'fail'
+                    is_ok=False
 
             sensordict['device_status'].set(
                 value=sens_val, status=device_status)
+
+        if not is_ok:
+            x_host.logger.error("BRAM RX reorder error: %s"%(str(rv)))
 
     except Exception as e:
         LOGGER.error('Error updating RX reorder sensors for {} - '
@@ -489,19 +476,20 @@ def _cb_xeng_pack(sensors, x_host, sensor_manager,sensor_task):
 
     functionStartTime = time.time();
     #print("20 on %s Started at %f" % (x_host.host ,functionStartTime))
-    value = 'ok'
-    status = Corr2Sensor.NOMINAL
     try:
-        executor = sensors[0]['align_err_cnt'].executor
-        #rv = yield executor.submit(x_host.get_pack_status)
         rv = x_host.get_pack_status()
+        is_ok=True
         for n_xengcore, sensordict in enumerate(sensors):
-            for key in ['align_err_cnt', 'overflow_err_cnt']:
-                sensordict[key].set(value=rv[n_xengcore][key], errif='changed')
-                if sensordict[key].status() == Corr2Sensor.ERROR:
-                    status = Corr2Sensor.ERROR
-                    value = 'fail'
-                sensordict['device_status'].set(value=value, status=status)
+            accum_errors = rv[n_xengcore]['align_err_cnt'] + rv[n_xengcore]['overflow_err_cnt'] 
+            sensordict['err_cnt'].set(value=accum_errors, errif='changed')
+            if sensordict['err_cnt'].status() == Corr2Sensor.ERROR:
+                sensordict['device_status'].set(value='fail', status=Corr2Sensor.ERROR)
+                is_ok=False
+            else:
+                sensordict['device_status'].set(value='ok', status=Corr2Sensor.NOMINAL)
+        if not is_ok: 
+            x_host.logger.error("SPEAD pack error: %s"%(str(rv)))
+
     except Exception as e:
         LOGGER.error('Error updating xeng pack sensors for {} - '
                      '{}'.format(x_host.host, e.message))
@@ -572,37 +560,13 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.device_status, '{}.spead-rx.device-status'.format(xhost),
                 'X-engine RX SPEAD unpack device status',
                 executor=executor),
-            #            'err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-timestamp-err-cnt'.format(xhost),
-            #            'X-engine RX SPEAD packet errors',
-            #            executor=executor),
             'cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.spead-rx.cnt'.format(xhost),
                 'X-engine RX SPEAD packet counter',
                 executor=executor),
-            #            'header_err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-header-err-cnt'.format(xhost),
-            #            'X-engine RX SPEAD packet unpack header errors',
-            #            executor=executor),
-            #            'magic_err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-magic-err-cnt'.format(xhost),
-            #            'X-engine RX SPEAD magic field errors',
-            #            executor=executor),
-            #            'pad_err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-pad-err-cnt'.format(xhost),
-            #            'X-engine RX SPEAD padding errors',
-            #            executor=executor),
-            #            'pkt_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-pkt-cnt'.format(xhost),
-            #            'X-engine RX SPEAD packet count',
-            #            executor=executor),
-            #            'pkt_len_err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-pkt-len-err-cnt'.format(xhost),
-            #            'X-engine RX SPEAD packet length errors',
-            #            executor=executor),
-            'time_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.spead-rx.time-err-cnt'.format(xhost),
-                'X-engine RX SPEAD packet timestamp has non-zero lsbs.',
+            'err_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.spead-rx.err-cnt'.format(xhost),
+                'X-engine RX SPEAD packet error counter.',
                 executor=executor),
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_rx_spead',_x.host))
@@ -610,7 +574,6 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
 
 
     # HMC reorders
-
     for _x in sens_man.instrument.xhosts:
         executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
@@ -618,25 +581,14 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
         sensors = {
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{pref}.device-status'.format(pref=pref),
-                'Overall status of this HMC-reorder.',
+                'Overall status of this HMC packet reorder.',
                 executor=executor),
-            'dest_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dest-err-cnt'.format(pref),
-                'X-engine is receiving packets for a different X-engine.',
-                executor=executor),
-            'ts_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.timestep-err-cnt'.format(pref),
-                'X-engine RX timestamps not incrementing correctly.', executor=executor),
+            'err_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.err-cnt'.format(pref),
+                'X-engine error count while reordering packets.', executor=executor),
             'miss_err_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.miss-err-cnt'.format(pref),
-                'X-engine error reordering packets: missing packet.', executor=executor),
-          #  'hmc_overflow_err_cnt': sens_man.do_sensor(
-          #      Corr2Sensor.integer, '{}.hmc-overflow-err-cnt'.format(pref),
-          #      'X-engine error reordering packets: HMC link not ready.',
-          #      executor=executor),
-            'hmc_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.hmc-err-cnt'.format(pref),
-                'HMC hardware memory error counters.', executor=executor),
+                'X-engine missing F-engine packet count; data filled with zeros.', executor=executor),
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_hmc_reorder',_x.host))
         ioloop.add_callback(_cb_xeng_hmc_reorder, sensors, _x, sens_man,sensor_task)
@@ -670,28 +622,13 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
             sensordict['device_status'] = sens_man.do_sensor(
                 Corr2Sensor.device_status, '{pref}.device-status'.format(pref=pref),
                 'Overall status of this bram-reorder.')
-            sensordict['discard_err_cnt'] = sens_man.do_sensor(
-                Corr2Sensor.integer, '{pref}.discard-err-cnt'.format(pref=pref),
-                'BRAM Reorder discard errors.', executor=executor)
-            sensordict['timeout_err_cnt'] = sens_man.do_sensor(
-                Corr2Sensor.integer, '{pref}.timeout-err-cnt'.format(pref=pref),
-                'BRAM Reorder block timed out waiting for data error counter.', executor=executor)
-            sensordict['missed_err_cnt'] = sens_man.do_sensor(
-                Corr2Sensor.integer, '{pref}.missing-err-cnt'.format(pref=pref),
-                'BRAM Reorder block missing data words error counter.', executor=executor)
+            sensordict['err_cnt'] = sens_man.do_sensor(
+                Corr2Sensor.integer, '{pref}.err-cnt'.format(pref=pref),
+                'BRAM packet reorder errors.', executor=executor)
             sensors.append(sensordict)
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_rx_reorder',_x.host))
         ioloop.add_callback(_cb_xeng_rx_reorder, sensors, _x, sens_man,sensor_task)
 
-
-#        # VACC accumulations per second
-#        for xctr in range(_x.x_per_fpga):
-#            pref = '{xhost}-xeng{xctr}-'.format(xhost=xhost, xctr=xctr)
-#            sensor = sens_man.do_sensor(
-#                Corr2Sensor.float, '{pref}accs-per-sec'.format(pref=pref),
-#                'Number of accumulations per second for this X-engine on '
-#                'this host.', executor=executor)
-#        ioloop.add_callback(_cb_xeng_vacc_accs_ps, _x, executor, sens_man)
 
     # VACC
     sensors_value = {}
@@ -746,16 +683,12 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                     '{}.device-status'.format(pref),
                     'X-engine pack (TX) status',
                     executor=executor),
-                'align_err_cnt': sens_man.do_sensor(
+                'err_cnt': sens_man.do_sensor(
                     Corr2Sensor.integer,
-                    '{}.align-err-cnt'.format(pref),
-                    'X-engine pack (TX) misalignment error count',
-                    executor=executor),
-                'overflow_err_cnt': sens_man.do_sensor(
-                    Corr2Sensor.integer,
-                    '{}.overflow-err-cnt'.format(pref),
-                    'X-engine pack (TX) fifo overflow error count',
-                    executor=executor)}
+                    '{}.err-cnt'.format(pref),
+                    'X-engine pack (TX) error count',
+                    executor=executor)
+                }
             sensors.append(sensordict)
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_pack',_x.host))
         ioloop.add_callback(_cb_xeng_pack, sensors, _x, sens_man,sensor_task)

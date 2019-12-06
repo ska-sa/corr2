@@ -609,21 +609,20 @@ def _cb_feng_rx_spead(sensors, f_host, sensor_manager,sensor_task):
     # SPEAD RX
     try:
         results = f_host.get_unpack_status()
-#        accum_errors=0
-#        for key in ['header_err_cnt','magic_err_cnt','pad_err_cnt','pkt_len_err_cnt','time_err_cnt']:
-#            accum_errors+=results[key]
-        sensors['time_err_cnt'].set(
-            value=results['time_err_cnt'],
-            errif='changed')
+        sensors['err_cnt'].set(value=results['time_err_cnt'],warnif='changed')
         sensors['cnt'].set(value=results['pkt_cnt'], warnif='notchanged')
-        timestamp, status, value = sensors['cnt'].read()
-        value = (status == Corr2Sensor.NOMINAL)
 
-        value = 'fail'
-        if(status == Corr2Sensor.NOMINAL):
-            value = 'ok'
-
-        sensors['device_status'].set(value=value, status=status)
+        if sensors['err_cnt'].status() == Corr2Sensor.ERROR:
+            sensors['device_status'].set(value='fail', status=Corr2Sensor.ERROR)
+            f_host.logger.error("RX SPEAD error: %s"%str(results))
+        elif sensors['err_cnt'].status() == Corr2Sensor.WARN:
+            sensors['device_status'].set(value='degraded', status=Corr2Sensor.WARN)
+            f_host.logger.warn("RX SPEAD warning: %s"%str(results))
+        elif sensors['cnt'].status() == Corr2Sensor.WARN:
+            sensors['device_status'].set(value='degraded', status=Corr2Sensor.WARN)
+            f_host.logger.error("No valid SPEAD data being received: %s"%str(results))
+        else:
+            sensors['device_status'].set(value='ok', status=Corr2Sensor.NOMINAL)
     except Exception as e:
         sensor_manager.logger.error(
             'Error updating spead sensors for {} - {}'.format(
@@ -652,35 +651,19 @@ def _cb_feng_rx_reorder(sensors, f_host, sensor_manager,sensor_task):
             sensor.set(status=Corr2Sensor.FAILURE,
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
 
-
     functionStartTime = time.time();
     ##print("12 on %s Started at %f" % (f_host.host ,functionStartTime))
 
     try:
         results = f_host.get_rx_reorder_status()
         device_status = True
-        for key in [
-            'timestep_err_cnt',
-            'receive_err_cnt',
-            'discard_cnt',
-            'relock_err_cnt',
-                'overflow_err_cnt']:
-            sensor = sensors[key]
-            sensor.set(value=results[key], errif='changed')
-        for key in [
-            'timestep_err_cnt',
-            'receive_err_cnt',
-            'relock_err_cnt',
-                'overflow_err_cnt']:
-            sensor = sensors[key]
-            if sensor.status() == Corr2Sensor.ERROR:
-                device_status = False
-
-        if device_status:
-            sensors['device_status'].set(
-                status=Corr2Sensor.NOMINAL, value='ok')
-        else:
+        err_cnt = results['timestep_err_cnt'] + results['receive_err_cnt'] + \
+                    results['relock_err_cnt'] + results['overflow_err_cnt']
+        sensors['err_cnt'].set(value=err_cnt, errif='changed')
+        if sensors['err_cnt'].status() == Corr2Sensor.ERROR:
             sensors['device_status'].set(status=Corr2Sensor.ERROR, value='fail')
+        else:
+            sensors['device_status'].set(status=Corr2Sensor.NOMINAL, value='ok')
 
     except Exception as e:
         sensor_manager.logger.error('Error updating rx_reorder sensors for {} - '
@@ -771,38 +754,14 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             'device_status': sens_man.do_sensor(
                 Corr2Sensor.device_status, '{}.spead-rx.device-status'.format(fhost),
                 'F-engine is not encountering SPEAD errors.', executor=executor),
-            #            'err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-timestamp-err-cnt'.format(fhost),
-            #            'F-engine RX SPEAD packet errors',
-            #            executor=executor),
             'cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.spead-rx.pkt-cnt'.format(fhost),
                 'F-engine RX SPEAD packet counter',
                 executor=executor),
-            #            'header_err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-header-err-cnt'.format(fhost),
-            #            'F-engine RX SPEAD packet unpack header errors',
-            #            executor=executor),
-            #            'magic_err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-magic-err-cnt'.format(fhost),
-            #            'F-engine RX SPEAD magic field errors',
-            #            executor=executor),
-            #            'pad_err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-pad-err-cnt'.format(fhost),
-            #            'F-engine RX SPEAD padding errors',
-            #            executor=executor),
-            #            'pkt_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-pkt-cnt'.format(fhost),
-            #            'F-engine RX SPEAD packet count',
-            #            executor=executor),
-            #            'pkt_len_err_cnt': sens_man.do_sensor(
-            #            Corr2Sensor.integer, '{}-spead-pkt-len-err-cnt'.format(fhost),
-            #            'F-engine RX SPEAD packet length errors',
-            #            executor=executor),
-            'time_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.spead-rx.pkt-time-err-cnt'.format(
+            'err_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.spead-rx.err-cnt'.format(
                     fhost),
-                'F-engine RX SPEAD packet timestamp has non-zero lsbs.',
+                'F-engine RX SPEAD error counter.',
                 executor=executor),
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_rx_spead',_f.host))
@@ -815,26 +774,10 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.device_status, '{}.network-reorder.device-status'.format(fhost),
                 'F-engine is receiving a good, clean digitiser data stream.',
                 executor=executor),
-            'timestep_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.network-reorder.timestep-err-cnt'.format(fhost),
-                'F-engine RX timestamps not incrementing correctly.',
-                executor=executor),
-            'receive_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.network-reorder.miss-err-cnt'.format(fhost),
-                'F-engine error reordering packets: missing packet.',
-                executor=executor),
-            'discard_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.network-reorder.discard-err-cnt'.format(fhost),
-                'F-engine error reordering packets: discarded packet (bad timestamp).',
-                executor=executor),
-            'relock_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.network-reorder.relock-err-cnt'.format(fhost),
-                'F-engine error reordering packets: relocked to deng stream count.',
-                executor=executor),
-            'overflow_err_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.network-reorder.overflow-err-cnt'.format(fhost),
-                'F-engine error reordering packets: input buffer overflow.',
-                executor=executor),
+            'err_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.network-reorder.err-cnt'.format(fhost),
+                'Error counter from reordering digitiser data stream packets.',
+                executor=executor)
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_rx_reorder',_f.host))
         ioloop.add_callback(_cb_feng_rx_reorder, rx_reorder_sensors, _f, sens_man,sensor_task)
@@ -986,30 +929,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             'resync_cnt': sens_man.do_sensor(
                 Corr2Sensor.integer, '{}.sync.resync-cnt'.format(fhost),
                 'Count of F-engine sync losses (or attempts to resynchronise).', executor=executor),
-            #'cd_resync_cnt': sens_man.do_sensor(
-            #    Corr2Sensor.integer, '{}.sync.cd-resync-cnt'.format(fhost),
-            #    'Count of F-engine coarse delay faults causing system resync.', executor=executor),
-            #'ct_resync_cnt': sens_man.do_sensor(
-            #    Corr2Sensor.integer, '{}.sync.ct-resync-cnt'.format(fhost),
-            #    'Count of F-engine corner-turner faults causing system resync', executor=executor),
-            #'fault_clear_timeout_cnt': sens_man.do_sensor(
-            #    Corr2Sensor.integer, '{}.sync.fault-clear-timeout-cnt'.format(fhost),
-            #    'Count of F-engine fault clear timeouts (faults have all cleared, but system hasnt resyncd).', executor=executor),
-            #'fault_present_timeout_cnt': sens_man.do_sensor(
-            #    Corr2Sensor.integer, '{}.sync.fault-present-timeout-cnt'.format(fhost),
-            #    'Count of F-engine fault present timeout (a fault was continuously present for a long time)', executor=executor),
-            #'syncd': sens_man.do_sensor(
-            #    Corr2Sensor.boolean, '{}.sync.syncd'.format(fhost),
-            #    'F-engine is synchronised to digitiser stream.', executor=executor),
-            #'time_diff_resync_cnt': sens_man.do_sensor(
-            #    Corr2Sensor.integer, '{}.sync.time-diff-resync-cnt'.format(fhost),
-            #    'Count of F-engine timestamp faults causing host to resync.', executor=executor),
-            #'timestep_resync_cnt': sens_man.do_sensor(
-            #    Corr2Sensor.integer, '{}.sync.timestep-resync-cnt'.format(fhost),
-            #    'Count of the number of times jumps in the digitiser streams timestamps were seen.', executor=executor),
-            #'timeout_resync_cnt': sens_man.do_sensor(
-            #    Corr2Sensor.integer, '{}.sync.timeout-resync-cnt'.format(fhost),
-            #    'Count of the number of times the synchronisation process timed-out.', executor=executor),
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_sync',_f.host))
         ioloop.add_callback(_cb_feng_sync, sync_sensors, _f, sens_man,sensor_task)

@@ -19,8 +19,10 @@ from corr2 import corr_monitoring_loop as corr_mon_loop
 
 from corr2.corr2LogHandlers import getKatcpLogger, \
                                 servlet_log_level_request, \
-                                create_katcp_and_file_handlers
-from corr2.corr2LogHandlers import get_all_loggers, reassign_log_handlers
+                                create_katcp_and_file_handlers, \
+                                check_logging_level, \
+                                get_all_loggers, \
+                                reassign_log_handlers
 
 _DEFAULT_LOG_DIR = '/var/log/corr'
 
