@@ -207,13 +207,15 @@ class Fengine(object):
         control1_reg = self.host.registers['delay%i_tl_control1' % self.offset]
         control0_reg = self.host.registers['delay%i_tl_control0' % self.offset]
         ao=control0_reg._fields['arm'].offset
-        self.logger.debug('Requested load mcnt %i.'%mcnt)
-        load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
-        load_time_msw = int(mcnt/(2**32))
+        #TODO: don't floor the timestamp, but round it sanely.
+        mcnt_rounded = (int(mcnt)>>self.host.timestamp_decimation)<<self.host.timestamp_decimation
+        self.logger.debug('Requested load mcnt %i rounded to %i.'%(mcnt,mcnt_rounded))
+        load_time_lsw = mcnt_rounded - (int(mcnt_rounded/(2**32)))*(2**32)
+        load_time_msw = int(mcnt_rounded/(2**32))
         control1_reg.write_int(load_time_lsw)
         control0_reg.write_int((1<<ao)+(load_time_msw))
         control0_reg.write_int((0<<ao)+(load_time_msw))
-        return mcnt
+        return mcnt_rounded
 
     def _delay_write_delay(self, delay):
         """
@@ -252,10 +254,9 @@ class Fengine(object):
         reg_bw = 32
 
         #figure out maximum range, and clip if necessary:
-        #max_positive_delta_delay = 2 ** (reg_bw - reg_bp - 1) - 1 / float(2 ** reg_bp)
+        max_positive_delta_delay = 2 ** (reg_bw - reg_bp - 1) - 1 / float(2 ** reg_bp)
         #max_negative_delta_delay = -2 ** (reg_bw - reg_bp - 1) + 1 / float(2 ** reg_bp)
-        max_positive_delta_delay = 1
-        max_negative_delta_delay = -1
+        max_negative_delta_delay = -1.
         if delta_delay_shifted > max_positive_delta_delay:
             delta_delay_shifted = max_positive_delta_delay
             self.logger.warn('Setting largest possible positive delay delta. ' \
@@ -483,11 +484,14 @@ class FpgaFHost(FpgaHost):
             self.n_chans = int(config['n_chans'])
             self.min_load_time = float(config['min_load_time'])
             self.decimation_factor = int(config['decimation_factor'])
+            import numpy
+            self.timestamp_decimation = int(numpy.log2(self.n_chans*self.decimation_factor)+1)
         else:
             self.num_fengines = None
             self.n_chans = None
             self.min_load_time = None
             self.decimation_factor = None
+            self.timestamp_decimation = None
 
         self.host_type = 'fhost'
 
