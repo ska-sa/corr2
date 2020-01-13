@@ -745,11 +745,12 @@ class FpgaFHost(FpgaHost):
             ret['p%i_dig_clip_cnt'%feng.offset]=self.registers['unpack_adc_clip%i'%feng.offset].read()['data']['sample_cnt']
         return ret
 
-    def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10):
+    def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10, trig_level=0):
         """
         Read the ADC snapshots from this Fhost
         :param loadcnt: the trigger/load time in ADC samples.
         :param timeout: timeout in seconds for snapshot read operation.
+        :param trig_level: the oscilloscope-like trigger point (range: 0.0 - 1.0)
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
         if input_name != None:
@@ -762,6 +763,10 @@ class FpgaFHost(FpgaHost):
             self.registers.trig_time_lsw.write_int(ltime_lsw)
             self.snapshots.snap_adc0_ss.arm()
             self.snapshots.snap_adc1_ss.arm()
+        elif (trig_level != 0):
+            self.registers.trig_level.write(level=trig_level)
+            self.snapshots.snap_adc0_ss.arm(circular_capture=True)
+            self.snapshots.snap_adc1_ss.arm(circular_capture=True)
         else:
             self.snapshots.snap_adc0_ss.arm(man_trig=True)
             self.snapshots.snap_adc1_ss.arm(man_trig=True)
