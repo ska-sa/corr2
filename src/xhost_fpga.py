@@ -100,7 +100,7 @@ class FpgaXHost(FpgaHost):
             ctr += 1
             if ctr == 64:
                 break
-        LOGGER.info('%s: Found %i X-engines.' % (self.host, ctr))
+        self.logger.info('%s: Found %i X-engines.' % (self.host, ctr))
         return ctr
 
     def clear_status(self):

@@ -256,7 +256,6 @@ class Instrument(object):
 
     @property
     def synchronisation_epoch(self):
-        # LOGGER.info('@synchronisation_epoch getter')
         return self._synchronisation_epoch
 
     @synchronisation_epoch.setter
@@ -266,7 +265,6 @@ class Instrument(object):
         :param new_synch_time: UNIX time
         :return: <nothing>
         """
-        # LOGGER.info('@synchronisation_epoch setter')
         time_now = time.time()
         if hasattr(self, 'timestamp_bits'):
             if new_synch_time < time_now - (2**self.timestamp_bits):

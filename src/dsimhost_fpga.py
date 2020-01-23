@@ -16,8 +16,6 @@ from host_fpga import FpgaHost
 from utils import parse_ini_file
 from data_stream import StreamAddress
 
-LOGGER = logging.getLogger(__name__)
-
 # for DM in [pc cm ^{ -3}] , time in [s] , and frequency in [Hz]
 alpha = 2.410e-16
 
@@ -200,7 +198,7 @@ class FpgaDsimHost(FpgaHost):
         """
         FpgaHost.__init__(self, host=host, katcp_port=katcp_port, **kwargs)
         if config is not None and config_file is not None:
-            LOGGER.warn('config file and config supplied, defaulting to config')
+            self.logger.warn('config file and config supplied, defaulting to config')
         self.config = config or parse_ini_file(config_file)['dsimengine']
         self.bitstream = bitstream
         self.sine_sources = AttributeContainer()
@@ -269,7 +267,7 @@ class FpgaDsimHost(FpgaHost):
         if self.bitstream:
             self._program()
         else:
-            LOGGER.info('Not programming host {} since no bitstream is configured'.format(self.host))
+            self.logger.info('Not programming host {} since no bitstream is configured'.format(self.host))
         if not self.is_running():
             raise RuntimeError('D-engine {host} not running'.format(**self.__dict__))
         self.get_system_information(self.bitstream)
@@ -325,10 +323,10 @@ class FpgaDsimHost(FpgaHost):
         """
         Program the bitstream to fpga and ensure 10GbE's are not transmitting
         """
-        LOGGER.info('Programming Dsim roach {host} with file {bitstream}'.format(**self.__dict__))
+        self.logger.info('Programming Dsim roach {host} with file {bitstream}'.format(**self.__dict__))
         stime = time.time()
         self.upload_to_ram_and_program(self.bitstream)
-        LOGGER.info('Programmed {} in {:.2f} seconds.'.format(self.host, time.time() - stime))
+        self.logger.info('Programmed {} in {:.2f} seconds.'.format(self.host, time.time() - stime))
         # Ensure data is not sent before the gbes are configured
         self.enable_data_output(False)
 
@@ -386,7 +384,7 @@ class FpgaDsimHost(FpgaHost):
             addr_offset = 0
             for pol_gbe_ctr in range(0, gbes_per_pol):
                 txip = txaddr_base + addr_offset
-                LOGGER.info('{} sending to: {}.{} port {}'.format(self.host, txaddr_prefix, txip, port))
+                self.logger.info('{} sending to: {}.{} port {}'.format(self.host, txaddr_prefix, txip, port))
                 self.write_int('gbe_iptx{}'.format(gbe_ctr), IpAddress.str2ip('{}.{}'.format(
                     txaddr_prefix, txip)))
                 if not single_destination:

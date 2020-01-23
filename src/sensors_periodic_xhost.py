@@ -13,11 +13,7 @@ from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
 import sensor_scheduler
 from sensors import Corr2Sensor, boolean_sensor_do
 
-
-LOGGER = logging.getLogger(__name__)
-
 host_offset_lookup = {}
-
 
 @gen.coroutine
 def _cb_xhost_lru(sensor_manager, sensor, sensors, x_host,sensor_task):
