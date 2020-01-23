@@ -87,7 +87,7 @@ def _cb_xhost_lru(sensor_manager, sensor, sensors, x_host,sensor_task):
         sensor.set(value=sens_val, status=status)
 
     except Exception as e:
-        LOGGER.error(
+        sensor_manager.logger.error(
             'Error updating LRU sensor for {} - {}'.format(
                 x_host.host, e.message))
         for xctr in range(x_host.x_per_fpga):
@@ -168,7 +168,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
             status=device_status)
 
     except Exception as e:
-        LOGGER.error(
+        sensor_manager.logger.error(
             'Error updating gbe_stats for {} - {}'.format(
                 x_host.host, e.message))
         set_failure()
@@ -191,7 +191,6 @@ def _cb_xeng_rx_spead(sensors, x_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     #print("15 on %s Started at %f" % (x_host.host ,functionStartTime))
     # SPEAD RX
-    executor = sensors['time_err_cnt'].executor
     status = Corr2Sensor.NOMINAL
     value = 'ok'
     try:
@@ -209,8 +208,8 @@ def _cb_xeng_rx_spead(sensors, x_host, sensor_manager,sensor_task):
             value = 'degraded'
         sensors['device_status'].set(value=value, status=status)
     except Exception as e:
-        LOGGER.error('Error updating SPEAD sensors for {} - '
-                     '{}'.format(x_host.host, e.message))
+        sensor_manager.logger.error('Error updating SPEAD sensors for {} - '
+                                    '{}'.format(x_host.host, e.message))
         set_failure()
 
     sensor_manager.logger.debug('_cb_xeng_rx_spead ran')
@@ -264,7 +263,7 @@ def _cb_xeng_hmc_reorder(sensors, x_host, sensor_manager,sensor_task):
             status=device_status)
 
     except Exception as e:
-        LOGGER.error('Error updating HMC RX reorder sensors for {} - '
+        sensor_manager.logger.error('Error updating HMC RX reorder sensors for {} - '
                      '{}'.format(x_host.host, e.message))
         set_failure()
 
@@ -309,7 +308,7 @@ def _cb_xeng_missing_ants(sensors, sensor_top, x_host, sensor_manager,sensor_tas
                 value = 'degraded'
         sensor_top.set(status=status, value=value)
     except Exception as e:
-        LOGGER.error('Error updating RX reorder sensors for {} - '
+        sensor_manager.logger.error('Error updating RX reorder sensors for {} - '
                      '{}'.format(x_host.host, e.message))
         set_failure()
 
@@ -363,7 +362,7 @@ def _cb_xeng_rx_reorder(sensors, x_host, sensor_manager,sensor_task):
             x_host.logger.error("BRAM RX reorder error: %s"%(str(rv)))
 
     except Exception as e:
-        LOGGER.error('Error updating RX reorder sensors for {} - '
+        sensor_manager.logger.error('Error updating RX reorder sensors for {} - '
                      '{}'.format(x_host.host, e.message))
 
     sensor_manager.logger.debug('_cb_xeng_rx_reorder ran')
@@ -448,7 +447,7 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
                             faulty_host.logger.error('VACC HMC1 error status: %s'%(str(faulty_host.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())))
                     sensordict['device_status'].set(value=value, status=status)
     except Exception as e:
-        LOGGER.error('Error updating VACC sensors '
+        sensor_manager.logger.error('Error updating VACC sensors '
                      '- {}'.format(e.message))
         set_failure()
 
@@ -491,9 +490,9 @@ def _cb_xeng_pack(sensors, x_host, sensor_manager,sensor_task):
             x_host.logger.error("SPEAD pack error: %s"%(str(rv)))
 
     except Exception as e:
-        LOGGER.error('Error updating xeng pack sensors for {} - '
+        sensor_manager.logger.error('Error updating xeng pack sensors for {} - '
                      '{}'.format(x_host.host, e.message))
-    LOGGER.debug('_cb_xeng_pack ran on {}'.format(x_host.host))
+    sensor_manager.logger.debug('_cb_xeng_pack ran on {}'.format(x_host.host))
 
     sensor_manager.logger.debug('_cb_xeng_pack ran')
 
@@ -575,7 +574,6 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
 
     # HMC reorders
     for _x in sens_man.instrument.xhosts:
-        executor = host_executors[_x.host]
         xhost = host_offset_lookup[_x.host]
         pref = '{xhost}.network-reorder'.format(xhost=xhost)
         sensors = {
