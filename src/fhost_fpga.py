@@ -741,7 +741,8 @@ class FpgaFHost(FpgaHost):
             raw=self.registers['adc_dev%i'%feng.offset].read()['data']
             ret['p%i_min'%feng.offset]=raw['min']
             ret['p%i_max'%feng.offset]=raw['max']
-            ret['p%i_pwr_dBFS'%feng.offset]=10*numpy.log10(self.registers['adc_pwr%i'%feng.offset].read()['data']['reg'])
+            #scale from dBov (square-wave referenced) to dBFS (sine-wave referenced) by adjusting up by 3dB.
+            ret['p%i_pwr_dBFS'%feng.offset]=10*numpy.log10(self.registers['adc_pwr%i'%feng.offset].read()['data']['reg'])+3
             ret['p%i_dig_clip_cnt'%feng.offset]=self.registers['unpack_adc_clip%i'%feng.offset].read()['data']['sample_cnt']
         return ret
 
