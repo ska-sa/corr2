@@ -488,11 +488,11 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
                        value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
             # heck dictionary
     try:
-        result = f_host.gbes.gbe0.get_stats()
+        result = f_host.gbes.gbe0.get_hw_gbe_stats()
         tx_enabled = f_host.registers.control.read()['data']['gbe_txen']
         sensors['tx_enabled'].set(errif='False', value=tx_enabled)
-        sensors['tx_err_cnt'].set(errif='changed', value=result['tx_over'])
-        sensors['rx_err_cnt'].set(errif='changed', value=result['rx_bad_pkts'])
+        sensors['tx_err_cnt'].set(errif='changed', value=result['tx_over_err_cnt'])
+        sensors['rx_err_cnt'].set(errif='changed', value=result['rx_bad_pkt_cnt'])
         sensors['tx_pps'].set(
             status=Corr2Sensor.NOMINAL,
             value=result['tx_pps'])
@@ -501,7 +501,7 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
             value=result['tx_gbps'])
 
 # The software-based PPS and Gbps counters aren't reliable, so ignore them for now:
-        if (result['rx_pps'] > 800000) and (result['rx_pps'] < 900000):
+        if (result['rx_pps'] > 500000) and (result['rx_pps'] < 900000):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.NOMINAL,
                 value=result['rx_pps'])
@@ -509,9 +509,9 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_pps'])
-            #device_status = Corr2Sensor.WARN
+            device_status = Corr2Sensor.WARN
 
-        if (result['rx_gbps'] > 35) and (result['rx_gbps'] < 38):
+        if (result['rx_gbps'] > 20) and (result['rx_gbps'] < 38):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.NOMINAL,
                 value=result['rx_gbps'])
@@ -519,7 +519,7 @@ def _cb_fhost_check_network(sensors, f_host, sensor_manager,sensor_task):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_gbps'])
-            #device_status = Corr2Sensor.WARN
+            device_status = Corr2Sensor.WARN
 
         if ((sensors['tx_err_cnt'].status() == Corr2Sensor.ERROR) or
             (sensors['rx_err_cnt'].status() == Corr2Sensor.ERROR) or
@@ -746,8 +746,8 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.network.rx-err-cnt'.format(fhost),
                 'RX network error count (bad packets received)', executor=executor),
         }
-        #sensor_task = sensor_scheduler.SensorTask('_cb_fhost_check_network on '+_f.host)
-        #ioloop.add_callback(_cb_fhost_check_network, network_sensors, _f, sens_man,sensor_task)
+        sensor_task = sensor_scheduler.SensorTask('_cb_fhost_check_network on '+_f.host)
+        ioloop.add_callback(_cb_fhost_check_network, network_sensors, _f, sens_man,sensor_task)
 
         # SPEAD counters
         spead_rx_sensors = {

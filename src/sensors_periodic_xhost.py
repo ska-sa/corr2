@@ -114,13 +114,11 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
 
     #print("14 on %s Started at %f" % (x_host.host ,functionStartTime))
 
-    executor = sensors['tx_pps'].executor
     device_status = Corr2Sensor.NOMINAL
     try:
-        #result = yield executor.submit(x_host.gbes.gbe0.get_stats)
-        result = x_host.gbes.gbe0.get_stats()
-        sensors['tx_err_cnt'].set(errif='changed', value=result['tx_over'])
-        sensors['rx_err_cnt'].set(errif='changed', value=result['rx_bad_pkts'])
+        result = x_host.gbes.gbe0.get_hw_gbe_stats()
+        sensors['tx_err_cnt'].set(errif='changed', value=result['tx_over_err_cnt'])
+        sensors['rx_err_cnt'].set(errif='changed', value=result['rx_bad_pkt_cnt'])
         sensors['tx_pps'].set(
             status=Corr2Sensor.NOMINAL,
             value=result['tx_pps'])
@@ -128,8 +126,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
             status=Corr2Sensor.NOMINAL,
             value=result['tx_gbps'])
 
-#TODO The software-based PPS and Gbps counters aren't reliable, so ignore em for now:
-        if (result['rx_pps'] < 900000) and (result['rx_pps'] > 800000):
+        if (result['rx_pps'] < 3500000) and (result['rx_pps'] > 2000000):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.NOMINAL,
                 value=result['rx_pps'])
@@ -137,9 +134,9 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_pps'])
-            #device_status = Corr2Sensor.WARN
+            device_status = Corr2Sensor.WARN
 
-        if (result['rx_gbps'] < 32) and (result['rx_gbps'] > 30):
+        if (result['rx_gbps'] < 32) and (result['rx_gbps'] > 18):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.NOMINAL,
                 value=result['rx_gbps'])
@@ -147,7 +144,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.WARN,
                 value=result['rx_gbps'])
-            #device_status = Corr2Sensor.WARN
+            device_status = Corr2Sensor.WARN
 
         if ((sensors['tx_err_cnt'].status() == Corr2Sensor.ERROR) or
                 (sensors['rx_err_cnt'].status() == Corr2Sensor.ERROR)):
@@ -190,7 +187,6 @@ def _cb_xeng_rx_spead(sensors, x_host, sensor_manager,sensor_task):
     status = Corr2Sensor.NOMINAL
     value = 'ok'
     try:
-        #results = yield executor.submit(x_host.get_unpack_status)
         results = x_host.get_unpack_status()
         sensors['err_cnt'].set(
             value=results['time_err_cnt'],
@@ -230,9 +226,7 @@ def _cb_xeng_hmc_reorder(sensors, x_host, sensor_manager,sensor_task):
     functionStartTime = time.time(); 
     #print("16 on %s Started at %f" % (x_host.host ,functionStartTime))       
 
-    executor = sensors['post_ok'].executor
     try:
-        #results = yield executor.submit(x_host.get_hmc_reorder_status)
         results = x_host.get_hmc_reorder_status()
         device_status = Corr2Sensor.NOMINAL
         sens_val = 'ok'
@@ -291,11 +285,9 @@ def _cb_xeng_missing_ants(sensors, sensor_top, x_host, sensor_manager,sensor_tas
     functionStartTime = time.time();
     #print("17 on %s Started at %f" % (x_host.host ,functionStartTime))
 
-    executor = sensor_top.executor
     status = Corr2Sensor.NOMINAL
     value = 'ok'
     try:
-        #results = yield executor.submit(x_host.get_missing_ant_counts)
         results = x_host.get_missing_ant_counts()
         for n_ant, missing in enumerate(results):
             sensors[n_ant].set(value=missing, warnif='changed')
@@ -402,10 +394,8 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
     functionStartTime = time.time();
     #print("19 on all at %f" % (functionStartTime))
 
-    executor = sensors_value['synchronised'].executor
     instrument = sensors_value['synchronised'].manager.instrument
     try:
-        #rv = yield executor.submit(instrument.xops.get_vacc_status)
         rv = instrument.xops.get_vacc_status()
         for _x in rv:
             if _x == 'synchronised':
@@ -542,8 +532,8 @@ def setup_sensors_xengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.integer, '{}.rx-err-cnt'.format(pref),
                 'RX network error count (bad packets received)', executor=executor),
         }
-        #sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_network',_x.host))
-        #ioloop.add_callback(_cb_xeng_network, network_sensors, _x, sens_man,sensor_task)
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_xeng_network',_x.host))
+        ioloop.add_callback(_cb_xeng_network, network_sensors, _x, sens_man,sensor_task)
 
     # SPEAD counters
 
