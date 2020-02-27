@@ -422,15 +422,14 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
                         value = 'fail'
                         faulty_host_idx=instrument.xops.board_ids[_x]
                         faulty_host=instrument.xhosts[faulty_host_idx]
-                        faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(rv)))
-                    else:
-                        status = Corr2Sensor.NOMINAL
-                        value = 'ok'
-                    if status == Corr2Sensor.ERROR:
+                        faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(sensors_value[_x][xctr])))
                         if (xctr < 2):
                             faulty_host.logger.error('VACC HMC0 error status: %s'%(str(faulty_host.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())))
                         else:
                             faulty_host.logger.error('VACC HMC1 error status: %s'%(str(faulty_host.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())))
+                    else:
+                        status = Corr2Sensor.NOMINAL
+                        value = 'ok'
                     sensordict['device_status'].set(value=value, status=status)
     except Exception as e:
         sensor_manager.logger.error('Error updating VACC sensors '
