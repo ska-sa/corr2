@@ -143,6 +143,10 @@ class Fengine(object):
             compl = numpy.vectorize(complex)(sdata['real{}'.format(which_chan)], sdata['imag{}'.format(which_chan)])
             return compl
         else:
+            try:
+                self.host.registers.quant_snap_ctrl.write(single_channel=False)
+            except:
+                pass
             snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
             #calculate number of snapshot reads required:
             n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4

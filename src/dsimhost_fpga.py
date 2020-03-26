@@ -66,7 +66,7 @@ class SineSource(Source):
         freq_field = self.freq_register.field_get_by_name('frequency')
         self.nr_freq_steps = 2**freq_field.width_bits
         self.max_freq = self.sample_rate_hz / 2.0
-        self.delta_freq = self.max_freq / (self.nr_freq_steps - 1)
+        self.delta_freq = self.max_freq / self.nr_freq_steps
 
     @property
     def frequency(self):
