@@ -566,14 +566,13 @@ def _cb_feng_sync(sensors, f_host, sensor_manager,sensor_task):
     functionStartTime = time.time();
     ##print("10 on %s Started at %f" % (f_host.host ,functionStartTime))
 
-    device_status = Corr2Sensor.NOMINAL
     try:
         results = f_host.get_sync_status()
         sensors['resync_cnt'].set(value=results['sync80_cnt'],errif='changed')
         if ((results['synced']) and not (results['board_in_fault']) and (sensors['resync_cnt'].status() == Corr2Sensor.NOMINAL)):
             sensors['device_status'].set(value='ok',status=Corr2Sensor.NOMINAL)
         else:
-            sensors['device_status'].set(value='fail',status=Corr2Sensor.FAILURE)
+            sensors['device_status'].set(value='fail',status=Corr2Sensor.ERROR)
             f_host.logger.error("Sync error: %s"%str(results)) 
 
     except Exception as e:
