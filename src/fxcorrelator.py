@@ -119,6 +119,10 @@ class FxCorrelator(Instrument):
         new_connection_string = '\n==========================================\n'
         self.logger.info('{0}Successfully created Instrument: {1}{0}'.format(new_connection_string, self.descriptor))
 
+        # update response timeout now - make it more aggressive now that we've established connection to all the hosts
+        self.response_timeout = self.min_load_time / 2.0
+        self._update_response_timeout(self.response_timeout)
+
     # @profile
     def initialise(self, program=True, configure=True,
                    require_epoch=False, *args, **kwargs):
@@ -461,6 +465,7 @@ class FxCorrelator(Instrument):
         Set up the different kind of hosts that make up this correlator.
         :return:
         """
+
         _target_class = fhost_fpga.FpgaFHost
 
         _feng_d = self.configd.get('fengine')
@@ -485,6 +490,7 @@ class FxCorrelator(Instrument):
                         host, str(exc)))
                 raise
             self.fhosts.append(fpgahost)
+
         # choose class (b-engine inherits x-engine functionality)
         if self.found_beamformer:
             _target_class = bhost_fpga.FpgaBHost
@@ -519,6 +525,21 @@ class FxCorrelator(Instrument):
                         _fh.host)
                     self.logger.error(errmsg)
                     raise RuntimeError(errmsg)
+
+    def _update_response_timeout(self, response_timeout):
+        """
+        Update the response timeout for Fpga Hosts
+        :return:
+        """
+        # access transport layer
+        host_transports = [host.transport for host in self.fhosts + self.xhosts]
+        # function to call to update the response timeout for the Fpga hosts
+        THREADED_FPGA_FUNC(
+            host_transports, timeout=self.timeout,
+            target_function=('_update_response_timeout', [response_timeout], {}))
+
+        # update the global timeout variable in case it was modified after initialisation
+        self.response_timeout = response_timeout
 
     def _read_config(self):
         """

@@ -120,6 +120,10 @@ class Corr2SensorServer(DeviceServer):
                                         log_filename=self.log_filename,
                                         log_file_dir=self.log_file_dir,
                                         logLevel=self.log_level)
+
+            # set response timeout
+            response_timeout = float(self.instrument.configd['FxCorrelator'].get('sensor_response_timeout', 0.1))
+            self.instrument._update_response_timeout(response_timeout)
             
             # Disable manually-issued sensor update informs (aka 'kcs' sensors):
             sensor_manager_inst = SensorManager(self, self.instrument,

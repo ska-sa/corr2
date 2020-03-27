@@ -449,7 +449,8 @@ class FpgaFHost(FpgaHost):
         super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port,
                                         bitstream=bitstream,
                                         transport=SkarabTransport,
-                                        connect=connect)
+                                        connect=connect,
+                                        **kwargs)
 
         self._config = config
 

@@ -15,7 +15,10 @@ class FpgaXHost(FpgaHost):
     def __init__(self, host, index, katcp_port=7147, bitstream=None,
                  connect=True, config=None, **kwargs):
         FpgaHost.__init__(self, host=host, katcp_port=katcp_port,
-                          bitstream=bitstream, connect=connect, transport=SkarabTransport)
+                          bitstream=bitstream, connect=connect,
+                          transport=SkarabTransport,
+                          **kwargs)
+
         try:
             descriptor = kwargs['descriptor']
         except KeyError:
