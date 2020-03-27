@@ -22,7 +22,7 @@ from corr2 import sensors
 from corr2.sensors import Corr2Sensor
 
 #This variable exists because of problems with kcs - the rack location sensor needs to be transmitted a few times
-reportRackLocation = 0;
+reportRackLocation = 0
 
 class Corr2HardwareSensorServer(katcp.DeviceServer):
 
@@ -31,7 +31,8 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
 
     # Device server build / instance information.
     BUILD_INFO = ('corr2', 0, 1, 'alpha')
-    #@profile
+
+    # @profile
     def __init__(self, *args, **kwargs):
         use_tornado = kwargs.pop('tornado')
         super(Corr2HardwareSensorServer, self).__init__(*args)
@@ -46,6 +47,9 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
                 log_file_dir = os.path.abspath('.')
             else:
                 log_file_dir = '/var/log/skarab'
+
+            # set timeout for the sensor reads
+            self.timeout = kwargs['timeout']
 
             start_time = str(time.time())
             log_filename = '{}_hardware_sensor_servlet.log'.format(kwargs['skarab_host'])
@@ -63,7 +67,8 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
 
             sensordict = dict()
             try:
-                sensordict = self.host.transport.get_sensor_data()
+                sensordict = self.host.transport.get_sensor_data(
+                    timeout=self.timeout)
             except Exception as e:
                 self.host.logger.error(
                     'Error retrieving {}s sensors - {}'.format(self.host, e.message))
@@ -102,13 +107,13 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
                     Corr2Sensor.device_status,'device-status',
                     'Overall SKARAB health')
 
-
     def start_sensor_loop(self):
         IOLoop.current().add_callback(
             _sensor_cb_hw,
             self.executor,
             self.sensors,
-            self.host)
+            self.host,
+            self.timeout)
 
     def setup_sensors(self):
         """
@@ -193,7 +198,7 @@ def is_sensor_list_status_ok(sensors_dict):
 
 
 @gen.coroutine
-def _sensor_cb_hw(executor, sensors, host):
+def _sensor_cb_hw(executor, sensors, host, timeout):
     """
     Sensor call back to check all HW sensors
     :param sensors: per-host dict of sensors
@@ -206,7 +211,7 @@ def _sensor_cb_hw(executor, sensors, host):
                 sensor.set(status=Corr2Sensor.UNREACHABLE,
                         value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
         time.sleep(0.5)
-        IOLoop.current().call_later(5, _sensor_cb_hw, executor, sensors, host)
+        IOLoop.current().call_later(5, _sensor_cb_hw, executor, sensors, host, timeout)
 
     try:
         boot_image = parse_boot_image_return(host.transport.get_virtex7_firmware_version())
@@ -228,7 +233,8 @@ def _sensor_cb_hw(executor, sensors, host):
 
 
     try:
-        results = yield executor.submit(host.transport.get_sensor_data)
+        results = yield executor.submit(host.transport.get_sensor_data,
+                                        timeout=timeout)
     except Exception as e:
         host.logger.error(
             'Error retrieving {}s sensors - {}'.format(host.host, e.message))
@@ -266,7 +272,7 @@ def _sensor_cb_hw(executor, sensors, host):
         host.logger.error('Error updating {}-device-status sensor - {}'.format(host.host, e.message))
     host.logger.debug('sensorloop ran')
     time.sleep(0.5)
-    IOLoop.current().call_later(10, _sensor_cb_hw, executor, sensors, host)
+    IOLoop.current().call_later(10, _sensor_cb_hw, executor, sensors, host, timeout)
 
 @gen.coroutine
 def on_shutdown(ioloop, server):
@@ -302,6 +308,10 @@ def main():
     parser.add_argument(
         '--log_here', dest='log_here', action='store', default=True,
         help='Log to file here or in /var/log/skarab')
+    parser.add_argument(
+        '--timeout', dest='timeout', action='store', default='0.1',
+        help='set the timeout, in seconds, '
+             'for sensor read requests to the SKARAB')
     args = parser.parse_args()
 
     try:
@@ -309,8 +319,11 @@ def main():
     except Exception:
         raise RuntimeError('Received nonsensical log level {}'.format(args.loglevel))
 
-    server = Corr2HardwareSensorServer('127.0.0.1', args.port, tornado=(not args.no_tornado),
-                                       skarab_host=args.host, log_here=args.log_here)
+    server = Corr2HardwareSensorServer('127.0.0.1', args.port,
+                                       tornado=(not args.no_tornado),
+                                       skarab_host=args.host,
+                                       log_here=args.log_here,
+                                       timeout=float(args.timeout))
     print('Server listening on port {} '.format(args.port, end=''))
 
     # def boop():
