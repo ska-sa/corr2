@@ -945,9 +945,8 @@ class Corr2SensorManager(SensorManager):
             corr2_version = f.readline()[9:-1]
 
 
-        corr2_compile_time_string = corr2_version[0:16]
-
-        corr2_compile_date = (time.mktime(time.strptime(corr2_compile_time_string, '%Y-%m-%d-%Hh%M')))
+        #corr2_compile_time_string = corr2_version[0:16]
+        #corr2_compile_date = (time.mktime(time.strptime(corr2_compile_time_string, '%Y-%m-%d-%Hh%M')))
         xhost_builddate =  (time.mktime(time.strptime(self.instrument.xhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
         fhost_builddate =  (time.mktime(time.strptime(self.instrument.fhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
 
@@ -961,12 +960,12 @@ class Corr2SensorManager(SensorManager):
         self.sensor_create(sensor)
         sensor.set_value(corr2_version)
 
-        sensor = Corr2Sensor.timestamp(
-                name='compile_date_corr2',
-                description='Compile date of corr2',
-                initial_status=Corr2Sensor.NOMINAL, manager=self)
-        self.sensor_create(sensor)
-        sensor.set_value(corr2_compile_date)
+        #sensor = Corr2Sensor.timestamp(
+        #        name='compile_date_corr2',
+        #        description='Compile date of corr2',
+        #        initial_status=Corr2Sensor.NOMINAL, manager=self)
+        #self.sensor_create(sensor)
+        #sensor.set_value(corr2_compile_date)
 
         sensor = Corr2Sensor.timestamp(
                 name='compile_date_feng',
