@@ -251,7 +251,7 @@ class FEngineOperations(object):
 
         # set eq and shift
         self.set_fft_shift_all()
-        self.eq_set()
+        self.set_eq()
         self.set_center_freq(self.corr.sample_rate_hz/4.)
 
         # configure the ethernet cores.
@@ -481,30 +481,33 @@ class FEngineOperations(object):
             resultq.put_nowait((feng.input_number, rv))
 
         num_fengs = len(self.fengines)
-        result_queue = Queue.Queue(maxsize=num_fengs)
-        thread_list = []
-        for feng_ in self.fengines:
-            thread = threading.Thread(target=jobfunc, args=(result_queue, feng_))
-            thread.setDaemon(True)
-            thread.start()
-            thread_list.append(thread)
-        for thread_ in thread_list:
-            thread_.join(timeout)
-            if thread_.isAlive():
-                break
+        f_per_fpga = self.corr.f_per_fpga
         returnval = {}
         hosts_missing = [feng.input_number for feng in self.fengines]
-        while True:
-            try:
-                result = result_queue.get_nowait()
-                returnval[result[0]] = result[1]
-                hosts_missing.pop(hosts_missing.index(result[0]))
-            except Queue.Empty:
-                break
+        for fpl in range(f_per_fpga):
+            result_queue = Queue.Queue(maxsize=num_fengs/f_per_fpga)
+            thread_list = []
+            for feng_ in self.fengines[fpl::f_per_fpga]:
+                thread = threading.Thread(target=jobfunc, args=(result_queue, feng_))
+                thread.setDaemon(True)
+                thread.start()
+                thread_list.append(thread)
+            for thread_ in thread_list:
+                thread_.join(timeout)
+                if thread_.isAlive():
+                    break
+            while True:
+                try:
+                    result = result_queue.get_nowait()
+                    self.logger.debug("Received response from feng {}".format(result[0]))
+                    returnval[result[0]] = result[1]
+                    hosts_missing.pop(hosts_missing.index(result[0]))
+                except Queue.Empty:
+                    break
         if hosts_missing:
-            errmsg = (
-                'Ran \'{}\' on fengines. Did not complete: {}.'.format(target_function[0].__name__,
-                    hosts_missing))
+            hosts_missing=[self.fengines[n_feng] for n_feng in hosts_missing]
+            missing_str=['%s(%s)'%(feng.name,feng.host.host) for feng in hosts_missing]
+            errmsg = ('Did not complete Fengs: {}.'.format(missing_str))
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
         return returnval
@@ -663,7 +666,7 @@ class FEngineOperations(object):
         self.logger.error(errmsg)
         raise ValueError(errmsg)
 
-    def eq_get(self, input_name=None):
+    def get_eq(self, input_name=None):
         """
         Return the EQ arrays in a dictionary, arranged by input name.
         :param input_name: if this is given, return only this input's eq
@@ -672,17 +675,17 @@ class FEngineOperations(object):
         if input_name is None:
             fengs = self.fengines
             rv = self.threaded_feng_operation(timeout=self.timeout,
-                target_function=(lambda feng_: feng_.eq_get(),))
+                target_function=(lambda feng_: feng_.get_eq(),))
         else:
             fengs = [self.get_fengine(input_name)]
-            rv = {input_name: fengs[0].eq_get()}
+            rv = {input_name: fengs[0].get_eq()}
         # update the sensors, if they're being used:
         for feng in fengs:
             if self.corr.sensor_manager:
                 self.corr.sensor_manager.sensors_feng_eq(feng)
         return rv
 
-    def eq_set(self, new_eq=None, input_name=None):
+    def set_eq(self, new_eq=None, input_name=None):
         """
         Set the EQ for a specific input, or all inputs.
         :param new_eq: an eq list or value or poly
@@ -692,13 +695,13 @@ class FEngineOperations(object):
         #neweq = utils.process_new_eq(new_eq)
         # if no input is given, apply the new eq to all inputs
         if input_name is None:
-            self.logger.info('Setting EQ on all inputs to new given EQ.')
+            self.logger.info('Applying EQ to all inputs.')
             fengs = self.fengines
             rv = self.threaded_feng_operation(timeout=self.timeout*(self.corr.n_chans/1024),
-                target_function=(lambda feng_: feng_.eq_set(new_eq),))
+                target_function=(lambda feng_: feng_.set_eq(new_eq),))
         else:
             fengs = [self.get_fengine(input_name)]
-            fengs[0].eq_set(eq_poly=new_eq)
+            fengs[0].set_eq(eq_poly=new_eq)
         for feng in fengs:
             if self.corr.sensor_manager:
                 self.corr.sensor_manager.sensors_feng_eq(feng)

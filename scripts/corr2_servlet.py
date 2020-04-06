@@ -474,14 +474,14 @@ class Corr2Server(DeviceServer):
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
                 neweqvals = process_new_eq(list(eq_vals))
-                self.instrument.fops.eq_set(new_eq=neweqvals, input_name=source_name)
+                self.instrument.fops.set_eq(new_eq=neweqvals, input_name=source_name)
                 return ('ok', 'gain set for input {}.'.format(source_name))
             except Exception as ex:
                 stack_trace = traceback.format_exc()
                 failmsg = 'Failed setting eq for source {0}.'.format(source_name)
                 return self._log_stacktrace(stack_trace, failmsg)
         else:
-            _src = self.instrument.fops.eq_get(source_name)
+            _src = self.instrument.fops.get_eq(source_name)
             return tuple(['ok'] +
                      Corr2Server.rv_to_liststr(_src[source_name]))
 
@@ -509,7 +509,7 @@ class Corr2Server(DeviceServer):
                 self.instrument.logger.info('Trying to set gains automatically')
             else:
                 neweqvals = process_new_eq(list(eq_vals))
-            self.instrument.fops.eq_set(new_eq=neweqvals, input_name=None)
+            self.instrument.fops.set_eq(new_eq=neweqvals, input_name=None)
         except Exception as ex:
             return self._log_excep(ex, 'Failed setting eq for all sources')
         return 'ok',
@@ -978,11 +978,11 @@ class Corr2Server(DeviceServer):
         assert len(eq_vals) == n_chans
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.fops.eq_set(True, source_name, list(eq_vals))
+                self.instrument.fops.set_eq(True, source_name, list(eq_vals))
             except Exception as ex:
                 stack_trace = traceback.format_exc()
                 return self._log_stacktrace(stack_trace, 'Failed setting eq for input {0}'.format(source_name))
-        _src = self.instrument.fops.eq_get(source_name)
+        _src = self.instrument.fops.get_eq(source_name)
         return tuple(['ok'] + Corr2Server.rv_to_liststr(_src[source_name]))
 
     @request(Str(default='', multiple=True))
@@ -996,7 +996,7 @@ class Corr2Server(DeviceServer):
         """
         if len(eq_vals) > 0 and eq_vals[0] != '':
             try:
-                self.instrument.fops.eq_set(True, None, list(eq_vals))
+                self.instrument.fops.set_eq(True, None, list(eq_vals))
             except Exception as ex:
                 stack_trace = traceback.format_exc()
                 return self._log_stacktrace(stack_trace, 'Failed setting all eqs.')

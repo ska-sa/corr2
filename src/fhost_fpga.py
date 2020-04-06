@@ -346,7 +346,7 @@ class Fengine(object):
         phase_rate_reg.write(delta=delta_phase_shifted)
         return act_value_delta
 
-    def eq_get(self):
+    def get_eq(self):
         """
         Read a given EQ BRAM.
         :return: a list of the complex EQ values from RAM
@@ -360,7 +360,7 @@ class Fengine(object):
         self.last_eq=eqcomplex
         return self.last_eq
 
-    def eq_set(self, eq_poly=None):
+    def set_eq(self, eq_poly=None):
         """
         Write a given complex eq to the given SBRAM.
         WARN: hardcoded for 16b values!
@@ -370,7 +370,7 @@ class Fengine(object):
         """
         coeffs = (self.host.n_chans * 2) * [0]
         if eq_poly==None:
-            self.logger.info('Setting default eq')
+            self.logger.debug('Setting default eq')
             eq_poly=int(self.host._config['default_eq_poly'])
         try:
             if eq_poly == 'auto':
@@ -391,7 +391,7 @@ class Fengine(object):
                 start_chan=int(self.host.n_chans*0.1)
                 stop_chan=int(self.host.n_chans*0.9)
                 eq_poly=numpy.polyfit(chans[start_chan:stop_chan],error[start_chan:stop_chan],3)
-                poly_coeffs=numpy.array(self.eq_get())*numpy.polyval(eq_poly,chans)
+                poly_coeffs=numpy.array(self.get_eq())*numpy.polyval(eq_poly,chans)
                 coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
                 coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]
                 
@@ -425,10 +425,12 @@ class Fengine(object):
         cimag = coeffs[1::2]
         ss = struct.pack('>%ih' % (self.host.n_chans * 2), *coeffs)
         self.host.write(self.eq_bram_name, ss, 0)
-        self.last_eq=[complex(creal[i],cimag[i]) for i in range(len(creal))]
+        self.last_eq=[complex(creal[i],cimag[i]) for i in range(self.host.n_chans)]
         if(saturated_channels_count != 0):
             self.logger.warn('EQ values adjusted. %i channels saturated.'%saturated_channels_count)
-        self.logger.info('EQ values: %s...'%self.last_eq[0:10])
+        mean_real = sum(creal)/len(creal)
+        mean_imag = sum(cimag)/len(creal)
+        self.logger.info('EQ updated mean (%i+%ij): ...%s...'%(mean_real,mean_imag,self.last_eq[self.host.n_chans/2-3:self.host.n_chans/2+3]))
 
         return self.last_eq
 
