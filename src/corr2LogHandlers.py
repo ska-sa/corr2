@@ -593,7 +593,7 @@ def servlet_log_level_request(corr_obj, log_level, logger_group_name):
 
 	logger_group_name = logger_group_name.lower().strip()
 	if logger_group_name not in LOGGER_GROUP_LIST:
-		errmsg = 'Could not find group for group-name: {}'.format(group_name)
+		errmsg = 'Could not find group for group-name: {}'.format(logger_group_name)
 		# self.logger.error(errmsg)
 		# self._log_excep(None, errmsg)
 		return False, errmsg
