@@ -610,10 +610,10 @@ class XEngineOperations(object):
             self.vacc_acc_len = int(acc_len)
 
             #Calculates the gap size
-        clock_cycles_per_accumulation = self.vacc_acc_len * 2 * self.corr.n_chans * self.xeng_acc_len/8;#Divide by 8 to accomodate for the 8 samples in parallel 
-        vector_length_bytes = self.corr.n_antennas * (self.corr.n_antennas + 1)/2 * self.corr.n_chans * 8/ (self.corr.n_antennas*self.corr.x_per_fpga) * 4
+        clock_cycles_per_accumulation = self.vacc_acc_len * 2 * self.corr.n_chans * self.xeng_acc_len/8*self.corr.fops.decimation_factor;#feng clock cycles. Divide by 8 to accomodate for the 8 samples in parallel
+        vector_length_bytes = self.corr.n_antennas * (self.corr.n_antennas + 1)/2 * self.corr.n_chans * 8/ (len(self.hosts)*self.corr.x_per_fpga) * 4
         packets_per_accumulation = vector_length_bytes/self.corr.x_stream_payload_len
-        gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation)
+        gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation*0.9) #scale by 0.9 to allow some deadtime between accs.
 
         if(gapsize > 2**19-1):
             gapsize = 2**19
