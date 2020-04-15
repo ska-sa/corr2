@@ -11,8 +11,6 @@ from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
 
 from sensors import Corr2Sensor, boolean_sensor_do
 
-LOGGER = logging.getLogger(__name__)
-
 host_offset_lookup = {}
 
 @gen.coroutine
@@ -53,12 +51,12 @@ def _cb_bhost_lru(sensor_manager, sensor, b_host, time):
     #     sens_val = (status == Corr2Sensor.NOMINAL)
     #     sensor.set(value=sens_val, status=status)
     # except Exception as e:
-    #     LOGGER.error(
+    #     sensor_manager.error(
     #         'Error updating LRU sensor for {} - {}'.format(
     #             b_host.host, e.message))
     #     sensor.set(value=False, status=Corr2Sensor.FAILURE)
     #
-    # LOGGER.debug('_cb_xhost_lru ran on {}'.format(b_host.host))
+    # sensor_manager.debug('_cb_xhost_lru ran on {}'.format(b_host.host))
     # IOLoop.current().call_later(
     #     sensor_poll_time,
     #     _cb_xhost_lru,
@@ -103,7 +101,7 @@ def _cb_beng_pack(sensors, general_executor, sens_man, time):
 #
     except Exception as e:
         #TODO This logger stuff doesn't seem to actually work. Not sure why.
-        LOGGER.error('Error updating beng pack sensors - '
+        sens_man.error('Error updating beng pack sensors - '
                      '{}'.format(e.message))
 
     IOLoop.current().add_callback(_cb_beng_pack, sensors, general_executor, sens_man)

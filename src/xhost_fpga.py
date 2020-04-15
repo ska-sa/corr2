@@ -15,7 +15,10 @@ class FpgaXHost(FpgaHost):
     def __init__(self, host, index, katcp_port=7147, bitstream=None,
                  connect=True, config=None, **kwargs):
         FpgaHost.__init__(self, host=host, katcp_port=katcp_port,
-                          bitstream=bitstream, connect=connect, transport=SkarabTransport)
+                          bitstream=bitstream, connect=connect,
+                          transport=SkarabTransport,
+                          **kwargs)
+
         try:
             descriptor = kwargs['descriptor']
         except KeyError:
@@ -100,7 +103,7 @@ class FpgaXHost(FpgaHost):
             ctr += 1
             if ctr == 64:
                 break
-        LOGGER.info('%s: Found %i X-engines.' % (self.host, ctr))
+        self.logger.info('%s: Found %i X-engines.' % (self.host, ctr))
         return ctr
 
     def clear_status(self):
@@ -108,8 +111,7 @@ class FpgaXHost(FpgaHost):
         Clear the status registers and counters on this x-engine host
         :return:
         """
-        self.registers.control.write(status_clr='pulse', cnt_rst='pulse',
-                                     gbe_debug_rst='pulse')
+        self.registers.control.write(cnt_rst='pulse',gbe_debug_rst='pulse')
 
     def get_status_registers(self):
         """
@@ -130,6 +132,10 @@ class FpgaXHost(FpgaHost):
         """
         rv = self.registers.spead_status0.read()['data']
         rv.update(self.registers.spead_status1.read()['data'])
+        try:
+            rv.update(self.registers.spead_status2.read()['data'])
+        except:
+            pass
         return rv
 
     def get_hmc_reorder_status(self):
@@ -137,13 +143,8 @@ class FpgaXHost(FpgaHost):
         Retrieve the HMC packet RX reorder status on this board.
         """
         rv={}
-        for i in range(3):
+        for i in range(4):
             rv.update(self.registers['hmc_pkt_reord_status%i'%i].read()['data'])
-        try:
-            for i in range(3,4):
-                rv.update(self.registers['hmc_pkt_reord_status%i'%i].read()['data'])
-        except:
-            pass
         return rv
 
     def get_rx_reorder_status(self):
@@ -153,7 +154,19 @@ class FpgaXHost(FpgaHost):
         """
         data = []
         for ctr in range(0, self.x_per_fpga):
-            tmp = self.registers['sys%i_pkt_reord_status' % ctr].read()['data']
+            tmp = {}
+            try:
+                tmp.update(self.registers['sys%i_pkt_reord_status' % ctr].read()['data'])
+            except:
+                pass
+            try:
+                tmp.update(self.registers['sys%i_pkt_reord_status0' % ctr].read()['data'])
+            except:
+                pass
+            try:
+                tmp.update(self.registers['sys%i_pkt_reord_status1' % ctr].read()['data'])
+            except:
+                pass
             data.append(tmp)
         return data
 
@@ -182,11 +195,24 @@ class FpgaXHost(FpgaHost):
             x_indices = range(self.x_per_fpga)
         stats = []
         regs = self.registers
+#        #get the HMC statii:
+#        hmc_statii=[]
+#        hmc_statii.append(self.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())
+#        hmc_statii.append(self.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())
+#        #vacc0 uses hmc0, link2
+#        #vacc1 uses hmc0, link3
+#        #vacc2 uses hmc1, link2
+#        #vacc3 uses hmc1, link3
+#        not_link_lookup=[3,2,3,2]
         for xnum in x_indices:
-            temp = regs['sys%i_vacc_status' % xnum].read()['data']
-            temp.update(timestamp = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp'])
-#            temp.update(regs['sys%i_vacc_hmc_vacc_fifo_status' % xnum].read()['data'])
-            temp.update(regs['sys%i_vacc_hmc_vacc_err_status' % xnum].read()['data'])
+            temp={}
+            temp['timestamp'] = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp']
+            temp.update(regs['sys%i_vacc_status' % xnum].read()['data'])
+            for stat_reg_idx in range(2):
+                temp.update(regs['sys%i_vacc_hmc_vacc_status%i' %(xnum,stat_reg_idx)].read()['data'])
+#            #append the relevant HMC stuff; all the global, and the relevant link:
+#            for key,value in hmc_statii[int(xnum/2)].items():
+#                if not key.endswith('link%i'%not_link_lookup[xnum]): temp[key]=value
             stats.append(temp)
         return stats
 

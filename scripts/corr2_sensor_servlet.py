@@ -1,30 +1,65 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-import logging
+
+import os, sys, logging
+import signal, time
 import traceback2 as traceback
-import sys
-import argparse
-import os
-import katcp
-import signal
-from tornado.ioloop import IOLoop
 import tornado.gen
-import time
-from ConfigParser import ConfigParser
 
-from corr2 import sensors, sensors_periodic, fxcorrelator
-from corr2.corr2LogHandlers import getKatcpLogger, reassign_log_handlers
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from katcp import DeviceServer
+from tornado.ioloop import IOLoop
+
+from corr2 import sensors_periodic
+from corr2.fxcorrelator import FxCorrelator
+from corr2.sensors import SensorManager
 from corr2.utils import parse_ini_file
+from corr2.corr2LogHandlers import getKatcpLogger, reassign_log_handlers, \
+                                    create_katcp_and_file_handlers
 
+import IPython
 
-class Corr2SensorServer(katcp.DeviceServer):
+_DEFAULT_LOG_DIR = '/var/log/corr'
 
-    def __init__(self,*args, **kwargs):
-        super(Corr2SensorServer, self).__init__(*args, **kwargs)
-        self.set_concurrency_options(thread_safe=False, handler_thread=False)
-        self.instrument = None
-        self.logLevel = logging.WARN;
+class Corr2SensorServer(DeviceServer):
+
+    def __init__(self, *args, **kwargs):
+        try:
+            self.config_filename = kwargs.pop('config', None)
+            self.instrument_name = kwargs.pop('iname', 'snsrs')
+
+            config_file_dict = parse_ini_file(self.config_filename)
+            self.log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir', _DEFAULT_LOG_DIR)
+            assert os.path.isdir(self.log_file_dir)
+            
+            start_time_str = str(time.time())
+            if 'ini' in os.path.basename(self.config_filename):
+                self.config_filename = os.path.basename(self.config_filename).rsplit('.', 1)[0]
+            # else: Continue!
+            self.log_filename = '{}_{}_sensor_servlet.log'.format(
+                                    os.path.basename(self.config_filename), start_time_str)
+            self.log_level = kwargs.pop('log_level', logging.WARN)
+
+            super(Corr2SensorServer, self).__init__(*args, **kwargs)
+
+            # Rename DeviceServer._logger
+            self._logger.name = '{}_{}'.format(self.instrument_name, self._logger.name)
+            create_katcp_and_file_handlers(self._logger, self.mass_inform,
+                                            self.log_filename, self.log_file_dir,
+                                            self.log_level)
+            
+            self.set_concurrency_options(thread_safe=False, handler_thread=False)
+            self.instrument = None
+        except AssertionError as ex:
+            stack_trace = traceback.format_exc()
+            errmsg = 'Logging directory does not exist: {}'.format(self.log_file_dir)
+            self._log_stacktrace(stack_trace, errmsg)
+        except Exception as ex:
+            # Oh dear
+            stack_trace = traceback.format_exc()
+            self._log_stacktrace(stack_trace, 'Failed to start sensor_servlet')
+
 
     def _log_excep(self, excep, msg=''):
         """
@@ -37,10 +72,9 @@ class Corr2SensorServer(katcp.DeviceServer):
         if excep is not None:
             template = '\nAn exception of type {0} occured. Arguments: {1!r}'
             message += template.format(type(excep).__name__, excep.args)
-        if self.instrument:
-            self.instrument.logger.error(message)
-        else:
-            logging.error(message)
+        
+        self._logger.error(message)
+
         return 'fail', message
 
     def _log_stacktrace(self, stack_trace, msg=''):
@@ -51,10 +85,8 @@ class Corr2SensorServer(katcp.DeviceServer):
         :return:
         """
         log_message = '{} \n {}'.format(msg, stack_trace)
-        if self.instrument:
-            self.instrument.logger.error(log_message)
-        else:
-            logging.error(log_message)
+        self._logger.error(log_message)
+
         return 'fail', log_message
 
     def setup_sensors(self):
@@ -64,50 +96,50 @@ class Corr2SensorServer(katcp.DeviceServer):
         """
         pass
 
-    def _set_log_level(self,logLevel):
+    def _set_log_level(self, log_level):
         """
         Sets the log level, not implemented properly, do not use if you dont know what you are doing
         """
-        self.logLevel = logLevel;
+        self.log_level = log_level;
 
-    def initialise(self, config, name):
+    def initialise(self, config):
         """
         Setup and start sensors
         :param config: the config to use when making the instrument
-        :param name: a name for the instrument
         :return:
 
         """
         try:
-            _default_log_dir = '/var/log/corr'
-            config_file_dict = parse_ini_file(config)
-            log_file_dir = config_file_dict.get('FxCorrelator').get('log_file_dir', _default_log_dir)
-            assert os.path.isdir(log_file_dir)
-            
-            start_time = str(time.time())
-            ini_filename = os.path.basename(config)
-            log_filename = '{}_{}_sensor_servlet.log'.format(ini_filename, start_time)
-
-            self.instrument = fxcorrelator.FxCorrelator(
-                                'snsrs', config_source=config,
-                                mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
-                                log_filename=log_filename, log_file_dir=log_file_dir)
+            self.instrument = FxCorrelator(
+                              self.instrument_name, config_source=config,
+                              mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
+                              log_filename=self.log_filename, log_file_dir=self.log_file_dir)
             self.instrument.initialise(program=False, configure=False, require_epoch=False,
-                                    mass_inform_func=self.mass_inform, getLogger=getKatcpLogger,
-                                    log_filename=log_filename, log_file_dir=log_file_dir,logLevel=self.logLevel)
+                                        mass_inform_func=self.mass_inform,
+                                        getLogger=getKatcpLogger,
+                                        log_filename=self.log_filename,
+                                        log_file_dir=self.log_file_dir,
+                                        logLevel=self.log_level)
+
+            # set response timeout
+            response_timeout = float(self.instrument.configd['FxCorrelator'].get('sensor_response_timeout', 0.1))
+            self.instrument._update_response_timeout(response_timeout)
             
-            #disable manually-issued sensor update informs (aka 'kcs' sensors):
-            sensor_manager = sensors.SensorManager(self, self.instrument,kcs_sensors=False,
-                                                    mass_inform_func=self.mass_inform,
-                                                    log_filename=log_filename,
-                                                    log_file_dir=log_file_dir,logLevel=self.logLevel)
-            self.instrument.sensor_manager = sensor_manager
-            sensors_periodic.setup_sensors(sensor_manager)
+            # Disable manually-issued sensor update informs (aka 'kcs' sensors):
+            sensor_manager_inst = SensorManager(self, self.instrument,
+                                                kcs_sensors=False,
+                                                mass_inform_func=self.mass_inform,
+                                                log_filename=self.log_filename,
+                                                log_file_dir=self.log_file_dir,
+                                                logLevel=self.log_level)
+
+            self.instrument.set_sensor_manager(sensor_manager_inst)
+            sensors_periodic.setup_sensors(self.instrument.sensor_manager)
 
             # Function created to reassign all non-conforming log-handlers
             loggers_changed = reassign_log_handlers(mass_inform_func=self.mass_inform, 
-                                                    log_filename=log_filename, 
-                                                    log_file_dir=log_file_dir,
+                                                    log_filename=self.log_filename, 
+                                                    log_file_dir=self.log_file_dir,
                                                     instrument_name=self.instrument.descriptor)
             
         except Exception as exc:
@@ -141,31 +173,29 @@ def boop():
     IOLoop.current().call_at(nextTime,boop)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
         description='Start a corr2 sensor server.',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('-p', '--port', dest='port', action='store',
-                        default=1235, type=int,
+                        default=1236, type=int,
                         help='bind to this port to receive KATCP messages')
-    parser.add_argument('--log_level', dest='loglevel', action='store',
+    parser.add_argument('--log_level', dest='log_level', action='store',
                         default='WARN', help='log level to set')
-    parser.add_argument('--log_format_katcp', dest='lfm', action='store_true',
-                        default=False, help='format log messsages for katcp')
     parser.add_argument('--config', dest='config', type=str, action='store',
-                        default='', help='a corr2 config file')
+                        default=None, help='a corr2 config file')
     parser.add_argument('-n', '--name', dest='name', action='store',
-                        default='', help='a name for the instrument')
+                        default=None, help='a name for the instrument')
     args = parser.parse_args()
 
     try:
-        log_level = getattr(logging, args.loglevel)
-        if(args.loglevel.upper() == "WARN"):
+        log_level = getattr(logging, args.log_level)
+        if(args.log_level.upper() == "WARN"):
             log_level = logging.WARN;
-        elif(args.loglevel.upper() == "DEBUG"):
+        elif(args.log_level.upper() == "DEBUG"):
             log_level = logging.DEBUG;
-        elif(args.loglevel.upper() == "INFO"):
+        elif(args.log_level.upper() == "INFO"):
             log_level = logging.INFO;
-        elif(args.loglevel.upper() == "ERROR"):
+        elif(args.log_level.upper() == "ERROR"):
             log_level = logging.ERROR;
     except:
         print("Log level not understood. Defaulting to WARN.")
@@ -174,26 +204,19 @@ if __name__ == '__main__':
     # def boop():
     #     raise KeyboardInterrupt
     
-    if 'CORR2INI' in os.environ.keys() and args.config == '':
+    if 'CORR2INI' in os.environ.keys() and args.config is None:
         args.config = os.environ['CORR2INI']
-    if args.config == '':
+    elif args.config is None:
         raise RuntimeError('No config file.')
 
-    if args.name == '':
+    if args.name is None:
         # default to config file name?
-        try:
-            #whole path
-            args.name = args.config
-            #last part
-            args.name = args.name.split('/')[-1]
-            #remove extension, if present
-            args.name = args.name.split('.')[-2]
-        except IndexError:
-            pass
-
+        args.name = os.path.basename(args.config).rsplit('.', 1)[0]
+        
     ioloop = IOLoop.current()
-    sensor_server = Corr2SensorServer('127.0.0.1', args.port)
-    sensor_server._set_log_level(log_level);
+    sensor_server = Corr2SensorServer('127.0.0.1', args.port, config=args.config,
+                                      iname=args.name, log_level=args.log_level)
+    sensor_server._set_log_level(log_level)
     signal.signal(signal.SIGINT,
                   lambda sig, frame: ioloop.add_callback_from_signal(
                       on_shutdown, ioloop, sensor_server))
@@ -202,7 +225,7 @@ if __name__ == '__main__':
     ioloop.add_callback(sensor_server.start)
     print('started. Running somewhere in the ether... '
           'exit however you see fit.')
-    ioloop.add_callback(sensor_server.initialise, args.config, args.name)
+    ioloop.add_callback(sensor_server.initialise, args.config)
     #ioloop.call_later(2, boop)
     ioloop.start()
 

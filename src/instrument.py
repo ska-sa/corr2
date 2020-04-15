@@ -5,7 +5,8 @@ Created on Feb 28, 2013
 
 @author: paulp
 """
-import logging
+from logging import INFO
+from corr2LogHandlers import getLogger as _getLogger
 import time
 
 
@@ -16,8 +17,7 @@ class Instrument(object):
     Instruments produce data streams.
     """
 
-    def __init__(self, descriptor, identifier=-1, config_source=None,
-                 logger=None):
+    def __init__(self, descriptor, config_source, identifier=-1, getLogger=_getLogger, **kwargs):
         """
         An abstract base class for instruments.
         :param descriptor: A text description of the instrument. Required.
@@ -27,14 +27,16 @@ class Instrument(object):
         :return: <nothing>
         """
         self.classname = self.__class__.__name__
-        if descriptor is None:
-            raise RuntimeError('Cannot instantiate an Instrument without a '
-                               'meaningful descriptor.')
-        self.descriptor = descriptor
+        try:
+            # Just in case some numpty decides to give a descriptor that isn't a string.
+            self.descriptor = descriptor.strip().replace(' ', '_').lower()
+        except AttributeError:
+            raise TypeError('Cannot instantiate an Instrument without a meaningful (string) descriptor.')
+
         self.identifier = identifier
         self.config_source = config_source
         self.configd = None
-        # self.logger = logger or LOGGER
+        self._read_config()
 
         # The instrument might well have a sensor manager
         self.sensor_manager = None
@@ -51,12 +53,19 @@ class Instrument(object):
 
         self._initialised = False
 
-        if self.config_source is not None:
-            try:
-                self._read_config()
-            except BaseException:  # TODO: this is very bad practice...
-                raise
+        self.getLogger = getLogger
+        # TODO: decide whether 'Instrument'-level logs should default to INFO?
+        log_level = kwargs.get('logLevel', INFO)
+        result, self.logger = self.getLogger(logger_name=self.descriptor, log_level=log_level, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(self.descriptor)
+            raise RuntimeError(errmsg)
+
         self.logger.info('%s %s created.' % (self.classname, self.descriptor))
+
+        # an instrument has hosts
+        self._create_hosts(**kwargs)
 
     def _read_config(self):
         """
@@ -77,6 +86,13 @@ class Instrument(object):
         """
         To be implemented by the child class.
         :return: True if we read the config successfully, False if not
+        """
+        raise NotImplementedError
+
+    def _create_hosts(self, **kwargs):
+        """
+        To be implemented by the child class.
+        :return:
         """
         raise NotImplementedError
 
@@ -240,7 +256,6 @@ class Instrument(object):
 
     @property
     def synchronisation_epoch(self):
-        # LOGGER.info('@synchronisation_epoch getter')
         return self._synchronisation_epoch
 
     @synchronisation_epoch.setter
@@ -250,7 +265,6 @@ class Instrument(object):
         :param new_synch_time: UNIX time
         :return: <nothing>
         """
-        # LOGGER.info('@synchronisation_epoch setter')
         time_now = time.time()
         if hasattr(self, 'timestamp_bits'):
             if new_synch_time < time_now - (2**self.timestamp_bits):

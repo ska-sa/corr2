@@ -251,7 +251,8 @@ class FEngineOperations(object):
 
         # set eq and shift
         self.set_fft_shift_all()
-        self.eq_set()
+        self.set_eq()
+        self.set_center_freq(self.corr.sample_rate_hz/4.)
 
         # configure the ethernet cores.
         THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
@@ -363,8 +364,6 @@ class FEngineOperations(object):
     def set_center_freq(self,freq):
         """Set the DDC's center frequency in Hz. """
         self.logger.info("Attempting to set the center frequency to {:.5f} MHz".format(freq/1e6))
-        #if (band > 0):
-        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         if (self.decimation_factor==1):
             self.logger.info("No point setting the center frequency in wideband modes.")
             return self.corr.sample_rate_hz/4.
@@ -386,30 +385,25 @@ class FEngineOperations(object):
         #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         if (self.decimation_factor==1):
             return self.corr.sample_rate_hz/4.
-        #offset = self.corr.sample_rate_hz/4./self.decimation_factor
         osc_freq=self._get_osc_freq()
         self.logger.info("Center frequency is {:.5f} MHz".format((osc_freq)/1e6))
         return osc_freq
 
     def _set_osc_freq(self,freq):
         """Set the DDC oscillator frequency to "freq" Hz."""
-        #if (band > 0):
-        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         self.logger.debug('Setting DDC oscillator freq to {:.3f} MHz'.format(freq/1.e6))
-        reg_value = freq*(2**22)/self.corr.sample_rate_hz
+        reg_value = float(freq)/self.corr.sample_rate_hz
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
             target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.write(frequency=reg_value),))
         return self._get_osc_freq()
 
     def _get_osc_freq(self):
         """Return the hardware configured oscillator frequency, in Hz."""
-        #if (band > 0):
-        #    raise NotImplementedError('This is not implemented for anything other than the default band.')
         rv =THREADED_FPGA_OP(self.hosts,timeout=1,target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.read()['data']['frequency'],)) 
         if min(rv.values()) != max(rv.values()): 
             self.logger.warning("Fhosts have different tuning frequencies!")
             raise RuntimeError("Fhosts have different tuning frequencies!")
-        rv=rv.values()[0]*self.corr.sample_rate_hz/(2**22)
+        rv=rv.values()[0]*self.corr.sample_rate_hz
         self.logger.debug('DDC oscillator freq is {:.3f} MHz'.format(rv/1.e6))
         return rv
 
@@ -419,58 +413,53 @@ class FEngineOperations(object):
         :return: (a boolean, the F-engine times as 48-bit counts,
         their unix representations)
         """
-        self.logger.debug('Checking timestamps on F hosts...')
+        self.logger.debug('Checking timestamps on F hosts.')
         start_time = time.time()
         results = THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
             target_function=('get_local_time', [src], {}))
         read_time = time.time()
         elapsed_time = read_time - start_time
-        feng_mcnts = {}
         feng_times = {}
         rv = True
         for host in self.hosts:
             feng_mcnt = results[host.host]
-            feng_mcnts[host.host] = feng_mcnt
-            feng_times[host.host] = self.corr.time_from_mcnt(feng_mcnt)
-
-        for host in self.hosts:
-            feng_mcnt = results[host.host]
             feng_time = self.corr.time_from_mcnt(feng_mcnt)
-            # are the count bits okay?
-            if feng_mcnt & 0xfff != 0:
-                errmsg = (
-                    '{},{}: bottom 12 bits of timestamp from F-engine are '
-                    'not zero?! feng_mcnt({:012X})'.format(host.host, host.fengines[0].input.name,
-                        feng_mcnt))
-                self.logger.error(errmsg)
-                rv = False
+            feng_time_ok = True
+            # are the count bits okay? 
+            # JM commented this out 2019-11-27; it's checked by the hardware spead unpack block anyway.
+#            if feng_mcnt & 0xfff != 0:
+#                self.logger.error('{},{}: bottom 12 bits of timestamp from F-engine are '
+#                    'not zero?! feng_mcnt({:012X})'.format(host.host, host.fengines[0].input.name,
+#                        feng_mcnt))
+#                feng_time_ok = False
+#                rv = False
             # is the time in the future?
             if feng_time > (read_time + (self.corr.time_jitter_allowed)):
-                errmsg = (
-                    '{}, {}: F-engine time cannot be in the future? '
+                self.logger.error('{}, {}: F-engine time cannot be in the future? '
                     'now({:.3f}) feng_time({:.3f})'.format(host.host, host.fengines[0].input.name,
                         read_time, feng_time))
-                self.logger.error(errmsg)
+                feng_time_ok = False
                 rv = False
             # is the time close enough to local time?
             if abs(read_time - feng_time) > self.corr.time_offset_allowed:
-                errmsg = (
-                    '{}, {}: time calculated from board cannot be so '
+                self.logger.error('{}, {}: time calculated from board cannot be so '
                     'far from local time: now({:.3f}) feng_time({:.3f}) diff({:.3f})'.format(
                         host.host, host.fengines[0].input.name, read_time, feng_time,
                         read_time - feng_time))
-                self.logger.error(errmsg)
+                feng_time_ok = False
                 rv = False
-        # are they all within 500ms of one another?
-        diff = max(feng_times.values()) - min(feng_times.values())
+            feng_times[host.host] = [feng_mcnt, feng_time, feng_time_ok]
+
+#        # are they all within 500ms of one another?
+        times_u = [row[2] for row in feng_times.values()]
+        diff = max(times_u) - min(times_u)
         if diff > (self.corr.time_jitter_allowed + elapsed_time):
             errmsg = (
                 'F-engine timestamps are too far apart: {:.3f}. Took {:.3f}. to read all boards.'.format(
                     diff, elapsed_time))
             self.logger.error(errmsg)
             rv = False
-        self.logger.debug('\tdone.')
-        return rv, feng_mcnts, feng_times
+        return rv, feng_times
 
     def threaded_feng_operation(self, timeout, target_function):
         """
@@ -492,30 +481,33 @@ class FEngineOperations(object):
             resultq.put_nowait((feng.input_number, rv))
 
         num_fengs = len(self.fengines)
-        result_queue = Queue.Queue(maxsize=num_fengs)
-        thread_list = []
-        for feng_ in self.fengines:
-            thread = threading.Thread(target=jobfunc, args=(result_queue, feng_))
-            thread.setDaemon(True)
-            thread.start()
-            thread_list.append(thread)
-        for thread_ in thread_list:
-            thread_.join(timeout)
-            if thread_.isAlive():
-                break
+        f_per_fpga = self.corr.f_per_fpga
         returnval = {}
         hosts_missing = [feng.input_number for feng in self.fengines]
-        while True:
-            try:
-                result = result_queue.get_nowait()
-                returnval[result[0]] = result[1]
-                hosts_missing.pop(hosts_missing.index(result[0]))
-            except Queue.Empty:
-                break
+        for fpl in range(f_per_fpga):
+            result_queue = Queue.Queue(maxsize=num_fengs/f_per_fpga)
+            thread_list = []
+            for feng_ in self.fengines[fpl::f_per_fpga]:
+                thread = threading.Thread(target=jobfunc, args=(result_queue, feng_))
+                thread.setDaemon(True)
+                thread.start()
+                thread_list.append(thread)
+            for thread_ in thread_list:
+                thread_.join(timeout)
+                if thread_.isAlive():
+                    break
+            while True:
+                try:
+                    result = result_queue.get_nowait()
+                    self.logger.debug("Received response from feng {}".format(result[0]))
+                    returnval[result[0]] = result[1]
+                    hosts_missing.pop(hosts_missing.index(result[0]))
+                except Queue.Empty:
+                    break
         if hosts_missing:
-            errmsg = (
-                'Ran \'{}\' on fengines. Did not complete: {}.'.format(target_function[0].__name__,
-                    hosts_missing))
+            hosts_missing=[self.fengines[n_feng] for n_feng in hosts_missing]
+            missing_str=['%s(%s)'%(feng.name,feng.host.host) for feng in hosts_missing]
+            errmsg = ('Did not complete Fengs: {}.'.format(missing_str))
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
         return returnval
@@ -674,7 +666,7 @@ class FEngineOperations(object):
         self.logger.error(errmsg)
         raise ValueError(errmsg)
 
-    def eq_get(self, input_name=None):
+    def get_eq(self, input_name=None):
         """
         Return the EQ arrays in a dictionary, arranged by input name.
         :param input_name: if this is given, return only this input's eq
@@ -683,17 +675,17 @@ class FEngineOperations(object):
         if input_name is None:
             fengs = self.fengines
             rv = self.threaded_feng_operation(timeout=self.timeout,
-                target_function=(lambda feng_: feng_.eq_get(),))
+                target_function=(lambda feng_: feng_.get_eq(),))
         else:
             fengs = [self.get_fengine(input_name)]
-            rv = {input_name: fengs[0].eq_get()}
+            rv = {input_name: fengs[0].get_eq()}
         # update the sensors, if they're being used:
         for feng in fengs:
             if self.corr.sensor_manager:
                 self.corr.sensor_manager.sensors_feng_eq(feng)
         return rv
 
-    def eq_set(self, new_eq=None, input_name=None):
+    def set_eq(self, new_eq=None, input_name=None):
         """
         Set the EQ for a specific input, or all inputs.
         :param new_eq: an eq list or value or poly
@@ -703,13 +695,13 @@ class FEngineOperations(object):
         #neweq = utils.process_new_eq(new_eq)
         # if no input is given, apply the new eq to all inputs
         if input_name is None:
-            self.logger.info('Setting EQ on all inputs to new given EQ.')
+            self.logger.info('Applying EQ to all inputs.')
             fengs = self.fengines
             rv = self.threaded_feng_operation(timeout=self.timeout*(self.corr.n_chans/1024),
-                target_function=(lambda feng_: feng_.eq_set(new_eq),))
+                target_function=(lambda feng_: feng_.set_eq(new_eq),))
         else:
             fengs = [self.get_fengine(input_name)]
-            fengs[0].eq_set(eq_poly=new_eq)
+            fengs[0].set_eq(eq_poly=new_eq)
         for feng in fengs:
             if self.corr.sensor_manager:
                 self.corr.sensor_manager.sensors_feng_eq(feng)

@@ -4,6 +4,8 @@ Created on Feb 28, 2013
 @author: paulp
 """
 
+from __future__ import print_function
+
 # things all fxcorrelators Instruments do
 
 import re
@@ -29,7 +31,7 @@ from fxcorrelator_bengops import BEngineOperations
 from fxcorrelator_filterops import FilterOperations
 from data_stream import StreamAddress
 
-from corr2LogHandlers import getLogger
+from corr2LogHandlers import getLogger as _getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -73,7 +75,6 @@ class FxCorrelator(Instrument):
             descriptor,
             config_source=None,
             identifier=-1,
-            *args,
             **kwargs):
         """
         An abstract base class for instruments.
@@ -83,30 +84,8 @@ class FxCorrelator(Instrument):
         :param identifier: An optional integer identifier.
         :return: <nothing>
         """
-        assert isinstance(config_source, str), 'Missing instrument config file'
-        assert isinstance(
-            descriptor, str), 'What do you want to call your instrument?'
-        self.descriptor = descriptor.strip().replace(' ', '_').lower()
-
-        # To make sure the given getLogger propagates all the way through
-        try:
-            self.getLogger = kwargs['getLogger']
-        except KeyError:
-            self.getLogger = getLogger
-            kwargs['getLogger'] = self.getLogger
-        finally:
-            # Why is logging defaulted to INFO, what if I do not want to see the info logs?
-            logLevel = kwargs.get('logLevel', INFO)
-
-        # All 'Instrument-level' objects will log at level INFO
-        result, self.logger = self.getLogger(logger_name=self.descriptor,
-                                             log_level=logLevel, **kwargs)
-        if not result:
-            # Problem
-            errmsg = 'Unable to create logger for {}'.format(self.descriptor)
-            raise ValueError(errmsg)
-
         # we know about f and x hosts and engines, not just engines and hosts
+        # TODO: these things should be in the _read_config() method. Do we really want to initialise them to None here?
         self.fhosts = []
         self.xhosts = []
         self.filthosts = None
@@ -124,24 +103,25 @@ class FxCorrelator(Instrument):
         self.x_per_fpga = None
         self.timeout = None
 
-        # parent constructor - this invokes reading the config file already
-        Instrument.__init__(self, descriptor, identifier, config_source)
+        # Parent constructor invokes reading the config file, generic hosts, data streams and logging.
+        Instrument.__init__(self, descriptor, config_source, identifier, **kwargs)
 
         # up the filedescriptors so we can handle bigger arrays.
         # 64A needs ~1100, mainly for spead descriptor sockets,
         # since spead2 needs a separate socket per destination
         # (it uses send rather than sendto).
         fd_limit = int(self.configd['FxCorrelator'].get('max_fd', 4096))
-        assert isinstance(fd_limit, int)
         resource.setrlimit(resource.RLIMIT_NOFILE, (fd_limit, fd_limit))
 
         # create the host objects
-        self._create_hosts(*args, **kwargs)
+        #self._create_hosts(**kwargs)
 
         new_connection_string = '\n==========================================\n'
-        infomsg = '{0}Successfully created Instrument: {1} {0}'.format(
-            new_connection_string, descriptor)
-        self.logger.info(infomsg)
+        self.logger.info('{0}Successfully created Instrument: {1}{0}'.format(new_connection_string, self.descriptor))
+
+        # update response timeout now - make it more aggressive now that we've established connection to all the hosts
+        self.response_timeout = self.min_load_time / 2.0
+        self._update_response_timeout(self.response_timeout)
 
     # @profile
     def initialise(self, program=True, configure=True,
@@ -162,7 +142,7 @@ class FxCorrelator(Instrument):
             except KeyError:
                 self.logger.warn("Sync epoch not found in config file, and epoch not pre-set.")
         else:
-            self.logger.info("Sync epoch pre-set to %f."%self.synchronisation_epoch)
+            self.logger.info("Sync epoch pre-set to {}.".format(self.synchronisation_epoch))
         
         if (require_epoch) and (self.synchronisation_epoch < 0):
             raise RuntimeError(
@@ -198,43 +178,43 @@ class FxCorrelator(Instrument):
             # skfops = casperfpga.skarab_fileops
             # force the new programming method
             try:
-		function_call = ""
+                function_call = ""
                 def progska_timeout_handler(signum, frame):
-	            raise Exception("Function: {} timed out.".format(function_call))
-		
-		#Setting up timeout signal
-		signal.signal(signal.SIGALRM, progska_timeout_handler)
+                    raise Exception("Function: {} timed out.".format(function_call))
+    
+                #Setting up timeout signal
+                signal.signal(signal.SIGALRM, progska_timeout_handler)
 
-		function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
-		signal.alarm(int(self.timeout * (len(self.fhosts)**0.5) + 60))
+                function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
+                signal.alarm(int(self.timeout * (len(self.fhosts)**0.5) + 60))
                 skfops.upload_to_ram_progska(fbof, self.fhosts)
-		function_call = "skfops.reboot_skarabs_from_sdram(self.fhosts)"
+                function_call = "skfops.reboot_skarabs_from_sdram(self.fhosts)"
                 signal.alarm(int(self.timeout))
                 skfops.reboot_skarabs_from_sdram(self.fhosts)
 
-		signal.alarm(int(self.timeout * (len(self.xhosts)**0.5) + 60))
-		function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
+                signal.alarm(int(self.timeout * (len(self.xhosts)**0.5) + 60))
+                function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
                 skfops.upload_to_ram_progska(xbof, self.xhosts)
-		signal.alarm(int(self.timeout))
-		function_call = "skfops.reboot_skarabs_from_sdram(self.xhosts)"
+                signal.alarm(int(self.timeout))
+                function_call = "skfops.reboot_skarabs_from_sdram(self.xhosts)"
                 skfops.reboot_skarabs_from_sdram(self.xhosts)
-		signal.alarm(0)		
+                signal.alarm(0)
 
-		#This signal.alarm is probably not necessary. This is just a catch-all in case things get stuck
-		signal.alarm(self.timeout * (len(self.fhosts) + len(self.xhosts)))
-		function_call = "skfops.wait_after_reboot(self.fhosts + self.xhosts... "
+                #This signal.alarm is probably not necessary. This is just a catch-all in case things get stuck
+                signal.alarm(self.timeout * (len(self.fhosts) + len(self.xhosts)))
+                function_call = "skfops.wait_after_reboot(self.fhosts + self.xhosts... "
                 skfops.wait_after_reboot(self.fhosts +
-                                         self.xhosts, timeout=self.timeout *
-                                         (len(self.fhosts) + len(self.xhosts)))
+                            self.xhosts, timeout=self.timeout *
+                (len(self.fhosts) + len(self.xhosts)))
+    
+                #Cancel all timeout sigals
+                signal.alarm(0)
 
-		#Cancel all timeout sigals
-                signal.alarm(0)	
-		
             except Exception as err:
                 errmsg = 'Failed to program the boards: %s' % str(err)
-		signal.alarm(0)
+                signal.alarm(0)
                 self.logger.error(errmsg)
-                raise RuntimeError(errmsg)
+                raise
 
         fisskarab = True
         xisskarab = True
@@ -249,6 +229,17 @@ class FxCorrelator(Instrument):
             THREADED_FPGA_FUNC(
                 self.xhosts, timeout=self.timeout * 10,
                 target_function=('get_system_information', [xbof], {}))
+
+        #Log the bitstreams we're using...
+        # Better to stitch a log-string together
+        # than to log in a for-loop
+        for _h in [self.fhosts[0],self.xhosts[0]]:
+            bitstream_info_str = _h.bitstream + ':\n'
+            if 'git' in _h.rcs_info:
+                for gitfile, gitparams in _h.rcs_info['git'].items():
+                    bitstream_info_str += (str(gitfile) + ':' + str(gitparams)+'\n')
+            self.logger.info(bitstream_info_str)
+
         # remove test hardware from designs
         utils.disable_test_gbes(self)
         utils.remove_test_objects(self)
@@ -299,28 +290,25 @@ class FxCorrelator(Instrument):
 
         # wait for switches to learn, um, stuff
         self.logger.info(
-            'post mess-with-the-switch delay of {}s'.format(self.post_switch_delay/2))
-        time.sleep(self.post_switch_delay/2)
+            'post mess-with-the-switch delay of {}s'.format(self.post_switch_delay))
+        time.sleep(self.post_switch_delay)
 
         #Forcefully resync the Fengines once the DIG data is flowing reliably:
         #self.fops.sys_reset()
         #time.sleep(5)
         self.fops.auto_rst_enable()
         self.fops.sys_reset()
-        self.logger.info(
-            'post feng rst delay of {}s'.format(self.post_switch_delay/2))
-        time.sleep(self.post_switch_delay/2)
 
         if self.synchronisation_epoch == -1:
             self.est_synch_epoch()
 
         # arm the vaccs on the x-engines
         if self.xops.vacc_sync() > 0:
-            #self.fops.sys_reset()
-            #time.sleep(1)
             # reset all counters on fhosts and xhosts
             self.fops.clear_status_all()
             self.xops.clear_status_all()
+        self.xops.auto_rst_enable()
+
 
     def configure(self, *args, **kwargs):
         """
@@ -357,11 +345,6 @@ class FxCorrelator(Instrument):
         # get current time from an F-engine
         feng_mcnt = self.fhosts[f_index].get_local_time()
         self.logger.info('\tcurrent F-engine mcnt: {}'.format(feng_mcnt))
-        if feng_mcnt & 0xfff != 0:
-            errmsg = (
-                'Bottom 12 bits of timestamp from F-engine are not zero?! '
-                'feng_mcnt(0x{:012X})'.format(feng_mcnt))
-            self.logger.warning(errmsg)
         t_now = time.time()
         self.synchronisation_epoch = t_now - feng_mcnt / self.sample_rate_hz
         self.logger.info(
@@ -477,11 +460,12 @@ class FxCorrelator(Instrument):
             self.logger.error(errmsg)
             raise IOError(errmsg)
 
-    def _create_hosts(self, *args, **kwargs):
+    def _create_hosts(self, **kwargs):
         """
         Set up the different kind of hosts that make up this correlator.
         :return:
         """
+
         _target_class = fhost_fpga.FpgaFHost
 
         _feng_d = self.configd.get('fengine')
@@ -498,6 +482,7 @@ class FxCorrelator(Instrument):
                     config_source=_feng_d,
                     host_id=hostindex,
                     descriptor=self.descriptor,
+                    getLogger=self.getLogger,
                     **kwargs)
             except Exception as exc:
                 self.logger.error(
@@ -505,6 +490,7 @@ class FxCorrelator(Instrument):
                         host, str(exc)))
                 raise
             self.fhosts.append(fpgahost)
+
         # choose class (b-engine inherits x-engine functionality)
         if self.found_beamformer:
             _target_class = bhost_fpga.FpgaBHost
@@ -524,11 +510,12 @@ class FxCorrelator(Instrument):
                     self.katcp_port,
                     self.configd,
                     descriptor=self.descriptor,
+                    getLogger=self.getLogger,
                     **kwargs)
             except Exception as exc:
                 errmsg = 'Could not create xhost {}: {}'.format(host, str(exc))
                 self.logger.error(errmsg)
-                raise RuntimeError(errmsg)
+                raise
             self.xhosts.append(fpgahost)
         # check that no hosts overlap
         for _fh in self.fhosts:
@@ -539,6 +526,21 @@ class FxCorrelator(Instrument):
                     self.logger.error(errmsg)
                     raise RuntimeError(errmsg)
 
+    def _update_response_timeout(self, response_timeout):
+        """
+        Update the response timeout for Fpga Hosts
+        :return:
+        """
+        # access transport layer
+        host_transports = [host.transport for host in self.fhosts + self.xhosts]
+        # function to call to update the response timeout for the Fpga hosts
+        THREADED_FPGA_FUNC(
+            host_transports, timeout=self.timeout,
+            target_function=('_update_response_timeout', [response_timeout], {}))
+
+        # update the global timeout variable in case it was modified after initialisation
+        self.response_timeout = response_timeout
+
     def _read_config(self):
         """
         Read the instrument configuration from self.config_source.
@@ -547,139 +549,113 @@ class FxCorrelator(Instrument):
         if self.config_source is None:
             raise RuntimeError(
                 'Running _read_config with no config source. Explosions!!!')
-        self.configd = None
         errmsg = ''
         try:
             self._read_config_file()
         except (IOError, ValueError) as excep:
             errmsg += str(excep) + '\n'
             try:
-                self._read_config_server()  # Error is here.
+                self._read_config_server()
             except katcp.KatcpClientError as excep:
                 errmsg += str(excep) + '\n'
+            # If a file-path is given, but the file doesn't exist, then it will try to find a server
+            # but obviously it's not going to work, so we'll get a SyntaxError. This just catches it
+            # in a sane manner.
             except SyntaxError:
                 pass
 
         if self.configd is None:
             self.logger.error(errmsg)
-            raise RuntimeError(
-                'Supplied config_source {} is invalid.'.format(
-                    self.config_source))
+            raise RuntimeError('Supplied config_source {} is invalid.'.format(self.config_source))
+
         # do the bitstreams exist?
         self._check_bitstreams()
         # =====================================================================
-        _fxcorr_d = self.configd.get('FxCorrelator')
+        _fxcorr_d = self.configd['FxCorrelator']
         
-        assert isinstance(_fxcorr_d, dict)
-        #Check that sensor poll interval is in config file
-        if(_fxcorr_d.get('sensor_poll_interval')):
-            self.sensor_poll_interval = float(_fxcorr_d.get('sensor_poll_interval', None))
-            assert isinstance(self.sensor_poll_interval, float)
-        else:
-            self.logger.warn('sensor_poll_interval config file variable is not available, default interval set to: 0.003.')
-            self.sensor_poll_interval = 0.003;
+        # Can't continue if these values are not present in config file.
+        self.sample_rate_hz = float(_fxcorr_d['sample_rate_hz'])
+        self.timestamp_bits = int(_fxcorr_d['timestamp_bits'])
+        self.n_antennas = int(_fxcorr_d['n_ants'])
 
+        # Warn user if sensor poll interval is not in config file and default is set.
+        try:
+            self.sensor_poll_interval = float(_fxcorr_d['sensor_poll_interval'])
+        except KeyError:
+            self.logger.warn('sensor_poll_interval config file variable is not available, default interval set to: 0.003.')
+            self.sensor_poll_interval = 0.003
+
+        # These ones are fine, we'll just use a default if they're not there.
         self.katcp_port = int(_fxcorr_d.get('katcp_port', 7147))
-        assert isinstance(self.katcp_port, int)
-        self.sample_rate_hz = float(
-            _fxcorr_d.get(
-                'sample_rate_hz',
-                None))
-        assert isinstance(self.sample_rate_hz, float)
-        self.timestamp_bits = int(_fxcorr_d.get('timestamp_bits', None))
-        assert isinstance(self.timestamp_bits, int)
-        self.time_jitter_allowed = float(
-            _fxcorr_d.get('time_jitter_allowed', 0.5))
-        assert isinstance(self.time_jitter_allowed, float)
-        self.time_offset_allowed = float(
-            _fxcorr_d.get('time_offset_allowed', 1))
-        assert isinstance(self.time_offset_allowed, float)
+        self.time_jitter_allowed = float(_fxcorr_d.get('time_jitter_allowed', 0.5))
+        self.time_offset_allowed = float(_fxcorr_d.get('time_offset_allowed', 1))
         self.timeout = int(_fxcorr_d.get('default_timeout', 15))
-        assert isinstance(self.timeout, int)
         self.post_switch_delay = int(_fxcorr_d.get('switch_delay', 10))
-        assert isinstance(self.post_switch_delay, int)
-        self.n_antennas = int(_fxcorr_d.get('n_ants', None))
-        assert isinstance(self.n_antennas, int)
-        self.analogue_bandwidth = self.sample_rate_hz/2
+
         if 'spead_metapacket_ttl' in _fxcorr_d:
             import data_stream
-            data_stream.SPEAD_PKT_TTL = int(
-                _fxcorr_d.get('spead_metapacket_ttl'))
-            assert isinstance(data_stream.SPEAD_PKT_TTL, int)
+            data_stream.SPEAD_PKT_TTL = int(_fxcorr_d['spead_metapacket_ttl'])
+
+        # Derived values.
+        self.analogue_bandwidth = self.sample_rate_hz/2
 
         # =====================================================================
-        _feng_d = self.configd.get('fengine')
-        assert isinstance(_feng_d, dict)
+        _feng_d = self.configd['fengine']
+
+        # Can't continue without these values present.
+        self.n_chans = int(_feng_d['n_chans'])
+        # Not good enough that it's an int, has to actually be a supported mode.
+        if self.n_chans not in [1024, 4096, 32768]:
+            errmsg = "fengine n_chans - received invalid number: {}".format(self.n_chans)
+            self.logger.error(errmsg)
+            raise ValueError(errmsg)
+        self.n_input_streams_per_fengine = int(_feng_d['n_input_streams_per_fengine'])
+        self.fft_shift = int(_feng_d.get('fft_shift', None))
+
+        # If these are not present, fill in defaults.
         self.decimation_factor = int(_feng_d.get('decimation_factor', 1))
         self.ct_readgap = int(_feng_d.get('ct_readgap', 45))
-        assert isinstance(self.ct_readgap, int)
-        self.n_chans = int(_feng_d.get('n_chans'))
-        assert isinstance(self.n_chans, int)
-        ## There must be a better way
-        #assert self.n_chans in [1024, 4096, 32768]
         self.min_load_time = float(_feng_d.get('min_load_time', 0.2))
-        assert isinstance(self.min_load_time, float)
         self.f_per_fpga = int(_feng_d.get('f_per_fpga', 2))
-        assert isinstance(self.f_per_fpga, int)
-        self.n_input_streams_per_fengine = int(
-            _feng_d.get('n_input_streams_per_fengine', None))
-        assert isinstance(self.n_input_streams_per_fengine, int)
         self.adc_bitwidth = int(_feng_d.get('sample_bits', 10))
-        assert isinstance(self.adc_bitwidth, int)
-        self.fft_shift = int(_feng_d.get('fft_shift', None))
-        assert isinstance(self.fft_shift, int)
         self.pfb_group_delay = int(_feng_d.get('pfb_group_delay', 0))
-        assert isinstance(self.pfb_group_delay, int)
-        self.f_stream_payload_len = int(_feng_d.get('feng_stream_payload_len',
-                                                    1024))
-        assert isinstance(self.f_stream_payload_len, int)
+        self.f_stream_payload_len = int(_feng_d.get('feng_stream_payload_len', 1024))
 
         # =====================================================================
-        _xeng_d = self.configd.get('xengine', None)
-        assert isinstance(_xeng_d, dict)
+        _xeng_d = self.configd['xengine']
+
+        # Missing values here can be replaced with defaults.
         self.x_per_fpga = int(_xeng_d.get('x_per_fpga', 4))
-        assert isinstance(self.x_per_fpga, int)
         self.xeng_outbits = int(_xeng_d.get('xeng_outbits', 32))
-        assert isinstance(self.xeng_outbits, int)
-        self.x_stream_payload_len = int(_xeng_d.get('xeng_stream_payload_len',
-                                                    2048))
-        assert isinstance(self.x_stream_payload_len, int)
+        self.x_stream_payload_len = int(_xeng_d.get('xeng_stream_payload_len', 2048))
 
         # check if beamformer exists with x-engines
-        self.found_beamformer = False
         try:
-            assert 'beam0' in self.configd.keys()
-            _beam_d = self.configd.get('beam0', None)
-            assert isinstance(_beam_d, dict)
+            _beam_d = self.configd['beam0']
+        except KeyError:
+            self.found_beamformer = False
+            self.logger.info('No beamfomer found in the config.')
+        else:
             self.found_beamformer = True
-            self.beng_outbits = int(_beam_d.get('beng_outbits'))
-            assert isinstance(self.beng_outbits, int)
+            self.beng_outbits = int(_beam_d['beng_outbits'])
 
             # currently, 64A1K beam has a different payload size
             _sixty_four_1k = (self.n_antennas == 64 and self.n_chans == 1024)
             default_b_eng_pkt_size = 2048 if _sixty_four_1k else 4096
-            self.b_stream_payload_len = int(
-                    _beam_d.get('beam0_stream_payload_len',
-                                default_b_eng_pkt_size))
-            assert isinstance(self.b_stream_payload_len, int)
-
-        except Exception:
-            self.logger.info('No beamfomer found in the config.')
+            self.b_stream_payload_len = int(_beam_d.get('beam0_stream_payload_len', default_b_eng_pkt_size))
 
     def _read_config_file(self):
         """
         Read the instrument configuration from self.config_source.
         """
-        tempdict = ReadOnlyDict(utils.parse_ini_file(self.config_source))
-        assert isinstance(tempdict, dict)
-        self.configd = tempdict
+        self.configd = ReadOnlyDict(utils.parse_ini_file(self.config_source))
 
     def _read_config_server(self):
         """
         Get instance-specific setup information from a given katcp server.
         :return:
         """
-        print type(self.config_source)
+        print(type(self.config_source))
         server = eval(self.config_source)[0]
         port = eval(self.config_source)[1]
         client = katcp.CallbackClient(server, port, auto_reconnect=True)

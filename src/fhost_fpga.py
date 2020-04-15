@@ -143,6 +143,10 @@ class Fengine(object):
             compl = numpy.vectorize(complex)(sdata['real{}'.format(which_chan)], sdata['imag{}'.format(which_chan)])
             return compl
         else:
+            try:
+                self.host.registers.quant_snap_ctrl.write(single_channel=False)
+            except:
+                pass
             snapshot = self.host.snapshots['snap_quant%i_ss'%self.offset]
             #calculate number of snapshot reads required:
             n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
@@ -169,18 +173,13 @@ class Fengine(object):
         self.last_delay.last_load_success=False
         # set up the delays and update the stored values
 
-        if (self.host.decimation_factor > 1):
-            self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
-            self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
-            self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase(delay_obj.phase_offset, delay_obj.phase_offset_delta)
-        else:
-            self.last_delay.delay = self._delay_write_delay_legacy(delay_obj.delay)
-            self.last_delay.delay_delta = self._delay_write_delay_rate_legacy(delay_obj.delay_delta)
-            self.last_delay.phase_offset, self.last_delay.phase_offset_delta = self._delay_write_phase_legacy(delay_obj.phase_offset, delay_obj.phase_offset_delta)
+        self.last_delay.delay = self._delay_write_delay(delay_obj.delay)
+        self.last_delay.delay_delta = self._delay_write_delay_rate(delay_obj.delay_delta)
+        self.last_delay.phase_offset = self._delay_write_phase(delay_obj.phase_offset)
+        self.last_delay.phase_offset_delta = self._delay_write_phase_rate(delay_obj.phase_offset_delta)
 
         # arm the timed load latches
-        cd_tl_name = 'tl_cd%i' % self.offset
-        status=self.host.registers['%s_status'%cd_tl_name].read()['data']
+        status=self.host.registers['tl_cd%i_status'%self.offset].read()['data']
         load_count=status['load_count']
         arm_count=status['arm_count']
         if load_count != self.last_delay.load_count:
@@ -197,134 +196,55 @@ class Fengine(object):
             self.last_delay.last_load_success=False
         self.last_delay.load_count = load_count
         self.last_delay.arm_count = arm_count
-        self.last_delay.load_mcnt=self._arm_timed_latch(cd_tl_name, mcnt=delay_obj.load_mcnt)
+        self.last_delay.load_mcnt=self._arm_timed_latch(mcnt=delay_obj.load_mcnt)
         self.logger.debug("New delay model applied: {}".format(self.last_delay.__str__()))
         return self.last_delay.last_load_success
 
-    def _arm_timed_latch(self, name, mcnt=None):
+    def _arm_timed_latch(self, mcnt):
         """
         Arms the delay correction timed latch.
         Optimisations bypass normal register bitfield operations.
         :param names: name of latch to trigger
-        :param mcnt: sample mcnt to trigger at. If None triggers immediately
+        :param mcnt: sample mcnt to trigger at.
         :return ::
         """
-        control_reg = self.host.registers['%s_control' % name]
-        control0_reg = self.host.registers['%s_control0' % name]
+        control1_reg = self.host.registers['delay%i_tl_control1' % self.offset]
+        control0_reg = self.host.registers['delay%i_tl_control0' % self.offset]
         ao=control0_reg._fields['arm'].offset
-        #if mcnt is None:
-        #    self.logger.info('Loadtime not specified; loading immediately.')
-        #    lio=control0_reg._fields['load_immediate'].offset
-        #    control0_reg.write_int((1<<ao)+(1<<lio))
-        #    control0_reg.write_int(0)
-        #    return -1
-        #else:
-        self.logger.debug('Requested load mcnt %i.'%mcnt)
-        load_time_lsw = mcnt - (int(mcnt/(2**32)))*(2**32)
-        load_time_msw = int(mcnt/(2**32))
-        control_reg.write_int(load_time_lsw)
+        #TODO: don't floor the timestamp, but round it sanely.
+        mcnt_rounded = (int(mcnt)>>self.host.timestamp_decimation)<<self.host.timestamp_decimation
+        self.logger.debug('Requested load mcnt %i rounded to %i.'%(mcnt,mcnt_rounded))
+        load_time_lsw = mcnt_rounded - (int(mcnt_rounded/(2**32)))*(2**32)
+        load_time_msw = int(mcnt_rounded/(2**32))
+        control1_reg.write_int(load_time_lsw)
         control0_reg.write_int((1<<ao)+(load_time_msw))
         control0_reg.write_int((0<<ao)+(load_time_msw))
-        return mcnt
+        return mcnt_rounded
 
-##TODO reimplement this function.
-## Won't do for now; doesn't seem like anyone needs it. CAM/SDP use the sensors instead.
-##TODO: Only return useful values if they actually loaded?
-#    def delay_get(self):
-#        """
-#        Store in local variables (and return) the values that were
-#        written into the various FPGA load registers.
-#        :return:
-#        """
-#
-#        bitshift = delay_get_bitshift()
-#        delay_reg = self.host.registers['delay%i' % self.offset]
-#        delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
-#        phase_reg = self.host.registers['phase%i' % self.offset]
-#        act_delay = delay_reg.read()['data']['initial']
-#        act_delay_delta = delay_delta_reg.read()['data']['delta'] / bitshift
-#        act_phase_offset = phase_reg.read()['data']['initial']
-#        act_phase_offset_delta = phase_reg.read()['data']['delta'] / bitshift
-#
-
-    def _delay_write_delay_legacy(self, delay):
-        """
-        delay is in samples.
-        """
-        delay_reg = self.host.registers['delay%i' % self.offset]
-
-        #figure out register offsets and widths
-        reg_bp = delay_reg._fields['initial'].binary_pt
-        reg_bw = delay_reg._fields['initial'].width_bits
-
-        max_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
-        if delay < 0:
-            self.logger.warn('Setting smallest delay of 0. Requested %f samples.' %
-                (delay))
-            delay = 0
-        elif delay > max_delay:
-            self.logger.warn('Setting largest possible delay. Requested %f samples, set %f.' %
-                (delay,max_delay))
-            delay = max_delay
-
-        #prepare the register:
-        prep_int=int(delay*(2**reg_bp))&((2**reg_bw)-1)
-        act_value = (float(prep_int)/(2**reg_bp))
-        self.logger.debug('Setting delay to %f samples, from request for %f samples.' % (act_value,delay))
-        delay_reg.write_int(prep_int)
-        return act_value
-    
     def _delay_write_delay(self, delay):
         """
         delay is in samples. Can be fractional.
         """
-        
-        """
-        Split out whole and fractional part
-        """
-        
         delay_whole = int(delay)
-        delay_frac = delay - int(delay)
+        delay_frac = delay - delay_whole
         
-        delay_reg_whole = self.host.registers['delay_whole%i' % self.offset]
-        delay_reg_frac = self.host.registers['delay_frac%i' % self.offset]
+        prep_whole = delay_whole
+        prep_frac = int((delay_frac*(2**32)))
 
-        #figure out register offsets and widths
-        reg_bp = delay_reg_frac._fields['initial'].binary_pt + 1
-        reg_bw = delay_reg_whole._fields['initial'].width_bits + reg_bp
+        delay_reg_whole = self.host.registers['delay_whole%i' % self.offset].write_int(prep_whole)
+        delay_reg_frac = self.host.registers['delay_frac%i' % self.offset].write_int(prep_frac)
 
-        max_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
-        if delay < 0:
-            self.logger.warn('Setting smallest delay of 0. Requested %f samples(whole) and %f samples(frac).' %
-                (delay_whole,delay_frac))
-            delay_whole = 0
-            delay_frac = 0
-        elif delay > max_delay:
-            self.logger.warn('Setting largest possible delay. Requested %f samples, set delay_whole %f and delay_frac %f.' %
-                (delay_whole,max_delay,delay_frac))
-            delay_whole = max_delay
-            delay_frac = 0;
-
-        #prepare the register:
-        #prep_int=int(delay*(2**reg_bp))&((2**reg_bw)-1)
-
-        prep_int_frac=int(delay_frac*(2**(reg_bw-reg_bp-1)))&(2**(reg_bp-1)-1)
-        act_value_frac = (float(prep_int_frac)/(2**(reg_bw-reg_bp-1)))
+        self.logger.debug('Setting delay_whole register to 0x%08x, from request for %i samples.' % (prep_whole,delay_whole))
+        self.logger.debug('Setting delay_frac register to 0x%08x, from request for %f samples.' % (prep_frac,delay_frac))
         
-        prep_int_whole=int(delay_whole)&((2**(reg_bw-reg_bp))-1)
-        act_value_whole = float(prep_int_whole)        
-        self.logger.debug('Setting delay_whole to %f samples, from request for %f samples.' % (act_value_whole,delay_whole))
-        self.logger.debug('Setting delay_frac to %f samples, from request for %f samples.' % (act_value_frac,delay_frac))
-        
-        delay_reg_whole.write_int(prep_int_whole)
-        delay_reg_frac.write_int(prep_int_frac)
-        
-        act_value = act_value_whole + act_value_frac
+        act_value = prep_whole + (prep_frac/(2.0**32))
 
         return act_value
 
-    def _delay_write_delay_rate_legacy(self, delay_rate):
+    def _delay_write_delay_rate(self, delay_rate):
         """
+        Rate is unitless (eg in samples/sample).
+        Range: -1.0 to +1.0
         """
         bitshift = delay_get_bitshift(bitshift_schedule=23)
         delay_delta_reg = self.host.registers['delta_delay%i' % self.offset]
@@ -332,12 +252,15 @@ class Fengine(object):
         delta_delay_shifted = float(delay_rate) * bitshift
 
         #figure out register offsets and widths
-        reg_bp = delay_delta_reg._fields['delta'].binary_pt
-        reg_bw = delay_delta_reg._fields['delta'].width_bits
+        #reg_bp = delay_delta_reg._fields['delta'].binary_pt
+        #reg_bw = delay_delta_reg._fields['delta'].width_bits
+        reg_bp = 31
+        reg_bw = 32
 
         #figure out maximum range, and clip if necessary:
         max_positive_delta_delay = 2 ** (reg_bw - reg_bp - 1) - 1 / float(2 ** reg_bp)
-        max_negative_delta_delay = -2 ** (reg_bw - reg_bp - 1) + 1 / float(2 ** reg_bp)
+        #max_negative_delta_delay = -2 ** (reg_bw - reg_bp - 1) + 1 / float(2 ** reg_bp)
+        max_negative_delta_delay = -1.
         if delta_delay_shifted > max_positive_delta_delay:
             delta_delay_shifted = max_positive_delta_delay
             self.logger.warn('Setting largest possible positive delay delta. ' \
@@ -355,84 +278,16 @@ class Fengine(object):
         delay_delta_reg.write_int(prep_int)
         return act_value
 
-
-    def _delay_write_delay_rate(self, delay_rate):
-        """
-        Split out whole and fractional part
-        """
-        delay_rate_whole = int(delay_rate)
-        delay_rate_frac = delay_rate - int(delay_rate)
-        
-        bitshift = delay_get_bitshift(bitshift_schedule=23)
-        delay_delta_reg_whole = self.host.registers['delta_delay_whole%i' % self.offset]
-        delay_delta_reg_frac = self.host.registers['delta_delay_frac%i' % self.offset]
-        
-        # shift up by amount shifted down by on fpga
-        # Use input value
-        delta_delay_shifted = float(delay_rate) * bitshift
-        #delta_delay_shifted_whole = float(delay_rate_whole) * bitshift
-        #delta_delay_shifted_frac = float(delay_rate_frac) * bitshift
-        delta_delay_shifted_whole = float(delay_rate_whole)
-        delta_delay_shifted_frac = float(delay_rate_frac)
-        
-       
-        #figure out register offsets and widths
-        reg_bp = delay_delta_reg_frac._fields['initial'].binary_pt + 1
-
-        reg_bw = delay_delta_reg_whole._fields['initial'].width_bits + reg_bp
-
-
-        #figure out maximum range, and clip if necessary:
-        max_positive_delta_delay = 2 ** (reg_bw - reg_bp) - 1 / float(2 ** reg_bp)
-        max_negative_delta_delay = -2 ** (reg_bw - reg_bp) + 1 / float(2 ** reg_bp)
-        if delta_delay_shifted > max_positive_delta_delay:
-            delta_delay_shifted = max_positive_delta_delay
-            self.logger.warn('Setting largest possible positive delay delta. ' \
-                             'Requested: %e samples/sample, set %e.'%
-                             (delay_rate,max_positive_delta_delay/bitshift))
-        elif delta_delay_shifted < max_negative_delta_delay:
-            delta_delay_shifted = max_negative_delta_delay
-            self.logger.warn('Setting largest possible negative delay delta. ' \
-                             'Requested: %e samples/sample, set %e.'%
-                             (delay_rate,max_negative_delta_delay/bitshift))
-
-        
-   
-        #prep_int=int(delta_delay_shifted*(2**reg_bp))
-        #act_value = (float(prep_int)/(2**reg_bp))/bitshift
-                
-        prep_int_whole=int(delta_delay_shifted_whole*(2**reg_bp))
-        act_value_whole = (float(prep_int_whole)/(2**reg_bp))
-        
-        prep_int_frac=int(delta_delay_shifted_frac*(2**(reg_bp-1)))&(2**(reg_bp)-1)
-        act_value_frac = (float(prep_int_frac)/(2**(reg_bp-1)))
-        
-        self.logger.debug('Setting delay delta whole to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value_whole, prep_int_whole,delay_rate_whole))
-        self.logger.debug('Setting delay delta frac to %e samples/sample (reg 0x%08X), mapped from %e samples/sample request.' %(act_value_frac, prep_int_frac,delay_rate_frac))
-        
-        delay_delta_reg_whole.write_int(prep_int_whole)
-        delay_delta_reg_frac.write_int(prep_int_frac)
-                
-        act_value = act_value_whole + act_value_frac
-        
-        return act_value
-
-    def _delay_write_phase_legacy(self, phase, phase_rate):
+    def _delay_write_phase(self, phase):
         """
         Phase is in fractions of pi radians (-1 to 1 corresponds to -180degrees to +180 degrees).
-        Phase rate is in pi radians/sample. (eg value of 0.5 would increment phase by 0.5*pi radians every sample)
         :return:
         """
-        bitshift = delay_get_bitshift()
         phase_reg = self.host.registers['phase%i' % self.offset]
 
         #figure out register offsets and widths
-        initial_reg_bp = phase_reg._fields['initial'].binary_pt
-        initial_reg_bw = phase_reg._fields['initial'].width_bits
-        initial_reg_offset = phase_reg._fields['initial'].offset
-        delta_reg_bp = phase_reg._fields['delta'].binary_pt
-        delta_reg_bw = phase_reg._fields['delta'].width_bits
-        delta_reg_offset = phase_reg._fields['delta'].offset
+        initial_reg_bp = 31 #phase_reg._fields['initial'].binary_pt
+        initial_reg_bw = 32 #phase_reg._fields['initial'].width_bits
 
         # setup the phase offset
         max_positive_phase = 2 ** (initial_reg_bw - initial_reg_bp - 1) - 1 / float(2 ** initial_reg_bp)
@@ -447,6 +302,27 @@ class Fengine(object):
                         'Requested: %e*pi radians, set %e.' %
                         (phase, max_negative_phase))
             phase = max_negative_phase
+
+        prep_int_initial=int(phase*(2**initial_reg_bp))
+
+        act_value_initial = (float(prep_int_initial)/(2**initial_reg_bp))
+        #if phase<0: act_value_initial-=(2**initial_reg_bw)  # Seems to me as though this shouldn't be here. (JS)
+        self.logger.debug('Writing initial phase to %e*pi radians (reg: 0x%08X), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
+        # actually write the values to the register
+        phase_reg.write(initial=phase)
+        return act_value_initial
+
+    def _delay_write_phase_rate(self, phase_rate):
+        """
+        Phase rate is in pi radians/sample. (eg value of 0.5 would increment phase by 0.5*pi radians every sample)
+        :return:
+        """
+        bitshift = delay_get_bitshift()
+        phase_rate_reg = self.host.registers['phase_rate%i' % self.offset]
+
+        #figure out register offsets and widths
+        delta_reg_bp = 31 #phase_reg._fields['delta'].binary_pt
+        delta_reg_bw = 32 #phase_reg._fields['delta'].width_bits
 
         #setup phase delta/rate:
         # shift up by amount shifted down by on fpga
@@ -464,91 +340,13 @@ class Fengine(object):
                         'Requested %e*pi radians/sample, set %e.' % (phase_rate, dp))
             delta_phase_shifted = max_negative_delta_phase
 
-        prep_int_initial=int(phase*(2**initial_reg_bp))
         prep_int_delta=int(delta_phase_shifted*(2**delta_reg_bp))
-
-        act_value_initial = (float(prep_int_initial)/(2**initial_reg_bp))
-        #if phase<0: act_value_initial-=(2**initial_reg_bw)  # Seems to me as though this shouldn't be here. (JS)
         act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
-        self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
-        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
-        
-        import numpy
-        prep_array = numpy.array([prep_int_initial, prep_int_delta], dtype=numpy.int16)
-        prep_array = prep_array.view(dtype=numpy.uint16)
-        # actually write the values to the register
-        prep_int = (prep_array[0]<<initial_reg_offset) + (prep_array[1]<<delta_reg_offset)
-        phase_reg.write_int(prep_int)
+        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: 0x%08X), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
+        phase_rate_reg.write(delta=delta_phase_shifted)
+        return act_value_delta
 
-        return act_value_initial,act_value_delta
-
-
-    def _delay_write_phase(self, phase, phase_rate):
-        """
-        Phase is in fractions of pi radians (-1 to 1 corresponds to -180degrees to +180 degrees).
-        Phase rate is in pi radians/sample. (eg value of 0.5 would increment phase by 0.5*pi radians every sample)
-        :return:
-        """
-        bitshift = delay_get_bitshift()
-        phase_reg = self.host.registers['phase%i' % self.offset]
-
-        #figure out register offsets and widths
-        initial_reg_bp = phase_reg._fields['initial'].binary_pt
-        initial_reg_bw = phase_reg._fields['initial'].width_bits
-        initial_reg_offset = phase_reg._fields['initial'].offset
-        delta_reg_bp = phase_reg._fields['delta'].binary_pt
-        delta_reg_bw = phase_reg._fields['delta'].width_bits
-        delta_reg_offset = phase_reg._fields['delta'].offset
-
-        # setup the phase offset
-        max_positive_phase = 2 ** (initial_reg_bw - initial_reg_bp - 1) - 1 / float(2 ** initial_reg_bp)
-        max_negative_phase = -2 ** (initial_reg_bw - initial_reg_bp - 1) + 1 / float(2 ** initial_reg_bp)
-        if phase > max_positive_phase:
-            self.logger.warn('Setting largest possible positive phase. '
-                        'Requested: %e*pi radians, set %e.' %
-                        (phase, max_positive_phase))
-            phase = max_positive_phase
-        elif phase < max_negative_phase:
-            self.logger.warn('Setting largest possible negative phase. '
-                        'Requested: %e*pi radians, set %e.' %
-                        (phase, max_negative_phase))
-            phase = max_negative_phase
-
-        #setup phase delta/rate:
-        # shift up by amount shifted down by on fpga
-        max_positive_delta_phase = 2 ** (delta_reg_bw - delta_reg_bp - 1) - 1 / float(2 ** delta_reg_bp)
-        max_negative_delta_phase = -2 ** (delta_reg_bw - delta_reg_bp - 1) + 1 / float(2 ** delta_reg_bp)
-        delta_phase_shifted = float(phase_rate) * bitshift
-        if delta_phase_shifted > max_positive_delta_phase:
-            dp = max_positive_delta_phase / bitshift
-            self.logger.warn('Setting largest possible positive phase delta. '
-                        'Requested %e*pi radians/sample, set %e.' % (phase_rate, dp))
-            delta_phase_shifted = max_positive_delta_phase
-        elif delta_phase_shifted < max_negative_delta_phase:
-            dp = max_negative_delta_phase / bitshift
-            self.logger.warn('Setting largest possible negative phase delta. '
-                        'Requested %e*pi radians/sample, set %e.' % (phase_rate, dp))
-            delta_phase_shifted = max_negative_delta_phase
-
-        prep_int_initial=int(phase*(2**initial_reg_bp))
-        prep_int_delta=int(delta_phase_shifted*(2**delta_reg_bp))
-
-        act_value_initial = (float(prep_int_initial)/(2**initial_reg_bp))
-        #if phase<0: act_value_initial-=(2**initial_reg_bw)  # Seems to me as though this shouldn't be here. (JS)
-        act_value_delta = (float(prep_int_delta)/(2**delta_reg_bp))/bitshift
-        self.logger.debug('Writing initial phase to %e*pi radians (reg: %i), mapped from %e request.' % (act_value_initial,prep_int_initial,phase))
-        self.logger.debug('Writing %e*pi radians/sample phase delta (reg: %i), mapped from %e*pi request.' % (act_value_delta,prep_int_delta,phase_rate))
-        
-        import numpy
-        prep_array = numpy.array([prep_int_initial, prep_int_delta], dtype=numpy.int16)
-        prep_array = prep_array.view(dtype=numpy.uint16)
-        # actually write the values to the register
-        prep_int = (prep_array[0]<<initial_reg_offset) + (prep_array[1]<<delta_reg_offset)
-        phase_reg.write_int(prep_int)
-
-        return act_value_initial,act_value_delta
-
-    def eq_get(self):
+    def get_eq(self):
         """
         Read a given EQ BRAM.
         :return: a list of the complex EQ values from RAM
@@ -562,7 +360,7 @@ class Fengine(object):
         self.last_eq=eqcomplex
         return self.last_eq
 
-    def eq_set(self, eq_poly=None):
+    def set_eq(self, eq_poly=None):
         """
         Write a given complex eq to the given SBRAM.
         WARN: hardcoded for 16b values!
@@ -572,7 +370,7 @@ class Fengine(object):
         """
         coeffs = (self.host.n_chans * 2) * [0]
         if eq_poly==None:
-            self.logger.info('Setting default eq')
+            self.logger.debug('Setting default eq')
             eq_poly=int(self.host._config['default_eq_poly'])
         try:
             if eq_poly == 'auto':
@@ -593,7 +391,7 @@ class Fengine(object):
                 start_chan=int(self.host.n_chans*0.1)
                 stop_chan=int(self.host.n_chans*0.9)
                 eq_poly=numpy.polyfit(chans[start_chan:stop_chan],error[start_chan:stop_chan],3)
-                poly_coeffs=numpy.array(self.eq_get())*numpy.polyval(eq_poly,chans)
+                poly_coeffs=numpy.array(self.get_eq())*numpy.polyval(eq_poly,chans)
                 coeffs[0::2] = [coeff.real for coeff in poly_coeffs]
                 coeffs[1::2] = [coeff.imag for coeff in poly_coeffs]
                 
@@ -627,10 +425,12 @@ class Fengine(object):
         cimag = coeffs[1::2]
         ss = struct.pack('>%ih' % (self.host.n_chans * 2), *coeffs)
         self.host.write(self.eq_bram_name, ss, 0)
-        self.last_eq=[complex(creal[i],cimag[i]) for i in range(len(creal))]
+        self.last_eq=[complex(creal[i],cimag[i]) for i in range(self.host.n_chans)]
         if(saturated_channels_count != 0):
             self.logger.warn('EQ values adjusted. %i channels saturated.'%saturated_channels_count)
-        self.logger.info('EQ values: %s...'%self.last_eq[0:10])
+        mean_real = sum(creal)/len(creal)
+        mean_imag = sum(cimag)/len(creal)
+        self.logger.info('EQ updated mean (%i+%ij): ...%s...'%(mean_real,mean_imag,self.last_eq[self.host.n_chans/2-3:self.host.n_chans/2+3]))
 
         return self.last_eq
 
@@ -651,7 +451,8 @@ class FpgaFHost(FpgaHost):
         super(FpgaFHost, self).__init__(host=host, katcp_port=katcp_port,
                                         bitstream=bitstream,
                                         transport=SkarabTransport,
-                                        connect=connect)
+                                        connect=connect,
+                                        **kwargs)
 
         self._config = config
 
@@ -690,11 +491,14 @@ class FpgaFHost(FpgaHost):
             self.n_chans = int(config['n_chans'])
             self.min_load_time = float(config['min_load_time'])
             self.decimation_factor = int(config['decimation_factor'])
+            import numpy
+            self.timestamp_decimation = int(numpy.log2(self.n_chans*self.decimation_factor)+1)
         else:
             self.num_fengines = None
             self.n_chans = None
             self.min_load_time = None
             self.decimation_factor = None
+            self.timestamp_decimation = None
 
         self.host_type = 'fhost'
 
@@ -827,7 +631,9 @@ class FpgaFHost(FpgaHost):
         if (shift_schedule is None):
             shift_schedule = int(self._config['fft_shift'])
         elif (type(shift_schedule)==str): 
-            if shift_schedule == 'auto':
+            if ((shift_schedule.lower() == 'default') or (shift_schedule.lower() == 'defaults')):
+                shift_schedule = int(self._config['fft_shift'])
+            elif shift_schedule == 'auto':
                 shift_ok=[]
                 for shift_stages in range(n_stages_total+1):
                     fft_shift=distribute_shifts(n_stages_total,shift_stages)
@@ -847,6 +653,17 @@ class FpgaFHost(FpgaHost):
                 else:
                     self.logger.error("Can't shift on %i stages because there are only %i stages in this design! Shifting on every stage."%(n_stages,n_stages_total))
                     shift_schedule=(2**(n_stages_total))-1
+            else:
+                self.logger.error("FFT shift string %s not understood. Ignoring."%str(shift_schedule))
+                shift_schedule = self.get_fft_shift()
+        elif (type(shift_schedule)==int):
+            shift_schedule = int(shift_schedule)
+        else:
+            try:
+                shift_schedule = int(shift_schedule)
+            except ValueError:
+                self.logger.error("FFT shift setting %s not understood. Ignoring."%str(shift_schedule))
+                shift_schedule = self.get_fft_shift()
         self.logger.info("Setting FFT shift to %i (%i stages)."%(shift_schedule,calc_n_stages(shift_schedule)))
         self.registers.fft_shift.write(fft_shift=shift_schedule)
 
@@ -879,8 +696,10 @@ class FpgaFHost(FpgaHost):
         Retrieves all the Coarse Delay status registers.
         """
         rv={}
-        for i in range(6):
+        for i in range(4):
             rv.update(self.registers['cd_hmc_hmc_delay_status%i'%i].read()['data'])
+        rv['current_cd0']=self.registers['cd_hmc_req_hmc_cd0'].read()['data']['reg']
+        rv['current_cd1']=self.registers['cd_hmc_req_hmc_cd1'].read()['data']['reg']
         return rv
 
     def get_ct_status(self):
@@ -889,8 +708,10 @@ class FpgaFHost(FpgaHost):
         returns a list (one per pol on board) of status dictionaries.
         """
         rv={}
-        for i in range(5):
+        for i in range(3):
             rv.update(self.registers['hmc_ct_status%i' %i].read()['data'])
+        #rv['hmc0']=self.hmcs.hmc_ct_hmc.get_hmc_status()
+        #rv['hmc1']=self.hmcs.hmc_ct_hmc1.get_hmc_status()
         return rv
 
     def get_pfb_status(self):
@@ -927,15 +748,17 @@ class FpgaFHost(FpgaHost):
             raw=self.registers['adc_dev%i'%feng.offset].read()['data']
             ret['p%i_min'%feng.offset]=raw['min']
             ret['p%i_max'%feng.offset]=raw['max']
-            ret['p%i_pwr_dBFS'%feng.offset]=10*numpy.log10(self.registers['adc_pwr%i'%feng.offset].read()['data']['reg'])
+            #scale from dBov (square-wave referenced) to dBFS (sine-wave referenced) by adjusting up by 3dB.
+            ret['p%i_pwr_dBFS'%feng.offset]=10*numpy.log10(self.registers['adc_pwr%i'%feng.offset].read()['data']['reg'])+3
             ret['p%i_dig_clip_cnt'%feng.offset]=self.registers['unpack_adc_clip%i'%feng.offset].read()['data']['sample_cnt']
         return ret
 
-    def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10):
+    def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10, trig_level=0):
         """
         Read the ADC snapshots from this Fhost
         :param loadcnt: the trigger/load time in ADC samples.
         :param timeout: timeout in seconds for snapshot read operation.
+        :param trig_level: the oscilloscope-like trigger point (range: 0.0 - 1.0)
         :return {'p0': AdcData(), 'p1': AdcData()}
         """
         if input_name != None:
@@ -948,6 +771,10 @@ class FpgaFHost(FpgaHost):
             self.registers.trig_time_lsw.write_int(ltime_lsw)
             self.snapshots.snap_adc0_ss.arm()
             self.snapshots.snap_adc1_ss.arm()
+        elif (trig_level != 0):
+            self.registers.trig_level.write(level=trig_level)
+            self.snapshots.snap_adc0_ss.arm(circular_capture=True)
+            self.snapshots.snap_adc1_ss.arm(circular_capture=True)
         else:
             self.snapshots.snap_adc0_ss.arm(man_trig=True)
             self.snapshots.snap_adc1_ss.arm(man_trig=True)

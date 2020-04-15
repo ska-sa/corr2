@@ -14,8 +14,7 @@ from casperfpga.transport_skarab import SkarabTransport
 
 from host_fpga import FpgaHost
 from utils import parse_ini_file
-
-LOGGER = logging.getLogger(__name__)
+from data_stream import StreamAddress
 
 # for DM in [pc cm ^{ -3}] , time in [s] , and frequency in [Hz]
 alpha = 2.410e-16
@@ -67,7 +66,7 @@ class SineSource(Source):
         freq_field = self.freq_register.field_get_by_name('frequency')
         self.nr_freq_steps = 2**freq_field.width_bits
         self.max_freq = self.sample_rate_hz / 2.0
-        self.delta_freq = self.max_freq / (self.nr_freq_steps - 1)
+        self.delta_freq = self.max_freq / self.nr_freq_steps
 
     @property
     def frequency(self):
@@ -199,7 +198,7 @@ class FpgaDsimHost(FpgaHost):
         """
         FpgaHost.__init__(self, host=host, katcp_port=katcp_port, **kwargs)
         if config is not None and config_file is not None:
-            LOGGER.warn('config file and config supplied, defaulting to config')
+            self.logger.warn('config file and config supplied, defaulting to config')
         self.config = config or parse_ini_file(config_file)['dsimengine']
         self.bitstream = bitstream
         self.sine_sources = AttributeContainer()
@@ -268,7 +267,7 @@ class FpgaDsimHost(FpgaHost):
         if self.bitstream:
             self._program()
         else:
-            LOGGER.info('Not programming host {} since no bitstream is configured'.format(self.host))
+            self.logger.info('Not programming host {} since no bitstream is configured'.format(self.host))
         if not self.is_running():
             raise RuntimeError('D-engine {host} not running'.format(**self.__dict__))
         self.get_system_information(self.bitstream)
@@ -324,10 +323,10 @@ class FpgaDsimHost(FpgaHost):
         """
         Program the bitstream to fpga and ensure 10GbE's are not transmitting
         """
-        LOGGER.info('Programming Dsim roach {host} with file {bitstream}'.format(**self.__dict__))
+        self.logger.info('Programming Dsim roach {host} with file {bitstream}'.format(**self.__dict__))
         stime = time.time()
         self.upload_to_ram_and_program(self.bitstream)
-        LOGGER.info('Programmed {} in {:.2f} seconds.'.format(self.host, time.time() - stime))
+        self.logger.info('Programmed {} in {:.2f} seconds.'.format(self.host, time.time() - stime))
         # Ensure data is not sent before the gbes are configured
         self.enable_data_output(False)
 
@@ -336,20 +335,18 @@ class FpgaDsimHost(FpgaHost):
         Set up the 40gbe core on a SKARAB DSIM
         :return:
         """
-        port = int(self.config['10gbe_port'])
+        port = StreamAddress.from_address_string(self.config['pol0_destination_ips'].strip()).port
         gbe = self.gbes[self.gbes.names()[0]]
         if gbe.get_port() != port:
             gbe.set_port(port)
+
         self.write_int('gbe_porttx', port)
         for pol in [0, 1]:
-            pol_start = self.config['pol%1i_destination_start_ip' % pol]
-            pol_bits = pol_start.split('.')
-            pol_base = int(pol_bits[3])
-            pol_prefix = '.'.join(pol_bits[0:3])
-            for polstream in [0, 1]:
-                txip = pol_base + polstream
-                txid = (pol * 2) + polstream
-                self.write_int('gbe_iptx%1i' % txid, IpAddress.str2ip('{}.{}'.format(pol_prefix, txip)))
+            addr = StreamAddress.from_address_string(self.config['pol%1i_destination_ips' % pol].strip())
+            for index in range(addr.ip_range):
+                # The interleave-by-pairs of IP addresses is implemented by this formula.
+                self.write_int('gbe_iptx%1i' % (2*index - index % 2 + 2*pol), addr.ip_address.ip_int + index)
+
         self.registers.control.write(gbe_rst=False)
 
     def setup_gbes(self):
@@ -387,7 +384,7 @@ class FpgaDsimHost(FpgaHost):
             addr_offset = 0
             for pol_gbe_ctr in range(0, gbes_per_pol):
                 txip = txaddr_base + addr_offset
-                LOGGER.info('{} sending to: {}.{} port {}'.format(self.host, txaddr_prefix, txip, port))
+                self.logger.info('{} sending to: {}.{} port {}'.format(self.host, txaddr_prefix, txip, port))
                 self.write_int('gbe_iptx{}'.format(gbe_ctr), IpAddress.str2ip('{}.{}'.format(
                     txaddr_prefix, txip)))
                 if not single_destination:

@@ -22,7 +22,7 @@ class XengineStream(data_stream.SPEADStream):
     """
     An x-engine SPEAD stream
     """
-    def __init__(self, name, destination, xops, max_pkt_size, *args, **kwargs):
+    def __init__(self, name, destination, xops, max_pkt_size, timeout=5, *args, **kwargs):
         """
         Make a SPEAD stream.
         :param name: the name of the stream
@@ -30,6 +30,7 @@ class XengineStream(data_stream.SPEADStream):
         :return:
         """
         self.xops = xops
+        self.timeout = timeout
         super(XengineStream, self).__init__(name,
             data_stream.XENGINE_CROSS_PRODUCTS, destination, max_pkt_size=max_pkt_size,
             instrument_descriptor=self.xops.corr.descriptor,
@@ -73,11 +74,11 @@ class XengineStream(data_stream.SPEADStream):
         txport = self.destination.port
         try:
             THREADED_FPGA_OP(
-                self.xops.hosts, timeout=10,
+                self.xops.hosts, timeout=self.timeout,
                 target_function=(lambda fpga_:
                                  fpga_.registers.gbe_iptx.write(reg=txip),))
             THREADED_FPGA_OP(
-                self.xops.hosts, timeout=10,
+                self.xops.hosts, timeout=self.timeout,
                 target_function=(lambda fpga_:
                                  fpga_.registers.gbe_porttx.write(reg=txport),))
         except AttributeError:
@@ -93,7 +94,7 @@ class XengineStream(data_stream.SPEADStream):
         """
         self.descriptors_issue()
         THREADED_FPGA_OP(
-            self.xops.hosts, timeout=5,
+            self.xops.hosts, timeout=self.timeout,
             target_function=(
                 lambda fpga_:
                 fpga_.registers.control.write(gbe_txen=True),))
@@ -106,7 +107,7 @@ class XengineStream(data_stream.SPEADStream):
         :return:
         """
         THREADED_FPGA_OP(
-            self.xops.hosts, timeout=5,
+            self.xops.hosts, timeout=self.timeout,
             target_function=(
                 lambda fpga_:
                 fpga_.registers.control.write(gbe_txen=False),))
@@ -123,7 +124,7 @@ class VaccSynchAttemptsMaxedOut(RuntimeError):
 
 class XEngineOperations(object):
 
-    def __init__(self, corr_obj, *args, **kwargs):
+    def __init__(self, corr_obj, timeout=5, *args, **kwargs):
         """
         A collection of x-engine operations that act on/with a correlator
         instance.
@@ -131,6 +132,7 @@ class XEngineOperations(object):
         :return:
         """
         self.corr = corr_obj
+        self.timeout = timeout
         self.hosts = corr_obj.xhosts
         self.data_stream = None
         self.vacc_acc_len = int(self.corr.configd['xengine']['accumulation_len'])
@@ -156,7 +158,7 @@ class XEngineOperations(object):
     @staticmethod
     def _gberst(hosts, state):
         THREADED_FPGA_OP(
-            hosts, timeout=5,
+            hosts, timeout=self.timeout,
             target_function=(
                 lambda fpga_:
                 fpga_.registers.control.write(gbe_rst=state),))
@@ -189,7 +191,7 @@ class XEngineOperations(object):
 
         #configure the ethernet cores.
         THREADED_FPGA_FUNC(
-                self.hosts, timeout=5,
+                self.hosts, timeout=self.timeout,
                 target_function=('setup_host_gbes',
                                  (), {}))
 
@@ -216,7 +218,7 @@ class XEngineOperations(object):
         gapsize = int(self.corr.configd['xengine']['10gbe_pkt_gapsize'])
         self.logger.info('X-engines: setting packet gap size to %i' % gapsize)
         THREADED_FPGA_OP(
-                self.hosts, timeout=5,
+                self.hosts, timeout=self.timeout,
                 target_function=(
                     lambda fpga_: fpga_.registers.gapsize.write_int(gapsize),))
 
@@ -281,7 +283,7 @@ class XEngineOperations(object):
         Clear the various status registers and counters on all the xengines
         :return:
         """
-        THREADED_FPGA_FUNC(self.hosts, timeout=10,
+        THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
                            target_function='clear_status')
 
     def get_baseline_ordering(self):
@@ -330,7 +332,7 @@ class XEngineOperations(object):
         x-engines.
         :return: {}
         """
-        return THREADED_FPGA_FUNC(self.hosts, timeout=10,
+        return THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
                                   target_function='get_rx_reorder_status')
 
     def get_vacc_status(self):
@@ -339,7 +341,7 @@ class XEngineOperations(object):
         x-engines.
         :return: {}
         """
-        rv=THREADED_FPGA_FUNC(self.hosts, timeout=10,
+        rv=THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
                                   target_function='get_vacc_status')
         acc_len=int(self.vacc_acc_len)
         sync=True
@@ -360,7 +362,7 @@ class XEngineOperations(object):
         Reset all Xengine VACCs
         """
         self.logger.info('Resetting all VACCs.')
-        THREADED_FPGA_FUNC(self.hosts, timeout=10,
+        THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
                                target_function='vacc_reset')
 
     def _vacc_sync_create_loadtime(self, load_time=None):
@@ -514,27 +516,28 @@ class XEngineOperations(object):
         # set the load mcount on the x-engines
         self.logger.info('Applying load time: %i.' % load_mcount)
         THREADED_FPGA_FUNC(
-            self.hosts, timeout=10,
+            self.hosts, timeout=self.timeout,
             target_function=('vacc_set_loadtime', (load_mcount,),))
 
         # check the current counts
-        initial_status=self.get_vacc_status()
+        #initial_status=self.get_vacc_status()
 
         # arm the xhosts
         THREADED_FPGA_FUNC(
-            self.hosts, timeout=10, target_function='vacc_arm')
+            self.hosts, timeout=self.timeout, target_function='vacc_arm')
 
         ## did the arm count increase?
         #JM 2019-07-08 Don't bother checking this anymore.
         #self._vacc_sync_check_armload_increment(initial_status,check='arm_cnt')
 
         # wait for the vaccs to trigger
-        self._vacc_sync_wait_for_mcnt(load_mcount)
-
+        # JM 2019-10-03 don't bother waiting to check if it succeeded. 
+        # New HW automatically resyncs.
+        #self._vacc_sync_wait_for_mcnt(load_mcount)
         # check the status to see that the load count increased
-        if not self._vacc_sync_check_armload_increment(initial_status,check='ld_cnt'):
-            self.corr.fops.get_rx_timestamps()
-            return -1
+        #if not self._vacc_sync_check_armload_increment(initial_status,check='ld_cnt'):
+        #    self.corr.fops.get_rx_timestamps()
+        #    return -1
 
         synch_time = self.corr.time_from_mcnt(load_mcount)
         #self.vacc_synch_running.clear()
@@ -607,22 +610,22 @@ class XEngineOperations(object):
             self.vacc_acc_len = int(acc_len)
 
             #Calculates the gap size
-        clock_cycles_per_accumulation = self.vacc_acc_len * 2 * self.corr.n_chans * self.xeng_acc_len/8;#Divide by 8 to accomodate for the 8 samples in parallel 
-        vector_length_bytes = self.corr.n_antennas * (self.corr.n_antennas + 1)/2 * self.corr.n_chans * 8/ (self.corr.n_antennas*self.corr.x_per_fpga) * 4
+        clock_cycles_per_accumulation = self.vacc_acc_len * 2 * self.corr.n_chans * self.xeng_acc_len/8*self.corr.fops.decimation_factor;#feng clock cycles. Divide by 8 to accomodate for the 8 samples in parallel
+        vector_length_bytes = self.corr.n_antennas * (self.corr.n_antennas + 1)/2 * self.corr.n_chans * 8/ (len(self.hosts)*self.corr.x_per_fpga) * 4
         packets_per_accumulation = vector_length_bytes/self.corr.x_stream_payload_len
-        gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation)
+        gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation*0.9) #scale by 0.9 to allow some deadtime between accs.
 
         if(gapsize > 2**19-1):
             gapsize = 2**19
 
         THREADED_FPGA_OP(
-            self.hosts, timeout=10,
+            self.hosts, timeout=self.timeout,
             target_function=(
                 lambda fpga_:
                 fpga_.registers.gapsize.write(gap_size=gapsize),))
 
         THREADED_FPGA_OP(
-            self.hosts, timeout=10,
+            self.hosts, timeout=self.timeout,
             target_function=(
                 lambda fpga_:
                 fpga_.vacc_set_acc_len(self.vacc_acc_len),))
@@ -634,13 +637,29 @@ class XEngineOperations(object):
         if vacc_resync:
             self.vacc_sync()
 
+    def auto_rst_enable(self):
+        """
+        Enable hardware automatic resync upon error detection.
+        """
+        THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
+            target_function=(lambda fpga_: fpga_.registers.control.write(auto_rst_enable=True), ))
+        self.logger.info('X-engine hardware auto rst/resync mechanism enabled.')
+
+    def auto_rst_disable(self):
+        """
+        Disable hardware automatic resync upon error detection.
+        """
+        THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
+            target_function=(lambda fpga_: fpga_.registers.control.write(auto_rst_enable=False), ))
+        self.logger.info('X-engine hardware auto rst/resync mechanism disabled.')
+
     def get_vacc_loadtime(self):
         """
         Return the last time the VACCs were all loaded (synchronised),
         else, return -1
         """
         results = THREADED_FPGA_FUNC(
-            self.hosts, timeout=5,
+            self.hosts, timeout=self.timeout,
             target_function=('get_vacc_loadtime'))
 
         first_loadtime=results.values()[0]
