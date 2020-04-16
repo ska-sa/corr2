@@ -36,6 +36,16 @@ class Instrument(object):
         self.identifier = identifier
         self.config_source = config_source
         self.configd = None
+
+        self.getLogger = getLogger
+        # TODO: decide whether 'Instrument'-level logs should default to INFO?
+        log_level = kwargs.get('logLevel', INFO)
+        result, self.logger = self.getLogger(logger_name=self.descriptor, log_level=log_level, **kwargs)
+        if not result:
+            # Problem
+            errmsg = 'Unable to create logger for {}'.format(self.descriptor)
+            raise RuntimeError(errmsg)
+        
         self._read_config()
 
         # The instrument might well have a sensor manager
@@ -53,14 +63,7 @@ class Instrument(object):
 
         self._initialised = False
 
-        self.getLogger = getLogger
-        # TODO: decide whether 'Instrument'-level logs should default to INFO?
-        log_level = kwargs.get('logLevel', INFO)
-        result, self.logger = self.getLogger(logger_name=self.descriptor, log_level=log_level, **kwargs)
-        if not result:
-            # Problem
-            errmsg = 'Unable to create logger for {}'.format(self.descriptor)
-            raise RuntimeError(errmsg)
+        
 
         self.logger.info('%s %s created.' % (self.classname, self.descriptor))
 
