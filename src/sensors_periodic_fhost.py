@@ -337,7 +337,7 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
             if (results[key] > -22) or (results[key] < -32):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                f_host.logger.warn('Input levels ({:.1f}dBFS) are poor on the {} digitiser. Consider adjusting the Digitiser attenuators so Digitiser outputs falls in the range -32 dBFS to -22 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name))
+                f_host.logger.warn('{} DIG input level ({:.1f}dBFS).'.format(f_host.fengines[int(key[1])].name,results[key]))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -396,7 +396,7 @@ def _cb_feng_pfbs(sensors, f_host, min_pfb_pwr, sensor_manager, sensor_task):
             if (results[key] > -24) or (results[key] < min_pfb_pwr):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                f_host.logger.warn('PFB output levels ({}dBFS) are poor on {}. Consider adjusting FFT shift so that {} dBFS < PFB output < -24 dBFS.'.format(results[key],f_host.fengines[int(key[3])].name,min_pfb_pwr))
+                f_host.logger.warn('{} PFB output level {:.1f}dBFS out of range {:.0f} dBFS < to < -24 dBFS.'.format(f_host.fengines[int(key[3])].name,results[key],min_pfb_pwr))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
@@ -445,7 +445,7 @@ def _cb_feng_quant(sensors, f_host, sensor_manager,sensor_task):
             if (results[key] > -10) or (results[key] < -30):
                 sensor.set(value=results[key], status=Corr2Sensor.WARN)
                 device_status = Corr2Sensor.WARN
-                f_host.logger.warn('Quantiser output levels ({}dBFS) are poor on {}. Check FFT shift and adjust EQ gain so -30 dBFS < quantiser_output < -10 dBFS.'.format(results[key],f_host.fengines[int(key[1])].name))
+                f_host.logger.warn('{} Quantiser output level {:.1f}dBFS out of range -30 dBFS to -10 dBFS.'.format(f_host.fengines[int(key[1])].name,results[key]))
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
