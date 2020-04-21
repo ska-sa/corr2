@@ -212,16 +212,6 @@ class XEngineOperations(object):
             f.registers.hmc_pkt_reord_rd_offset.write(rd_offset=offset)
             board_id += 1
 
-        # set the gapsize register
-        # Here we space-out the packets that the correlator emits, to
-        # smooth-out the bursty nature of the VACC output.
-        gapsize = int(self.corr.configd['xengine']['10gbe_pkt_gapsize'])
-        self.logger.info('X-engines: setting packet gap size to %i' % gapsize)
-        THREADED_FPGA_OP(
-                self.hosts, timeout=self.timeout,
-                target_function=(
-                    lambda fpga_: fpga_.registers.gapsize.write_int(gapsize),))
-
         # write the data stream destination to the registers
         self.data_stream.write_destination()
         if self.corr.sensor_manager:
@@ -609,11 +599,13 @@ class XEngineOperations(object):
         if acc_len is not None:
             self.vacc_acc_len = int(acc_len)
 
-            #Calculates the gap size
+        # Here we space-out the packets that the correlator emits, to
+        # smooth-out the bursty nature of the VACC output.
+        #Calculates the gap size & set the gapsize register
         clock_cycles_per_accumulation = self.vacc_acc_len * 2 * self.corr.n_chans * self.xeng_acc_len/8*self.corr.fops.decimation_factor;#feng clock cycles. Divide by 8 to accomodate for the 8 samples in parallel
         vector_length_bytes = self.corr.n_antennas * (self.corr.n_antennas + 1)/2 * self.corr.n_chans * 8/ (len(self.hosts)*self.corr.x_per_fpga) * 4
         packets_per_accumulation = vector_length_bytes/self.corr.x_stream_payload_len
-        gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation*0.9) #scale by 0.9 to allow some deadtime between accs.
+        gapsize = int(clock_cycles_per_accumulation/packets_per_accumulation*0.99) #scale by 0.99 to allow 1% deadtime between accs.
 
         if(gapsize > 2**19-1):
             gapsize = 2**19
