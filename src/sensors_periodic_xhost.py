@@ -422,7 +422,11 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
                         value = 'fail'
                         faulty_host_idx=instrument.xops.board_ids[_x]
                         faulty_host=instrument.xhosts[faulty_host_idx]
-                        faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(sensors_value[_x][xctr])))
+                        sensor_values_str_list = ['{} - {}'.format(name, sensor.value()) for name, sensor in 
+                                                                    sensors_value[_x][xctr].iteritems()]
+                        sensor_values_str = ', '.join(sensor_values_str_list)
+                        # faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(sensors_value[_x][xctr])))
+                        faulty_host.logger.error('VACC%i error status: %s'%(xctr, sensor_values_str))
                         if (xctr < 2):
                             faulty_host.logger.error('VACC HMC0 error status: %s'%(str(faulty_host.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())))
                         else:
