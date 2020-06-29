@@ -455,7 +455,8 @@ class Corr2Server(DeviceServer):
                 self.instrument.set_input_labels(newlist)
                 return tuple(['ok'] + self.instrument.get_input_labels())
             except Exception as ex:
-                return self._log_excep(ex, 'Failed to set input labels.')
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace, 'Failed to set input labels.')
         else:
             return tuple(['ok'] + self.instrument.get_input_labels())
 
@@ -773,7 +774,8 @@ class Corr2Server(DeviceServer):
             self.instrument.fops.set_fft_shift_all(new_shift)
             return 'ok',
         except Exception as ex:
-            return self._log_excep(ex, 'Failed setting fft shift')
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed setting fft shift')
 
     @request(Int(default=-1))
     @return_reply()
@@ -1064,7 +1066,7 @@ class Corr2Server(DeviceServer):
     #     try:
     #         yield self.executor.submit(self.instrument.stream_issue_metadata)
     #     except Exception as ex:
-    #         self._logger.exception('Error sending metadata - {}'.format(ex.message))
+    #         self._log_excep(ex, 'Error sending metadata')
     #     self._logger.debug('self.periodic_issue_metadata ran')
     #     IOLoop.current().call_later(self.metadata_cadence,
     #                                 self.periodic_issue_metadata)
@@ -1108,7 +1110,7 @@ class Corr2Server(DeviceServer):
         #try:
         #    yield self.executor.submit(self.instrument.stream_issue_descriptors)
         #except Exception as ex:
-        #    self._logger.exception('Error sending metadata - {}'.format(ex.message))
+        #    self._log_excep(ex, 'Error sending metadata')
 
         self._logger.debug('self.periodic_issue_descriptors ran')
         IOLoop.current().call_later(self.descriptor_cadence, self.periodic_issue_descriptors)
@@ -1122,8 +1124,9 @@ class Corr2Server(DeviceServer):
         """
         try:
             yield self.executor.submit(self.instrument.stream_issue_descriptor_single, index)
-        except Exception as ex:
-            self._logger.exception('Error sending metadata - {}'.format(ex.message))
+        except Exception as exc:
+            stack_trace = traceback.format_exc()
+            self._log_stacktrace(stack_trace, 'Error sending metadata')
 
     @request(Str())
     @return_reply(Str())
