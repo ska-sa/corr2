@@ -145,51 +145,46 @@ class FpgaBHost(FpgaXHost):
             rv.append(reg.read()['data'])
         return rv
 
-    def beam_steering_set(self,beam_index,coeffs):
+    def beam_steering_coeffs_set(self, beam_index, coeffs):
         """
-        Set the beam steering for the given beam for all inputs.
+        Set the beam steering coefficients for the given beam and input.
         :param beam_index: The integer offset of the beam on this board.
-        :param coeffs: a list of tuples containing the delay settings for each input.
+        :param coeffs: a list of tuples containing the delay settings for all b-engines for each input.
         """
-        assert len(coeffs) == self.n_ants, ('Incorrect number of coeffs supplied (%i supplied; need %i)'%(len(coeffs),self.n_ants))
+        #have used a tuple for coeffs instead of dictionary to save compute resources
 
-        #Calculate the lowest frequency channel for the board. We will use this to calculate base phases
-        #This is as a fraction of the total channels
-        #i.e in the range [0:1.0)
-        board_index = self.registers.board_id.read()
-        #TODO could just divide by the number of bengines in system
-        chan_ratio = ((board_index * self.beng_per_host * self.chans_per_partition) / self.chans_total)
+        assert len(coeffs) == self.n_ants, 
+            'Incorrect number of coeffs supplied (%i supplied; need %i)'%(
+                len(coeffs),self.n_ants)
         
-        #go through antennas getting each set of values
+        #look up which host we are in the system
+        board_index = self.registers.board_id.read()
+        
+        #go through coefficients for all antennas  
         for ant_index,ant_coeffs in enumerate(coeffs): 
-            assert len(ant_coeffs) == 4, 
-                ('Incorrect number of coeffs supplied for input %i (%i supplied; need %i)'%(source_index, len(coeffs),self.n_ants))
-            #calculate the delay for the b-engine
-            c = ant_coeffs[0] #c in y = mx+c
-            m = ant_coeffs[1] #m in y = mx+c             
-            #phase in fraction of a sample 
-            y = (m*chan_ratio)+c
-            #discard whole sample delays
-            y_norm = np.modf(y)[0]
-           
-            #the phase at the beginning of our b-engine for that antenna
-            phase_base = np.exp(y_norm*np.pi)
+            #extract the antenna coefficients for this board
+            host_coeffs = ant_coeffs[board_index]
+            assert len(host_coeffs) == 3, 
+                'Incorrect number of coeffs supplied for beam %i input %i, host %i (%i supplied; need 4' %(
+                    beam_index, ant_index, source_index, len(host_coeffs))
+
+            phase_base = coeffs[0]
             self.registers.beam_steering_phase_init.write(real=phase_base.real, imag=phase_base.imag)
 
-            #the phase rotation increment for each b-engine (we can pre-calculate this)
-            phase_base_delta = ant_coeffs[2]
+            #the phase rotation increment for each b-engine 
+            phase_base_delta = ant_coeffs[1]
             self.registers.beam_steering_phase_init_delta.write(real=phase_base_delta.real, imag=phase_base_delta.imag)
 
-            #the phase rotation increment per frequency within each b-engine (we can pre-calculate this)
-            phase_inc = ant_coeffs[3]
+            #the phase rotation increment per frequency within each b-engine
+            phase_inc = ant_coeffs[2]
             self.registers.beam_steering_phase_increment.write(real=phase_inc.real, imag=phase_inc.imag)
 
             #set up destination beam and antenna, and trigger load
             self.registers.bf_weight.write(stream=beam_index, antenna=source_index, beam_steering_load_now=0)
             self.registers.bf_weight.write(stream=beam_index, antenna=source_index, beam_steering_load_now=1)
             self.logger.debug(
-                    '%s:%i: Beam %i: set antenna (%i) beam steering 
-                        initial phase (%.5f,%.5f) delta initial phase (%.5f,%.5f) and phase increment (%.5f,%.5f)' % (
+                    '%s:%i: beam (%i) antenna (%i) beam steering 
+                        initial phase (%.5f,%.5f), delta initial phase (%.5f,%.5f), phase increment (%.5f,%.5f)' %(
                             self.host, self.index, beam_index, ant_index, 
                             phase_base.real, phase_base.imag, 
                             phase_base_delta.real, phase_base_delta.imag,
