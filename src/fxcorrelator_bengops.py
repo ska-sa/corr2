@@ -229,7 +229,7 @@ class BEngineOperations(object):
                                            [beam.index], {}))
         return rv
 
-    def set_beam_steering_delays(self, beam_name=None, delays)  
+    def set_beam_steering_delays(self, delays, beam_name=None):  
         """
         Set the beam steering coefficients for all inputs
         :param beam_name: the target beam
@@ -245,19 +245,15 @@ class BEngineOperations(object):
         else:
             new_delays=delays
          
-        assert len(new_delays)==self.corr.n_antennas,
-            'Need to specify %i delay values; you offered %i.' %(
-                self.corr.n_antennas,len(new_delays))
+        assert len(new_delays)==self.corr.n_antennas, 'Need to specify %i delay values; you offered %i.' %(self.corr.n_antennas,len(new_delays))
 
         ant_coeffs = []
         #generate delay and phase values for all antennas
         for ant_index,ant_delays in enumerate(new_delays): 
-            delay_samples = float(ant_delays[0])*self.corr.sample_rate_hz
+            delay_samples = ant_delays[0]*self.corr.sample_rate_hz
             #for a noise-like signal it makes little sense to delay by more than our FFT length
-            if delay_samples > self.corr.n_chans,
-                self.logger.info(
-                    'Request to delay antenna input %i by %i samples in a %i channel system.'
-                        .format(ant_index, delay_samples, self.corr.n_chans))
+            if delay_samples > self.corr.n_chans:
+                self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.'.format(ant_index, delay_samples, self.corr.n_chans))
 
             import numpy
             #phase change across the band for the delay specified (radians)
@@ -266,16 +262,15 @@ class BEngineOperations(object):
             phase = float(ant_delays[1])              
             
             #phase change per frequency 
-            phase_per_freq = numpy.exp(-1j*(delay/self.corr.n_chans))
+            phase_per_freq = delay/self.corr.n_chans
             #phase change per bengine
-            phase_per_beng = numpy.exp(-1j*(delay/(len(self.hosts)*self.beng_per_host)))
+            phase_per_beng = delay/(len(self.hosts)*self.beng_per_host)
 
             ant_coeffs.append((delay, phase, phase_per_beng, phase_per_freq))
  
         #change coefficients on all hosts
         beam_index = self.get_beam_by_name(beam_name).index
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_steering_coeffs_set',
-                                           [beam_index, coeffs], {}))
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_steering_coeffs_set',[len(self.hosts), beam_index, ant_coeffs], {}))
         #TODO
         #self.logger.info('{} weights set to {}.'.format(beam_name, coeffs))
         #TODO
