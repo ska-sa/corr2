@@ -149,7 +149,7 @@ class FpgaBHost(FpgaXHost):
         """
         Set the beam steering coefficients for the given beam and input.
         :param beam_index: The integer offset of the beam on this board.
-        :param coeffs: a list of tuples containing the delay settings for all b-engines for each input.
+        :param coeffs: a list of tuples containing the delay settings for all inputs
         """
         #have used a tuple for coeffs instead of dictionary to save compute resources
 
@@ -159,24 +159,28 @@ class FpgaBHost(FpgaXHost):
         
         #look up which host we are in the system
         board_index = self.registers.board_id.read()
-        
-        #go through coefficients for all antennas  
-        for ant_index,ant_coeffs in enumerate(coeffs): 
-            #extract the antenna coefficients for this board
-            host_coeffs = ant_coeffs[board_index]
-            assert len(host_coeffs) == 3, 
-                'Incorrect number of coeffs supplied for beam %i input %i, host %i (%i supplied; need 4' %(
-                    beam_index, ant_index, source_index, len(host_coeffs))
 
-            phase_base = coeffs[0]
+        #offset of beamformer host fpga in the range [-0.5:0.5) over the band
+        #(the delay is calculated for the centre of our band)
+        host_offset = (board_index*self.beng_per_host)/(len(self.corr.hosts)*self.beng_per_host)-0.5
+               
+        #go through coefficients for all antennas  
+        for ant_index,ant_coeffs in enumerate(host_coeffs): 
+            assert len(ant_coeffs) == 3, 
+                'Incorrect number of coeffs supplied for beam %i input %i, host %i (%i supplied; need 4' %(
+                    beam_index, ant_index, source_index, len(ant_coeffs))
+
+            delay = ant_coeffs[0]
+            phase = ant_coeffs[1]
+            phase_base = numpy.exp(-1j*host_offset*(delay+phase)))
             self.registers.beam_steering_phase_init.write(real=phase_base.real, imag=phase_base.imag)
 
             #the phase rotation increment for each b-engine 
-            phase_base_delta = ant_coeffs[1]
+            phase_base_delta = ant_coeffs[2]
             self.registers.beam_steering_phase_init_delta.write(real=phase_base_delta.real, imag=phase_base_delta.imag)
 
             #the phase rotation increment per frequency within each b-engine
-            phase_inc = ant_coeffs[2]
+            phase_inc = ant_coeffs[3]
             self.registers.beam_steering_phase_increment.write(real=phase_inc.real, imag=phase_inc.imag)
 
             #set up destination beam and antenna, and trigger load

@@ -1,6 +1,7 @@
 from logging import INFO
 from casperfpga import utils as fpgautils
 from beam import Beam
+
 # from corr2LogHandlers import getLogger
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
@@ -215,7 +216,7 @@ class BEngineOperations(object):
             return self.hosts[0].get_version_info()
         except AttributeError:
             return {}
-
+    
     def get_pack_status(self):
         """
         Get the status of all the pack blocks in the beamformer system.
@@ -227,3 +228,56 @@ class BEngineOperations(object):
             rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_bpack_status',
                                            [beam.index], {}))
         return rv
+
+    def set_beam_steering_delays(self, beam_name=None, delays)  
+        """
+        Set the beam steering coefficients for all inputs
+        :param beam_name: the target beam
+        :param delays: a list of tuples ((delay (seconds), phase(radians))...), one per antenna/input
+        """  
+        if beam_name is None:
+            for beam_name in self.beams:
+                self.set_beam_steering_delays(beam_name=beam_name, delays=delays)
+            return
+        #pad single delay value to be written to all inputs/antennas in the beam 
+        if type(delays)==int or type(delays)==float:
+            new_delays=[delays for a in range(self.corr.n_antennas)]
+        else:
+            new_delays=delays
+         
+        assert len(new_delays)==self.corr.n_antennas,
+            'Need to specify %i delay values; you offered %i.' %(
+                self.corr.n_antennas,len(new_delays))
+
+        ant_coeffs = []
+        #generate delay and phase values for all antennas
+        for ant_index,ant_delays in enumerate(new_delays): 
+            delay_samples = float(ant_delays[0])*self.corr.sample_rate_hz
+            #for a noise-like signal it makes little sense to delay by more than our FFT length
+            if delay_samples > self.corr.n_chans,
+                self.logger.info(
+                    'Request to delay antenna input %i by %i samples in a %i channel system.'
+                        .format(ant_index, delay_samples, self.corr.n_chans))
+
+            import numpy
+            #phase change across the band for the delay specified (radians)
+            delay = delay_samples*numpy.pi
+            #phase offset (radians)
+            phase = float(ant_delays[1])              
+            
+            #phase change per frequency 
+            phase_per_freq = numpy.exp(-1j*(delay/self.corr.n_chans))
+            #phase change per bengine
+            phase_per_beng = numpy.exp(-1j*(delay/(len(self.hosts)*self.beng_per_host)))
+
+            ant_coeffs.append((delay, phase, phase_per_beng, phase_per_freq))
+ 
+        #change coefficients on all hosts
+        beam_index = self.get_beam_by_name(beam_name).index
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_steering_coeffs_set',
+                                           [beam_index, coeffs], {}))
+        #TODO
+        #self.logger.info('{} weights set to {}.'.format(beam_name, coeffs))
+        #TODO
+        #if self.corr.sensor_manager:
+        #    self.corr.sensor_manager.sensors_beng_weights()
