@@ -740,6 +740,23 @@ class Corr2Server(DeviceServer):
                         'Failed reading beam gain for beam {0}.'.format(beam_name))
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))
 
+    @request(Str(), Str(default='', multiple=True))
+    @return_reply(Str(multiple=True)) #TODO return delays
+    def request_beam_delays(self, sock, beam_name, *delay_strings):
+        """
+        Set beam delays for the instrument.
+        :param sock:
+        :param beam_name: the name of the beam to delay.
+        :param delay_strings: the coefficient set, as a list of strings,
+            described in ICD. (delay(seconds), phase(radians))
+        :return:
+        """
+        try:
+            self.instrument.bops.set_beam_delays(beam_name, delay_strings)
+            return tuple(['ok', 'Model updated. Check sensors after next update to confirm application'])
+        except Exception as ex:
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed setting beam delays.')
 
     @request()
     @return_reply()

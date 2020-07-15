@@ -229,37 +229,61 @@ class BEngineOperations(object):
                                            [beam.index], {}))
         return rv
 
-    def set_beam_steering_delays(self, delays, beam_name=None):  
+    def set_beam_delays(self, beam_name=all, delays=None):  
         """
-        Set the beam steering coefficients for all inputs
+        Set the beam steering delay coefficients for all inputs
         :param beam_name: the target beam
-        :param delays: a list of tuples ((delay (seconds), phase(radians))...), one per antenna/input
-        """  
-        if beam_name is None:
+        :param delays: list of tuples (delay(seconds),phase(radians),...), 
+                        or strings delay:phase... one per input
+        """ 
+        #process delays passed as string 
+        def process_string(delaystr):
+            bits = delaystr.strip().split(':')
+            if len(bits) != 2: 
+                return -1
+            return float(bits[0]), float(bits[1])
+
+        #if no name given, set delays for all beams
+        if beam_name is all:
             for beam_name in self.beams:
-                self.set_beam_steering_delays(beam_name=beam_name, delays=delays)
-            return
-        #pad single delay value to be written to all inputs/antennas in the beam 
-        if type(delays)==int or type(delays)==float:
-            new_delays=[delays for a in range(self.corr.n_antennas)]
+                self.set_beam_delays(beam_name=beam_name, delays=delays)
+        
+        #write 0 to all delays if no values given
+        if delays is None:         
+            new_delays = ((0.0,0.0),)*self.corr.n_antennas
         else:
-            new_delays=delays
-         
-        assert len(new_delays)==self.corr.n_antennas, 'Need to specify %i delay values; you offered %i.' %(self.corr.n_antennas,len(new_delays))
+            new_delays = delays
+
+        if len(new_delays)!=self.corr.n_antennas:
+            self.logger.error('Need to specify %i delay values, %i provided.' 
+                %(self.corr.n_antennas,len(new_delays)))
+            return
 
         ant_coeffs = []
         #generate delay and phase values for all antennas
-        for ant_index,ant_delays in enumerate(new_delays): 
-            delay_samples = ant_delays[0]*self.corr.sample_rate_hz
+        for ant_index,ant_delay in enumerate(new_delays): 
+            #if passed in as string, split and convert
+            if isinstance(ant_delay, str): 
+                ant_delay_tup = process_string(ant_delay)
+            else:
+                ant_delay_tup = ant_delay            
+    
+            if len(ant_delay_tup) != 2:
+                self.logger.error('Beam delay values must consist of 2 values, %i given for antenna %i' 
+                    %(len(ant_delay_tup),ant_index))
+                return
+
+            delay_samples = ant_delay_tup[0]*self.corr.sample_rate_hz
             #for a noise-like signal it makes little sense to delay by more than our FFT length
             if delay_samples > self.corr.n_chans:
-                self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.'.format(ant_index, delay_samples, self.corr.n_chans))
+                self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.'
+                    %(ant_index, delay_samples, self.corr.n_chans))
 
             import numpy
             #phase change across the band for the delay specified (radians)
             delay = delay_samples*numpy.pi
             #phase offset (radians)
-            phase = float(ant_delays[1])              
+            phase = float(ant_delay_tup[1])              
             
             #phase change per frequency 
             phase_per_freq = delay/self.corr.n_chans
@@ -272,7 +296,7 @@ class BEngineOperations(object):
         beam_index = self.get_beam_by_name(beam_name).index
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_steering_coeffs_set',[len(self.hosts), beam_index, ant_coeffs], {}))
         #TODO
-        #self.logger.info('{} weights set to {}.'.format(beam_name, coeffs))
+        #self.logger.info('{} delays set to {}.'.format(beam_name, new_delays))
         #TODO
         #if self.corr.sensor_manager:
         #    self.corr.sensor_manager.sensors_beng_weights()
