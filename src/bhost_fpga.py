@@ -145,15 +145,19 @@ class FpgaBHost(FpgaXHost):
             rv.append(reg.read()['data'])
         return rv
 
-    def beam_steering_coeffs_set(self, num_hosts, beam_index, coeffs):
+    def beam_delays_set(self, num_hosts, beam_index, coeffs):
         """
         Set the beam steering coefficients for the given beam and input.
         :param beam_index: The integer offset of the beam on this board.
-        :param coeffs: a list of tuples containing the delay settings for all inputs
+        :param coeffs: a list of tuples containing the delay settings for all inputs in the form (
+            delay (radians), phase (radians), phase base for host (complex value), phase increment per frequency (
+                complex value) 
         """
         #have used a tuple for coeffs instead of dictionary to save compute resources
 
-        assert len(coeffs) == self.n_ants, 'Incorrect number of coeffs supplied (%i supplied; need %i)'%(len(coeffs),self.n_ants)
+        assert len(coeffs) == self.n_ants, \
+            'Incorrect number of coeffs supplied (%i supplied; need %i)'%(
+                len(coeffs),self.n_ants)
         
         #offset of beamformer host fpga in the range [-0.5:0.5) over the band
         #(the delay is calculated for the centre of our band)
@@ -161,8 +165,10 @@ class FpgaBHost(FpgaXHost):
 
         #go through coefficients for all antennas  
         for ant_index,ant_coeffs in enumerate(coeffs):
-            assert len(ant_coeffs) == 4,'Incorrect number of coeffs supplied for beam %i input %i, host %i (%i supplied; need 4' %(beam_index, ant_index, source_index, len(ant_coeffs))
-
+            assert len(ant_coeffs) == 4, \
+                'Incorrect number of coeffs supplied for beam %i input %i, host %i (%i supplied; need 4' %(
+                    beam_index, ant_index, source_index, len(ant_coeffs))
+            
             delay = float(ant_coeffs[0])
             phase = float(ant_coeffs[1])
             import numpy
@@ -170,16 +176,21 @@ class FpgaBHost(FpgaXHost):
             phase_base = numpy.exp(-1.0j*total_phase)
             self.registers.beam_steering_phase_init.write(real=phase_base.real, imag=phase_base.imag)
 
-            #the phase rotation increment for each b-engine 
-            phase_base_delta = numpy.exp(-1.0j*ant_coeffs[2])
+            #the (pre-calculated) phase base change for each b-engine 
+            phase_base_delta = ant_coeffs[2]
             self.registers.beam_steering_phase_init_delta.write(real=phase_base_delta.real, imag=phase_base_delta.imag)
 
-            #the phase rotation increment per frequency within each b-engine
-            phase_inc = numpy.exp(-1.0j*ant_coeffs[3])
+            #the pre-calculated phase rotation increment per frequency within each b-engine
+            phase_inc = ant_coeffs[3]
             self.registers.beam_steering_phase_increment.write(real=phase_inc.real, imag=phase_inc.imag)
 
             #set up destination beam and antenna, and trigger load
             self.registers.bf_weight.write(stream=beam_index, antenna=ant_index, beam_steering_load_now=0)
             self.registers.bf_weight.write(stream=beam_index, antenna=ant_index, beam_steering_load_now=1)
             
-            self.logger.info('%s: host id (%i) beam (%i) antenna (%i) beam steering initial phase %.5f degrees (%.5f,%.5f), delta initial phase %.5f degrees (%.5f,%.5f), phase increment %.5f degrees (%.5f,%.5f)' %(self.host, self.index, beam_index, ant_index, total_phase*(180.0/numpy.pi), phase_base.real, phase_base.imag, ant_coeffs[2]*(180.0/numpy.pi), phase_base_delta.real, phase_base_delta.imag, ant_coeffs[3]*(180.0/numpy.pi), phase_inc.real, phase_inc.imag))
+            self.logger.debug('%s: host id (%i) beam (%i) antenna (%i) beam steering initial phase %.5f degrees (%.5f,%.5f), delta initial phase %.5f degrees (%.5f,%.5f), phase increment %.5f degrees (%.5f,%.5f)' %(
+                    self.host, self.index, beam_index, ant_index, 
+                    total_phase*(180.0/numpy.pi), phase_base.real, phase_base.imag, 
+                    numpy.arctan(phase_base_delta.imag/phase_base_delta.real)*(180.0/numpy.pi), phase_base_delta.real, phase_base_delta.imag, 
+                    numpy.arctan(phase_inc.imag/phase_inc.real)*(180.0/numpy.pi), phase_inc.real, phase_inc.imag)
+                )

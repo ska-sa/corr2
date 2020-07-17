@@ -269,15 +269,15 @@ class BEngineOperations(object):
                 ant_delay_tup = ant_delay            
     
             if len(ant_delay_tup) != 2:
-                self.logger.error('Beam delay values must consist of 2 values, %i given for antenna %i' 
-                    %(len(ant_delay_tup),ant_index))
+                self.logger.error('Beam delay values must consist of 2 values, %i given for antenna %i' %(
+                    len(ant_delay_tup),ant_index))
                 return
 
             delay_samples = ant_delay_tup[0]*self.corr.sample_rate_hz
             #for a noise-like signal it makes little sense to delay by more than our FFT length
             if delay_samples > self.corr.n_chans:
-                self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.'
-                    %(ant_index, delay_samples, self.corr.n_chans))
+                self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.' %(
+                    ant_index, delay_samples, self.corr.n_chans))
 
             import numpy
             #phase change across the band for the delay specified (radians)
@@ -285,18 +285,18 @@ class BEngineOperations(object):
             #phase offset (radians)
             phase = float(ant_delay_tup[1])              
             
-            #phase change per frequency 
-            phase_per_freq = delay/self.corr.n_chans
-            #phase change per bengine
-            phase_per_beng = delay/(len(self.hosts)*self.beng_per_host)
+            import numpy
+            #phase change per frequency as pre-calculated complex value 
+            phase_per_freq = numpy.exp(-1.0j*(delay/self.corr.n_chans))
+            #phase change per bengine as pre-calculated complex value
+            phase_per_beng = numpy.exp(-1.0j*(delay/(len(self.hosts)*self.beng_per_host)))
 
             ant_coeffs.append((delay, phase, phase_per_beng, phase_per_freq))
  
         #change coefficients on all hosts
         beam_index = self.get_beam_by_name(beam_name).index
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_steering_coeffs_set',[len(self.hosts), beam_index, ant_coeffs], {}))
-        #TODO
-        #self.logger.info('{} delays set to {}.'.format(beam_name, new_delays))
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_delays_set',[len(self.hosts), beam_index, ant_coeffs], {}))
+        self.logger.info('{} delays set to {}.'.format(beam_name, new_delays))
         #TODO
         #if self.corr.sensor_manager:
         #    self.corr.sensor_manager.sensors_beng_weights()
