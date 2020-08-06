@@ -281,7 +281,6 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
     except Exception as e:
         logger.error('Error updating {}-device-status sensor - {}'.format(host.host, e.message))
     logger.debug('sensorloop ran')
-    logger.error('asdasd')
     time.sleep(0.5)
     IOLoop.current().call_later(10, _sensor_cb_hw, executor, sensors, host, timeout, logger)
 
