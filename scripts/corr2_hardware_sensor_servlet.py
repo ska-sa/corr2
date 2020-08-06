@@ -306,7 +306,7 @@ def main():
         '--host', dest='host', action='store',
         help='SKARAB hostname or IP address to connect to.')
     parser.add_argument(
-        '--log_here', dest='log_here', action='store', default=True,
+        '--log_here', dest='log_here', action='store', default=False,
         help='Log to file here or in /var/log/skarab')
     parser.add_argument(
         '--timeout', dest='timeout', action='store', default='0.1',
