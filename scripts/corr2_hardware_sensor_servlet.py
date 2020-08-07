@@ -74,12 +74,18 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             sensor_manager.sensors_clear()
 
             sensordict = dict()
-            try:
-                sensordict = self.host.transport.get_sensor_data(
-                    timeout=self.timeout)
-            except Exception as e:
-                self._logger.error(
-                    'Error retrieving {}s sensors - {}'.format(self.host, e.message))
+
+            #This initial get_sensor_data() call needs to succeed as it populates the sensor dictionary. As such it is called until success. 
+            retrievedSensors = False
+            while(retrievedSensors == False):
+                try:
+                    sensordict = self.host.transport.get_sensor_data(
+                        timeout=self.timeout)
+                    retrievedSensors = True
+                except Exception as e:
+                    self._logger.error(
+                        'Error retrieving {}s sensors on startup - {}. Waiting ten seconds and trying again'.format(self.hoist, e.message))
+                    time.sleep(10)
 
             for key, value in sensordict.iteritems():
                 try:
@@ -247,7 +253,7 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
                                         timeout=timeout)
     except Exception as e:
         logger.error(
-            'Error retrieving {}s sensors - {}'.format(host.host, e.message))
+            'Error retrieving {}s sensors - {}. Changing sensor status to UNREACHABLE'.format(host.host, e.message))
         set_failure()
         return
 
