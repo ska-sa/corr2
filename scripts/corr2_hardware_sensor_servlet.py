@@ -161,7 +161,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
         tmpLevel = self._logger.level
         self._logger.setLevel(10)  # Set logging level to info to record this reset
         self._logger.info('Reseting Skarab: {}'.format(self.host.host))
-        self._logger.logger.setLevel(tmpLevel)
+        self._logger.setLevel(tmpLevel)
         self.host.transport.reboot_fpga()
         return ('ok', 'Reset Successful')
 
