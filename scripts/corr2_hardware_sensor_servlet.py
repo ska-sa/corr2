@@ -84,7 +84,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
                     retrievedSensors = True
                 except Exception as e:
                     self._logger.error(
-                        'Error retrieving {}s sensors on startup - {}. Waiting ten seconds and trying again'.format(self.hoist, e.message))
+                        'Error retrieving {}s sensors on startup - {}. Waiting ten seconds and trying again'.format(self.host, e.message))
                     time.sleep(10)
 
             for key, value in sensordict.iteritems():
@@ -120,6 +120,8 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             self.sensors['device_status'] = sensor_manager.do_sensor(
                     Corr2Sensor.device_status,'device-status',
                     'Overall SKARAB health')
+
+            self._logger.info('{} init function complete.'.format(self.host))
 
     def start_sensor_loop(self):
         IOLoop.current().add_callback(
