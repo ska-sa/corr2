@@ -267,6 +267,7 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
                 status = Corr2Sensor.WARN
             elif value[2].lower() == 'error': 
                 status = Corr2Sensor.ERROR
+                logger.error('Sensor {} reporting an error. Value: {} {}'.format(key, value[0], value[1]))
             else:
                 status = Corr2Sensor.UNKNOWN
             sensors[key].set(value=value[0], status=status)
