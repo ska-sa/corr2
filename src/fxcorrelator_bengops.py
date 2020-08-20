@@ -1,6 +1,7 @@
 from logging import INFO
 from casperfpga import utils as fpgautils
 from beam import Beam
+import delay as delayops
 
 # from corr2LogHandlers import getLogger
 
@@ -294,9 +295,12 @@ class BEngineOperations(object):
             ant_coeffs.append((delay, phase, phase_per_beng, phase_per_freq))
  
         #change coefficients on all hosts
-        beam_index = self.get_beam_by_name(beam_name).index
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_delays_set',[len(self.hosts), beam_index, ant_coeffs], {}))
+        beam = self.get_beam_by_name(beam_name)
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_delays_set',[len(self.hosts), beam.index, ant_coeffs], {}))
         self.logger.info('{} delays set to {}.'.format(beam_name, new_delays))
-        #TODO
-        #if self.corr.sensor_manager:
-        #    self.corr.sensor_manager.sensors_beng_weights()
+        import time
+        load_mcnt = self.corr.time_to_mcnt(time.time())
+        beam.last_delay=delayops.Delay(load_mcnt=load_mcnt, delay=delay, delta_delay=0.0, \
+            phase=phase, phase_offset=0.0)
+        if self.corr.sensor_manager:
+            self.corr.sensor_manager.sensors_beng_delays(beam)

@@ -5,6 +5,7 @@ import fxcorrelator_speadops as speadops
 from data_stream import SPEADStream, BEAMFORMER_FREQUENCY_DOMAIN
 from utils import parse_output_products
 # from corr2LogHandlers import getLogger
+import delay as delayops
 
 THREADED_FPGA_OP = fpgautils.threaded_fpga_operation
 THREADED_FPGA_FUNC = fpgautils.threaded_fpga_function
@@ -27,6 +28,7 @@ class Beam(SPEADStream):
         self.chans_per_partition = None
         self.speadops = None
         self.polarisation = None
+        self.last_delay = delayops.Delay()
 
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']

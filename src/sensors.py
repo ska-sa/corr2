@@ -825,6 +825,33 @@ class Corr2SensorManager(SensorManager):
                 'this beam.')
             sensor.set_value(self.instrument.bops.get_beam_quant_gain(strmnm))
 
+    def sensors_beng_delays(self, beam):
+        """
+        B-engine delay sensors
+        :return:
+        """
+        sensor = self.do_sensor(
+            Corr2Sensor.string, '{}-delay'.format(beam.name),
+            'The delay settings for this beam: (loadmcnt <ADC sample count when model was loaded>, '\
+                'delay <in seconds>, phase <radians>).')
+
+        if beam.last_delay is not None:
+            import numpy
+            delay = beam.last_delay.delay / self.instrument.sample_rate_hz
+            phase_offset = beam.last_delay.phase_offset * numpy.pi
+            load_mcnt = beam.last_delay.load_mcnt
+            _val = '({:d}, {:.10e}, {:.10e})'.format(load_mcnt, delay, phase_offset)
+            _timestamp = self.instrument.time_from_mcnt(load_mcnt)
+            #TODO: checks before declaring nominal?
+            _status = Sensor.NOMINAL 
+            sensor.set_value(value=_val, status=_status, timestamp=_timestamp)
+            self.logger.debug(
+                '{}: Delay update, @time {} {:.10e}, {:.10e}'.format(
+                    beam.name,
+                    _timestamp,
+                    delay,
+                    phase_offset))
+
 #    def sensors_beng_passband(self):
 #        """
 #
@@ -899,6 +926,7 @@ class Corr2SensorManager(SensorManager):
 
         self.sensors_beng_weights()
         self.sensors_beng_gains()
+        self.sensors_beng_delays()
 
     def setup_mainloop_sensors(self):
         """
