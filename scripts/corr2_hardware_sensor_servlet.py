@@ -25,6 +25,14 @@ from corr2 import corr2LogHandlers
 #This variable exists because of problems with kcs - the rack location sensor needs to be transmitted a few times
 reportRackLocation = 0
 
+#This variable is global, because the _sensor_cb_hw() function does hot have a great mechanism for passing properties 
+#between itself and other KCS functions. I do not want to look further into this as we want to draw a line under the 
+#SKARAB work.
+#
+#This variable determines if the sensor loop is paused or not. A paused sensor loop will still run every ten seconds,
+#it will just not send any messages to the SKARAB.
+sensor_loop_running = 1
+
 class Corr2HardwareSensorServer(katcp.DeviceServer):
 
     # Interface version information.
@@ -56,7 +64,8 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             self.log_filename = '{}_hardware_sensor_servlet.log'.format(kwargs['skarab_host'])
             self.log_level = kwargs.pop('log_level', logging.WARN)
 
-            #I am not sure if this function needs to be here, it is called in the corr2_sensor_sevlet so I put it here to be consistent
+            #I am not sure if this function needs to be here, it is called in the corr2_sensor_sevlet so I put it here 
+            #to be consistent
             corr2LogHandlers.create_katcp_and_file_handlers(self._logger, self.mass_inform,
                                             self.log_filename, self.log_file_dir,
                                             self.log_level)
@@ -165,6 +174,31 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
         self.host.transport.reboot_fpga()
         return ('ok', 'Reset Successful')
 
+    @request()
+    @return_reply(Str())
+    def request_sensor_loop_pause(self, sock):
+        """
+        Pause the hardware sensor servlet sensor polling loop.
+        :param sock:
+        :return: {'ok,'fail'}
+        """
+        global sensor_loop_running
+        sensor_loop_running = 0
+        return ('ok', 'Sensor loop paused')
+
+    @request()
+    @return_reply(Str())
+    def request_sensor_loop_resume(self, sock):
+        """
+        Resume the hardware sensor servlet sensor polling loop.
+        :param sock:
+        :return: {'ok,'fail'}
+        """
+
+        global sensor_loop_running
+        sensor_loop_running = 1
+        return ('ok', 'Sensor loop resuming')
+
 
 
 def get_physical_location(ipAddress):
@@ -229,17 +263,24 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
                 sensor.set(status=Corr2Sensor.UNREACHABLE,
                         value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
         time.sleep(0.5)
-        IOLoop.current().call_later(5, _sensor_cb_hw, executor, sensors, host, timeout, logger)
+        IOLoop.current().call_later(10, _sensor_cb_hw, executor, sensors, host, timeout, logger)
+
+    #Determine if SKARAB must be polled - if it is not, set all sensor values to unreachable
+    global sensor_loop_running
+    if(sensor_loop_running == 0):
+        logger.info('Sensor loop paused')
+        set_failure()
+        return
 
     try:
         boot_image = parse_boot_image_return(host.transport.get_virtex7_firmware_version())
         sensors['boot_image'].set(value=boot_image[0],status=Corr2Sensor.NOMINAL)
     except Exception as e:
-        logger.error('Error retrieving boot image state on host {} - {}'.format(host.host, e.message))
+        logger.info('Error retrieving boot image state on host {} - {}'.format(host.host, e.message))
         set_failure()
         return
 
-    global reportRackLocation;
+    global reportRackLocation
     if(reportRackLocation<3):
 	reportRackLocation+=1
     	rack_location_tuple = get_physical_location(socket.gethostbyname(host.transport.host))
@@ -289,9 +330,9 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
         sensors['device_status'].set(value=device_value, status=device_status)
     except Exception as e:
         logger.error('Error updating {}-device-status sensor - {}'.format(host.host, e.message))
-    logger.debug('sensorloop ran')
+    logger.info('sensorloop ran')
     time.sleep(0.5)
-    IOLoop.current().call_later(10, _sensor_cb_hw, executor, sensors, host, timeout, logger)
+    IOLoop.current().call_later(30, _sensor_cb_hw, executor, sensors, host, timeout, logger)
 
 @gen.coroutine
 def on_shutdown(ioloop, server):
