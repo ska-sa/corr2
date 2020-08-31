@@ -205,7 +205,7 @@ class BEngineOperations(object):
         na=numpy.array(vals.values())
         for ant in range(self.corr.n_antennas):
             if na[:,ant].max() != na[:,ant].min():
-                raise RuntimeError('Boards dont all have the same gain! {}'.format(vals))
+                self.logger.warning('Boards dont all have the same gain! {}'.format(vals))
         return vals.values()[0]
 
     def get_version_info(self):

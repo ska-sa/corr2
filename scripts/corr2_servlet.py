@@ -455,7 +455,8 @@ class Corr2Server(DeviceServer):
                 self.instrument.set_input_labels(newlist)
                 return tuple(['ok'] + self.instrument.get_input_labels())
             except Exception as ex:
-                return self._log_excep(ex, 'Failed to set input labels.')
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace, 'Failed to set input labels.')
         else:
             return tuple(['ok'] + self.instrument.get_input_labels())
 
@@ -790,7 +791,8 @@ class Corr2Server(DeviceServer):
             self.instrument.fops.set_fft_shift_all(new_shift)
             return 'ok',
         except Exception as ex:
-            return self._log_excep(ex, 'Failed setting fft shift')
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed setting fft shift')
 
     @request(Int(default=-1))
     @return_reply()
@@ -1057,13 +1059,12 @@ class Corr2Server(DeviceServer):
     #     :param new_cadence: cadence, in seconds. 0 will disable the function
     #     :return:
     #     """
-    #     _logger = self.instrument.logger
     #     prev = self.metadata_cadence
     #     self.metadata_cadence = new_cadence
     #     if new_cadence == 0:
-    #         _logger.info('Disabled periodic metadata.')
+    #         self._logger.info('Disabled periodic metadata.')
     #     else:
-    #         _logger.info('Enabled periodic metadata @ %i '
+    #         self._logger.info('Enabled periodic metadata @ %i '
     #                      'seconds.' % new_cadence)
     #         if prev == 0:
     #             IOLoop.current().call_later(self.metadata_cadence,
@@ -1079,12 +1080,11 @@ class Corr2Server(DeviceServer):
     #     """
     #     if self.metadata_cadence == 0:
     #         return
-    #     _logger = self.instrument.logger
     #     try:
     #         yield self.executor.submit(self.instrument.stream_issue_metadata)
     #     except Exception as ex:
-    #         _logger.exception('Error sending metadata - {}'.format(ex.message))
-    #     _logger.debug('self.periodic_issue_metadata ran')
+    #         self._log_excep(ex, 'Error sending metadata')
+    #     self._logger.debug('self.periodic_issue_metadata ran')
     #     IOLoop.current().call_later(self.metadata_cadence,
     #                                 self.periodic_issue_metadata)
 
@@ -1097,13 +1097,12 @@ class Corr2Server(DeviceServer):
         :param new_cadence: cadence, in seconds. 0 will disable the function
         :return:
         """
-        _logger = self.instrument.logger
         prev = self.descriptor_cadence
         self.descriptor_cadence = new_cadence
         if new_cadence == 0:
-            _logger.info('Disabled periodic descriptors.')
+            self._logger.info('Disabled periodic descriptors.')
         else:
-            _logger.info('Enabled periodic descriptors @ {}seconds.'.format(new_cadence))
+            self._logger.info('Enabled periodic descriptors @ {}seconds.'.format(new_cadence))
             if prev == 0:
                 IOLoop.current().call_later(self.descriptor_cadence, self.periodic_issue_descriptors)
         return 'ok',
@@ -1121,17 +1120,16 @@ class Corr2Server(DeviceServer):
 
         if self.descriptor_cadence == 0:
             return
-        _logger = self.instrument.logger
-
+        
         for i in range(number_of_descriptors):
             IOLoop.current().call_later(time_step * (i + 1), self.issue_single_descriptor, i)
 
         #try:
         #    yield self.executor.submit(self.instrument.stream_issue_descriptors)
         #except Exception as ex:
-        #    _logger.exception('Error sending metadata - {}'.format(ex.message))
+        #    self._log_excep(ex, 'Error sending metadata')
 
-        _logger.debug('self.periodic_issue_descriptors ran')
+        self._logger.debug('self.periodic_issue_descriptors ran')
         IOLoop.current().call_later(self.descriptor_cadence, self.periodic_issue_descriptors)
 
     @gen.coroutine
@@ -1143,8 +1141,9 @@ class Corr2Server(DeviceServer):
         """
         try:
             yield self.executor.submit(self.instrument.stream_issue_descriptor_single, index)
-        except Exception as ex:
-            _logger.exception('Error sending metadata - {}'.format(ex.message))
+        except Exception as exc:
+            stack_trace = traceback.format_exc()
+            self._log_stacktrace(stack_trace, 'Error sending metadata')
 
     @request(Str())
     @return_reply(Str())
