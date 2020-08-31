@@ -261,6 +261,9 @@ class BEngineOperations(object):
             return
 
         ant_coeffs = []
+        last_delays = []
+        import time
+        load_mcnt = self.corr.mcnt_from_time(time.time())
         #generate delay and phase values for all antennas
         for ant_index,ant_delay in enumerate(new_delays): 
             #if passed in as string, split and convert
@@ -274,19 +277,21 @@ class BEngineOperations(object):
                     len(ant_delay_tup),ant_index))
                 return
 
-            delay_samples = ant_delay_tup[0]*self.corr.sample_rate_hz
+            new_delay = delayops.prepare_delay_vals([[ant_delay_tup[0],0.0],[ant_delay_tup[1],0.0]], 
+                self.corr.sample_rate_hz)
+            new_delay.load_mcnt = load_mcnt
+
             #for a noise-like signal it makes little sense to delay by more than our FFT length
-            if delay_samples > self.corr.n_chans:
+            if new_delay.delay > self.corr.n_chans:
                 self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.' %(
-                    ant_index, delay_samples, self.corr.n_chans))
+                    ant_index, new_delay.delay, self.corr.n_chans))
 
             import numpy
             #phase change across the band for the delay specified (radians)
-            delay = delay_samples*numpy.pi
+            delay = new_delay.delay*numpy.pi
             #phase offset (radians)
-            phase = float(ant_delay_tup[1])              
+            phase = new_delay.phase_offset              
             
-            import numpy
             #phase change per frequency as pre-calculated complex value 
             phase_per_freq = numpy.exp(-1.0j*(delay/self.corr.n_chans))
             #phase change per bengine as pre-calculated complex value
@@ -294,13 +299,13 @@ class BEngineOperations(object):
 
             ant_coeffs.append((delay, phase, phase_per_beng, phase_per_freq))
  
+            #record delay settings for sensor update
+            last_delays.append(new_delay)
+
         #change coefficients on all hosts
         beam = self.get_beam_by_name(beam_name)
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_delays_set',[len(self.hosts), beam.index, ant_coeffs], {}))
         self.logger.info('{} delays set to {}.'.format(beam_name, new_delays))
-        import time
-        load_mcnt = self.corr.time_to_mcnt(time.time())
-        beam.last_delay=delayops.Delay(load_mcnt=load_mcnt, delay=delay, delta_delay=0.0, \
-            phase=phase, phase_offset=0.0)
+        beam.last_delays = last_delays
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_beng_delays(beam)
