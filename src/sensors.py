@@ -958,13 +958,11 @@ class Corr2SensorManager(SensorManager):
         from hashlib import md5
         # Open the fpg-file in read-only mode as binary data
         with open(xhost_fpg_filename, 'rb') as xfpg:
-            # Calculate the MD5 checksum on the entire contents
+            # Calculate the MD5 checksum on the file's contents
             xhost_md5_fpgfile = md5(xfpg.read()).hexdigest()
         # Once more, with feeling
         with open(fhost_fpg_filename, 'rb') as ffpg:
             fhost_md5_fpgfile = md5(ffpg.read()).hexdigest()
-
-        import IPython; IPython.embed()
 
         sensor = Corr2Sensor.string(
                 name='corr2_version',
@@ -995,15 +993,15 @@ class Corr2SensorManager(SensorManager):
         sensor.set_value(xhost_builddate)
 
         sensor = Corr2Sensor.string(
-                name='md5_bitstream_xeng',
-                description='MD5 hash of X-Engine bitstream',
+                name='md5_fpgfile_xeng',
+                description='MD5 hash of X-Engine fpg-file',
                 initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(xhost_md5_fpgfile)
 
         sensor = Corr2Sensor.string(
-                name='md5_bitstream_feng',
-                description='MD5 hash of F-Engine bitstream',
+                name='md5_fpgfile_feng',
+                description='MD5 hash of F-Engine fpg-file',
                 initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(fhost_md5_fpgfile)
