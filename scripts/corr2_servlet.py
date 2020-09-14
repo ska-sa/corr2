@@ -601,10 +601,10 @@ class Corr2Server(DeviceServer):
     @return_reply()
     def request_quantiser_singlechan_snapshot(self, sock, source_name, channel_select):
         """
-        Get a list of values representing the quantised spectrum for
-        the given source
+        Get a list of values representing the time series for a
+        single, specified channel of the given source
         :param sock:
-        :param channel_select: The channel
+        :param channel_select: the channel for which data is to be retrieved
         :param source_name: the source to query
         :return:
         """
@@ -614,7 +614,7 @@ class Corr2Server(DeviceServer):
             snapdata = self.instrument.fops.get_quant_snap(source_name, channel_select)
         except Exception as ex:
             return self._log_excep(ex, ex.message)
-        sock.inform(source_name, str(snapdata))
+        sock.inform(source_name, channel_select, str(snapdata))
         return 'ok',
 
     @request(Str(), Float(default=-1))
