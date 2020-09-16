@@ -182,6 +182,7 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
         :param sock:
         :return: {'ok,'fail'}
         """
+        
         global sensor_loop_running
         sensor_loop_running = 0
         return ('ok', 'Sensor loop paused')
@@ -263,12 +264,12 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
                 sensor.set(status=Corr2Sensor.UNREACHABLE,
                         value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
         time.sleep(0.5)
-        IOLoop.current().call_later(10, _sensor_cb_hw, executor, sensors, host, timeout, logger)
+        IOLoop.current().call_later(30, _sensor_cb_hw, executor, sensors, host, timeout, logger)
 
     #Determine if SKARAB must be polled - if it is not, set all sensor values to unreachable
     global sensor_loop_running
     if(sensor_loop_running == 0):
-        logger.info('Sensor loop paused')
+        # logger.info('Sensor loop paused')
         set_failure()
         return
 
@@ -330,7 +331,7 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
         sensors['device_status'].set(value=device_value, status=device_status)
     except Exception as e:
         logger.error('Error updating {}-device-status sensor - {}'.format(host.host, e.message))
-    logger.info('sensorloop ran')
+    # logger.info('sensorloop ran')
     time.sleep(0.5)
     IOLoop.current().call_later(30, _sensor_cb_hw, executor, sensors, host, timeout, logger)
 
