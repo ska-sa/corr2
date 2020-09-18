@@ -29,9 +29,9 @@ reportRackLocation = 0
 #between itself and other KCS functions. I do not want to look further into this as we want to draw a line under the 
 #SKARAB work.
 #
-#This variable determines if the sensor loop is paused or not. A paused sensor loop will still run every ten seconds,
-#it will just not send any messages to the SKARAB.
-sensor_loop_running = 1
+#This variable determines if the sensor loop is paused or not. A paused sensor loop will still run every 30 seconds,
+#it will just not send any messages to the SKARAB. Set to paused by default so they can be safetly started on mass.
+sensor_loop_running = 0
 
 class Corr2HardwareSensorServer(katcp.DeviceServer):
 
