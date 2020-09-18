@@ -15,6 +15,7 @@ import time
 import casperfpga
 import socket
 from concurrent import futures
+import time
 
 import corr2
 
@@ -32,6 +33,9 @@ reportRackLocation = 0
 #This variable determines if the sensor loop is paused or not. A paused sensor loop will still run every 30 seconds,
 #it will just not send any messages to the SKARAB. Set to paused by default so they can be safetly started on mass.
 sensor_loop_running = 0
+
+#Number of seconds between sensor loop polls
+sensorPollInterval_s = 30
 
 class Corr2HardwareSensorServer(katcp.DeviceServer):
 
@@ -133,13 +137,44 @@ class Corr2HardwareSensorServer(katcp.DeviceServer):
             self._logger.info('{} init function complete.'.format(self.host))
 
     def start_sensor_loop(self):
-        IOLoop.current().add_callback(
+        # Work out when to call the sensor loop. This is done so that the SKARABs on site do not
+        # all call the hardware sensor loop at the same time. We want them to do this in a 
+        # staggered pattern so that the CPU and network load are balanced.
+        #
+        # The loop is called every sensorPollInterval_s seconds. As such the SKARABs need to be 
+        # distributed across this window. A custom indexing function was implemented. The hash used 
+        # is the skraab location. The skarab rack index is the fasted changing index in the has as
+        # skarabs in an instrument are likely to be in the same rack, so indexing across racks first
+        # results in sensor loop calls in an instrument being distributed better than if the 
+        # column index was the fastes changing index.
+        #
+        # The logic here is similar to that employed in the get_physical_location() function
+        ipAddress = socket.gethostbyname(self.host.transport.host)
+        octets = ipAddress.split('.')
+        leafIndex = int(octets[2]) - 5 # Leaf no 5 is the first leaf the SKARABs are connected to
+        switchPortIndex = int(octets[3]) // 4
+        skarabIndex = switchPortIndex * 18 + leafIndex #18 leafs with SKARABs on them
+
+        global sensorPollInterval_s
+        timeOffset = sensorPollInterval_s/250.0 * skarabIndex #Assumes 250 SKARABS
+
+        loopCallTime = time.time() 
+        # We want the reference time to be aligned on a minute. As such sensorPollInterval_s
+        # should be a factor of 60, this keeps everything nicely aligned 
+        loopCallTime = loopCallTime - loopCallTime % 60 + timeOffset 
+        
+        # print(leafIndex, switchPortIndex, skarabIndex, loopCallTime, timeOffset, sensorPollInterval_s)
+
+
+        # Actually start sensor loop
+        IOLoop.current().call_at(loopCallTime,
             _sensor_cb_hw,
             self.executor,
             self.sensors,
             self.host,
             self.timeout,
-            self._logger)
+            self._logger,
+            loopCallTime)
 
     def setup_sensors(self):
         """
@@ -251,12 +286,15 @@ def is_sensor_list_status_ok(sensors_dict):
 
 
 @gen.coroutine
-def _sensor_cb_hw(executor, sensors, host, timeout, logger):
+def _sensor_cb_hw(executor, sensors, host, timeout, logger, loopCallTime):
     """
     Sensor call back to check all HW sensors
     :param sensors: per-host dict of sensors
     :return:
     """
+
+    global sensorPollInterval_s
+    loopCallTime = loopCallTime + sensorPollInterval_s # The loops are called every 30 seconds, so increment by 30 seconds 
 
     def set_failure():
         for key, sensor in sensors.iteritems():
@@ -264,12 +302,12 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
                 sensor.set(status=Corr2Sensor.UNREACHABLE,
                         value=Corr2Sensor.SENSOR_TYPES[Corr2Sensor.SENSOR_TYPE_LOOKUP[sensor.type]][1])
         time.sleep(0.5)
-        IOLoop.current().call_later(30, _sensor_cb_hw, executor, sensors, host, timeout, logger)
+        IOLoop.current().call_at(loopCallTime, _sensor_cb_hw, executor, sensors, host, timeout, logger, loopCallTime)
 
     #Determine if SKARAB must be polled - if it is not, set all sensor values to unreachable
     global sensor_loop_running
     if(sensor_loop_running == 0):
-        # logger.info('Sensor loop paused')
+        # logger.info('Sensor loop paused {0} {1}'.format(time.time(),loopCallTime))
         set_failure()
         return
 
@@ -333,7 +371,7 @@ def _sensor_cb_hw(executor, sensors, host, timeout, logger):
         logger.error('Error updating {}-device-status sensor - {}'.format(host.host, e.message))
     # logger.info('sensorloop ran')
     time.sleep(0.5)
-    IOLoop.current().call_later(30, _sensor_cb_hw, executor, sensors, host, timeout, logger)
+    IOLoop.current().call_at(loopCallTime, _sensor_cb_hw, executor, sensors, host, timeout, logger, loopCallTime)
 
 @gen.coroutine
 def on_shutdown(ioloop, server):
