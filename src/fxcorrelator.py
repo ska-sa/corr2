@@ -593,7 +593,7 @@ class FxCorrelator(Instrument):
         self.time_jitter_allowed = float(_fxcorr_d.get('time_jitter_allowed', 0.5))
         self.time_offset_allowed = float(_fxcorr_d.get('time_offset_allowed', 1))
         # self.timeout = int(_fxcorr_d.get('default_timeout', 3))
-        self.timeout = float(_fxcorr_d.get('new_timeout', 0.5))
+        self.timeout = int(_fxcorr_d.get('new_timeout', 1))
         self.programming_timeout = int(_fxcorr_d.get('programming_timeout', 15))
         self.post_switch_delay = int(_fxcorr_d.get('switch_delay', 10))
 
