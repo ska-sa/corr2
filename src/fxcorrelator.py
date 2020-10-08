@@ -202,7 +202,7 @@ class FxCorrelator(Instrument):
                 signal.alarm(0)
 
                 #This signal.alarm is probably not necessary. This is just a catch-all in case things get stuck
-                signal.alarm(self.timeout * (len(self.fhosts) + len(self.xhosts)))
+                signal.alarm(self.programming_timeout * (len(self.fhosts) + len(self.xhosts)))
                 function_call = "skfops.wait_after_reboot(self.fhosts + self.xhosts... "
                 skfops.wait_after_reboot(self.fhosts +
                             self.xhosts, timeout=self.programming_timeout *
