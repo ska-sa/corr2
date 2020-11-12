@@ -230,7 +230,7 @@ class BEngineOperations(object):
                                            [beam.index], {}))
         return rv
 
-    def set_beam_delays(self, beam_name=all, delays=None):  
+    def set_beam_delays(self, beam_name, delays):  
         """
         Set the beam steering delay coefficients for all inputs
         :param beam_name: the target beam
@@ -244,20 +244,9 @@ class BEngineOperations(object):
                 return -1
             return float(bits[0]), float(bits[1])
 
-        #if no name given, set delays for all beams
-        if beam_name is all:
-            for beam_name in self.beams:
-                self.set_beam_delays(beam_name=beam_name, delays=delays)
-        
-        #write 0 to all delays if no values given
-        if delays is None:         
-            new_delays = ((0.0,0.0),)*self.corr.n_antennas
-        else:
-            new_delays = delays
-
-        if len(new_delays)!=self.corr.n_antennas:
+        if len(delays)!=self.corr.n_antennas:
             self.logger.error('Need to specify %i delay values, %i provided.' 
-                %(self.corr.n_antennas,len(new_delays)))
+                %(self.corr.n_antennas,len(delays)))
             return
 
         ant_coeffs = []
@@ -265,7 +254,7 @@ class BEngineOperations(object):
         import time
         load_mcnt = self.corr.mcnt_from_time(time.time())
         #generate delay and phase values for all antennas
-        for ant_index,ant_delay in enumerate(new_delays): 
+        for ant_index,ant_delay in enumerate(delays): 
             #if passed in as string, split and convert
             if isinstance(ant_delay, str): 
                 ant_delay_tup = process_string(ant_delay)
@@ -305,7 +294,26 @@ class BEngineOperations(object):
         #change coefficients on all hosts
         beam = self.get_beam_by_name(beam_name)
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_delays_set',[len(self.hosts), beam.index, ant_coeffs], {}))
-        self.logger.info('{} delays set to {}.'.format(beam_name, new_delays))
+        self.logger.info('{} delays set to {}.'.format(beam_name, delays))
         beam.last_delays = last_delays
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_beng_delays(beam)
+
+    def get_beam_delays(self, beam_name):
+        """
+        Get the beam steering delay coefficients for all inputs
+        :param beam_name: the target beam
+        :param delays: list of tuples (delay(seconds),phase(radians),...), 
+                        or strings delay:phase... one per input
+        """ 
+        beam = self.get_beam_by_name(beam_name)
+        last_delays = beam.last_delays
+        delay_vals = ''
+        if (last_delays is not None):
+            import numpy
+            for delay_coeffs in last_delays:
+                delay = delay_coeffs.delay / self.corr.sample_rate_hz
+                phase_offset = delay_coeffs.phase_offset * numpy.pi
+                delay_vals += '{:.10e}:{:.10e} '.format(delay, phase_offset)
+
+        return delay_vals

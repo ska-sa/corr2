@@ -28,7 +28,7 @@ class Beam(SPEADStream):
         self.chans_per_partition = None
         self.speadops = None
         self.polarisation = None
-        self.last_delay = delayops.Delay()
+        self.last_delays = None 
 
         # This will always be a kwarg
         self.getLogger = kwargs['getLogger']

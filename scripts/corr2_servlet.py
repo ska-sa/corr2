@@ -703,14 +703,14 @@ class Corr2Server(DeviceServer):
             except Exception as ex:
                 stack_trace = traceback.format_exc()
                 return self._log_stacktrace(stack_trace,
-                    'Failed setting beamweights for beam {0}.'.format(beam_name))
+                    'Failed setting beamweights for {0}.'.format(beam_name))
         try:
             cur_weights = self.instrument.bops.get_beam_weights(
                 beam_name)
         except Exception as ex:
             stack_trace = traceback.format_exc()
             return self._log_stacktrace(stack_trace,
-                'Failed reading beamweights for beam {0}.'.format(beam_name))
+                'Failed reading beamweights for {0}.'.format(beam_name))
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_weights))
 
     @request(Str(), Float(default=''))
@@ -742,7 +742,7 @@ class Corr2Server(DeviceServer):
         return tuple(['ok'] + Corr2Server.rv_to_liststr(cur_gains))
 
     @request(Str(), Str(default='', multiple=True))
-    @return_reply(Str(multiple=True)) #TODO return delays
+    @return_reply(Str(multiple=True)) 
     def request_beam_delays(self, sock, beam_name, *delay_strings):
         """
         Set beam delays for the instrument.
@@ -752,12 +752,21 @@ class Corr2Server(DeviceServer):
             described in ICD. (delay(seconds), phase(radians))
         :return:
         """
+        if delay_strings != '':
+            try:
+                self.instrument.bops.set_beam_delays(beam_name, delay_strings)
+            except Exception as ex:
+                stack_trace = traceback.format_exc()
+                return self._log_stacktrace(stack_trace, 
+                        'Failed setting delays for {0}.'.format(beam_name))
+
         try:
-            self.instrument.bops.set_beam_delays(beam_name, delay_strings)
-            return tuple(['ok', 'Model updated. Check sensors after next update to confirm application'])
+            cur_delays = self.instrument.bops.get_beam_delays(beam_name)
         except Exception as ex:
             stack_trace = traceback.format_exc()
-            return self._log_stacktrace(stack_trace, 'Failed setting beam delays.')
+            return self._log_stacktrace(stack_trace,
+                'Failed reading delays for {0}.'.format(beam_name))
+        return ('ok', cur_delays)
 
     @request()
     @return_reply()

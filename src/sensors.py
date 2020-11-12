@@ -825,11 +825,21 @@ class Corr2SensorManager(SensorManager):
                 'this beam.')
             sensor.set_value(self.instrument.bops.get_beam_quant_gain(strmnm))
 
-    def sensors_beng_delays(self, beam):
+    def sensors_beng_delays(self, beams=all):
         """
         B-engine delay sensors
         :return:
         """
+        if beams is all:
+            streams = self.instrument.get_data_streams_by_type(
+                data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
+            for stream in streams:
+                strmnm = stream.name
+                beam = self.instrument.bops.beams[strmnm]
+                self.sensors_beng_delays(beam)
+        else:
+            beam = beams        
+
         sensor = self.do_sensor(
             Corr2Sensor.string, '{}-delay:'.format(beam.name),
             'The delay settings for inputs of this beam: ('\
@@ -838,7 +848,7 @@ class Corr2SensorManager(SensorManager):
 
         last_delays = beam.last_delays
         _delay_vals = ''
-        if (last_delays is not None) & (len(last_delays) != 0):
+        if (last_delays is not None):
             import numpy
             for delay_coeffs in last_delays:
                 delay = delay_coeffs.delay / self.instrument.sample_rate_hz
@@ -853,8 +863,7 @@ class Corr2SensorManager(SensorManager):
             sensor.set_value(value=_val, status=_status, timestamp=_timestamp)
             self.logger.info(
                 '{}-delay: delay update, @time {} '.format(
-                    beam.name,
-                    _timestamp) + _delay_vals) 
+                    beam.name, _timestamp) + _delay_vals) 
 
 #    def sensors_beng_passband(self):
 #        """
