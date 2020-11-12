@@ -820,28 +820,28 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
                 Corr2Sensor.device_status, '{}.dig.device-status'.format(fhost),
                 'F-engine DIG ADC levels ok.', executor=executor),
             'p0_max': sens_man.do_sensor(
-                Corr2Sensor.float, '{}.dig.p0-max'.format(fhost),
+                Corr2Sensor.float, '{}.dig.pol0-max'.format(fhost),
                 'F-engine DIG ADC peak value, pol0, over ~70ms period. range -1 to +1.', executor=executor),
             'p1_max': sens_man.do_sensor(
-                Corr2Sensor.float, '{}.dig.p1-max'.format(fhost),
+                Corr2Sensor.float, '{}.dig.pol1-max'.format(fhost),
                 'F-engine DIG ADC peak value, pol1, over ~70ms period. range -1 to +1.', executor=executor),
             'p0_min': sens_man.do_sensor(
-                Corr2Sensor.float, '{}.dig.p0-min'.format(fhost),
+                Corr2Sensor.float, '{}.dig.pol0-min'.format(fhost),
                 'F-engine DIG ADC minimum value, pol0, over ~70ms period. range -1 to +1.', executor=executor),
             'p1_min': sens_man.do_sensor(
-                Corr2Sensor.float, '{}.dig.p1-min'.format(fhost),
+                Corr2Sensor.float, '{}.dig.pol1-min'.format(fhost),
                 'F-engine DIG ADC minimum value, pol1, over ~70ms period. range: -1 to +1.', executor=executor),
             'p0_pwr_dBFS': sens_man.do_sensor(
-                Corr2Sensor.float, '{}.dig.p0-rms-dbfs'.format(fhost),
+                Corr2Sensor.float, '{}.dig.pol0-rms-dbfs'.format(fhost),
                 'F-engine DIG ADC RMS average power, dBFS, pol0, over ~70ms period.', executor=executor),
             'p1_pwr_dBFS': sens_man.do_sensor(
-                Corr2Sensor.float, '{}.dig.p1-rms-dbfs'.format(fhost),
+                Corr2Sensor.float, '{}.dig.pol1-rms-dbfs'.format(fhost),
                 'F-engine DIG ADC RMS average power, dBFS, pol1, over ~70ms period.', executor=executor),
             'p0_dig_clip_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.p0-dig-clip-cnt'.format(fhost),
+                Corr2Sensor.integer, '{}.dig.pol0-dig-clip-cnt'.format(fhost),
                 'F-engine DIG reported overrange counter.', executor=executor),
             'p1_dig_clip_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.p1-dig-clip-cnt'.format(fhost),
+                Corr2Sensor.integer, '{}.dig.pol1-dig-clip-cnt'.format(fhost),
                 'F-engine DIG reported overrange counter.', executor=executor),
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_adcs',_f.host))

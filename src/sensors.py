@@ -991,8 +991,19 @@ class Corr2SensorManager(SensorManager):
         xhost_builddate =  (time.mktime(time.strptime(self.instrument.xhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
         fhost_builddate =  (time.mktime(time.strptime(self.instrument.fhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
 
-        xhost_md5_bitstream =  self.instrument.xhosts[0].system_info['md5_bitstream']
-        fhost_md5_bitstream =  self.instrument.fhosts[0].system_info['md5_bitstream']
+        xhost_fpg_filename = self.instrument.xhosts[0].bitstream
+        fhost_fpg_filename = self.instrument.fhosts[0].bitstream
+
+        # Importing this here because it is only needed/used here
+        # - Same library.method used in the toolflow to calculate the previously-used MD5 Checksum
+        from hashlib import md5
+        # Open the fpg-file in read-only mode as binary data
+        with open(xhost_fpg_filename, 'rb') as xfpg:
+            # Calculate the MD5 checksum on the file's contents
+            xhost_md5_fpgfile = md5(xfpg.read()).hexdigest()
+        # Once more, with feeling
+        with open(fhost_fpg_filename, 'rb') as ffpg:
+            fhost_md5_fpgfile = md5(ffpg.read()).hexdigest()
 
         sensor = Corr2Sensor.string(
                 name='corr2_version',
@@ -1023,18 +1034,18 @@ class Corr2SensorManager(SensorManager):
         sensor.set_value(xhost_builddate)
 
         sensor = Corr2Sensor.string(
-                name='md5_bitstream_xeng',
-                description='MD5 hash of X-Engine bitstream',
+                name='md5_fpgfile_xeng',
+                description='MD5 hash of X-Engine fpg-file',
                 initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
-        sensor.set_value(xhost_md5_bitstream)
+        sensor.set_value(xhost_md5_fpgfile)
 
         sensor = Corr2Sensor.string(
-                name='md5_bitstream_feng',
-                description='MD5 hash of F-Engine bitstream',
+                name='md5_fpgfile_feng',
+                description='MD5 hash of F-Engine fpg-file',
                 initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
-        sensor.set_value(fhost_md5_bitstream)
+        sensor.set_value(fhost_md5_fpgfile)
 
         sensor = Corr2Sensor.integer(
             name='adc-bits', description='ADC sample bitwidth.',
@@ -1219,6 +1230,7 @@ def boolean_sensor_do(host, sensor, funclist):
         host.logger.error('Error updating {} for {} - '
                      '{}'.format(sensor.name, host.host, e.message))
         sensor.set(value=False)
-    
+
+  
 
 # end

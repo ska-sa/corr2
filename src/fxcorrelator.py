@@ -101,7 +101,8 @@ class FxCorrelator(Instrument):
         self.katcp_port = None
         self.f_per_fpga = None
         self.x_per_fpga = None
-        self.timeout = None
+        self.timeout = None # This will henceforth be referred to as the 'request timeout'
+        self.programming_timeout = None # Testing, for now
 
         # Parent constructor invokes reading the config file, generic hosts, data streams and logging.
         Instrument.__init__(self, descriptor, config_source, identifier, **kwargs)
@@ -186,25 +187,25 @@ class FxCorrelator(Instrument):
                 signal.signal(signal.SIGALRM, progska_timeout_handler)
 
                 function_call = "skfops.upload_to_ram_progska(fbof, self.fhosts)"
-                signal.alarm(int(self.timeout * (len(self.fhosts)**0.5) + 60))
+                signal.alarm(int(self.programming_timeout * (len(self.fhosts)**0.5) + 60))
                 skfops.upload_to_ram_progska(fbof, self.fhosts)
                 function_call = "skfops.reboot_skarabs_from_sdram(self.fhosts)"
-                signal.alarm(int(self.timeout))
+                signal.alarm(int(self.programming_timeout))
                 skfops.reboot_skarabs_from_sdram(self.fhosts)
 
-                signal.alarm(int(self.timeout * (len(self.xhosts)**0.5) + 60))
+                signal.alarm(int(self.programming_timeout * (len(self.xhosts)**0.5) + 60))
                 function_call = "skfops.upload_to_ram_progska(xbof, self.xhosts)"
                 skfops.upload_to_ram_progska(xbof, self.xhosts)
-                signal.alarm(int(self.timeout))
+                signal.alarm(int(self.programming_timeout))
                 function_call = "skfops.reboot_skarabs_from_sdram(self.xhosts)"
                 skfops.reboot_skarabs_from_sdram(self.xhosts)
                 signal.alarm(0)
 
                 #This signal.alarm is probably not necessary. This is just a catch-all in case things get stuck
-                signal.alarm(self.timeout * (len(self.fhosts) + len(self.xhosts)))
+                signal.alarm(self.programming_timeout * (len(self.fhosts) + len(self.xhosts)))
                 function_call = "skfops.wait_after_reboot(self.fhosts + self.xhosts... "
                 skfops.wait_after_reboot(self.fhosts +
-                            self.xhosts, timeout=self.timeout *
+                            self.xhosts, timeout=self.programming_timeout *
                 (len(self.fhosts) + len(self.xhosts)))
     
                 #Cancel all timeout sigals
@@ -220,6 +221,7 @@ class FxCorrelator(Instrument):
         xisskarab = True
         if (not program) or fisskarab or xisskarab:
             self.logger.info('Loading design information')
+            # This shouldn't take too long, use the smaller timeout value
             THREADED_FPGA_FUNC(
                 self.fhosts, timeout=self.timeout * 10,
                 target_function=('get_system_information', [fbof], {}))
@@ -529,6 +531,7 @@ class FxCorrelator(Instrument):
     def _update_response_timeout(self, response_timeout):
         """
         Update the response timeout for Fpga Hosts
+        :param response_timeout: Integer value in seconds
         :return:
         """
         # access transport layer
@@ -589,7 +592,9 @@ class FxCorrelator(Instrument):
         self.katcp_port = int(_fxcorr_d.get('katcp_port', 7147))
         self.time_jitter_allowed = float(_fxcorr_d.get('time_jitter_allowed', 0.5))
         self.time_offset_allowed = float(_fxcorr_d.get('time_offset_allowed', 1))
-        self.timeout = int(_fxcorr_d.get('default_timeout', 15))
+        # self.timeout = int(_fxcorr_d.get('default_timeout', 3))
+        self.timeout = int(_fxcorr_d.get('new_timeout', 1))
+        self.programming_timeout = int(_fxcorr_d.get('programming_timeout', 15))
         self.post_switch_delay = int(_fxcorr_d.get('switch_delay', 10))
 
         if 'spead_metapacket_ttl' in _fxcorr_d:
