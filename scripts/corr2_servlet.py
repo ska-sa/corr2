@@ -231,6 +231,12 @@ class Corr2Server(DeviceServer):
                                                     log_file_dir=self.log_file_dir,
                                                     instrument_name=self.instrument.descriptor)
 
+            # This is a hack to get around the auto reset/re-sync mechanism sometimes getting into 
+            # a locked state. Only seen during UHF builds.
+            self.instrument.fops.auto_rst_disable()
+            time.sleep(0.3)
+            self.instrument.fops.auto_rst_enable()
+
             # Last thing to do, check if any default log-levels are specified in the config_file
             # - Change the corresponding group's log-level accordingly
             if self.log_level_dict is None:
@@ -752,6 +758,23 @@ class Corr2Server(DeviceServer):
         """
         try:
             self.instrument.xops.vacc_sync()
+        except Exception as ex:
+            stack_trace = traceback.format_exc()
+            return self._log_stacktrace(stack_trace, 'Failed syncing vaccs')
+        return 'ok',
+
+    @request()
+    @return_reply()
+    def request_feng_auto_resync_reset(self, sock):
+        """
+        Re-initialise auto reset/re-sync mechanism for the f-engine.
+        :param sock:
+        :return:
+        """
+        try:
+            self.instrument.fops.auto_rst_disable()
+            time.sleep(0.3)
+            self.instrument.fops.auto_rst_enable()
         except Exception as ex:
             stack_trace = traceback.format_exc()
             return self._log_stacktrace(stack_trace, 'Failed syncing vaccs')
