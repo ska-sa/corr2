@@ -151,8 +151,13 @@ class Fengine(object):
             #calculate number of snapshot reads required:
             n_reads=float(self.host.n_chans)/(2**int(snapshot.block_info['snap_nsamples']))/4
             compl = []
+            #Quantiser snapshot offset algorim: offset = (required_channel * 8) div 4
+            #Quantiser snapshot depth is 2048, and reads 4 values per clock cycle, to build a snapshot of all channels a trigger offset
+            #must be used. The trigger offset follows this algoritm: (offset div 8)*4 = snap_start_channel, e.g. to start reading at channel
+            #2048 offset should be 2048*8/4=4096
             for read_n in range(int(numpy.ceil(n_reads))):
-                offset = read_n * (2**int(snapshot.block_info['snap_nsamples']))
+                snap_start_ch = read_n * (2**int(snapshot.block_info['snap_nsamples']))*4
+                offset = snap_start_ch*8/4
                 sdata = snapshot.read(offset=offset)['data']
                 for ctr in range(0, len(sdata['real0'])):
                     compl.append(complex(sdata['real0'][ctr], sdata['imag0'][ctr]))

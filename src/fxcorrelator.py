@@ -121,7 +121,7 @@ class FxCorrelator(Instrument):
         self.logger.info('{0}Successfully created Instrument: {1}{0}'.format(new_connection_string, self.descriptor))
 
         # update response timeout now - make it more aggressive now that we've established connection to all the hosts
-        self.response_timeout = self.min_load_time / 2.0
+        self.response_timeout = self.min_load_time / 6.0
         self._update_response_timeout(self.response_timeout)
 
     # @profile
