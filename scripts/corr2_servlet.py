@@ -231,11 +231,6 @@ class Corr2Server(DeviceServer):
                                                     log_file_dir=self.log_file_dir,
                                                     instrument_name=self.instrument.descriptor)
 
-            # This is a hack to get around the auto reset/re-sync mechanism sometimes getting into 
-            # a locked state. Only seen during UHF builds.
-            self.instrument.fops.auto_rst_disable()
-            time.sleep(10)
-            self.instrument.fops.auto_rst_enable()
             # Reset the gbe counters otherwise they don't start
             self.instrument.fops.gbe_counter_rst()
             self.instrument.xops.gbe_counter_rst()
