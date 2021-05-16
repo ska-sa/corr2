@@ -52,8 +52,8 @@ class BEngineOperations(object):
         #self.tx_disable()
         #self.set_beam_weights()
         for beam_name in self.beams:
-            beam=self.get_beam_by_name(beam_name)
-            self.set_beam_quant_gain(float(beam.config['quant_gain']),beam_name)
+            beam = self.get_beam_by_name(beam_name)
+            self.set_beam_quant_gain(float(beam.config['quant_gain']), beam_name)
         self.logger.info('Beamformer initialised.')
 
     def configure(self, *args, **kwargs):
@@ -129,8 +129,8 @@ class BEngineOperations(object):
         """
         Return a list of the input stream names used for this beam.
         """
-        inputs=self.corr.get_input_labels()
-        pol=self.get_beam_by_name(beam_name).polarisation
+        inputs = self.corr.get_input_labels()
+        pol = self.get_beam_by_name(beam_name).polarisation
         return inputs[pol::2]
 
     def set_beam_quant_gain(self, new_gain, beam_name=None):
@@ -148,7 +148,7 @@ class BEngineOperations(object):
         # set the quantiser gains for this beam
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_quant_gains_set',
                                            [beam.index, new_gain], {}))
-        self.logger.info('%s quant gain set to %f.'%(beam_name,new_gain))
+        self.logger.info('%s quant gain set to %f.' % (beam_name, new_gain))
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_beng_gains()
 
@@ -159,9 +159,9 @@ class BEngineOperations(object):
         :return: the output beam gain for this combination
         """
         beam = self.get_beam_by_name(beam_name)
-        vals=THREADED_FPGA_FUNC(self.hosts, 5, ('beam_quant_gains_get',
+        vals = THREADED_FPGA_FUNC(self.hosts, 5, ('beam_quant_gains_get',
                                            [beam.index], {}))
-        if min(vals.values())==max(vals.values()):
+        if min(vals.values()) == max(vals.values()):
             return vals.values()[0]
         else:
             raise RuntimeError('Boards dont all have the same gain! {}'.format(vals))
@@ -177,18 +177,18 @@ class BEngineOperations(object):
             for beam_name in self.beams:
                 self.set_beam_weights(weights, beam_name=beam_name)
             return
-        if type(weights)==int or type(weights)==float:
-            new_weights=[weights for a in range(self.corr.n_antennas)]
+        if type(weights) == int or type(weights) == float:
+            new_weights = [weights for a in range(self.corr.n_antennas)]
         else:
-            new_weights=weights
+            new_weights = weights
 
-        self.logger.debug('Received weights for beam %s: %s'%(str(beam_name),str(weights)))
+        self.logger.debug('Received weights for beam %s: %s' % (str(beam_name), str(weights)))
 
-        assert len(new_weights)==self.corr.n_antennas,'Need to specify %i values; you offered %i.'%(self.corr.n_antennas,len(new_weights))
+        assert len(new_weights) == self.corr.n_antennas, 'Need to specify %i values; you offered %i.' % (self.corr.n_antennas, len(new_weights))
         beam_index = self.get_beam_by_name(beam_name).index
         THREADED_FPGA_FUNC(self.hosts, 5, ('beam_weights_set',
-                                           [beam_index,new_weights], {}))
-        self.logger.info('{} weights set to {}.'.format(beam_name,new_weights))
+                                           [beam_index, new_weights], {}))
+        self.logger.info('{} weights set to {}.'.format(beam_name, new_weights))
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_beng_weights()
 
@@ -199,12 +199,12 @@ class BEngineOperations(object):
         :return: a list of the beam weights, one per input.
         """
         beam = self.get_beam_by_name(beam_name)
-        vals=THREADED_FPGA_FUNC(self.hosts, 10, ('beam_weights_get',
+        vals = THREADED_FPGA_FUNC(self.hosts, 10, ('beam_weights_get',
                                            [beam.index], {}))
         import numpy
-        na=numpy.array(vals.values())
+        na = numpy.array(vals.values())
         for ant in range(self.corr.n_antennas):
-            if na[:,ant].max() != na[:,ant].min():
+            if na[:, ant].max() != na[:, ant].min():
                 self.logger.warning('Boards dont all have the same gain! {}'.format(vals))
         return vals.values()[0]
 
@@ -217,36 +217,36 @@ class BEngineOperations(object):
             return self.hosts[0].get_version_info()
         except AttributeError:
             return {}
-    
+
     def get_pack_status(self):
         """
         Get the status of all the pack blocks in the beamformer system.
         Returns a dictionary, indexed by beam name, of all the engines' states
         """
         #TODO This function doesn't really add value. Remove?
-        rv={}
+        rv = {}
         for beam in self.beams.itervalues():
-            rv[beam.name]=THREADED_FPGA_FUNC(self.hosts, 5, ('get_bpack_status',
+            rv[beam.name] = THREADED_FPGA_FUNC(self.hosts, 5, ('get_bpack_status',
                                            [beam.index], {}))
         return rv
 
-    def set_beam_delays(self, beam_name, delays):  
+    def set_beam_delays(self, beam_name, delays):
         """
-        Set the beam steering delay coefficients for all inputs
+        Set the beam steering delay coefficients for specified input
         :param beam_name: the target beam
-        :param delays: list of tuples (delay(seconds),phase(radians),...), 
+        :param delays: list of tuples (delay(seconds),phase(radians),...),
                         or strings delay:phase... one per input
-        """ 
-        #process delays passed as string 
+        """
+        #process delays passed as string
         def process_string(delaystr):
             bits = delaystr.strip().split(':')
-            if len(bits) != 2: 
+            if len(bits) != 2:
                 return -1
             return float(bits[0]), float(bits[1])
 
-        if len(delays)!=self.corr.n_antennas:
-            self.logger.error('Need to specify %i delay values, %i provided.' 
-                %(self.corr.n_antennas,len(delays)))
+        if len(delays) != self.corr.n_antennas:
+            self.logger.error('Need to specify %i delay values, %i provided.'
+                % (self.corr.n_antennas, len(delays)))
             return
 
         ant_coeffs = []
@@ -254,46 +254,46 @@ class BEngineOperations(object):
         import time
         load_mcnt = self.corr.mcnt_from_time(time.time())
         #generate delay and phase values for all antennas
-        for ant_index,ant_delay in enumerate(delays): 
+        for ant_index, ant_delay in enumerate(delays):
             #if passed in as string, split and convert
-            if isinstance(ant_delay, str): 
+            if isinstance(ant_delay, str):
                 ant_delay_tup = process_string(ant_delay)
             else:
-                ant_delay_tup = ant_delay            
-    
+                ant_delay_tup = ant_delay
+
             if len(ant_delay_tup) != 2:
-                self.logger.error('Beam delay values must consist of 2 values, %i given for antenna %i' %(
-                    len(ant_delay_tup),ant_index))
+                self.logger.error('Beam delay values must consist of 2 values, %i given for antenna %i' % (
+                    len(ant_delay_tup), ant_index))
                 return
 
-            new_delay = delayops.prepare_delay_vals([[ant_delay_tup[0],0.0],[ant_delay_tup[1],0.0]], 
+            new_delay = delayops.prepare_delay_vals([[ant_delay_tup[0], 0.0], [ant_delay_tup[1], 0.0]],
                 self.corr.sample_rate_hz)
             new_delay.load_mcnt = load_mcnt
 
             #for a noise-like signal it makes little sense to delay by more than our FFT length
             if new_delay.delay > self.corr.n_chans:
-                self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.' %(
+                self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.' % (
                     ant_index, new_delay.delay, self.corr.n_chans))
 
             import numpy
             #phase change across the band for the delay specified (radians)
-            delay = new_delay.delay*numpy.pi
+            delay = new_delay.delay * numpy.pi
             #phase offset (radians)
-            phase = new_delay.phase_offset              
-            
-            #phase change per frequency as pre-calculated complex value 
-            phase_per_freq = numpy.exp(-1.0j*(delay/self.corr.n_chans))
+            phase = new_delay.phase_offset
+
+            #phase change per frequency as pre-calculated complex value
+            phase_per_freq = numpy.exp(-1.0j * (delay / self.corr.n_chans))
             #phase change per bengine as pre-calculated complex value
-            phase_per_beng = numpy.exp(-1.0j*(delay/(len(self.hosts)*self.beng_per_host)))
+            phase_per_beng = numpy.exp(-1.0j * (delay / (len(self.hosts) * self.beng_per_host)))
 
             ant_coeffs.append((delay, phase, phase_per_beng, phase_per_freq))
- 
+
             #record delay settings for sensor update
             last_delays.append(new_delay)
 
         #change coefficients on all hosts
         beam = self.get_beam_by_name(beam_name)
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_delays_set',[len(self.hosts), beam.index, ant_coeffs], {}))
+        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_delays_set', [len(self.hosts), beam.index, ant_coeffs], {}))
         self.logger.info('{} delays set to {}.'.format(beam_name, delays))
         beam.last_delays = last_delays
         if self.corr.sensor_manager:
@@ -301,11 +301,11 @@ class BEngineOperations(object):
 
     def get_beam_delays(self, beam_name):
         """
-        Get the beam steering delay coefficients for all inputs
+        Get the beam steering delay coefficients for specified input
         :param beam_name: the target beam
-        :param delays: list of tuples (delay(seconds),phase(radians),...), 
+        :param delays: list of tuples (delay(seconds), phase(radians),...),
                         or strings delay:phase... one per input
-        """ 
+        """
         beam = self.get_beam_by_name(beam_name)
         last_delays = beam.last_delays
         delay_vals = ''
