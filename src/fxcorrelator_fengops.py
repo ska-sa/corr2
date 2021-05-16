@@ -650,6 +650,14 @@ class FEngineOperations(object):
             target_function=(lambda fpga_: fpga_.registers.control.write(auto_rst_enable=False), ))
         self.logger.info('F-engine hardware auto rst/resync mechanism disabled.')
 
+    def gbe_counter_rst(self):
+        """
+        Reset gbe counters, this is needed for the gbe sensors to work.
+        """
+        THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
+            target_function=(lambda fpga_: fpga_.gbes.gbe0.get_hw_gbe_stats(rst_counters=True), ))
+        self.logger.info('F-engine gbe counters reset for gbe0.')
+
     def get_fengine(self, input_name):
         """
         Find an f-engine by name or index.
