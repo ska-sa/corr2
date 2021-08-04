@@ -2,6 +2,7 @@ from logging import INFO
 from casperfpga import utils as fpgautils
 from beam import Beam
 import delay as delayops
+import time, numpy
 
 # from corr2LogHandlers import getLogger
 
@@ -258,7 +259,6 @@ class BEngineOperations(object):
 
         ant_coeffs = []
         last_delays = []
-        import time
         load_mcnt = self.corr.mcnt_from_time(time.time())
         #generate delay and phase values for all antennas
         for ant_index, ant_delay in enumerate(delays):
@@ -282,7 +282,6 @@ class BEngineOperations(object):
                 self.logger.info('Request to delay antenna input %i by %i samples in a %i channel system.' % (
                     ant_index, new_delay.delay, self.corr.n_chans))
 
-            import numpy
             #phase change across the band for the delay specified (radians)
             delay = new_delay.delay * numpy.pi
             #phase offset (radians)

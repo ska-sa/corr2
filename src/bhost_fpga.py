@@ -171,26 +171,25 @@ class FpgaBHost(FpgaXHost):
             
             delay = float(ant_coeffs[0])
             phase = float(ant_coeffs[1])
-            import numpy
             total_phase = (host_offset*delay)+phase
-            phase_base = numpy.exp(-1.0j*total_phase)
-            self.registers.beam_steering_phase_init.write(real=phase_base.real, imag=phase_base.imag)
+            phase_base = np.exp(-1.0j*total_phase)
+            self.registers.beam_steering_phase_init.blindwrite(real=phase_base.real, imag=phase_base.imag)
 
             #the (pre-calculated) phase base change for each b-engine 
             phase_base_delta = ant_coeffs[2]
-            self.registers.beam_steering_phase_init_delta.write(real=phase_base_delta.real, imag=phase_base_delta.imag)
+            self.registers.beam_steering_phase_init_delta.blindwrite(real=phase_base_delta.real, imag=phase_base_delta.imag)
 
             #the pre-calculated phase rotation increment per frequency within each b-engine
             phase_inc = ant_coeffs[3]
-            self.registers.beam_steering_phase_increment.write(real=phase_inc.real, imag=phase_inc.imag)
+            self.registers.beam_steering_phase_increment.blindwrite(real=phase_inc.real, imag=phase_inc.imag)
 
             #set up destination beam and antenna, and trigger load
-            self.registers.bf_weight.write(stream=beam_index, antenna=ant_index, beam_steering_load_now=0)
-            self.registers.bf_weight.write(stream=beam_index, antenna=ant_index, beam_steering_load_now=1)
+            self.registers.bf_weight.blindwrite(load_now=0, stream=beam_index, antenna=ant_index, beam_steering_load_now=0)
+            self.registers.bf_weight.blindwrite(load_now=0, stream=beam_index, antenna=ant_index, beam_steering_load_now=1)
             
-            self.logger.debug('%s: host id (%i) beam (%i) antenna (%i) beam steering initial phase %.5f degrees (%.5f,%.5f), delta initial phase %.5f degrees (%.5f,%.5f), phase increment %.5f degrees (%.5f,%.5f)' %(
-                    self.host, self.index, beam_index, ant_index, 
-                    total_phase*(180.0/numpy.pi), phase_base.real, phase_base.imag, 
-                    numpy.arctan(phase_base_delta.imag/phase_base_delta.real)*(180.0/numpy.pi), phase_base_delta.real, phase_base_delta.imag, 
-                    numpy.arctan(phase_inc.imag/phase_inc.real)*(180.0/numpy.pi), phase_inc.real, phase_inc.imag)
-                )
+            #self.logger.debug('%s: host id (%i) beam (%i) antenna (%i) beam steering initial phase %.5f degrees (%.5f,%.5f), delta initial phase %.5f degrees (%.5f,%.5f), phase increment %.5f degrees (%.5f,%.5f)' %(
+            #        self.host, self.index, beam_index, ant_index, 
+            #        total_phase*(180.0/np.pi), phase_base.real, phase_base.imag, 
+            #        np.arctan(phase_base_delta.imag/phase_base_delta.real)*(180.0/np.pi), phase_base_delta.real, phase_base_delta.imag, 
+            #        np.arctan(phase_inc.imag/phase_inc.real)*(180.0/np.pi), phase_inc.real, phase_inc.imag)
+            #    )
