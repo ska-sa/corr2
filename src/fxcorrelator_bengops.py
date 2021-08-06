@@ -2,7 +2,8 @@ from logging import INFO
 from casperfpga import utils as fpgautils
 from beam import Beam
 import delay as delayops
-import time, numpy
+import time
+import numpy
 
 # from corr2LogHandlers import getLogger
 
@@ -285,7 +286,7 @@ class BEngineOperations(object):
             #phase change across the band for the delay specified (radians)
             delay = new_delay.delay * numpy.pi
             #phase offset (radians)
-            phase = new_delay.phase_offset
+            phase = new_delay.phase_offset * numpy.pi
 
             #phase change per frequency as pre-calculated complex value
             phase_per_freq = numpy.exp(-1.0j * (delay / self.corr.n_chans))
