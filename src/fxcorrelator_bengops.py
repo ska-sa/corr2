@@ -300,7 +300,7 @@ class BEngineOperations(object):
 
         #change coefficients on all hosts
         beam = self.get_beam_by_name(beam_name)
-        THREADED_FPGA_FUNC(self.hosts, 5, ('beam_delays_set', [len(self.hosts), beam.index, ant_coeffs], {}))
+        THREADED_FPGA_FUNC(self.hosts, 10, ('beam_delays_set', [len(self.hosts), beam.index, ant_coeffs], {}))
         self.logger.info('{} delays set to {}.'.format(beam_name, delays))
         beam.last_delays = last_delays
         if self.corr.sensor_manager:
