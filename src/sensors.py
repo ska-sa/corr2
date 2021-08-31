@@ -1,9 +1,9 @@
 # import logging
 # Yes, I know it's just an integer value
-from logging import INFO,DEBUG,WARN,ERROR
+from logging import ERROR
 import time
 
-
+import pkginfo
 
 from casperfpga.transport_katcp import KatcpRequestError, KatcpRequestFail, \
     KatcpRequestInvalid
@@ -16,6 +16,7 @@ from corr2.corr2LogHandlers import getKatcpLogger
 import data_stream
 
 # LOGGER = logging.getLogger(__name__)
+
 
 class Corr2Sensor(Sensor):
 
@@ -78,10 +79,10 @@ class Corr2Sensor(Sensor):
                default=None, initial_status=None,
                manager=None, executor=None,
                *args, **kwargs):
-        return cls(cls.DISCRETE, name=name, description=description, 
-                   units=unit, params=['ok','fail','degraded','unknown'],
-                   default=default, initial_status=Corr2Sensor.UNKNOWN, manager=manager, 
-                   executor=executor,*args, **kwargs)
+        return cls(cls.DISCRETE, name=name, description=description,
+                   units=unit, params=['ok', 'fail', 'degraded', 'unknown'],
+                   default=default, initial_status=Corr2Sensor.UNKNOWN, manager=manager,
+                   executor=executor, *args, **kwargs)
 
     def __init__(self, sensor_type, name, description=None, units='',
                  params=None, default=None, initial_status=None,
@@ -132,7 +133,7 @@ class Corr2Sensor(Sensor):
             self.logger.debug('Sensor values unchanged, ignoring')
             return
 
-        if (value == False):
+        if (value is False):
             if (errif == 'False'):
                 self.logger.error('Sensor error: {} is False'.format(self.name))
                 if(status_none == 1):
@@ -585,7 +586,7 @@ class Corr2SensorManager(SensorManager):
                 Corr2Sensor.integer,
                 '{}-xeng-vacc-bits-per-sample'.format(strmnm),
                 'X-engine Vector-accumulator bits per sample. Real and imaginary parts are each this wide. Used to figure out what the maximum value is you could get out the Xengines.')
-            sensor.set_value(self.instrument.xeng_outbits-1)
+            sensor.set_value(self.instrument.xeng_outbits - 1)
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-bls'.format(strmnm),
@@ -623,9 +624,9 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
             sensor = self.do_sensor(
-                    Corr2Sensor.float, '{}-center-freq'.format(strmnm),
-                    'The CBF center frequency of the digitised band.',unit='Hz')
-            sensor.set_value(self.instrument.fops.get_center_freq()) 
+                Corr2Sensor.float, '{}-center-freq'.format(strmnm),
+                'The CBF center frequency of the digitised band.', unit='Hz')
+            sensor.set_value(self.instrument.fops.get_center_freq())
 
 
     def sensors_feng_fft_shift(self):
@@ -639,7 +640,7 @@ class Corr2SensorManager(SensorManager):
         for stream in streams:
             strmnm = stream.name
             for feng in self.instrument.fops.fengines:
-                pref = '{strm}-{npt}'.format(strm=strmnm,npt=feng.name)
+                pref = '{strm}-{npt}'.format(strm=strmnm, npt=feng.name)
                 sensor = self.do_sensor(
                     Corr2Sensor.integer, '{}-fft0-shift'.format(pref),
                     'The FFT bitshift pattern for the <n>th FFT in the design. '
@@ -675,9 +676,9 @@ class Corr2SensorManager(SensorManager):
             Corr2Sensor.string, '{}-delay'.format(pref),
             'The delay settings for this input: (loadmcnt <ADC sample count when model was loaded>, delay <in seconds>, '
             'delay-rate <unit-less, or, seconds-per-second>, phase <radians>, phase-rate <radians per second>).')
-       # err_sensor = self.do_sensor(
-       #     Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
-       #     'Delays for this input are functioning correctly.')
+        # err_sensor = self.do_sensor(
+        #     Corr2Sensor.boolean, '{}-delay-ok'.format(pref),
+        #     'Delays for this input are functioning correctly.')
 
         if feng.last_delay is not None:
             import numpy
@@ -715,25 +716,24 @@ class Corr2SensorManager(SensorManager):
             data_stream.FENGINE_CHANNELISED_DATA)
 
         assert len(streams) == 1
-        import numpy
         for stream in streams:
             strmnm = stream.name
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer,
                 '{}-feng-out-bits-per-sample'.format(strmnm),
-                'F-engine output bits per sample.',unit='bits')
+                'F-engine output bits per sample.', unit='bits')
             sensor.set_value(self.instrument.fops.quant_bits)
 
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-center-freq'.format(strmnm),
-                'The CBF center frequency of the digitised band.',unit='Hz')
-            sensor.set_value(self.instrument.fops.get_center_freq()) 
+                'The CBF center frequency of the digitised band.', unit='Hz')
+            sensor.set_value(self.instrument.fops.get_center_freq())
 
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-bandwidth'.format(strmnm),
-                'The analogue bandwidth of this stream, in Hz.',unit='Hz')
-            sensor.set_value(float(self.instrument.analogue_bandwidth) / self.instrument.fops.decimation_factor) 
+                'The analogue bandwidth of this stream, in Hz.', unit='Hz')
+            sensor.set_value(float(self.instrument.analogue_bandwidth) / self.instrument.fops.decimation_factor)
 
             sensor = self.do_sensor(
                 Corr2Sensor.integer, '{}-n-chans'.format(strmnm),
@@ -802,7 +802,6 @@ class Corr2SensorManager(SensorManager):
             data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
         for stream in streams:
             strmnm = stream.name
-            beam = self.instrument.bops.beams[strmnm]
             sensor = self.do_sensor(
                 Corr2Sensor.string, '{strm}-weight'.format(strm=strmnm),
                 'The summing weights applied to the inputs of this beam.')
@@ -818,7 +817,6 @@ class Corr2SensorManager(SensorManager):
             data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
         for stream in streams:
             strmnm = stream.name
-            beam = self.instrument.bops.beams[strmnm]
             sensor = self.do_sensor(
                 Corr2Sensor.float, '{}-quantiser-gain'.format(strmnm),
                 'The non-complex post-summation quantiser gain applied to '
@@ -838,13 +836,14 @@ class Corr2SensorManager(SensorManager):
                 beam = self.instrument.bops.beams[strmnm]
                 self.sensors_beng_delays(beam)
         else:
-            beam = beams        
+            beam = beams
 
+        strmnm = beam.name
         sensor = self.do_sensor(
-            Corr2Sensor.string, '{}-delay:'.format(beam.name),
-            'The delay settings for inputs of this beam: ('\
-                'loadmcnt <ADC sample count when model was loaded>: '\
-                'delay <in seconds>:phase <radians>...)')
+            Corr2Sensor.string, '{}-delay'.format(strmnm),
+            'The delay settings for inputs of this beam: ('
+            'loadmcnt <ADC sample count when model was loaded>, '
+            'delay <in seconds>, phase <radians>, ...)')
 
         last_delays = beam.last_delays
         _delay_vals = ''
@@ -853,17 +852,17 @@ class Corr2SensorManager(SensorManager):
             for delay_coeffs in last_delays:
                 delay = delay_coeffs.delay / self.instrument.sample_rate_hz
                 phase_offset = delay_coeffs.phase_offset * numpy.pi
-                _delay_vals += '{:.10e}:{:.10e} '.format(delay, phase_offset)
+                _delay_vals += ' {:.10e}, {:.10e}'.format(delay, phase_offset)
 
             #TODO: checks before declaring nominal?
             load_mcnt = delay_coeffs.load_mcnt
-            _val = '({:d}: '.format(load_mcnt) + _delay_vals + ')'
+            _val = '({:d},'.format(load_mcnt) + _delay_vals + ')'
             _timestamp = self.instrument.time_from_mcnt(load_mcnt)
-            _status = Sensor.NOMINAL 
+            _status = Sensor.NOMINAL
             sensor.set_value(value=_val, status=_status, timestamp=_timestamp)
             self.logger.info(
                 '{}-delay: delay update, @time {} '.format(
-                    beam.name, _timestamp) + _delay_vals) 
+                    strmnm, _timestamp) + _delay_vals)
 
 #    def sensors_beng_passband(self):
 #        """
@@ -896,8 +895,6 @@ class Corr2SensorManager(SensorManager):
         """
         streams = self.instrument.get_data_streams_by_type(
             data_stream.BEAMFORMER_FREQUENCY_DOMAIN)
-
-        instrument_inputs = self.instrument.get_input_labels()
 
         for stream in streams:
             strmnm = stream.name
@@ -977,10 +974,10 @@ class Corr2SensorManager(SensorManager):
 
         #This try except is here because when a clean corr2 install is done, the egg file is saved as a directory, when a dirty install is done, the egg file is saved as a compressed file. pkginfo.BDist requires a compressed directory but file reading requires the folder to not be compressed. Hence both methods required.
         try:
-            corr2_version = pkginfo.BDist(corr2.__path__[0][:-5]).version;
-        except:
-            path = corr2.__path__[0][:-5]+"/EGG-INFO/PKG-INFO"
-            f=open(path,'r')
+            corr2_version = pkginfo.BDist(corr2.__path__[0][:-5]).version
+        except Exception:
+            path = corr2.__path__[0][:-5] + "/EGG-INFO/PKG-INFO"
+            f = open(path, 'r')
             f.readline()
             f.readline()
             corr2_version = f.readline()[9:-1]
@@ -988,8 +985,8 @@ class Corr2SensorManager(SensorManager):
 
         #corr2_compile_time_string = corr2_version[0:16]
         #corr2_compile_date = (time.mktime(time.strptime(corr2_compile_time_string, '%Y-%m-%d-%Hh%M')))
-        xhost_builddate =  (time.mktime(time.strptime(self.instrument.xhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
-        fhost_builddate =  (time.mktime(time.strptime(self.instrument.fhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+        xhost_builddate = (time.mktime(time.strptime(self.instrument.xhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
+        fhost_builddate = (time.mktime(time.strptime(self.instrument.fhosts[0].system_info['builddate'], '%d-%b-%Y %H:%M:%S')))
 
         xhost_fpg_filename = self.instrument.xhosts[0].bitstream
         fhost_fpg_filename = self.instrument.fhosts[0].bitstream
@@ -1006,44 +1003,44 @@ class Corr2SensorManager(SensorManager):
             fhost_md5_fpgfile = md5(ffpg.read()).hexdigest()
 
         sensor = Corr2Sensor.string(
-                name='corr2_version',
-                description='Version of corr2 install',
-                initial_status=Corr2Sensor.NOMINAL, manager=self)
+            name='corr2_version',
+            description='Version of corr2 install',
+            initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(corr2_version)
 
         #sensor = Corr2Sensor.timestamp(
-        #        name='compile_date_corr2',
-        #        description='Compile date of corr2',
-        #        initial_status=Corr2Sensor.NOMINAL, manager=self)
+        #   name='compile_date_corr2',
+        #   description='Compile date of corr2',
+        #   initial_status=Corr2Sensor.NOMINAL, manager=self)
         #self.sensor_create(sensor)
         #sensor.set_value(corr2_compile_date)
 
         sensor = Corr2Sensor.timestamp(
-                name='compile_date_feng',
-                description='Compile date of F-Engines',
-                initial_status=Corr2Sensor.NOMINAL, manager=self)
+            name='compile_date_feng',
+            description='Compile date of F-Engines',
+            initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(fhost_builddate)
 
         sensor = Corr2Sensor.timestamp(
-                name='compile_date_xeng',
-                description='Compile date of X-Engines',
-                initial_status=Corr2Sensor.NOMINAL, manager=self)
+            name='compile_date_xeng',
+            description='Compile date of X-Engines',
+            initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(xhost_builddate)
 
         sensor = Corr2Sensor.string(
-                name='md5_fpgfile_xeng',
-                description='MD5 hash of X-Engine fpg-file',
-                initial_status=Corr2Sensor.NOMINAL, manager=self)
+            name='md5_fpgfile_xeng',
+            description='MD5 hash of X-Engine fpg-file',
+            initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(xhost_md5_fpgfile)
 
         sensor = Corr2Sensor.string(
-                name='md5_fpgfile_feng',
-                description='MD5 hash of F-Engine fpg-file',
-                initial_status=Corr2Sensor.NOMINAL, manager=self)
+            name='md5_fpgfile_feng',
+            description='MD5 hash of F-Engine fpg-file',
+            initial_status=Corr2Sensor.NOMINAL, manager=self)
         self.sensor_create(sensor)
         sensor.set_value(fhost_md5_fpgfile)
 
@@ -1230,7 +1227,5 @@ def boolean_sensor_do(host, sensor, funclist):
         host.logger.error('Error updating {} for {} - '
                      '{}'.format(sensor.name, host.host, e.message))
         sensor.set(value=False)
-
-  
 
 # end
