@@ -852,11 +852,11 @@ class Corr2SensorManager(SensorManager):
             for delay_coeffs in last_delays:
                 delay = delay_coeffs.delay / self.instrument.sample_rate_hz
                 phase_offset = delay_coeffs.phase_offset * numpy.pi
-                _delay_vals += ' {:.10e}, {:.10e}'.format(delay, phase_offset)
+                _delay_vals += ', {:.10e}, {:.10e}'.format(delay, phase_offset)
 
             #TODO: checks before declaring nominal?
             load_mcnt = delay_coeffs.load_mcnt
-            _val = '({:d},'.format(load_mcnt) + _delay_vals + ')'
+            _val = '({:d}'.format(load_mcnt) + _delay_vals + ')'
             _timestamp = self.instrument.time_from_mcnt(load_mcnt)
             _status = Sensor.NOMINAL
             sensor.set_value(value=_val, status=_status, timestamp=_timestamp)
