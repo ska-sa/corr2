@@ -6,8 +6,8 @@ Author: Jason Manley, Andrew Martens, Ruby van Rooyen, Monika Obrocka
 """
 
 from logging import INFO
-import time
 import numpy as np
+import struct
 
 from xhost_fpga import FpgaXHost
 # from corr2LogHandlers import getLogger
@@ -69,8 +69,8 @@ class FpgaBHost(FpgaXHost):
         :param beam_index: The integer offset of the beam on this board.
         :param weights: a list of the weights to set on each input.
         """
-        assert len(weights) == self.n_ants, ('Incorrect number of weights supplied (%i; need %i)'%(len(weights),self.n_ants))
-        for source_index,source_weight in enumerate(weights):
+        assert len(weights) == self.n_ants, ('Incorrect number of weights supplied (%i; need %i)' % (len(weights), self.n_ants))
+        for source_index, source_weight in enumerate(weights):
             self.registers.bf_weight.write(weight=source_weight,
                     stream=beam_index, antenna=source_index, load_now=0)
             self.registers.bf_weight.write(weight=source_weight,
@@ -78,9 +78,9 @@ class FpgaBHost(FpgaXHost):
             #self.registers.bf_weight.write(weight=source_weight,
             #        stream=beam_index, antenna=source_index, load_now=0)
             self.logger.debug(
-                    '%s:%i: Beam %i: set antenna(%i) weight(%.5f)' % (
-                        self.host, self.index, beam_index,
-                        source_index, source_weight))
+                '%s:%i: Beam %i: set antenna(%i) weight(%.5f)' % (
+                    self.host, self.index, beam_index,
+                    source_index, source_weight))
         self.registers.bf_weight.write(weight=source_weight,
                 stream=beam_index, antenna=source_index, load_now=0)
 
@@ -89,7 +89,7 @@ class FpgaBHost(FpgaXHost):
         Get the beam weights for the given beam_index (offset on this board).
         Returns a list of weights.
         """
-        rv=[0 for a in range(self.n_ants)]
+        rv = [0 for a in range(self.n_ants)]
         for source_index in range(self.n_ants):
             self.registers.bf_weight.write(weight=0,
                     stream=beam_index, antenna=source_index, load_now=0)
@@ -105,10 +105,8 @@ class FpgaBHost(FpgaXHost):
         """
         reg = self.registers['bf{}_config'.format(beam_index)]
         reg.write(quant_gain=new_gain)
-        self.logger.debug(
-                    '%s:%i: Beam %i: set quant_gain(%.5f)' % (
-                        self.host, self.index,
-                        beam_index, new_gain))
+        self.logger.debug('%s:%i: Beam %i: set quant_gain(%.5f)' % (
+            self.host, self.index, beam_index, new_gain))
         return self.beam_quant_gains_get(beam_index)
 
     def beam_quant_gains_get(self, beam_index):
@@ -120,28 +118,28 @@ class FpgaBHost(FpgaXHost):
         reg = self.registers['bf{}_config'.format(beam_index)]
         return reg.read()['data']['quant_gain']
 
-    def tx_disable(self,beam_index):
+    def tx_disable(self, beam_index):
         reg = self.registers['bf{}_config'.format(beam_index)]
         reg.write(txen=False)
         self.logger.debug('%s:%i: Beam %i: Output disabled' % (
-                        self.host, self.index, beam_index))
+            self.host, self.index, beam_index))
 
-    def tx_enable(self,beam_index):
+    def tx_enable(self, beam_index):
         reg = self.registers['bf{}_config'.format(beam_index)]
         reg.write(txen=True)
         self.logger.debug('%s:%i: Beam %i: Output enabled' % (
-                        self.host, self.index, beam_index))
+            self.host, self.index, beam_index))
 
-    def get_bpack_status(self,beam_index):
+    def get_bpack_status(self, beam_index):
         """
         Get the status of the beamformer pack blocks.
 
         :param beam_index: The Beam() on which to act
         :return a list containing a dictionary for each b-engine's pack status register key-value pairs
         """
-        rv=[]
+        rv = []
         for engine_index in range(self.beng_per_host):
-            reg = self.registers['sys{}_bf_pack_out{}_status'.format(engine_index,beam_index)]
+            reg = self.registers['sys{}_bf_pack_out{}_status'.format(engine_index, beam_index)]
             rv.append(reg.read()['data'])
         return rv
 
@@ -151,45 +149,143 @@ class FpgaBHost(FpgaXHost):
         :param beam_index: The integer offset of the beam on this board.
         :param coeffs: a list of tuples containing the delay settings for all inputs in the form (
             delay (radians), phase (radians), phase base for host (complex value), phase increment per frequency (
-                complex value) 
+            complex value)
         """
         #have used a tuple for coeffs instead of dictionary to save compute resources
 
         assert len(coeffs) == self.n_ants, \
-            'Incorrect number of coeffs supplied (%i supplied; need %i)'%(
-                len(coeffs),self.n_ants)
-        
+            'Incorrect number of coeffs supplied (%i supplied; need %i)' % (
+                len(coeffs), self.n_ants)
+
+        #create an array of base phase values for every b-engine
+        phase_base0 = self.n_ants * [0]
+        phase_base1 = self.n_ants * [0]
+        phase_base2 = self.n_ants * [0]
+        phase_base3 = self.n_ants * [0]
+
+        #create an array of phase increment values (the same for every b-engine)
+        phase_inc = self.n_ants * [0]
+
         #offset of beamformer host fpga in the range [-0.5:0.5) over the band
         #(the delay is calculated for the centre of our band)
-        host_offset = (float(self.index)/num_hosts)-0.5
+        host_offset = (float(self.index) / num_hosts) - 0.5
 
-        #go through coefficients for all antennas  
-        for ant_index,ant_coeffs in enumerate(coeffs):
+        #go through coefficients for all antennas
+        for ant_index, ant_coeffs in enumerate(coeffs):
             assert len(ant_coeffs) == 4, \
-                'Incorrect number of coeffs supplied for beam %i input %i, host %i (%i supplied; need 4' %(
-                    beam_index, ant_index, source_index, len(ant_coeffs))
-            
+                'Incorrect number of coeffs supplied for beam %i input %i, host %i (%i supplied; need 4' % (
+                beam_index, ant_index, self.index, len(ant_coeffs))
+
             delay = float(ant_coeffs[0])
             phase = float(ant_coeffs[1])
-            total_phase = (host_offset*delay)+phase
-            phase_base = np.exp(-1.0j*total_phase)
-            self.registers.beam_steering_phase_init.blindwrite(real=phase_base.real, imag=phase_base.imag)
 
-            #the (pre-calculated) phase base change for each b-engine 
+            #the (pre-calculated) phase base change for each b-engine
             phase_base_delta = ant_coeffs[2]
-            self.registers.beam_steering_phase_init_delta.blindwrite(real=phase_base_delta.real, imag=phase_base_delta.imag)
 
             #the pre-calculated phase rotation increment per frequency within each b-engine
-            phase_inc = ant_coeffs[3]
-            self.registers.beam_steering_phase_increment.blindwrite(real=phase_inc.real, imag=phase_inc.imag)
+            phase_inc_val = ant_coeffs[3]
 
-            #set up destination beam and antenna, and trigger load
-            self.registers.bf_weight.blindwrite(load_now=0, stream=beam_index, antenna=ant_index, beam_steering_load_now=0)
-            self.registers.bf_weight.blindwrite(load_now=0, stream=beam_index, antenna=ant_index, beam_steering_load_now=1)
-            
-            #self.logger.debug('%s: host id (%i) beam (%i) antenna (%i) beam steering initial phase %.5f degrees (%.5f,%.5f), delta initial phase %.5f degrees (%.5f,%.5f), phase increment %.5f degrees (%.5f,%.5f)' %(
-            #        self.host, self.index, beam_index, ant_index, 
-            #        total_phase*(180.0/np.pi), phase_base.real, phase_base.imag, 
-            #        np.arctan(phase_base_delta.imag/phase_base_delta.real)*(180.0/np.pi), phase_base_delta.real, phase_base_delta.imag, 
-            #        np.arctan(phase_inc.imag/phase_inc.real)*(180.0/np.pi), phase_inc.real, phase_inc.imag)
-            #    )
+            #total phase for base of engine 0
+            total_phase = (host_offset * delay) + phase
+
+            phase_base = np.exp(-1.0j * total_phase)
+            phase_base0[ant_index] = phase_base
+
+            #update phase base to base of b-engine 1
+            phase_base = phase_base * phase_base_delta
+            phase_base1[ant_index] = phase_base
+
+            #update phase base to base of b-engine 2
+            phase_base = phase_base * phase_base_delta
+            phase_base2[ant_index] = phase_base
+
+            #update phase base to base of b-engine 3
+            phase_base = phase_base * phase_base_delta
+            phase_base3[ant_index] = phase_base
+
+            #the increment is the same for all b-engines
+            phase_inc[ant_index] = phase_inc_val
+
+        coeffs0 = (self.n_ants * 4) * [0]
+        coeffs1 = (self.n_ants * 4) * [0]
+        coeffs2 = (self.n_ants * 4) * [0]
+        coeffs3 = (self.n_ants * 4) * [0]
+
+        coeffs0[0::4] = [coeff.real for coeff in phase_base0]
+        coeffs0[1::4] = [coeff.imag for coeff in phase_base0]
+        coeffs0[2::4] = [coeff.real for coeff in phase_inc]
+        coeffs0[3::4] = [coeff.imag for coeff in phase_inc]
+
+        #print 'base: %s' %phase_base0
+        #print 'inc: %s' %phase_base0
+        #print 'combined: %s' %coeffs0
+
+        coeffs1[0::4] = [coeff.real for coeff in phase_base1]
+        coeffs1[1::4] = [coeff.imag for coeff in phase_base1]
+        coeffs1[2::4] = [coeff.real for coeff in phase_inc]
+        coeffs1[3::4] = [coeff.imag for coeff in phase_inc]
+
+        coeffs2[0::4] = [coeff.real for coeff in phase_base2]
+        coeffs2[1::4] = [coeff.imag for coeff in phase_base2]
+        coeffs2[2::4] = [coeff.real for coeff in phase_inc]
+        coeffs2[3::4] = [coeff.imag for coeff in phase_inc]
+
+        coeffs3[0::4] = [coeff.real for coeff in phase_base3]
+        coeffs3[1::4] = [coeff.imag for coeff in phase_base3]
+        coeffs3[2::4] = [coeff.real for coeff in phase_inc]
+        coeffs3[3::4] = [coeff.imag for coeff in phase_inc]
+
+        #convert to integer values ready for struct.pack
+        coeffs0 = [coeff * 2**15 for coeff in coeffs0]
+        coeffs1 = [coeff * 2**15 for coeff in coeffs1]
+        coeffs2 = [coeff * 2**15 for coeff in coeffs2]
+        coeffs3 = [coeff * 2**15 for coeff in coeffs3]
+
+        #ensure that values are not outside of max and minimum values
+        for i in range(len(coeffs0)):
+            if(coeffs0[i] > 32767):
+                coeffs0[i] = 32767
+            elif(coeffs0[i] < -32768):
+                coeffs0[i] = -32768
+
+        for i in range(len(coeffs1)):
+            if(coeffs1[i] > 32767):
+                coeffs1[i] = 32767
+            elif(coeffs1[i] < -32768):
+                coeffs1[i] = -32768
+
+        for i in range(len(coeffs2)):
+            if(coeffs2[i] > 32767):
+                coeffs2[i] = 32767
+            elif(coeffs2[i] < -32768):
+                coeffs2[i] = -32768
+
+        for i in range(len(coeffs1)):
+            if(coeffs3[i] > 32767):
+                coeffs3[i] = 32767
+            elif(coeffs3[i] < -32768):
+                coeffs3[i] = -32768
+
+        #convert into 16 bit binary values ready for writing to shared BRAM
+        ss0 = struct.pack('>%ih' % (self.n_ants * 4), *coeffs0)
+        ss1 = struct.pack('>%ih' % (self.n_ants * 4), *coeffs1)
+        ss2 = struct.pack('>%ih' % (self.n_ants * 4), *coeffs2)
+        ss3 = struct.pack('>%ih' % (self.n_ants * 4), *coeffs3)
+
+        #write values out to brams in b-engines
+        bram_name = 'sys0_fbf_beam_steering_coeffs_bram%i' % beam_index
+        self.write(bram_name, ss0, 0)
+        bram_name = 'sys1_fbf_beam_steering_coeffs_bram%i' % beam_index
+        self.write(bram_name, ss1, 0)
+        bram_name = 'sys2_fbf_beam_steering_coeffs_bram%i' % beam_index
+        self.write(bram_name, ss2, 0)
+        bram_name = 'sys3_fbf_beam_steering_coeffs_bram%i' % beam_index
+        self.write(bram_name, ss3, 0)
+
+        #self.logger.debug('%s: host id (%i) beam (%i) antenna (%i) beam steering initial phase %.5f degrees (%.5f,%.5f),
+        #   delta initial phase %.5f degrees (%.5f,%.5f), phase increment %.5f degrees (%.5f,%.5f)' %(
+        #   self.host, self.index, beam_index, ant_index,
+        #   total_phase*(180.0/np.pi), phase_base.real, phase_base.imag,
+        #   np.arctan(phase_base_delta.imag/phase_base_delta.real)*(180.0/np.pi), phase_base_delta.real, phase_base_delta.imag,
+        #   np.arctan(phase_inc.imag/phase_inc.real)*(180.0/np.pi), phase_inc.real, phase_inc.imag)
+        #)
