@@ -53,15 +53,19 @@ class BEngineOperations(object):
         # disable all beams (this is done in beam.py)
         #self.tx_disable()
         # initialise beam weights, delays and quantiser gains to something sensible
+
         init_delay = 0.0
         init_phase = 0.0
         delays = ((init_delay, init_phase),) * self.corr.n_antennas
+        if self.corr.n_chans != 32768:
+            for beam_name in self.beams:
+                self.set_beam_delays(beam_name, delays)
+
         init_weight = 1.0
         weights = [init_weight] * self.corr.n_antennas
         for beam_name in self.beams:
             beam = self.get_beam_by_name(beam_name)
             self.set_beam_quant_gain(float(beam.config['quant_gain']), beam_name)
-            self.set_beam_delays(beam_name, delays)
             self.set_beam_weights(weights, beam_name)
         self.logger.info('Beamformer initialised.')
 
@@ -246,6 +250,10 @@ class BEngineOperations(object):
         :param delays: list of tuples (delay(seconds),phase(radians),...),
                         or strings delay:phase... one per input
         """
+        if self.corr.n_chans == 32768:
+            self.logger.info('Preventing setting delays on 32k system')
+            return
+
         #process delays passed as string
         def process_string(delaystr):
             bits = delaystr.strip().split(':')
