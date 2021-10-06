@@ -292,15 +292,15 @@ class BEngineOperations(object):
                     ant_index, new_delay.delay, self.corr.n_chans))
 
             #phase change across the band for the delay specified (radians)
-            delay = new_delay.delay * numpy.pi
+            #negative slope for positive delay
+            delay = -new_delay.delay * numpy.pi
             #phase offset (radians)
             phase = new_delay.phase_offset * numpy.pi
 
-            #negative slope for positive delay
             #phase change per frequency as pre-calculated complex value
-            phase_per_freq = numpy.exp(-1.0j * (-delay / self.corr.n_chans))
+            phase_per_freq = numpy.exp(1.0j * (delay / self.corr.n_chans))
             #phase change per bengine as pre-calculated complex value
-            phase_per_beng = numpy.exp(-1.0j * (-delay / (len(self.hosts) * self.beng_per_host)))
+            phase_per_beng = numpy.exp(1.0j * (delay / (len(self.hosts) * self.beng_per_host)))
 
             ant_coeffs.append((delay, phase, phase_per_beng, phase_per_freq))
 

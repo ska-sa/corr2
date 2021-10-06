@@ -186,10 +186,9 @@ class FpgaBHost(FpgaXHost):
             phase_inc_val = ant_coeffs[3]
 
             #total phase for base of engine 0
-            #negative delay slope for positive delay
-            total_phase = (host_offset * -delay) + phase
+            total_phase = (host_offset * delay) + phase
 
-            phase_base = np.exp(-1.0j * total_phase)
+            phase_base = np.exp(1.0j * total_phase)
             phase_base0[ant_index] = phase_base
 
             #update phase base to base of b-engine 1
