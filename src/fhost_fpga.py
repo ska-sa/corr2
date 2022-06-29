@@ -758,6 +758,16 @@ class FpgaFHost(FpgaHost):
             ret['p%i_dig_clip_cnt'%feng.offset]=self.registers['unpack_adc_clip%i'%feng.offset].read()['data']['sample_cnt']
         return ret
 
+    def get_adc_clip_counts(self):
+        """Return the ADC clip count for all polarisations on this host.
+        :return: dict
+        """
+        import numpy
+        ret={}
+        for feng in self.fengines:
+            ret['p%i_dig_clip_cnt'%feng.offset]=self.registers['unpack_adc_clip%i'%feng.offset].read()['data']['sample_cnt']
+        return ret
+
     def get_adc_snapshots(self, input_name=None, loadcnt=0, timeout=10, trig_level=0):
         """
         Read the ADC snapshots from this Fhost

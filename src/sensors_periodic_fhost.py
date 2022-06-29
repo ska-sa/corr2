@@ -341,9 +341,10 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
             else:
                 sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
-        for key in ['p0_dig_clip_cnt', 'p1_dig_clip_cnt']:
-            sensor = sensors[key]
-            sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
+# separated out so that we can do them after every f-engine
+#        for key in ['p0_dig_clip_cnt', 'p1_dig_clip_cnt']:
+#            sensor = sensors[key]
+#            sensor.set(value=results[key], status=Corr2Sensor.NOMINAL)
 
         device_status_value = 'fail'
         if(device_status == Corr2Sensor.WARN):
@@ -359,13 +360,41 @@ def _cb_feng_adcs(sensors, f_host, sensor_manager,sensor_task):
                 f_host.host, e.message))
         set_failure()
 
-    sensor_manager.logger.debug('_sensor_feng_adc ran on {}'.format(f_host.host))
+    sensor_manager.logger.debug('_sensor_feng_adcs ran on {}'.format(f_host.host))
 
     functionRunTime = time.time() - functionStartTime;
     ##print("6 on %s Ended End Time %f, Run Time %f" % (f_host.host,time.time(), functionRunTime))
     #print("%.4f %.4f %f %i %s %s" % (functionStartTime,sensor_task.last_runtime_utc,functionRunTime,sensor_task.flow_control_increments,f_host.host,'6'))
 
-    IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_adcs, sensors, f_host, sensor_manager,sensor_task)
+    IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_adcs, 
+        sensors, f_host, sensor_manager, sensor_task)
+
+
+def _cb_feng_adc_clip_counts(sensor_ok, clip_cnt_sensors, sensor_manager, sensor_task):
+    """
+    Sensor call back to read ADC clip count sensor on all F-engines
+    :param sensors_value: per-host clip count for both polarisations
+    :return:
+    """
+
+    functionStartTime = time.time()
+
+    instrument = sensor_ok.manager.instrument
+    try:
+        clip_cnts = instrument.fops.get_adc_clip_counts()
+        for fhost in clip_cnt_sensors.keys():
+            clip_cnt_sensors[fhost]['p0_dig_clip_cnt'].set(value = clip_cnts[fhost]['p0_dig_clip_cnt'], status=Corr2Sensor.NOMINAL)
+            clip_cnt_sensors[fhost]['p1_dig_clip_cnt'].set(value = clip_cnts[fhost]['p1_dig_clip_cnt'], status=Corr2Sensor.NOMINAL)
+    except Exception as e:
+        sensor_ok.set(value=False, status=Corr2Sensor.FAILURE)
+        sensor_manager.logger.error('Error updating feng ADC clip count sensors '
+                     '- {}.'.format(e.message))
+    sensor_manager.logger.debug('_cb_feng_adc_clip_counts ran')
+    functionRunTime = time.time() - functionStartTime
+
+    IOLoop.current().call_at(sensor_task.getNextSensorCallTime(current_function_runtime=functionRunTime), _cb_feng_adc_clip_counts,
+        sensor_ok, clip_cnt_sensors, sensor_manager, sensor_task)
+
 
 @gen.coroutine
 def _cb_feng_pfbs(sensors, f_host, min_pfb_pwr, sensor_manager, sensor_task):
@@ -714,10 +743,24 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
     ioloop.add_callback(_cb_feng_rxtime, sensor_ok, sensors_value, sens_man,sensor_task)
     import numpy
     min_pfb_pwr = -20*numpy.log10(2**(sens_man.instrument.fops.pfb_bits-4-1))
+
+    adc_clip_count_sensors = {}
+    for fhost in sens_man.instrument.fhosts:
+        #Digitiser clip detected counters
+        adc_clip_count_sensors['{}'.format(fhost)] = { 
+            'p0_dig_clip_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.dig.pol0-dig-clip-cnt'.format(fhost),
+                'F-engine polarisation 0 DIG reported overrange counter.'),
+            'p1_dig_clip_cnt': sens_man.do_sensor(
+                Corr2Sensor.integer, '{}.dig.pol1-dig-clip-cnt'.format(fhost),
+                'F-engine polarisation 1 DIG reported overrange counter.'),
+        }
+
     # F-engine host sensors
     for _f in sens_man.instrument.fhosts:
         executor = host_executors[_f.host]
         fhost = host_offset_lookup[_f.host]
+
         # raw network comms - gbe counters must increment
         network_sensors = {
             'device_status': sens_man.do_sensor(
@@ -766,7 +809,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_rx_spead',_f.host))
         ioloop.add_callback(_cb_feng_rx_spead, spead_rx_sensors, _f, sens_man,sensor_task)
 
-
         # Rx reorder counters
         rx_reorder_sensors = {
             'device_status': sens_man.do_sensor(
@@ -780,7 +822,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         }
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_rx_reorder',_f.host))
         ioloop.add_callback(_cb_feng_rx_reorder, rx_reorder_sensors, _f, sens_man,sensor_task)
-
 
         # CD functionality
         cd_sensors = {
@@ -813,7 +854,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_delay',_f.host),minimum_time_between_calls_s=6)
         ioloop.add_callback(_cb_feng_delays, cd_sensors, _f, sens_man,sensor_task)
 
-
         # DIG ADC counters
         adc_sensors = {
             'device_status': sens_man.do_sensor(
@@ -837,16 +877,15 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             'p1_pwr_dBFS': sens_man.do_sensor(
                 Corr2Sensor.float, '{}.dig.pol1-rms-dbfs'.format(fhost),
                 'F-engine DIG ADC RMS average power, dBFS, pol1, over ~70ms period.', executor=executor),
-            'p0_dig_clip_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.pol0-dig-clip-cnt'.format(fhost),
-                'F-engine DIG reported overrange counter.', executor=executor),
-            'p1_dig_clip_cnt': sens_man.do_sensor(
-                Corr2Sensor.integer, '{}.dig.pol1-dig-clip-cnt'.format(fhost),
-                'F-engine DIG reported overrange counter.', executor=executor),
+#            'p0_dig_clip_cnt': sens_man.do_sensor(
+#                Corr2Sensor.integer, '{}.dig.pol0-dig-clip-cnt'.format(fhost),
+#                'F-engine DIG reported overrange counter.', executor=executor),
+#            'p1_dig_clip_cnt': sens_man.do_sensor(
+#                Corr2Sensor.integer, '{}.dig.pol1-dig-clip-cnt'.format(fhost),
+#                'F-engine DIG reported overrange counter.', executor=executor),
         }
-        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_adcs',_f.host))
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_adcs', _f.host))
         ioloop.add_callback(_cb_feng_adcs, adc_sensors, _f, sens_man,sensor_task)
-
 
         # PFB counters
         pfb_sensors = {
@@ -872,7 +911,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_pfbs',_f.host))
         ioloop.add_callback(_cb_feng_pfbs, pfb_sensors, _f, min_pfb_pwr, sens_man,sensor_task)
 
-
         # CT functionality
         ct_sensors = {
             'device_status': sens_man.do_sensor(
@@ -888,7 +926,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_ct',_f.host))
         ioloop.add_callback(_cb_feng_ct, ct_sensors, _f, sens_man,sensor_task)
 
-
         # Pack block
         pack_sensors = {
             'device_status': sens_man.do_sensor(
@@ -901,8 +938,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_pack',_f.host))
         ioloop.add_callback(_cb_feng_pack, pack_sensors, _f, sens_man,sensor_task)
 
-
-        
         #EQ quant/gain level sensors
         quant_sensors = {
             'device_status': sens_man.do_sensor(
@@ -918,8 +953,6 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_quant on',_f.host))
         ioloop.add_callback(_cb_feng_quant, quant_sensors, _f, sens_man,sensor_task)
 
-
-
         #Sync status
         sync_sensors = {
             'device_status': sens_man.do_sensor(
@@ -932,7 +965,9 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_sync',_f.host))
         ioloop.add_callback(_cb_feng_sync, sync_sensors, _f, sens_man,sensor_task)
 
-
+        # we read all clip count sensors for every f-engine to ensure a high update frequency
+        sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_feng_adc_clip_counts', 'all boards'))
+        ioloop.add_callback(_cb_feng_adc_clip_counts, sensor_ok, adc_clip_count_sensors, sens_man, sensor_task)
 
         # Overall LRU ok
         lru_sensor = sens_man.do_sensor(
@@ -940,8 +975,5 @@ def setup_sensors_fengine(sens_man, general_executor, host_executors, ioloop,
             'F-engine %s LRU ok' % _f.host, executor=executor)
         sensor_task = sensor_scheduler.SensorTask('{0: <25} on {1: >15}'.format('_cb_fhost_lru',_f.host))
         ioloop.add_callback(_cb_fhost_lru, sens_man, lru_sensor, _f,sensor_task)
-
-
-        
 
 # end
