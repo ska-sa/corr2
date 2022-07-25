@@ -402,38 +402,39 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
         
         rv = instrument.xops.get_vacc_status()
         for _x in rv:
-            for xctr, sensordict in enumerate(sensors_value[_x]):
-                sensordict['timestamp'].set(
-                    value=rv[_x][xctr]['timestamp'])
-                sensordict['acc_cnt'].set(value=rv[_x][xctr]['acc_cnt'])
-                sensordict['resync_cnt'].set(value=rv[_x][xctr]['rst_cnt'])
-                sensordict['err_cnt'].set(
-                    value=rv[_x][xctr]['err_cnt'], errif='changed')
-                sensordict['arm_cnt'].set(
-                    value=rv[_x][xctr]['arm_cnt'], errif='changed')
-                sensordict['ld_cnt'].set(
-                    value=rv[_x][xctr]['ld_cnt'], errif='changed')
-                if ((sensordict['err_cnt'].status() == Corr2Sensor.ERROR) or
-                    (sensordict['resync_cnt'].status() == Corr2Sensor.ERROR) or
-                    (sensordict['arm_cnt'].status() == Corr2Sensor.ERROR) or
-                        (sensordict['ld_cnt'].status() == Corr2Sensor.ERROR)):
-                    status = Corr2Sensor.ERROR
-                    value = 'fail'
-                    faulty_host_idx=instrument.xops.board_ids[_x]
-                    faulty_host=instrument.xhosts[faulty_host_idx]
-                    sensor_values_str_list = ['{} - {}'.format(name, sensor.value()) for name, sensor in 
-                                                                sensors_value[_x][xctr].iteritems()]
-                    sensor_values_str = ', '.join(sensor_values_str_list)
-                    # faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(sensors_value[_x][xctr])))
-                    faulty_host.logger.error('VACC%i error status: %s'%(xctr, sensor_values_str))
-                    if (xctr < 2):
-                        faulty_host.logger.error('VACC HMC0 error status: %s'%(str(faulty_host.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())))
+            if _x != 'synchronised':
+                for xctr, sensordict in enumerate(sensors_value[_x]):
+                    sensordict['timestamp'].set(
+                        value=rv[_x][xctr]['timestamp'])
+                    sensordict['acc_cnt'].set(value=rv[_x][xctr]['acc_cnt'])
+                    sensordict['resync_cnt'].set(value=rv[_x][xctr]['rst_cnt'])
+                    sensordict['err_cnt'].set(
+                        value=rv[_x][xctr]['err_cnt'], errif='changed')
+                    sensordict['arm_cnt'].set(
+                        value=rv[_x][xctr]['arm_cnt'], errif='changed')
+                    sensordict['ld_cnt'].set(
+                        value=rv[_x][xctr]['ld_cnt'], errif='changed')
+                    if ((sensordict['err_cnt'].status() == Corr2Sensor.ERROR) or
+                        (sensordict['resync_cnt'].status() == Corr2Sensor.ERROR) or
+                        (sensordict['arm_cnt'].status() == Corr2Sensor.ERROR) or
+                            (sensordict['ld_cnt'].status() == Corr2Sensor.ERROR)):
+                        status = Corr2Sensor.ERROR
+                        value = 'fail'
+                        faulty_host_idx=instrument.xops.board_ids[_x]
+                        faulty_host=instrument.xhosts[faulty_host_idx]
+                        sensor_values_str_list = ['{} - {}'.format(name, sensor.value()) for name, sensor in 
+                                                                    sensors_value[_x][xctr].iteritems()]
+                        sensor_values_str = ', '.join(sensor_values_str_list)
+                        # faulty_host.logger.error('VACC%i error status: %s'%(xctr,str(sensors_value[_x][xctr])))
+                        faulty_host.logger.error('VACC%i error status: %s'%(xctr, sensor_values_str))
+                        if (xctr < 2):
+                            faulty_host.logger.error('VACC HMC0 error status: %s'%(str(faulty_host.hmcs.sys0_vacc_hmc_vacc_hmc.get_hmc_status())))
+                        else:
+                            faulty_host.logger.error('VACC HMC1 error status: %s'%(str(faulty_host.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())))
                     else:
-                        faulty_host.logger.error('VACC HMC1 error status: %s'%(str(faulty_host.hmcs.sys2_vacc_hmc_vacc_hmc.get_hmc_status())))
-                else:
-                    status = Corr2Sensor.NOMINAL
-                    value = 'ok'
-                sensordict['device_status'].set(value=value, status=status)
+                        status = Corr2Sensor.NOMINAL
+                        value = 'ok'
+                    sensordict['device_status'].set(value=value, status=status)
     except Exception as e:
         sensor_manager.logger.error('Error updating VACC sensors '
                      '- {}'.format(e.message))
