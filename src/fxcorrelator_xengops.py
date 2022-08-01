@@ -332,6 +332,7 @@ class XEngineOperations(object):
         """ 
         rv=THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
                                   target_function='get_vacc_timestamps')
+        acc_len=int(self.vacc_acc_len)
         sync=True
         timestamp=rv[rv.keys()[0]][0]['timestamp']
         #check that they're all in sync; 
