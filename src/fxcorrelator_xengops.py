@@ -335,13 +335,17 @@ class XEngineOperations(object):
         acc_len=int(self.vacc_acc_len)
         sync=True
         timestamp=rv[rv.keys()[0]][0]['timestamp']
+        #TODO this should be based on the time to perform the read of 
+        #all registers i.e the check should account for the possibility
+        #of multiple accumulations having occurred while getting the data
+        max_difference = acc_len*2.0 
         #check that they're all in sync; 
         #allow for reading registers at acc boundary:
         for hostname in rv:
             for vacc in rv[hostname]:
                 if ((vacc['timestamp'] != timestamp) and 
-                    (vacc['timestamp'] != (timestamp+acc_len)) and
-                    (vacc['timestamp'] != (timestamp-acc_len))):
+                    (vacc['timestamp'] != (timestamp+max_difference)) and
+                    (vacc['timestamp'] != (timestamp-max_difference))):
                     sync=False
         return sync
 
