@@ -336,22 +336,29 @@ class XEngineOperations(object):
         Checks all vaccs are synchronised with each other
         :return: True or False
         """ 
-        rv=THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
+        t0 = time.time()
+        rv = THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
                                   target_function='get_vacc_timestamps')
-        acc_len=int(self.vacc_acc_len)
-        sync=True
+        t_delta = time.time() - t0
+        
+        acc_len = self.vacc_acc_len
         timestamp=rv[rv.keys()[0]][0]['timestamp']
-        #TODO this should be based on the time to perform the read of 
-        #all registers i.e the check should account for the possibility
-        #of multiple accumulations having occurred while getting the data
-        max_difference = acc_len*2.0 
+        
+        import numpy as np
+        accs = np.ceil(t_delta/self.acc_time_from_len(acc_len))
+
+        #timestamps possible based on how long it took to read all registers
+        timestamps = range(int(timestamp-(accs*acc_len)), int(timestamp+((accs+1)*acc_len)), int(acc_len))
+        #self.logger.error('timestamps - %s' %(str(accs)))      
+ 
         #check that they're all in sync; 
         #allow for reading registers at acc boundary:
+        sync=True
         for hostname in rv:
             for vacc in rv[hostname]:
-                if ((vacc['timestamp'] != timestamp) and 
-                    (vacc['timestamp'] != (timestamp+max_difference)) and
-                    (vacc['timestamp'] != (timestamp-max_difference))):
+                ts = vacc['timestamp']
+                if (timestamps.count(ts) == 0):
+                    self.logger.error('vacc timestamp %d not in valid range %s' %(ts, str(timestamps))) 
                     sync=False
         return sync
 
