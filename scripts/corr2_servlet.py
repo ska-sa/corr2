@@ -428,6 +428,31 @@ class Corr2Server(DeviceServer):
         self.instrument.stream_issue_descriptors(stream_name)
         return 'ok', stream_name
 
+    @request(Str(default=''), Str())
+    @return_reply(Str())
+    def request_descriptor_issue_toggle(self, sock, stream_name, enable):
+        """
+        Toggle sending of metadata for a data stream
+        :param sock:
+        :param stream_name: an instrument data stream name
+        :param enable: 0 = disable metadata, 1 = enable metadata
+        :return:
+        """
+        if not self.instrument.check_data_stream(stream_name):
+            failmsg = 'Failed: stream {0} not in instrument data streams: ' \
+                      '{1}'.format(stream_name, self.instrument.data_streams)
+            return self._log_excep(None, failmsg)
+        if enable == '0':
+            self.instrument.stream_enable_descriptor_issue(stream_name, False)
+            return 'ok', stream_name
+        elif enable == '1':
+            self.instrument.stream_enable_descriptor_issue(stream_name, True)
+            return 'ok', stream_name
+        else:
+            failmsg = 'Failed: invalid parameter: {}, 1=on, 0=off' \
+                      ''.format(enable)
+            return self._log_excep(None, failmsg)
+
     @request(Str(default=''), Float())
     @return_reply(Float())
     def request_frequency_select(self, sock, stream_name, centrefreq):

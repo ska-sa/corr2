@@ -89,6 +89,11 @@ class Beam(SPEADStream):
         n_ants=int(config['FxCorrelator']['n_ants'])
         obj.source_indices = range(obj.polarisation,(n_ants*2)+(obj.polarisation),2)
         obj.outbits = int(beam_dict['beng_outbits'])
+        # Alec Rust: 11/08/2022 descriptors sending now an option in the instrument config file
+        try:
+            obj.enable_descriptor_issue = beam_dict['send_descriptors'].lower() in ['true'] 
+        except KeyError:
+            pass
         obj.xeng_acc_len = int(config['xengine']['xeng_accumulation_len'])
         obj.chans_total = int(config['fengine']['n_chans'])
         obj.beng_per_host = int(config['xengine']['x_per_fpga'])
@@ -126,7 +131,7 @@ class Beam(SPEADStream):
         Start transmission of data streams from the b-engines
         :return:
         """
-        self.descriptors_issue()
+        #self.descriptors_issue()
         THREADED_FPGA_FUNC(self.hosts, 5, ('tx_enable',
                                            [self.index], {}))
         self.tx_enabled = True

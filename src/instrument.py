@@ -207,9 +207,21 @@ class Instrument(object):
             streams = [self.get_data_stream(stream_name)]
 
         i = 0
-        for stream in self.data_streams:
+        #for stream in self.data_streams:
+        for stream in streams:
             i += 1
             stream.descriptors_issue()
+
+    def stream_enable_descriptor_issue(self, stream_name=None, enable=True):
+        """
+        Enable or disable sending of descriptors for the specfied stream
+        :param stream_name: 
+        :param enable: True/False
+        :return:
+        """
+        if stream_name != None:
+            stream = self.get_data_stream(stream_name)
+            stream.enable_descriptor_issue = enable
 
     def stream_get_number_of_descriptors(self):
         """

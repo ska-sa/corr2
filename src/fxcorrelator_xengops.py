@@ -92,7 +92,7 @@ class XengineStream(data_stream.SPEADStream):
         Enable TX for this data stream
         :return:
         """
-        self.descriptors_issue()
+        #self.descriptors_issue()
         THREADED_FPGA_OP(
             self.xops.hosts, timeout=self.timeout,
             target_function=(
@@ -267,6 +267,12 @@ class XEngineOperations(object):
         self.data_stream = xeng_stream
         self.data_stream.set_source(self.corr.fops.data_stream.destination)
         self.corr.add_data_stream(xeng_stream)
+        # Alec Rust: 11/08/2022 Enable xengine descriptors by default
+        try:
+            self.data_stream.enable_descriptor_issue = \
+                xeng_d['send_descriptors'].lower() in ['true']
+        except KeyError:
+            pass
 
     def clear_status_all(self):
         """
