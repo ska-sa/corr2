@@ -245,7 +245,10 @@ class BEngineOperations(object):
 
     def set_beam_delays(self, beam_name, delays):
         """
-        Set the beam steering delay coefficients for specified input
+        Set the beam steering delay coefficients for specified input.
+        They should be calculated as the difference between the target pointing
+        and the boresight pointing i.e
+        coefficients = target delay coefficients - boresight delay coefficients
         :param beam_name: the target beam
         :param delays: list of tuples (delay(seconds),phase(radians),...),
                         or strings delay:phase... one per input
