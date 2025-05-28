@@ -126,7 +126,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
             status=Corr2Sensor.NOMINAL,
             value=result['tx_gbps'])
 
-        if (result['rx_pps'] < 3500000) and (result['rx_pps'] > 2000000):
+        if (result['rx_pps'] < 3500000) and (result['rx_pps'] > 1500000):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.NOMINAL,
                 value=result['rx_pps'])
@@ -136,7 +136,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
                 value=result['rx_pps'])
             device_status = Corr2Sensor.WARN
 
-        if (result['rx_gbps'] < 32) and (result['rx_gbps'] > 18):
+        if (result['rx_gbps'] < 32) and (result['rx_gbps'] > 14):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.NOMINAL,
                 value=result['rx_gbps'])
