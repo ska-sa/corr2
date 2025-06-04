@@ -467,6 +467,58 @@ class FEngineOperations(object):
             self.logger.error(errmsg)
             rv = False
         return rv, feng_times
+ 
+    def threaded_feng_command(self, fengines, timeout, target_function):
+        """
+        Thread any command against list of correlator input indices
+        :param fengines: list of fengines to execute 
+        :param timeout: how long to wait before timing out
+        :param target_function: a tuple with three parts:
+                                1. reference, the function object that must be
+                                   run - MUST take fhost argument as first argument
+                                2. tuple, the arguments to the function
+                                3. dict, the keyword arguments to the function
+                                e.g. (func_name, (1,2,), {'another_arg': 3})
+        :return: a dictionary of the results, keyed on input index
+        """
+        target_function = CHECK_TARGET_FUNC(target_function)
+
+        def jobfunc(resultq, feng):
+            rv = target_function[0](feng, *target_function[1], **target_function[2])
+            resultq.put_nowait((feng.input_number, rv))
+
+        #num_fengs = len(self.fengines)
+        f_per_fpga = self.corr.f_per_fpga
+        returnval = {}
+        hosts_missing = [feng.input_number for feng in fengines]
+        for fpl in range(f_per_fpga):
+            result_queue = Queue.Queue(maxsize=len(fengines)/f_per_fpga)
+            thread_list = []
+#            for feng_ in self.fengines[fpl::f_per_fpga]:
+            for feng_ in fengines[fpl::f_per_fpga]: 
+                thread = threading.Thread(target=jobfunc, args=(result_queue, feng_))
+                thread.setDaemon(True)
+                thread.start()
+                thread_list.append(thread)
+            for thread_ in thread_list:
+                thread_.join(timeout)
+                if thread_.isAlive():
+                    break
+            while True:
+                try:
+                    result = result_queue.get_nowait()
+                    self.logger.debug("Received response from feng {}".format(result[0]))
+                    returnval[result[0]] = result[1]
+                    hosts_missing.pop(hosts_missing.index(result[0]))
+                except Queue.Empty:
+                    break
+        if hosts_missing:
+            hosts_missing=[self.fengines[n_feng] for n_feng in hosts_missing]
+            missing_str=['%s(%s)'%(feng.name,feng.host.host) for feng in hosts_missing]
+            errmsg = ('Did not complete Fengs: {}.'.format(missing_str))
+            self.logger.error(errmsg)
+            raise RuntimeError(errmsg)
+        return returnval
 
     def threaded_feng_operation(self, timeout, target_function):
         """
