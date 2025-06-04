@@ -9,7 +9,7 @@ import fxcorrelator_speadops as speadops
 import delay as delayops
 
 from casperfpga import utils as fpgautils
-from casperfpga import CasperLogHandlers
+#from casperfpga import CasperLogHandlers
 
 from data_stream import SPEADStream
 from data_stream import FENGINE_CHANNELISED_DATA
@@ -78,7 +78,7 @@ class FengineStream(SPEADStream):
         """
         Enable TX for this data stream
         """
-        done = False
+        #done = False
         while n_retries > 0:
             try:
                 THREADED_FPGA_OP(self.fops.hosts, timeout=self.timeout,
@@ -232,7 +232,7 @@ class FEngineOperations(object):
             for reg in self.hosts[0].registers:
                 if reg.name.startswith('ct_control'):
                     cts += '{}, '.format(reg.name)
-                ctr = cts[:-2] + ']'
+                cts = cts[:-2] + ']'
             self.logger.warning(
                 'No corner turner control registers found, or they are '
                 'incorrect/old. Expect ct_control[0,1,2,3], found: {}.'.format(cts))
@@ -252,7 +252,7 @@ class FEngineOperations(object):
         # set eq and shift
         self.set_fft_shift_all()
         self.set_eq()
-        self.set_center_freq(self.corr.sample_rate_hz/4.)
+        self.set_center_freq(self.corr.sample_rate_hz / 4.)
 
         # configure the ethernet cores.
         THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
@@ -289,7 +289,7 @@ class FEngineOperations(object):
         for ctr, source in enumerate(source_names):
             addr = StreamAddress.from_address_string(source_mcast[ctr])
             dig_src = fhost_fpga.InputStreamDetails(source, addr, ctr)
-            dig_streams.append(dig_src);
+            dig_streams.append(dig_src)
 
         # assemble the inputs given into a list
         _feng_temp = []
@@ -368,19 +368,19 @@ class FEngineOperations(object):
         if sleeptime > 0:
             time.sleep(sleeptime)
 
-    def set_center_freq(self,freq):
+    def set_center_freq(self, freq):
         """Set the DDC's center frequency in Hz. """
-        self.logger.info("Attempting to set the center frequency to {:.5f} MHz".format(freq/1e6))
-        if (self.decimation_factor==1):
+        self.logger.info("Attempting to set the center frequency to {:.5f} MHz".format(freq / 1e6))
+        if (self.decimation_factor == 1):
             self.logger.info("No point setting the center frequency in wideband modes.")
-            return self.corr.sample_rate_hz/4.
-        offset = self.corr.sample_rate_hz/4./self.decimation_factor
-        min_freq=offset
-        max_freq=(self.corr.sample_rate_hz/2.) - offset
+            return self.corr.sample_rate_hz / 4.
+        offset = (self.corr.sample_rate_hz / 4.) / self.decimation_factor
+        min_freq = offset
+        max_freq = (self.corr.sample_rate_hz / 2.) - offset
         if (freq < min_freq):
-            freq=min_freq
-        if (freq>max_freq):
-            freq=max_freq
+            freq = min_freq
+        if (freq > max_freq):
+            freq = max_freq
         self._set_osc_freq(freq)
         if self.corr.sensor_manager:
             self.corr.sensor_manager.sensors_center_freq()
@@ -390,28 +390,28 @@ class FEngineOperations(object):
         """Fetch the tuned center-frequency of the DDC."""
         #if (band > 0):
         #    raise NotImplementedError('This is not implemented for anything other than the default band.')
-        if (self.decimation_factor==1):
-            return self.corr.sample_rate_hz/4.
-        osc_freq=self._get_osc_freq()
-        self.logger.info("Center frequency is {:.5f} MHz".format((osc_freq)/1e6))
+        if (self.decimation_factor == 1):
+            return self.corr.sample_rate_hz / 4.
+        osc_freq = self._get_osc_freq()
+        self.logger.info("Center frequency is {:.5f} MHz".format((osc_freq) / 1e6))
         return osc_freq
 
-    def _set_osc_freq(self,freq):
+    def _set_osc_freq(self, freq):
         """Set the DDC oscillator frequency to "freq" Hz."""
-        self.logger.debug('Setting DDC oscillator freq to {:.3f} MHz'.format(freq/1.e6))
-        reg_value = float(freq)/self.corr.sample_rate_hz
+        self.logger.debug('Setting DDC oscillator freq to {:.3f} MHz'.format(freq / 1.e6))
+        reg_value = float(freq) / self.corr.sample_rate_hz
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
             target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.write(frequency=reg_value),))
         return self._get_osc_freq()
 
     def _get_osc_freq(self):
         """Return the hardware configured oscillator frequency, in Hz."""
-        rv =THREADED_FPGA_OP(self.hosts,timeout=1,target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.read()['data']['frequency'],)) 
-        if min(rv.values()) != max(rv.values()): 
+        rv = THREADED_FPGA_OP(self.hosts, timeout=1, target_function=(lambda fpga_: fpga_.registers.freq_cwg_osc.read()['data']['frequency'], ))
+        if min(rv.values()) != max(rv.values()):
             self.logger.warning("Fhosts have different tuning frequencies!")
             raise RuntimeError("Fhosts have different tuning frequencies!")
-        rv=rv.values()[0]*self.corr.sample_rate_hz
-        self.logger.debug('DDC oscillator freq is {:.3f} MHz'.format(rv/1.e6))
+        rv = rv.values()[0] * self.corr.sample_rate_hz
+        self.logger.debug('DDC oscillator freq is {:.3f} MHz'.format(rv / 1.e6))
         return rv
 
     def get_rx_timestamps(self, src=0):
@@ -432,7 +432,7 @@ class FEngineOperations(object):
             feng_mcnt = results[host.host]
             feng_time = self.corr.time_from_mcnt(feng_mcnt)
             feng_time_ok = True
-            # are the count bits okay? 
+            # are the count bits okay?
             # JM commented this out 2019-11-27; it's checked by the hardware spead unpack block anyway.
 #            if feng_mcnt & 0xfff != 0:
 #                self.logger.error('{},{}: bottom 12 bits of timestamp from F-engine are '
@@ -467,11 +467,11 @@ class FEngineOperations(object):
             self.logger.error(errmsg)
             rv = False
         return rv, feng_times
- 
+
     def threaded_feng_command(self, fengines, timeout, target_function):
         """
         Thread any command against list of correlator input indices
-        :param fengines: list of fengines to execute 
+        :param fengines: list of fengines to execute
         :param timeout: how long to wait before timing out
         :param target_function: a tuple with three parts:
                                 1. reference, the function object that must be
@@ -492,10 +492,10 @@ class FEngineOperations(object):
         returnval = {}
         hosts_missing = [feng.input_number for feng in fengines]
         for fpl in range(f_per_fpga):
-            result_queue = Queue.Queue(maxsize=len(fengines)/f_per_fpga)
+            result_queue = Queue.Queue(maxsize=len(fengines) / f_per_fpga)
             thread_list = []
 #            for feng_ in self.fengines[fpl::f_per_fpga]:
-            for feng_ in fengines[fpl::f_per_fpga]: 
+            for feng_ in fengines[fpl::f_per_fpga]:
                 thread = threading.Thread(target=jobfunc, args=(result_queue, feng_))
                 thread.setDaemon(True)
                 thread.start()
@@ -513,8 +513,8 @@ class FEngineOperations(object):
                 except Queue.Empty:
                     break
         if hosts_missing:
-            hosts_missing=[self.fengines[n_feng] for n_feng in hosts_missing]
-            missing_str=['%s(%s)'%(feng.name,feng.host.host) for feng in hosts_missing]
+            hosts_missing = [self.fengines[n_feng] for n_feng in hosts_missing]
+            missing_str = ['%s(%s)' % (feng.name, feng.host.host) for feng in hosts_missing]
             errmsg = ('Did not complete Fengs: {}.'.format(missing_str))
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
@@ -544,7 +544,7 @@ class FEngineOperations(object):
         returnval = {}
         hosts_missing = [feng.input_number for feng in self.fengines]
         for fpl in range(f_per_fpga):
-            result_queue = Queue.Queue(maxsize=num_fengs/f_per_fpga)
+            result_queue = Queue.Queue(maxsize=num_fengs / f_per_fpga)
             thread_list = []
             for feng_ in self.fengines[fpl::f_per_fpga]:
                 thread = threading.Thread(target=jobfunc, args=(result_queue, feng_))
@@ -564,8 +564,8 @@ class FEngineOperations(object):
                 except Queue.Empty:
                     break
         if hosts_missing:
-            hosts_missing=[self.fengines[n_feng] for n_feng in hosts_missing]
-            missing_str=['%s(%s)'%(feng.name,feng.host.host) for feng in hosts_missing]
+            hosts_missing = [self.fengines[n_feng] for n_feng in hosts_missing]
+            missing_str = ['%s(%s)' % (feng.name, feng.host.host) for feng in hosts_missing]
             errmsg = ('Did not complete Fengs: {}.'.format(missing_str))
             self.logger.error(errmsg)
             raise RuntimeError(errmsg)
@@ -605,7 +605,7 @@ class FEngineOperations(object):
         """
         loadmcnt = self._delays_check_loadtime(loadtime)
         self.logger.debug("Received delay model update for {} (mcnt {}) at {}: {}.".format(loadtime,
-                loadmcnt, time.time(),delay_list.__str__()))
+                loadmcnt, time.time(), delay_list.__str__()))
         if not (loadmcnt > 0):
             self.logger.error("Dropping delay request.")
         else:
@@ -694,11 +694,11 @@ class FEngineOperations(object):
         Enable hardware automatic resync upon error detection.
         """
         #feng_pipeline_latency = ct+hmc  +  pfb_fir  +  fft  +  cd+hmc  +  misc
-        max_difference=(self.corr.n_chans*2*self.corr.xops.xeng_acc_len*2*self.decimation_factor + 50000) + (self.decimation_factor*self.corr.n_chans*16*2) + (self.decimation_factor*self.corr.n_chans*7) +  (512 + 50000) + (50000)
+        max_difference = (self.corr.n_chans * 2 * self.corr.xops.xeng_acc_len * 2 * self.decimation_factor + 50000) + (self.decimation_factor * self.corr.n_chans * 16 * 2) + (self.decimation_factor * self.corr.n_chans * 7) + (512 + 50000) + (50000)
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
             target_function=(lambda fpga_: fpga_.registers.time_check.write(max_difference=max_difference), ))
         THREADED_FPGA_OP(self.hosts, timeout=self.timeout,
-            target_function=(lambda fpga_: fpga_.registers.control.write(auto_rst_enable=True,time_diff_check_en=True), ))
+            target_function=(lambda fpga_: fpga_.registers.control.write(auto_rst_enable=True, time_diff_check_en=True), ))
         self.logger.info('F-engine hardware auto rst/resync mechanism enabled.')
 
     def auto_rst_disable(self):
@@ -764,7 +764,7 @@ class FEngineOperations(object):
         if input_name is None:
             self.logger.info('Applying EQ to all inputs.')
             fengs = self.fengines
-            rv = self.threaded_feng_operation(timeout=self.timeout*(self.corr.n_chans/1024),
+            self.threaded_feng_operation(timeout=self.timeout * (self.corr.n_chans / 1024),
                 target_function=(lambda feng_: feng_.set_eq(new_eq),))
         else:
             fengs = [self.get_fengine(input_name)]
@@ -780,9 +780,9 @@ class FEngineOperations(object):
         :return:
         """
         self.logger.info('Attempting to set the FFT shift to {} on all F-engine boards...'.format(shift_value))
-        if shift_value=='auto':
+        if shift_value == 'auto':
             import numpy
-            timeout = numpy.log2(self.corr.n_chans)*3
+            timeout = numpy.log2(self.corr.n_chans) * 3
         else:
             timeout = self.timeout
         THREADED_FPGA_FUNC(self.hosts, timeout, ('set_fft_shift', (shift_value,),))
@@ -833,21 +833,23 @@ class FEngineOperations(object):
     def sky_freq_to_chan(self, freq):
         raise NotImplementedError
 
+    #sketchy function. Many errors exposed during lint check. Fixed but doubtful
+    #this has ever been run
     def freq_to_chan(self, freq):
         """
         In which fft channel is a frequency found?
         :param freq: frequency, in Hz, float
         :return: the fft channel, integer
         """
-        center = self.get_center_freq()
+        center_freq = self.get_center_freq()
         _bw = self.corr.sample_rate_hz / 2.0 / self.decimation_factor
-        _band_min = center_freq - _bw/2
-        _band_max = center_freq + bw/2
+        _band_min = center_freq - _bw / 2.
+        _band_max = center_freq + _bw / 2.
         if (freq > _band_max) or (freq <= _band_min):
-            raise RuntimeError('frequency {:.3f}MHz is not in our band ({:.3f} to {:.3f} MHz).'.format(freq/1e6,_band_min/1e6,_band_max/1e6))
+            raise RuntimeError('frequency {:.3f}MHz is not in our band ({:.3f} to {:.3f} MHz).'.format(freq / 1e6, _band_min / 1e6, _band_max / 1e6))
         import numpy
-        _hz_per_chan = _band / self.corr.n_chans
-        _chan_index = numpy.floor((freq-_band_min) / _hz_per_chan)
+        _hz_per_chan = _bw / self.corr.n_chans
+        _chan_index = numpy.floor((freq - _band_min) / _hz_per_chan)
         return _chan_index
 
     def get_quant_snap(self, input_name, channel_select=-1):
