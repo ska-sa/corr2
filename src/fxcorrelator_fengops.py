@@ -493,7 +493,8 @@ class FEngineOperations(object):
         returnval = {}
         hosts_missing = [feng.input_number for feng in fengines]
         for fpl in range(f_per_fpga):
-            result_queue = Queue.Queue(maxsize=len(fengines) / f_per_fpga)
+            import numpy
+            result_queue = Queue.Queue(maxsize=numpy.ceil(float(len(fengines)) / f_per_fpga))
             thread_list = []
 #            for feng_ in self.fengines[fpl::f_per_fpga]:
             for feng_ in fengines[fpl::f_per_fpga]:
