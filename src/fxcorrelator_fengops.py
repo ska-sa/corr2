@@ -775,6 +775,44 @@ class FEngineOperations(object):
             if self.corr.sensor_manager:
                 self.corr.sensor_manager.sensors_feng_eq(feng)
 
+    def set_eqs(self, new_eqs=None):
+        """
+        Set the EQ for a number of inputs
+        :param new_eqs: a dictionary of eqs (list or value or poly) keyed on input name
+        :param input_name: the input name. None for all fengines.
+        :return:
+        """
+        # if no input is given, set default to all inputs
+        if new_eqs is None:
+            self.logger.info('Applying default EQ to all inputs.')
+            fengs = self.fengines
+            self.threaded_feng_operation(timeout=self.timeout * (self.corr.n_chans / 1024),
+                target_function=(lambda feng_: feng_.set_eq(),))
+            for feng in fengs:
+                if self.corr.sensor_manager:
+                    self.corr.sensor_manager.sensors_feng_eq(feng)
+        else:
+            fengs = []
+            for eq in new_eqs:
+                try:
+                    feng = self.get_fengine(eq)
+                except ValueError:
+                    pass
+                except Exception as e:
+                    self.logger.warning("Error while getting %s fengine %s" % (feng, e))
+                else:
+                    fengs.append(feng)
+                finally:
+                    pass
+
+            self.logger.info("Setting equaliser gains simultaneously on %d inputs" % (len(fengs)))
+            self.threaded_feng_command(fengines=fengs, timeout=self.timeout * (self.corr.n_chans / 1024),
+                target_function=(lambda feng_: feng_.set_eq(new_eqs[feng_.input.name]),))
+
+            for feng in fengs:
+                if self.corr.sensor_manager:
+                    self.corr.sensor_manager.sensors_feng_eq(feng)
+
     def set_fft_shift_all(self, shift_value=None):
         """
         Set the FFT shift on all boards.
