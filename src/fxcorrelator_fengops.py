@@ -178,6 +178,7 @@ class FEngineOperations(object):
             self.logger.info('Found FIXED num_x F-engines')
 
         # set up the corner turner
+        # TODO this could be done in parallel
         reg_error = False
         host_ctr = 0
         for f in self.hosts:
@@ -470,8 +471,8 @@ class FEngineOperations(object):
 
     def threaded_feng_command(self, fengines, timeout, target_function):
         """
-        Thread any command against list of correlator input indices
-        :param fengines: list of fengines to execute
+        Thread any command against list of fengines
+        :param fengines: list of fengines to execute command on
         :param timeout: how long to wait before timing out
         :param target_function: a tuple with three parts:
                                 1. reference, the function object that must be
