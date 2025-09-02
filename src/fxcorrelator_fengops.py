@@ -849,15 +849,14 @@ class FEngineOperations(object):
         except AttributeError:
             return {}
 
-    def get_adc_clip_counts(self):
+    def get_adcs_status(self):
         """
-        Get all digitiser ADC clip counts
-        :return: (the F-engine ADC clip count values 
-        for both polarisations)
+        Get all ADC status info from all F-engines
+        :return: dictionary keyed on f-engine offset with fhost_fpga.get_adc_status info
         """
-        self.logger.debug('Checking clip counts on F hosts.')
+        self.logger.debug('Getting ADC status from F hosts.')
         results = THREADED_FPGA_FUNC(self.hosts, timeout=self.timeout,
-            target_function=('get_adc_clip_counts', [], {}))
+            target_function=('get_adc_status', [], {}))
         return results
 
 # end
