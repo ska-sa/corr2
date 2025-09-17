@@ -177,6 +177,7 @@ class SPEADStream(object):
         self.descriptors_setup()
         self.max_pkt_size = max_pkt_size;
         self.set_destination(new_dest=destination)
+        self.enable_descriptor_issue = False
 
     def descriptors_setup(self):
         """
@@ -250,12 +251,16 @@ class SPEADStream(object):
                          'stream yet.' % self.name)
             return
 
-        i = 0
-        for dest_ctr in range(self.destination.ip_range):
-            i += 1
-            self.tx_sockets[dest_ctr].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
+        if self.enable_descriptor_issue:
+            i = 0
+            for dest_ctr in range(self.destination.ip_range):
+                i += 1
+                self.tx_sockets[dest_ctr].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
 
-        self.logger.debug('SPEADStream %s: sent descriptors to %i destinations' % (self.name, dest_ctr + 1))
+            self.logger.debug('SPEADStream %s: sent descriptors to %i destinations' % (self.name, dest_ctr + 1))
+        else:
+            self.logger.debug('%s: descriptors send disabled' % self.name)
+
 
     def descriptor_issue_single(self, index):
         """
@@ -276,11 +281,11 @@ class SPEADStream(object):
             self.logger.error('%s: Tried to issue discriptor out of range (%i descriptors, index: %i).' % (self.name, dest_ctr, index))
             return
         
-        if(self.tx_enabled):
+        if self.tx_enabled and self.enable_descriptor_issue:
             self.tx_sockets[index].send_heap(self.descr_ig.get_heap(descriptors='all', data='all'))
             self.logger.debug('SPEADStream %s: sent descriptor %i of %i destinations' % (self.name, index, dest_ctr))
         else:
-            self.logger.debug('SPEADStream %s: DId not send descriptor %i of %i destinations, beam disabled' % (self.name, index, dest_ctr))
+            self.logger.debug('SPEADStream %s: Did not send descriptor %i of %i destinations, beam disabled' % (self.name, index, dest_ctr))
 
     def get_num_descriptors(self):
         """

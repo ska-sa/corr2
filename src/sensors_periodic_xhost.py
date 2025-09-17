@@ -126,7 +126,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
             status=Corr2Sensor.NOMINAL,
             value=result['tx_gbps'])
 
-        if (result['rx_pps'] < 3500000) and (result['rx_pps'] > 2000000):
+        if (result['rx_pps'] < 3500000) and (result['rx_pps'] > 1500000):
             sensors['rx_pps'].set(
                 status=Corr2Sensor.NOMINAL,
                 value=result['rx_pps'])
@@ -136,7 +136,7 @@ def _cb_xeng_network(sensors, x_host, sensor_manager,sensor_task):
                 value=result['rx_pps'])
             device_status = Corr2Sensor.WARN
 
-        if (result['rx_gbps'] < 32) and (result['rx_gbps'] > 18):
+        if (result['rx_gbps'] < 32) and (result['rx_gbps'] > 14):
             sensors['rx_gbps'].set(
                 status=Corr2Sensor.NOMINAL,
                 value=result['rx_gbps'])
@@ -396,13 +396,13 @@ def _cb_xeng_vacc(sensors_value, sensor_manager,sensor_task):
 
     instrument = sensors_value['synchronised'].manager.instrument
     try:
+        synced = instrument.xops.vaccs_synchronised()
+        status = Corr2Sensor.NOMINAL if synced else Corr2Sensor.ERROR
+        sensors_value['synchronised'].set(value=synced, status=status)
+        
         rv = instrument.xops.get_vacc_status()
         for _x in rv:
-            if _x == 'synchronised':
-                status = Corr2Sensor.NOMINAL if rv['synchronised'] else Corr2Sensor.ERROR
-                sensors_value['synchronised'].set(
-                    value=rv['synchronised'], status=status)
-            else:
+            if _x != 'synchronised':
                 for xctr, sensordict in enumerate(sensors_value[_x]):
                     sensordict['timestamp'].set(
                         value=rv[_x][xctr]['timestamp'])

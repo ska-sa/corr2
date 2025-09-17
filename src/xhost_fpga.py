@@ -185,6 +185,23 @@ class FpgaXHost(FpgaHost):
             stats.append(temp)
         return stats
 
+    def get_vacc_timestamps(self, x_indices=None):
+        """
+        Read the timestamp of the current accumulation from
+        vector accumulator
+        :param x_indices: a list of x-engine indices to query
+        :return: dictionary with timestamps
+        """
+        if x_indices is None:
+            x_indices = range(self.x_per_fpga)
+        times = []
+        regs = self.registers
+        for xnum in x_indices:
+            time={}
+            time['timestamp'] = regs['sys%i_vacc_timestamp' % xnum].read()['data']['vacc_timestamp']
+            times.append(time)
+        return times
+
     def get_vacc_status(self, x_indices=None):
         """
         Read the vacc status registers, error count, accumulation count and

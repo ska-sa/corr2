@@ -67,7 +67,7 @@ class FengineStream(SPEADStream):
         Enable TX for this data stream
         :return:
         """
-        self.descriptors_issue()
+        #self.descriptors_issue()
         if self.tx_enabled:
             self.fops.logger.warn(
                 '{}: F-engine stream already running. Ignoring tx_enable command.'.format(self.name))
@@ -348,6 +348,13 @@ class FEngineOperations(object):
         self.data_stream = FengineStream(output_name, output_address, self, max_pkt_size, *args, **kwargs)
         self.data_stream.set_source([feng.input.destination for feng in self.fengines])
         self.corr.add_data_stream(self.data_stream)
+        # Alec Rust: 11/08/2022 Enable xengine descriptors by default
+        try:
+            self.data_stream.enable_descriptor_issue = \
+                _fengd['send_descriptors'].lower() in ['true']
+        except KeyError:
+            pass
+
 
     def sys_reset(self, sleeptime=0):
         """
